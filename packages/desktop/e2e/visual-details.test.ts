@@ -354,8 +354,10 @@ test("a narrow column centres the transcript instead of parking the question rai
 	 * 个面板的 1400px 窗口，对话列同样只有四百多像素，一样偏。
 	 */
 	await app.send("Emulation.setDeviceMetricsOverride", { width: 1200, height: 900, deviceScaleFactor: 1, mobile: false });
-	// The test before this one ends on 插件, whose own list is what the sidebar shows there.
-	await clickText("对话");
+	/*
+	 * The test before this one ends on 插件. The sidebar lists the conversations on every page now
+	 * (there is no separate 「对话」 entry since 485cc847), and opening one is itself the way back.
+	 */
 	await click('[data-ly-row="qa-long"] > button');
 	await until(app, `document.querySelector('[data-view="qa-long"][data-active="true"] .ly-transcript')?.checkVisibility({visibilityProperty:true,opacityProperty:true}) && document.querySelectorAll('[data-view="qa-long"][data-active="true"] .ly-question-mark').length > 1`);
 	const column = `(()=>{const view=document.querySelector('.ly-transcript').closest('.ly-scroll-view'),v=view.getBoundingClientRect(),c=document.querySelector('.ly-transcript').getBoundingClientRect(),rail=document.querySelector('.ly-question-nav');

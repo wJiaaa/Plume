@@ -77,10 +77,16 @@ test("定时任务页同样", async () => {
 });
 
 test("切回对话，界面完整", async () => {
-	await navigate("对话");
+	/*
+	 * 侧栏上没有单独的「对话」入口了：图标栏连同它一起去掉之后（485cc847），从别的页面回到对话的
+	 * 路就是点一段会话或「新对话」。这份 profile 是空的，没有会话可点，所以走「新对话」。
+	 */
+	await navigate("新对话");
 	await new Promise((resolve) => setTimeout(resolve, 600));
 	const alive = await app.evaluate<number>(`document.querySelector("#root")?.children.length ?? 0`);
 	assert.ok(alive > 0, "切回对话之后根节点是空的");
+	// 根节点不空只说明没崩；定时任务页也不空。输入框在，才是真的回到了对话。
+	assert.equal(await app.evaluate<boolean>(`Boolean(document.querySelector("main .ly-composer"))`), true, "点了「新对话」还停在定时任务页");
 });
 
 test("设置也是懒加载的，打开之后它的分区名在页面上", async () => {
