@@ -159,6 +159,24 @@ test("并行启动：一台慢、一台启动即崩，不拖住别的服务器�
 	assert.ok(mcpTools().includes("mcp__slow__echo"));
 });
 
+test("一轮开头等慢服务器时按了停止，当场不等了", async () => {
+	const can = new SessionCapabilities([], { mcpWait: 0 });
+	cleanups.push(() => can.dispose());
+	await can.load(dir, { ...DEFAULT_SETTINGS, mcpServers: [stress("slow", { STRESS_ONLY: '["echo"]', STRESS_DELAY: "4000" })] });
+
+	const stop = new AbortController();
+	setTimeout(() => stop.abort(), 200);
+	const waited = Date.now();
+	await can.mcpReady(5000, stop.signal);
+	// 不听停止的话要等到慢的那台连上（4 秒），这期间会话一直显示在运行。
+	assert.ok(Date.now() - waited < 1500, `按了停止还等了 ${Date.now() - waited}ms`);
+
+	// 已经停了的一轮再来问，一刻也不等。
+	const again = Date.now();
+	await can.mcpReady(5000, stop.signal);
+	assert.ok(Date.now() - again < 100);
+});
+
 test("对话里的失败提示带 stderr 里的原因那一行，不带调用栈", () => {
 	const status = (stderr: string) => ({ id: "s", name: "S", transport: "stdio", state: "failed", error: "Connection closed", stderr }) as McpServerStatus;
 	const node = mcpFailureNotice(status("starting\nError: config missing\n    at boot (a.ts:1:1)\n    at main (a.ts:2:1)\n"));

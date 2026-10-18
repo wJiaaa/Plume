@@ -178,9 +178,23 @@ export class SessionCapabilities {
 	 *
 	 * 会话打开时不等它们：一台要冷启动三分钟的服务器不该让窗口跟着卡三分钟。第一句话发出去时多半
 	 * 都已经连上了（30 台本地服务器实测几百毫秒）；还没连上的不再等，连上以后从下一轮起可用。
+	 *
+	 * 按了停止就不再等（`signal`）。这一段等发生在一轮已经开始之后，不听停止的话，人按下停止，会话
+	 * 却要等到服务器连上或者这一小会儿过完才停，一直显示在运行。
 	 */
-	async mcpReady(graceMs = MCP_START_GRACE_MS): Promise<void> {
-		await this.mcp.settled(graceMs);
+	async mcpReady(graceMs = MCP_START_GRACE_MS, signal?: AbortSignal): Promise<void> {
+		if (!signal) return this.mcp.settled(graceMs);
+		if (signal.aborted) return;
+		let stop = () => {};
+		const stopped = new Promise<void>((resolve) => {
+			stop = resolve;
+			signal.addEventListener("abort", stop, { once: true });
+		});
+		try {
+			await Promise.race([this.mcp.settled(graceMs), stopped]);
+		} finally {
+			signal.removeEventListener("abort", stop);
+		}
 	}
 
 	/** Discover everything again. Safe to call after the settings change. */

@@ -119,10 +119,21 @@ test("slow MCP startup still creates immediate titled rows, aggregates collapsed
 	const second = await submit();
 	assert.notEqual(first.meta.id, second.meta.id); assert.equal(first.meta.title, second.meta.title);
 	await click('button[aria-label="停止"]');
-	await frames(app, 180);
+	/*
+	 * Stopped now, not once the handshake is over. The turn has already begun and is waiting for the
+	 * server before it asks the provider, so a stop it does not hear leaves both sessions running
+	 * for the rest of the 2400ms — read well inside that.
+	 */
+	const read = `Promise.all(${JSON.stringify([first.meta, second.meta])}.map(async s=>{const t=await window.plume.sessions.transcript(s.id);return {id:s.id,count:t.messages.length,pending:!!t.meta.pendingPrompt,running:t.running};}))`;
+	let stored = await app.evaluate<{ id: string; count: number; pending: boolean; running: boolean }[]>(read);
+	for (const end = Date.now() + 1000; Date.now() < end && stored.some((s) => s.running);) {
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		stored = await app.evaluate<typeof stored>(read);
+	}
+	assert.ok(stored.every((s) => s.count === 1 && !s.pending && !s.running), JSON.stringify(stored));
+	// Waited on the clock, past the handshake: frames are not a measure of time (120 of them are one second on a 120Hz panel).
+	await new Promise((resolve) => setTimeout(resolve, 3000));
 	assert.equal(modelRequests, 0, "cancellation during initialization never starts the provider afterwards");
-	const stored = await app.evaluate<{ id: string; count: number; pending: boolean; running: boolean }[]>(`Promise.all(${JSON.stringify([first.meta, second.meta])}.map(async s=>{const t=await window.plume.sessions.transcript(s.id);return {id:s.id,count:t.messages.length,pending:!!t.meta.pendingPrompt,running:t.running};}))`);
-	assert.ok(stored.every((s) => s.count === 1 && !s.pending && !s.running));
 	t.diagnostic(JSON.stringify({ firstRowMs: first.elapsed, secondRowMs: second.elapsed, group, stored }));
 	await app.evaluate(`window.plume.sessions.rename(${JSON.stringify(first.meta.id)},'独立重命名')`);
 	await app.evaluate(`window.plume.sessions.setArchived(${JSON.stringify(first.meta.id)},true)`);

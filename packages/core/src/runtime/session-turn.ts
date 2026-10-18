@@ -293,7 +293,7 @@ async function assembleTurn(input: TurnInputs, hooks: TurnHooks): Promise<{ conf
 	can.state.set(PROJECT_MEMORY_ENABLED_KEY, memoryEnabled);
 
 	// 刚打开的会话里还在连的 MCP 服务器，等一小会儿再取工具表；见 `SessionCapabilities.mcpReady`。
-	await can.mcpReady();
+	await can.mcpReady(undefined, input.signal);
 	// 名单外的工具不止是不提：不在这一轮的工具表里，模型叫也叫不到。
 	const profile = input.profile;
 	const allowed = profile ? can.tools.filter((tool) => profile.tools.has(tool.name)) : can.tools;
