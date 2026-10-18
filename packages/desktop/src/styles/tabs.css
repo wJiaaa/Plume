@@ -176,6 +176,14 @@
   animation-range: exit 0% exit 50%;
 }
 
+/*
+ * 「聊天」的标题是分区标题那一行（`ProjectList` 的 `SectionLabel`，按钮 `h-7`），28px，比项目名矮 4px。
+ * 照 32px 去淡，紧挨它底下那一行还没滑进标题就先淡掉一截，量到过 0.75。
+ */
+:root[data-vibrancy="on"] .ly-nav-column [data-ly-head]:has(> [data-ly-section]) + * :is([data-ly-row], [data-ly-show-more]) {
+  animation-timeline: view(block 28px 0);
+}
+
 .ly-opaque {
   background: var(--color-shell);
 }

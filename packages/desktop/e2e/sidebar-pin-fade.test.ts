@@ -22,7 +22,7 @@ import { seedSessions, type FixtureSession } from "./session-fixture.ts";
 
 const usage = { input: 0, output: 0, total: 0, cacheRead: 0, cacheWrite: 0, cost: { input: 0, output: 0, total: 0, cacheRead: 0, cacheWrite: 0 } };
 
-/** 四个项目各五条会话，多到侧栏滚得动、每个项目标题都会钉住一次再被下一个顶走。 */
+/** 四个项目各五条会话，多到侧栏滚得动、每个项目标题都会钉住一次再被下一个顶走；最后是一节「聊天」。 */
 async function seed(home: string): Promise<void> {
 	await writeFile(join(home, "window.json"), JSON.stringify({ width: 1200, height: 760, x: 0, y: 0 }));
 	const projects = ["甲", "乙", "丙", "丁"].map((name, i) => {
@@ -41,13 +41,20 @@ async function seed(home: string): Promise<void> {
 	const sessions: FixtureSession[] = [];
 	const now = Date.now();
 	let n = 0;
-	for (const project of projects) {
+	/*
+	 * 项目后面再跟一节「聊天」：它的标题也钉住（`ProjectList` 的 `held`），而它比项目名矮，
+	 * 只量项目名的话，毛玻璃下按项目名的高度去淡出的写法在它底下照样是绿的。
+	 */
+	const scratch = { path: join(home, "workspaces", "general"), name: "general", id: undefined };
+	for (const project of [...projects, scratch]) {
 		await mkdir(project.path, { recursive: true });
-		for (let i = 0; i < 5; i++) {
+		for (let i = 0; i < (project === scratch ? 24 : 5); i++) {
 			n++;
 			const at = now - n * 3_600_000;
 			const meta = {
-				id: `pin-${n}`, title: `${project.name}项目的第 ${i + 1} 条会话`, cwd: project.path, projectId: project.id, projectName: project.name,
+				id: `pin-${n}`, title: project === scratch ? `聊天 ${i + 1}` : `${project.name}项目的第 ${i + 1} 条会话`, cwd: project.path, projectId: project.id ?? project.name, projectName: project.name,
+				// 归属只认 `project`（72efa40b），不从 cwd 推算：不写它，项目的会话也全落进「聊天」。
+				project: project.id,
 				createdAt: at, updatedAt: at, modelId: "test", messageCount: 2, usage, seq: 3,
 			};
 			sessions.push({
@@ -67,6 +74,8 @@ interface Step {
 	scrollTop: number;
 	/** 此刻钉在顶上的标题有几个。 */
 	pinned: number;
+	/** 钉在顶上的是哪几个。 */
+	names: string[];
 	/** 从钉住的标题底下透出来的行：重叠处最上面的不是标题。 */
 	showing: string[];
 	/** 紧挨着钉住的标题、却没画全的行——标题底下空出一截。 */
@@ -122,6 +131,7 @@ const MEASURE = `(() => {
 	return {
 		scrollTop: view.scrollTop,
 		pinned: heads.length,
+		names: heads.map(({ head }) => head.textContent.trim()),
 		showing,
 		hidden,
 		heads: bad,
@@ -135,7 +145,7 @@ async function sweep(app: RunningApp, delta: number): Promise<Step[]> {
 	);
 	await app.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...at });
 	const steps: Step[] = [];
-	for (let i = 0; i < 80; i++) {
+	for (let i = 0; i < 200; i++) {
 		await app.send("Input.dispatchMouseEvent", { type: "mouseWheel", ...at, deltaX: 0, deltaY: delta });
 		await frames(app, 3);
 		const step = await app.evaluate<Step>(MEASURE);
@@ -151,11 +161,12 @@ for (const build of ["生产构建", "开发构建"] as const) {
 		let app: RunningApp | undefined;
 		try {
 			app = await startApp({ port: build === "开发构建" ? 9892 : 9891, seed, rendererUrl: renderer?.url });
-			await app.evaluate('new Promise((r) => { const f = () => document.querySelectorAll(".ly-sidebar-fill [data-ly-row]").length >= 20 ? r() : requestAnimationFrame(f); f(); })');
+			await app.evaluate('new Promise((r) => { const f = () => document.querySelectorAll(".ly-sidebar-fill [data-ly-row]").length >= 44 ? r() : requestAnimationFrame(f); f(); })');
 
 			const steps = [...(await sweep(app, 12)), ...(await sweep(app, -12))];
 			const held = steps.filter((step) => step.pinned > 0);
 			assert.ok(held.length >= 10, `滚动中应有标题钉在顶上，实际 ${held.length}/${steps.length} 格`);
+			assert.ok(steps.some((step) => step.names.some((name) => name.startsWith("聊天"))), "滚到「聊天」那一节时它的标题应钉在顶上");
 
 			const covered = steps.filter((step) => step.heads.length > 0);
 			assert.deepEqual(
