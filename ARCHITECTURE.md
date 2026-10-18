@@ -124,9 +124,9 @@ pnpm test:e2e  # 真实 Electron 窗口
 
 `pnpm test`：纯逻辑的在各包 `test/` 下，组件的在 `packages/desktop/test/ui/`（happy-dom 真挂载）。
 条数不写在这里——一个只会过期的数字，而它对任何决定都不起作用；要知道就跑一次。
-e2e 在干净的 main 上有若干条稳定失败，**是哪几条没有写下来过**：从前这里指向
-[docs/architecture/testing.md](docs/architecture/testing.md)，那份文档里没有这个清单。
-在有人把它量出来写进去之前，这句话说的就是这个意思——不知道是哪几条。
+e2e 在干净的 main 上有稳定失败和时好时坏的用例，清单在
+[docs/architecture/testing.md › 干净 main 上的已知失败](docs/architecture/testing.md#干净-main-上的已知失败)。
+e2e 红了先对照它：不在清单里的失败按新回归处理。
 
 ## 决策记录
 
