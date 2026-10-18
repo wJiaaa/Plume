@@ -197,7 +197,12 @@ interface Claim {
 	stopButton: boolean;
 	/** Whether the transcript has the prose yet, so a wait can be aimed at the right moment. */
 	prose: boolean;
-	/** Whether a tool card for the streaming call is on screen. */
+	/**
+	 * Whether a tool card for the streaming call is on screen.
+	 *
+	 * Read from the card itself (`data-ly-tool`), not from `data-ly-run`: that one is only on a
+	 * group of calls now, and a single call is drawn as its own row without one.
+	 */
 	toolCard: boolean;
 	/** In the tree at all, as against folded to nothing — the two are worth telling apart in a failure. */
 	mounted: boolean;
@@ -213,17 +218,21 @@ interface Claim {
  * `getBoundingClientRect`, which reports the height it *would* have and knows nothing about an
  * ancestor clipping it to nothing. The wrapper is the one that shrinks, so the wrapper is what has
  * to be measured.
+ *
+ * Hidden in place counts as gone as well. While the answer streams the row no longer folds: it
+ * keeps its height and the line goes to opacity 0, so a transcript pinned to the bottom does not
+ * jump when the words start (see `RunningRow`). Height alone would read that as "shown".
  */
 const READ_CLAIM = `(() => {
 	const line = document.querySelector("main [data-ly-running]");
 	const fold = line?.closest(".ly-reveal");
-	const shown = Boolean(line) && (!fold || fold.getBoundingClientRect().height > 1);
+	const shown = Boolean(line) && (!fold || fold.getBoundingClientRect().height > 1) && line.checkVisibility({ opacityProperty: true });
 	const text = document.querySelector("main")?.innerText ?? "";
 	return {
 		line: shown,
 		stopButton: Boolean(document.querySelector('main button[aria-label="停止"]')),
 		prose: text.includes(${JSON.stringify(PROSE)}),
-		toolCard: Boolean(document.querySelector("main [data-ly-run]")),
+		toolCard: Boolean(document.querySelector("main [data-ly-tool]")),
 		mounted: Boolean(line),
 		foldHeight: fold ? Math.round(fold.getBoundingClientRect().height) : -1,
 	};

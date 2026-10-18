@@ -319,10 +319,11 @@ interface Row {
 	colour: string | null;
 }
 
+/** The row's words, by their class: the button's first span is the icon slot, which reads as nothing. */
 async function rowFor(summary: string): Promise<Row> {
 	const row = await app.evaluate<Row | null>(`(() => {
 		const button = [...document.querySelectorAll("button")].find(
-			(b) => b.querySelector("span")?.textContent?.trim() === ${JSON.stringify(summary)},
+			(b) => b.querySelector(".ly-flow-summary")?.textContent?.trim() === ${JSON.stringify(summary)},
 		);
 		if (!button) return null;
 		const image = button.querySelector("img");
@@ -363,7 +364,7 @@ test("每种扩展都能在对话里用到，且行首说出它是哪一种", as
 	// Opening deferred cards starts the bundle scan; the row text can precede its loaded picture.
 	await waitFor(`(() => {
 		const row = [...document.querySelectorAll("button")].find(
-			button => button.querySelector("span")?.textContent?.trim() === "Demo: echo",
+			button => button.querySelector(".ly-flow-summary")?.textContent?.trim() === "Demo: echo",
 		);
 		const image = row?.querySelector("img");
 		return image?.complete && image.naturalWidth > 0;
@@ -379,6 +380,7 @@ test("每种扩展都能在对话里用到，且行首说出它是哪一种", as
 	assert.equal(plain.glyph, "lucide-cable", "手填的服务用 MCP 的符号");
 	assert.equal(plain.picture, null);
 
-	// The globe belongs to fetching a page, and now only to that.
-	assert.equal((await rowFor("Fetch https://example.com")).glyph, "lucide-globe", "web_fetch 还是地球");
+	// The globe belongs to fetching a page, and now only to that. The row says core's "Fetch …" in the
+	// interface's language (`describeActivity`).
+	assert.equal((await rowFor("抓取网页 https://example.com")).glyph, "lucide-globe", "web_fetch 还是地球");
 });

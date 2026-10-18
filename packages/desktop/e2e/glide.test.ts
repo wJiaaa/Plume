@@ -180,12 +180,6 @@ after(async () => {
 interface Frame {
 	/** What each run row says about itself: "running" or "done", top to bottom. */
 	marks: string[];
-	/**
-	 * Each turn's folded process line, "running" or "done". A finished turn folds its work into one
-	 * line that draws nothing while closed, so after a turn this — not the rows — is what says the
-	 * work is still in the transcript.
-	 */
-	folds: string[];
 	/** How many summary lines carry the glide animation. The claim is: never more than one. */
 	glides: number;
 	/** Whether the composer is offering to stop, which is the store's `running` on screen. */
@@ -197,14 +191,13 @@ interface Frame {
 /**
  * One frame of what the transcript shows of its tool work.
  *
- * A constant rather than written inline in `turn`, because the test that opens a finished turn
- * reads the same things once more, and the two readings have to agree on what a row is.
+ * A constant rather than written inline in `turn`, because the test after the first turn reads the
+ * same things once more, and the two readings have to agree on what a row is.
  */
 const SAMPLE = `(() => {
 	const rows = [...document.querySelectorAll("main [data-ly-run]")];
 	return {
 		marks: rows.map((row) => row.dataset.lyRun),
-		folds: [...document.querySelectorAll("main [data-ly-turn-process]")].map((fold) => fold.dataset.lyTurnProcess),
 		glides: document.querySelectorAll("main .ly-glide:not([data-ly-scroll-dup])").length,
 		// The stop button is the store's own answer to whether a turn is running.
 		running: Boolean(document.querySelector('main [aria-label="停止"]')),
@@ -253,7 +246,7 @@ function whileRunning(frames: Frame[]): Frame[] {
 function story(frames: Frame[]): string {
 	const out: string[] = [];
 	for (const frame of frames) {
-		const line = `${frame.running ? "running" : "idle   "} | ${frame.marks.join(",") || "—"} | fold=${frame.folds.join(",") || "—"} | glides=${frame.glides} | ${frame.says.join(" / ")}`;
+		const line = `${frame.running ? "running" : "idle   "} | ${frame.marks.join(",") || "—"} | glides=${frame.glides} | ${frame.says.join(" / ")}`;
 		if (line !== out[out.length - 1]) out.push(line);
 	}
 	return out.join("\n  ");
@@ -261,25 +254,6 @@ function story(frames: Frame[]): string {
 
 let working: Frame[] = [];
 let talking: Frame[] = [];
-
-/**
- * Open the finished turn's folded process, the way a person does to look back at the work.
- *
- * Left open on purpose: the tests after this one are about those rows while the next reply is
- * written, and closed they are not drawn at all.
- */
-async function openFinishedProcess(): Promise<void> {
-	await app.evaluate(`(async () => {
-		const line = document.querySelector('main [data-ly-turn-process="done"] > button[aria-expanded="false"]');
-		if (!line) throw new Error("no folded process line to open");
-		line.click();
-		for (let i = 0; i < 300; i++) {
-			if (document.querySelector("main [data-ly-turn-process] [data-ly-run]")) return true;
-			await new Promise(requestAnimationFrame);
-		}
-		throw new Error("the folded process opened onto no run");
-	})()`);
-}
 
 // ---------------------------------------------------------------------------
 // The turn that works: the highlight has to be there, or the test below proves nothing
@@ -306,11 +280,10 @@ test("and stops gliding when that turn ends", async () => {
 	const settled = working[working.length - 1];
 	assert.equal(settled.running, false, "the turn should have finished");
 	/*
-	 * The work folds into one line once the turn is over, and the rows inside are not drawn while it
-	 * is closed — so the fold is what says the work is still here, and it has to say it is done. The
-	 * rows may or may not still be in the last frame (the fold animates shut); none may be running.
+	 * A finished turn no longer folds its work away: the rows stay in the transcript as they were
+	 * drawn, so they are what has to say the work is done.
 	 */
-	assert.deepEqual(settled.folds, ["done"], `the tool work did not fold into one finished line:\n  ${story(working)}`);
+	assert.ok(settled.marks.length > 0, `the tool work left the transcript when the turn ended:\n  ${story(working)}`);
 	assert.deepEqual(
 		settled.marks.filter((mark) => mark !== "done"),
 		[],
@@ -318,12 +291,12 @@ test("and stops gliding when that turn ends", async () => {
 	);
 	assert.equal(settled.glides, 0, `a line was still gliding after the turn ended:\n  ${story(working)}`);
 
-	// Opened, the rows are back — done, and not gliding.
-	await openFinishedProcess();
-	const opened = await app.evaluate<Frame>(SAMPLE);
-	assert.ok(opened.marks.length > 0, `the tool work left no row: ${JSON.stringify(opened)}`);
-	assert.deepEqual(opened.marks.filter((mark) => mark !== "done"), [], `a run was still marked running: ${JSON.stringify(opened)}`);
-	assert.equal(opened.glides, 0, `a line was still gliding: ${JSON.stringify(opened)}`);
+	// Read again once everything has had time to settle: still there, done, and not gliding.
+	await new Promise((resolve) => setTimeout(resolve, 1_000));
+	const later = await app.evaluate<Frame>(SAMPLE);
+	assert.ok(later.marks.length > 0, `the tool work left no row: ${JSON.stringify(later)}`);
+	assert.deepEqual(later.marks.filter((mark) => mark !== "done"), [], `a run was still marked running: ${JSON.stringify(later)}`);
+	assert.equal(later.glides, 0, `a line was still gliding: ${JSON.stringify(later)}`);
 });
 
 // ---------------------------------------------------------------------------
@@ -344,8 +317,7 @@ test("asking something answered in prose never lights the previous turn's work",
 	const live = whileRunning(talking);
 	assert.ok(live.length > 8, `the second turn never ran, or was too quick to sample (${talking.length} samples)\n  ${story(talking)}`);
 
-	// It has to be the same transcript, with the first turn's work still on screen — opened by the
-	// test above, because a finished turn's rows are folded away otherwise.
+	// It has to be the same transcript, with the first turn's work still on screen.
 	assert.ok(
 		live.every((frame) => frame.marks.length > 0),
 		`the first turn's run left the transcript:\n  ${story(talking)}`,
