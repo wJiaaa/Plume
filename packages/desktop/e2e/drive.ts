@@ -29,6 +29,15 @@ export async function frames(page: Evaluate, count = 20): Promise<void> {
 }
 
 /**
+ * 等 `selector` 选中的元素身上的过渡、动画都跑完。读 `getComputedStyle` 之前用它，不要用 `frames`：
+ * 帧数在 120Hz 屏上只有一半的时间，机器一忙就读到过渡中途的值——颜色还会换一种色彩空间写出来，
+ * 同一个颜色前后两次读成两个字符串。无限循环的动画不算，它永远不会停。
+ */
+export async function still(page: Evaluate, selector: string): Promise<void> {
+	await until(page, `![...document.querySelectorAll(${JSON.stringify(selector)})].some(e=>e.getAnimations().some(n=>Number.isFinite(n.effect?.getComputedTiming().endTime)&&(n.pending||n.playState==='running')))`);
+}
+
+/**
  * 把 CSS 视口设成 `width`×`height`，等页面真的量到这个尺寸再返回。
  *
  * 断点看的是 `innerWidth`，而 `window.resizeTo` 对普通 Electron 窗口无效，只能走 Emulation。等到量出来

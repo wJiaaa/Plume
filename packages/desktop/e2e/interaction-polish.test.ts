@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { startApp, type RunningApp } from "./app.ts";
-import { click, frames, hover, openSession, shot, until } from "./drive.ts";
+import { click, frames, hover, openSession, shot, still, until } from "./drive.ts";
 import { seedInteractions } from "./interaction-fixture.ts";
 
 let app: RunningApp;
@@ -15,13 +15,16 @@ test("项目关闭图标悬停时保留整块项目背景，并显示独立按�
 	const background = (selector: string) => app.evaluate<string>(`getComputedStyle([...document.querySelectorAll(${JSON.stringify(selector)})].find(e=>e.checkVisibility({visibilityProperty:true}))).backgroundColor`);
 	await hover(app, "textarea");
 	await frames(app);
+	await still(app, ".ly-composer-tray button");
 	const idle = await background(project);
 	await hover(app, project);
 	await frames(app);
+	await still(app, ".ly-composer-tray button");
 	const onName = await background(project);
 	assert.notEqual(onName, idle, "名称悬停应有背景，不能拿两次透明当作保持一致");
 	await hover(app, close);
 	await frames(app);
+	await still(app, ".ly-composer-tray button");
 	const onClose = await background(project);
 	const icon = await background(close);
 	t.diagnostic(JSON.stringify({ idle, onName, onClose, icon }));
@@ -31,6 +34,7 @@ test("项目关闭图标悬停时保留整块项目背景，并显示独立按�
 	assert.notEqual(icon, idle, "关闭图标也应有独立的悬停底色");
 	await hover(app, "textarea");
 	await frames(app);
+	await still(app, ".ly-composer-tray button");
 	assert.equal(await background(project), idle, "移出后恢复默认背景");
 });
 
