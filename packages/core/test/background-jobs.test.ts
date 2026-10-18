@@ -53,7 +53,8 @@ test("a signalled command keeps its missing exit code instead of reporting exit 
 	} finally { useSandbox(null); }
 });
 
-test("bash_output returns only what arrived since the last read, while the job keeps the whole", async () => {
+test("bash_output returns only what arrived since the last read, while the job keeps the whole", async (t) => {
+	t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
 	let emit: (chunk: string) => void = () => {};
 	let exit: (code: number | null) => void = () => {};
 	useSandbox({ run: () => ({ onOutput(listener) { emit = listener; }, onError() {}, kill() {}, onExit(listener) { exit = listener; } }) });
@@ -65,25 +66,78 @@ test("bash_output returns only what arrived since the last read, while the job k
 			const result = await bashOutputTool.execute({ id }, { ...ctx, signal });
 			return result.content.flatMap((part) => part.type === "text" ? [part.text] : []).join("");
 		};
+		// 没被定时器挡住的那些回调都跑完以后，这次轮询还没答。
+		const pending = (reply: Promise<string>) => Promise.race([reply.then(() => false), new Promise<boolean>((resolve) => setImmediate(() => resolve(true)))]);
+
+		// 第一次读：已经打印的就是答案（开发服务器起没起来），不等。
 		emit("first line\n");
 		assert.match(await poll(), /first line/);
+
+		// 刚读过又来问：中途的输出不叫醒它，满 30 秒再把这段时间的一起给。
 		emit("second line\n");
-		const second = await poll();
-		assert.match(second, /second line/);
-		assert.doesNotMatch(second, /first line/, "每次轮询都重发全部输出");
-		// 没有新输出：等下一行，而不是立刻空手而回、让模型再问一轮。
-		const waitedFrom = Date.now();
-		setTimeout(() => emit("third line\n"), 50);
-		assert.match(await poll(), /third line/);
-		assert.ok(Date.now() - waitedFrom < 5_000, "returned when the line arrived, not at the limit");
+		const second = poll();
+		emit("more\n");
+		t.mock.timers.tick(29_000);
+		assert.ok(await pending(second), "边跑边打印的任务，每来几行就答一次 = 每几秒一整轮");
+		t.mock.timers.tick(1_000);
+		const gathered = await second;
+		assert.match(gathered, /second line\nmore/);
+		assert.doesNotMatch(gathered, /first line/, "每次轮询都重发全部输出");
+
+		// 隔了 30 秒以上、期间一个字没有：第一行到了就答，不再空等满。
+		t.mock.timers.tick(30_000);
+		const third = poll();
+		assert.ok(await pending(third));
+		emit("third line\n");
+		assert.match(await third, /third line/);
+
 		// 按停止，等待当场结束。
 		const stop = new AbortController();
-		setTimeout(() => stop.abort(), 50);
-		assert.match(await poll(stop.signal), /\(no new output\)/);
-		assert.equal(backgroundJobs(ctx.state).list()[0].output, "first line\nsecond line\nthird line\n", "任务本身仍保留全部输出");
-		// 等的时候任务结束了：当场答它怎么结束的。
-		setTimeout(() => exit(0), 50);
-		assert.match(await poll(), /exited with code 0/);
+		const stopped = poll(stop.signal);
+		stop.abort();
+		assert.match(await stopped, /\(no new output\)/);
+		assert.equal(backgroundJobs(ctx.state).list()[0].output, "first line\nsecond line\nmore\nthird line\n", "任务本身仍保留全部输出");
+
+		// 等的时候任务结束了：当场答它怎么结束的，不等满 30 秒。
+		const last = poll();
+		emit("done\n");
+		assert.ok(await pending(last));
+		exit(0);
+		assert.match(await last, /exited with code 0/);
+	} finally { useSandbox(null); }
+});
+
+test("a command handed to the background at the default timeout counts as read: polling right after waits", async (t) => {
+	t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+	let emit: (chunk: string) => void = () => {};
+	let exit: (code: number | null) => void = () => {};
+	let launched: () => void = () => {};
+	const started = new Promise<void>((resolve) => { launched = resolve; });
+	useSandbox({ run: () => { launched(); return { onOutput(listener) { emit = listener; }, onError() {}, kill() {}, onExit(listener) { exit = listener; } }; } });
+	try {
+		const ctx = { cwd: process.cwd(), sessionId: "handoff-test", state: new Map<string, unknown>() };
+		const running = bashTool.execute({ command: "pnpm test" }, ctx);
+		// 启动前还有几步异步检查；进程起来了，默认超时的计时器才挂上。
+		await started;
+		emit("suite 1 ok\n");
+		t.mock.timers.tick(120_000);
+		const handed = await running;
+		const text = handed.content.flatMap((part) => part.type === "text" ? [part.text] : []).join("");
+		assert.match(text, /suite 1 ok/);
+		assert.match(text, /still running after 120s/);
+		const id = (handed.details as { jobId: string }).jobId;
+
+		// 模型一轮请求的几秒里又打印了一行：那条 bash 结果就是上一次读，这次不该拿着一行进度就回去。
+		emit("suite 2 ok\n");
+		const poll = bashOutputTool.execute({ id }, ctx).then((result) => result.content.flatMap((part) => part.type === "text" ? [part.text] : []).join(""));
+		const pending = await Promise.race([poll.then(() => false), new Promise<boolean>((resolve) => setImmediate(() => resolve(true)))]);
+		assert.ok(pending, "转到后台的任务被当成没读过，刚交出去就又是几秒一轮");
+		emit("suite 3 ok\n");
+		exit(0);
+		const answer = await poll;
+		assert.match(answer, /exited with code 0/);
+		assert.match(answer, /suite 2 ok\nsuite 3 ok/);
+		assert.doesNotMatch(answer, /suite 1 ok/, "交出时已经给过的不重发");
 	} finally { useSandbox(null); }
 });
 

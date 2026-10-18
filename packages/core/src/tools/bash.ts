@@ -192,7 +192,7 @@ export const bashTool: Tool<BashArgs> = {
 		"Every call starts fresh in the workspace root — `cd`, variables and functions do not carry over — so chain dependent steps (`cd sub && make`). " +
 		"Quote paths that may contain spaces. Use `run_in_background: true` for dev servers and slow commands you need not wait on, and keep working; " +
 		"the result says whether its exit will be reported to you, otherwise read it with `bash_output`. " +
-		"Before your final answer, read what you still need from jobs you started and kill the ones nobody needs any more; leave a server running only when the user is meant to use it.",
+		"Before your final answer, kill the jobs you started that nobody needs any more; leave a server running only when the user is meant to use it.",
 	parameters: {
 		type: "object",
 		properties: {
@@ -551,6 +551,8 @@ interface JobStream {
 	unread: OutputBuffer;
 	/** Who is waiting in `bash_output` for this job to print or end. */
 	wake: Set<() => void>;
+	/** 模型上一次看到这份输出的时刻：一次 `bash_output`、一次送达，或交出任务的那条 `bash` 结果。 */
+	readAt?: number;
 }
 const streams = new WeakMap<BackgroundJob, JobStream>();
 
@@ -563,7 +565,7 @@ function track(
 	seen?: OutputBuffer,
 ): void {
 	const all = seen ?? new OutputBuffer();
-	const stream: JobStream = { all, unread: new OutputBuffer(all.end), wake: new Set() };
+	const stream: JobStream = { all, unread: new OutputBuffer(all.end), wake: new Set(), ...(seen ? { readAt: Date.now() } : {}) };
 	const news = () => { for (const wake of stream.wake) wake(); };
 	streams.set(job, stream);
 	Object.defineProperty(job, "output", { get: () => all.render(MAX_OUTPUT_CHARS), enumerable: true, configurable: true });
@@ -632,7 +634,7 @@ export const bashOutputTool: Tool<BashOutputArgs> = {
 	name: "bash_output",
 	description:
 		"Read a background job's new output since your last bash_output call (the first call returns everything so far), and optionally kill it. " +
-		"If it is running and has printed nothing new, waits up to 30s for output or its end.",
+		"While it runs, a call within 30s of your last read waits until it ends or those 30s are up, and returns everything printed meanwhile.",
 	parameters: {
 		type: "object",
 		properties: {
@@ -661,26 +663,35 @@ export const bashOutputTool: Tool<BashOutputArgs> = {
 };
 
 /**
- * 任务还在跑、又没有新输出时，先等一会儿再答。
+ * 任务还在跑时，一次 `bash_output` 什么时候答。
  *
  * 启动时已经告诉模型「结束会送达，不要轮询」，它照样会查：本机 1943 次 `bash` 里有 47 次
- * `bash_output`，39 次拿回的是「(no new output)」，每一次都是一整轮请求。等到有输出、结束或满
- * 30 秒，一次调用就拿到东西。按停止照样立刻返回。
+ * `bash_output`，39 次拿回的是「(no new output)」。于是改成没有新输出就等到有输出、结束或满 30 秒。
+ *
+ * 那只治了不出声的任务。测试、安装这类边跑边打印的，模型一轮请求的几秒里总攒下几行，「有新输出
+ * 就立刻答」等于每几秒一整轮：本机 39 次轮询里 32 次拿回的是几行进度，一次 e2e 跑 170 秒被问了
+ * 12 次。所以距上次读不到 30 秒时，只有任务结束或满 30 秒才答，中途的输出攒到那时一起给。
+ * 第一次读、或隔了 30 秒以上再读，有输出照旧立刻给——开发服务器起没起来，要的就是那一行。
+ * 按停止照样立刻返回。
  */
 const NEWS_WAIT_MS = 30_000;
 
 function waitForNews(job: BackgroundJob, signal: AbortSignal | undefined): Promise<void> {
 	const stream = streams.get(job);
-	if (!stream || job.finishedAt !== undefined || stream.unread.size > 0 || signal?.aborted) return Promise.resolve();
+	if (!stream || job.finishedAt !== undefined || signal?.aborted) return Promise.resolve();
+	const since = stream.readAt === undefined ? Infinity : Date.now() - stream.readAt;
+	const recent = since < NEWS_WAIT_MS;
+	if (!recent && stream.unread.size > 0) return Promise.resolve();
 	return new Promise((resolve) => {
 		const done = () => {
 			clearTimeout(timer);
-			stream.wake.delete(done);
+			stream.wake.delete(news);
 			signal?.removeEventListener("abort", done);
 			resolve();
 		};
-		const timer = setTimeout(done, NEWS_WAIT_MS);
-		stream.wake.add(done);
+		const news = () => { if (!recent || job.finishedAt !== undefined) done(); };
+		const timer = setTimeout(done, recent ? NEWS_WAIT_MS - since : NEWS_WAIT_MS);
+		stream.wake.add(news);
 		signal?.addEventListener("abort", done, { once: true });
 	});
 }
@@ -700,6 +711,7 @@ export function readJob(job: BackgroundJob): { status: string; text: string } {
 		text = stream.unread.render(MODEL_OUTPUT_CHARS);
 		hint = fullLogHint(stream.unread, job.outputPath);
 		stream.unread = new OutputBuffer(stream.all.end);
+		stream.readAt = Date.now();
 	}
 	return { status, text: `${text || "(no new output)"}${hint}` };
 }
