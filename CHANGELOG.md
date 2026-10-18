@@ -2,6 +2,61 @@
 
 这个文件由 `pnpm release` 生成，条目来自提交信息。写得含糊的提交在这里也含糊，所以值得在提交时就写清楚。
 
+## [0.9.40](https://github.com/wJiaaa/Plume/releases/tag/v0.9.40) - 2026-10-19
+
+<!-- plume:notes en -->
+
+### Changes
+
+- **Read-only shell commands no longer wait for approval.** `cd src && grep -rn foo | head`, `git status | head` and `sed -n '1,80p' a.ts` used to count as writes because of the pipe, the `&&` or the `sed`, so each one asked first and they ran one at a time. Now a command passes if every part of it is on the read-only list, and several can run at once. Redirects, `$`, heredocs and background jobs still ask. On 536 real commands from this machine, read-only went from 3 to 188, and none went the other way.
+- **Plan mode only blocks editing files.** Before, any command with a pipe, `&&` or `cd`, and any CLI it didn't recognise, was refused outright. Shell commands in plan mode now run in a read-only sandbox instead: writes (other than to `/dev/null`) fail, and if the machine has no sandbox the command doesn't run at all. MCP tools, the browser and network access work as usual, which also means plan mode no longer stops those from reaching outside.
+- **Tool rows say what was touched.** Reading a file or listing a folder shows the path relative to the project, so `apps/web/src/main.tsx` and `apps/cli/src/main.ts` no longer both read as "main". A partial read adds the line range, e.g. `:10-29`. Checking a background task's output names the task, and repeated checks on the same task collapse into one row ("Read output of “Run the test suite” 3 times").
+- **The model says what each batch of tool calls is for.** It used to say one sentence and then work silently for a dozen replies, which showed up as a single row of 80 calls. Each batch now starts with a sentence, so the work splits into readable steps.
+- **Long-running commands are checked less often.** A test or install that keeps printing used to be checked every few seconds, each time a full model request. Output is now held for up to 30 seconds unless the command finishes first; the first check still answers immediately, so a dev server's "ready" line isn't delayed.
+- **File search results are shorter, and a wrong path gets suggestions.** Search results group files under their folder instead of repeating the full path on every line (replaying 11 real searches, 57% fewer characters). When a file isn't found, the error lists up to 5 files in the repository with the same name.
+
+### Fixes
+
+- **A subagent's result no longer produces a second full answer.** If the model thought a subagent was gone, it wrote its own long answer, then rewrote the whole thing when the result arrived. Now it says what it's waiting for and stops; when the result comes, it only says what changed.
+- **With GPT models that narrate as they go (e.g. gpt-6.1-sol), each sentence appears once.** The final answer repeated the progress updates before it, and the repeat also reached subagent results and the CLI.
+- **Pressing Stop while MCP servers are still connecting stops right away**, instead of waiting up to 5 seconds while the conversation kept showing as running.
+- **Pressing Stop halfway through an answer no longer brings back a "Thinking…" line** as the status row closes.
+- **Several subagents sent in a row show their faces at the end of the row again.** Since related calls were merged into one collapsed row, there was no way to see who was working without opening it.
+- **In a narrow window, the Panels button in the title bar stays inside the window.** At the minimum width (380 px) it was drawn off-screen and couldn't be clicked. Shortcut buttons now fold away first; all of them are also in the Panels menu.
+- **In an empty conversation, the top rows of the slash menu are no longer hidden under the pane's title bar**, and the menu scrolls again.
+- **The usage trend chart no longer keeps growing after the window is narrowed and widened again.** It could reach over 10,000 px tall, and hovering stopped showing values.
+- **In the sidebar, the row just below the pinned "Chats" heading no longer fades early.**
+- **Corners are consistent at 8 px.** Text fields, dropdowns, panel tabs, settings cards and navigation, tool rows and the browser address bar had a mix of pill shapes, 6 px and 12 px. The prompt box in Scheduled tasks was the last one at 12 px.
+
+<!-- plume:notes zh-CN -->
+
+<details>
+<summary>中文（简体）</summary>
+
+### 变化
+
+- **只读的命令不再等审批。** `cd src && grep -rn foo | head`、`git status | head`、`sed -n '1,80p' a.ts` 这类命令，原来因为带了管道、`&&` 或者用了 `sed` 就被当成写操作：每条都要先点头，而且只能一条条排队跑。现在拆开来看，每一段都在只读表上就放行，也能同时跑几条。重定向、`$`、heredoc、后台任务照旧要问。拿本机 536 条真实命令对过：算只读的从 3 条到 188 条，没有一条反过来。
+- **计划模式只拦改文件。** 原来命令里有管道、`&&`、`cd`，或者是它没见过的命令行工具，整条直接拒掉。现在计划模式里的命令一律放进只读沙箱跑：除了 `/dev/null`，写什么都失败；机器上没有沙箱就干脆不跑。MCP、浏览器、联网照常能用——也就是说，这几样往外写的事，计划模式不再替你拦。
+- **工具行说清动的是哪个。** 读文件、列目录写相对项目的路径，`apps/web/src/main.tsx` 和 `apps/cli/src/main.ts` 不再都只显示 main；只读了一段的带上行号，比如 `:10-29`。查看后台任务的输出会写是哪个任务，连着查同一个任务的几次合成一行：「查看「运行测试」的输出 3 次」。
+- **每一批工具调用前，模型先说这一批要干什么。** 原来它开头说一句，之后十几次回复一声不出，界面上就是一行塞着 80 个调用。现在每批都有一句，一段活能分成看得懂的几步。
+- **长时间跑的命令，不再被几秒一问。** 测试、安装这种一直在打印的命令，原来每隔几秒就被查一次输出，每次都是一整轮模型请求。现在最多攒 30 秒再给，命令先结束就立刻给；第一次查照旧马上答，开发服务器起没起来那一行不会被耽搁。
+- **文件搜索结果更短，路径写错了会给候选。** 搜索结果按目录分组，不再每行重复完整路径：拿 11 次真实搜索回放，字数少了 57%。读文件找不到时，会列出仓库里最多 5 个同名文件。
+
+### 修复
+
+- **子智能体的结果回来后，不再整份重写一遍回答。** 模型以为子智能体已经没了，就自己写了一份长回答收尾，结果送到后又整份重写。现在它会说在等什么然后停下；结果来了，只讲它改变了什么。
+- **边做边播报的 GPT 模型（比如 gpt-6.1-sol），每句话只显示一次。** 原来最终答复会把前面的播报再说一遍，交给上级的子智能体结果和命令行输出也跟着重复。
+- **MCP 服务器还在连接时按停止，当场停下。** 原来要再等最多 5 秒，这期间会话一直显示在运行。
+- **回答写到一半按停止，底下不再冒出一行「Thinking…」。**
+- **连着派出去的几个子智能体，行尾重新摆出它们的头像。** 相关调用合成一行之后，那一行默认收起，不点开就看不到谁在干活。
+- **窄窗口里，标题栏的「面板」按钮不再被挤到窗口外面。** 最小宽度（380px）时它画在窗外，点不到。现在先把快捷按钮收起来，它们在「面板」菜单里都有。
+- **空白对话里，斜杠菜单的头几行不再压在窗格标题栏底下**，列表也能滚了。
+- **窗口改窄再改宽后，用量趋势图不再越长越高。** 最高能长到一万多像素，悬停读不到数。
+- **侧栏里紧挨着钉住的「聊天」标题的那一行，不再提前淡掉一截。**
+- **圆角统一成 8px。** 输入框、下拉、面板标签、设置页的卡片和导航、工具行、浏览器地址栏，原来胶囊、6px、12px 混着用。定时任务里的提示词框是最后一处 12px。
+
+</details>
+
 ## [0.9.39](https://github.com/wJiaaa/Plume/releases/tag/v0.9.39) - 2026-10-18
 
 <!-- plume:notes en -->
