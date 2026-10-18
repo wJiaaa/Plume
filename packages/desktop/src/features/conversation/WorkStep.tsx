@@ -23,6 +23,7 @@ import { CircleX } from "../../ui/icons/index.ts";
 import { Collapse } from "../../ui/layout/Collapse.tsx";
 import { useScopedFromToolRuns } from "../../app/session-scope.tsx";
 import { translate } from "../../i18n/translate.ts";
+import { StepDispatchFaces } from "./DelegationCard.tsx";
 import { FlowRow } from "./FlowRow.tsx";
 import { LiveThought } from "./LiveThought.tsx";
 import { ToolIcon } from "./tool-icons.tsx";
@@ -125,6 +126,7 @@ function StepGroup({ step, thought, live, thinking, from, draw, drawCall }: {
 	const words = said ? describeOne(said, saidSummary) : parts.join(translate("step.separator"));
 	// 换一次调用、或者从跑着换成总的，就是换了一句话，滚一下；同一次调用的参数还在流进来，只缓宽度。
 	const rollKey = said ? `call-${said.id}` : STEP;
+	const faces = step.category === "task" ? <StepDispatchFaces calls={calls.map(({ block }) => block)} /> : null;
 	// 一次调用的那一行后面只接上了推理：句子还是原地那一句，从旧宽度缓过来就够，不滚。
 	const sameWords = from !== null && calls.length === 1;
 
@@ -143,8 +145,9 @@ function StepGroup({ step, thought, live, thinking, from, draw, drawCall }: {
 					</RollWords>
 				}
 				trailFrom={from?.trail}
-				trailing={thinking || failed || added + removed > 0 ? (
+				trailing={thinking || failed || added + removed > 0 || faces ? (
 					<span className="flex items-center gap-2">
+						{faces}
 						{thinking}
 						{failed && <CircleX size={13} strokeWidth={1.9} className="text-danger/85" />}
 						{added + removed > 0 && (

@@ -80,6 +80,15 @@ export function DispatchFaces({ dispatches }: { dispatches: Dispatch[] }) {
 }
 
 /**
+ * 连着派出去的几个合成了一行（`WorkStep`）：行尾就是这一排脸。单独一个组件，只有派发那一段才去订阅登记簿。
+ *
+ * 合成一行以后，一行行的派发卡片默认收在里面，不摆这排脸的话，谁在干、谁还在排队，在对话里就看不见了。
+ */
+export function StepDispatchFaces({ calls }: { calls: readonly ToolCall[] }) {
+	return <DispatchFaces dispatches={useDispatches(calls)} />;
+}
+
+/**
  * 一张派发卡片该怎么画——交给 `ToolCard` 去画。
  *
  * 只算不画：这个文件要是自己引 `ToolCard`（连它的类型也算），依赖图上就多出一条绕回对话的环
