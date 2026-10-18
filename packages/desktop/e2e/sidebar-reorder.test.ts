@@ -10,6 +10,8 @@ import { fixtureStore, seedSessions, type FixtureRecord } from "./session-fixtur
 
 let app: RunningApp;
 let projectPath: string;
+/** 第一个项目的 id。手动排序（`sessionOrder`）按项目 id 记，不按文件夹。 */
+let projectKey: string;
 let screenshots: string;
 before(async () => {
 	screenshots = await mkdtemp(join(tmpdir(), "plume-pr55-ui-"));
@@ -26,12 +28,19 @@ before(async () => {
 		const [longLog, shortLog] = [await logOf("qa-long"), await logOf("qa-short")];
 		store.close();
 		projectPath = metas[0].cwd;
+		/*
+		 * 归属只认 `project`（72efa40b），不从 cwd 推算。共用的 fixture 没写它，这里补上：不补的话
+		 * 三条会话全落进「聊天」，项目标题底下一行也没有，拖不了会话也拖不动整组。
+		 */
+		const settingsFile = JSON.parse(await readFile(join(home, "settings.json"), "utf8"));
+		projectKey = settingsFile.projects.find((entry: { path: string }) => entry.path === projectPath).id;
+		for (const meta of metas) meta.project = projectKey;
 		const third = { ...metas[1], id: "qa-third", title: "qa-third", updatedAt: 0 };
 		/*
 		 * 第二个项目只有一条归档会话：没有会话的项目不占行，会话全归档的项目默认保留一行，
 		 * 这样它在列表里有标题可拖，又不多出一条会话行打乱下面对行序的断言。
 		 */
-		const secondArchived = { ...metas[1], id: "qa-second", title: "qa-second", cwd: join(home, "second"), projectId: "second", projectName: "第二项目", archived: true };
+		const secondArchived = { ...metas[1], id: "qa-second", title: "qa-second", cwd: join(home, "second"), projectId: "second", projectName: "第二项目", project: "second", archived: true };
 		metas[0].updatedAt = 30; metas[1].updatedAt = 20;
 		const copyOf = (id: string): FixtureRecord[] => JSON.parse(JSON.stringify(shortLog).replaceAll("qa-short", id));
 		seedSessions(home, [
@@ -135,7 +144,7 @@ test("real mouse drag preserves other rows, suppresses navigation, and renders i
 	assert.deepEqual(await rows(), ["qa-short", "qa-long", "qa-third"]);
 	assert.equal(await app.evaluate(`document.querySelector('[data-ly-row] [aria-current="page"]')?.closest('[data-ly-row]')?.dataset.lyRow ?? null`), current);
 	const order = await app.evaluate<Record<string, string[]>>(`window.plume.settings.get().then(s=>s.sessionOrder)`);
-	const stored = order[projectPath];
+	const stored = order[projectKey];
 	assert.deepEqual(stored, ["qa-short", "qa-long", "qa-third"]);
 	const originalDocument = await app.evaluate<number>("performance.timeOrigin");
 	await reload();
