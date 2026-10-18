@@ -128,61 +128,11 @@ e2e 红了，先对照这份清单：不在清单里的失败按新回归处理�
 
 量法：2026-10-18 在 `f5e22844`（当时的 main）上 `pnpm build` 一次，然后用 `test:e2e` 的同样参数
 连跑 3 遍，每遍约 21 分钟。环境是 macOS 27.0 arm64、Electron 44.7.0、Node 24.20.0。340 条用例里
-290 条三遍都过，48 条三遍都挂，2 条时好时坏。48 条稳定失败三遍的失败信息相同（数字除外），
-不是随机超时。别的平台、别的机器的基线可能不同，没有量过。
+290 条三遍都过，48 条三遍都挂，2 条时好时坏。别的平台、别的机器的基线可能不同，没有量过。
 
-**每次都失败（48 条）**，首次观察均为 2026-10-18：
-
-| 文件 | 用例 | 失败表现 |
-| --- | --- | --- |
-| `agent-avatars` | 派发：闸门只放一个，排队的两个也在；点卡片面板翻过去；做完换成弯眼 | 派发后读到的头像状态是空列表，预期 `working`、`waiting`、`waiting` |
-| `agent-profiles-sidechat` | @ agents are selectable and @compact executes real compaction with the configured model | 等不到已完成的命令状态里出现「保留 EARLY_MAIN_DECISION」 |
-| `agent-profiles-sidechat` | a dispatched subagent actually calls the selected provider with ultra reasoning | 本地协议服务没收到子智能体的请求（`assert.ok(child)`） |
-| `agent-profiles-sidechat` | a fresh Electron process restores persisted answers and can edit the first visible question | 重启后对话里找不到「查到工具尾部」 |
-| `agent-profiles-sidechat` | provider and effort controls persist, align, and adapt to narrow settings | 设置页找不到可见的「compact 模型」控件 |
-| `agent-profiles-sidechat` | retry settings apply without a save button and fixed waits last about five seconds | network 一栏显示「重试 10 次 · 5 秒起递增，最长 30 秒」，预期「无限重试 · 每 5 秒」 |
-| `agent-profiles-sidechat` | sidechat shows its earlier exchange, queries early history and full tool tails, then survives switching | 侧聊输入框在指针下一直没落定，`click` 拒绝按下 |
-| `appearance-usage` | the usage page reports what is in the logs | 用量页上没有 token 指标 |
-| `command-palette` | 命令面板：会话和命令一起找，侧栏不动，键盘和鼠标都能执行 | 打字筛选后只剩「会话」一组，项目没被搜到 |
-| `composer-fit` | a row with room keeps its meter and its label | 宽度够用的一行里「完全访问」标签没保留 |
-| `desktop-compatibility` | toolbar and pane icons keep their pixel column wherever the sidebar's edge falls, at 125% | 找不到可见的「浏览器」工具栏按钮 |
-| `extensions` | 每种扩展都能在对话里用到，且行首说出它是哪一种 | 没有一行工具行写着「Skill: translate」 |
-| `glide` | and stops gliding when that turn ends | 一轮结束后工具行没收成一条已完成的折叠行 |
-| `interaction-polish` | Git uses Index counts, colours added C# syntax, aligns checkout branches and wraps long tooltips | 量布局时目标元素是 `null`（读 `getBoundingClientRect` 抛错） |
-| `interaction-polish` | question navigation is mouse reachable and jumps to an unmounted historical question without a moving first frame | 问题刻度数量不是 15 |
-| `lazy-views` | 切回对话，界面完整 | 侧栏里找不到「对话」按钮 |
-| `menu-scroll` | hover and wheel leave scroll ownership with the pointer; arrows reveal their selection | 指针停在列表上时滚轮不滚（`scrollTop` 145 → 145） |
-| `mobile-access` | 独立手机界面操作真实桌面运行时与授权 | 找不到「桌面地址」输入框 |
-| `model-defaults` | all built-in agents can be configured before any session is created | 可配置的内置 agent 里缺 `compact` |
-| `model-menu-polish` | starring a model pins it to the top and persists | 预期为空的列表里出现了 `house/claude-3` |
-| `pause` | pressing stop leaves the conversation saying it is paused, not that it broke | 按停止后窗口仍显示在运行 |
-| `pause` | 重试 throws the half-written reply away and has the answer again | 重试后同一个问题在转录里出现两次 |
-| `pipelines-loading` | pipeline loading and retained refresh never flash an unrelated list or lose cached content | 「面板」按钮的落点上没有任何元素 |
-| `running-line` | a reply that talks and then calls a tool keeps saying it is working | 工具调用没出现在转录里 |
-| `running-line` | while the answer really is streaming, the line stays out of the way | 回答还在流式写出时运行行又出现了 |
-| `screenshot-download` | screenshot downloads use the chosen directory and survive an unavailable clipboard | 报 `No such binding was linked: electron_common_clipboard` |
-| `screenshot-download` | the visible download arrow saves to Desktop or the selected directory and shows the colour-copy toast | 同上，`electron_common_clipboard` 绑定不存在 |
-| `screenshot-toolbar` | 下载截图：文件落在设置好的目录里，界面确认它保存了 | 拖拽之后没有选区 |
-| `screenshot-toolbar` | 在按钮上按住不放也能拖走，而且不会顺手按到那个按钮 | 工具栏上没有「矩形」 |
-| `screenshot-toolbar` | 属性气泡指着它属于的那个工具，即使前面还有别的控件 | 工具栏上没有「文字」工具 |
-| `screenshot-toolbar` | 工具栏本身就是抓手，按钮上是手型，没有单独的手柄 | 找不到工具栏本体，读不到它的光标 |
-| `screenshot-toolbar` | 截图工具栏的控件够大，不是文件查看器里那一排 | 拖拽之后没有选区 |
-| `screenshot-toolbar` | 按住工具栏的空处就能拖走，按钮跟着一起走 | 找不到工具栏 |
-| `screenshot-toolbar` | 正在输入的文字，点下载时也会进到图里 | 拖拽之后没有选区 |
-| `screenshot-toolbar` | 置顶在桌面：图片留在原地，hover 出现关闭按钮，能拖能关 | 拖拽之后没有选区 |
-| `session-startup` | slow MCP startup still creates immediate titled rows, aggregates collapsed status, and isolates identical prompts | 落盘的会话不全是「一条、已结束」 |
-| `sidebar-pin-fade` | 开发构建：侧栏滚动时，钉住的标题盖住底下的会话，不透字、不空一截 | 「聊天」底下的会话行不透明度停在 0.75–0.94，没画全 |
-| `sidebar-pin-fade` | 生产构建：侧栏滚动时，钉住的标题盖住底下的会话，不透字、不空一截 | 同上 |
-| `sidebar-reorder` | project drag moves the whole group and does not collapse it | 拖完项目顺序没变，`qa-long` 仍在 `qa-short` 前 |
-| `sidebar-reorder` | real mouse drag preserves other rows, suppresses navigation, and renders in both themes | 等待条件超时 |
-| `sidebar-slide` | 往上滚开之后开合侧栏，眼前那一段不跟着正文重新断行上下跳 | 隐藏侧栏时眼前那一段跳了 22px |
-| `sidebar-tabs` | scrolling on past a project hands the rail to the next one | 滚过一个项目后下面仍有标题被钉住 |
-| `sidebar-tabs` | 「聊天」 is held at the top while you are inside it, and gives the rail back above it | 滚回项目区时「聊天」跟着自己那一块一起下去了 |
-| `trajectory` | time-range selection, turn folding and model timing are queryable through the real controls | 轨迹标签的落点在「任务」标签上，点不到 |
-| `trajectory` | trajectory controls fit both themes and narrow panes; a brush stays local until release | 同上 |
-| `usage-dashboard` | the reading stays inside a narrow window and does not survive a scroll | 窄窗口下悬停读数没出现 |
-| `usage-dashboard` | the trend chart answers a real pointer anywhere in the plot, and the reading escapes the card that clips it | 指针悬停在图上读不到日期 |
-| `visual-details` | a narrow column centres the transcript instead of parking the question rail's room on one side | 找不到文字「对话」 |
+那 48 条稳定失败已在 2026-10-19 修掉（多数是界面有意改过、用例没跟上，另有 7 处产品回归），
+修完在同一台机器上把涉及的 27 个文件顺序跑过，不再在这张表里。`mobile-access` 要先
+`pnpm --filter @plume/mobile build:web`，根目录的 `pnpm build` 不产出它读的 `packages/mobile/dist`。
 
 **时好时坏（2 条）**，首次观察均为 2026-10-18：
 
@@ -190,6 +140,11 @@ e2e 红了，先对照这份清单：不在清单里的失败按新回归处理�
 | --- | --- | --- | --- |
 | `browser-cursor` | pointer is visibly painted for native click, including a modal top layer | 普通指针画出的像素为 0 | 1 |
 | `model-menu` | a name too long for its row reads itself out when pointed at | 悬停在长名称那一行上，名字没开始滚动 | 1 |
+
+修上面 48 条时又见过几条偶发失败，都出在同一台机器上同时跑着别的 Electron（真指针、焦点会被抢）
+的时候，没有在安静的机器上复现过，先记下、不算基线：`screenshot-toolbar` 的「置顶在桌面」
+（7 遍挂 2 遍，依赖真实光标位置）、`interaction-polish` 的「项目关闭图标悬停」（悬停没落到名称上，
+读到透明）、`mobile-access`（长按后等不到「归档会话」，随后两遍都过）。
 
 
 ### 探针结果在跳的时候
