@@ -182,9 +182,8 @@ test("the usage page reports what is in the logs", async () => {
 		// The first scan reads every log; give it room.
 		await wait(2500);
 
-		const tiles = [...document.querySelectorAll("div")]
-			.filter((d) => d.className.includes("rounded-[12px]") && d.className.includes("border-line"))
-			.map((d) => label(d));
+		// 指标格按它的无障碍名字找，不按圆角类名：d1a93db6 把 rounded-[12px] 收成 rounded-xl 时这里就断过。
+		const tiles = [...document.querySelectorAll("[aria-label='用量指标']")].map((d) => label(d));
 		const bars = document.querySelectorAll("[data-ly-tip*='token']").length;
 		const models = [...document.querySelectorAll("div")]
 			.filter((d) => label(d).includes("Relay") && label(d).includes("%"))
