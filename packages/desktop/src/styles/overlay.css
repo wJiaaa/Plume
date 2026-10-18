@@ -414,16 +414,6 @@ div.ly-field {
 	background: transparent;
 }
 
-/*
- * 设置页和对话框里的多行输入框收成 8px，和同一张纸上的字段一样。
- *
- * 字段、下拉、对话框动作本身就是 8px（`--radius-field`），不用再按容器覆盖；多行框在别处
- * （输入区那一族）是 `--radius-xl`，只在这两处跟着字段走。
- */
-:is([data-ly-settings] main, .ly-settings-card, [data-ly-modal]) .ly-textarea-shell {
-	border-radius: var(--radius-lg);
-}
-
 .ly-field.ly-field-invalid,
 .ly-field[aria-invalid="true"] {
 	background: color-mix(in srgb, var(--color-danger) 10%, transparent);

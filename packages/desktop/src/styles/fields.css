@@ -102,7 +102,8 @@
  */
 .ly-textarea-shell {
   border: 1px solid var(--color-line-soft);
-  border-radius: var(--radius-xl);
+  /* 和单行字段同一个圆角：曾是 12px、在设置页和对话框里覆盖成 8px，同一个组件两种角。 */
+  border-radius: var(--radius-field);
   background: var(--color-card);
   color: var(--color-ink);
   transition: border-color var(--ly-t-base) var(--ly-e-out);

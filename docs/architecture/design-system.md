@@ -180,7 +180,7 @@ Windows 浅色原来单独加深的那一档（雅黑没有 Medium，画得更�
 
 | token / 值 | 用在 |
 | --- | --- |
-| `--radius-field` 8px | 字段、下拉、对话框动作。曾是 999 胶囊、在设置页、对话框、弹出层、面板里各自覆盖成 8px；胶囊只剩几个页面和卡片里，挨着 8px 的按钮和标签，于是 token 本身改成 8px |
+| `--radius-field` 8px | 字段、下拉、多行输入框（`.ly-textarea-shell`）、对话框动作。曾是 999 胶囊、在设置页、对话框、弹出层、面板里各自覆盖成 8px；胶囊只剩几个页面和卡片里，挨着 8px 的按钮和标签，于是 token 本身改成 8px |
 | `--radius-menu` 8px | 菜单卡片 |
 | `--radius-item` 6px | 菜单里的行；内衬 `--ly-menu-inset` 4px，四边一样，悬停底才不会左近右远 |
 | `--radius-panel` 12px | 面板 |
