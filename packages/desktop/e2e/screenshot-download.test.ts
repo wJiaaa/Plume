@@ -3,7 +3,15 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test } from "node:test";
 import { startApp, type AppWindow } from "./app.ts";
+import { captureOwnWindowAsScreen } from "./capture-fixture.ts";
 import { click } from "./drive.ts";
+
+/*
+ * The main process's `clipboard`, the same object the app imports, bound to `c`. Electron 44
+ * removed `writeImage` (and the `electron_common_clipboard` binding behind it); images now go
+ * through the async `clipboard.write`, so that is where a busy clipboard is injected.
+ */
+const electronClipboard = "const c=process.getBuiltinModule('module').createRequire(process._linkedBinding('electron_browser_app').app.getAppPath()+'/package.json')('electron').clipboard;";
 
 test("screenshot downloads use the chosen directory and survive an unavailable clipboard", async (t) => {
 	const app = await startApp({ port: 9831, inspectPort: 9832, seed: async home => {
@@ -23,9 +31,11 @@ test("screenshot downloads use the chosen directory and survive an unavailable c
 		const secondDir = join(app.home, "下载 乙");
 		await app.evaluate(`window.plume.settings.get().then(s=>window.plume.settings.save({...s,screenshot:{...s.screenshot,downloadLocation:${JSON.stringify(secondDir)},copyToClipboard:true}}))`);
 		// Inject a native clipboard failure, as when another Windows process owns the clipboard.
-		await app.main("(()=>{const c=process._linkedBinding('electron_common_clipboard');globalThis.__downloadClipboard=c.writeImage;c.writeImage=()=>{throw new Error('clipboard is busy')};return true})()");
+		await app.main(`(()=>{${electronClipboard}globalThis.__downloadClipboard=c.write;globalThis.__clipboardFailures=0;c.write=async()=>{globalThis.__clipboardFailures++;throw new Error('clipboard is busy')};return true})()`);
 		const second = await download();
-		await app.main("(()=>{const c=process._linkedBinding('electron_common_clipboard');c.writeImage=globalThis.__downloadClipboard;delete globalThis.__downloadClipboard;return true})()");
+		const failures = await app.main<number>(`(()=>{${electronClipboard}c.write=globalThis.__downloadClipboard;delete globalThis.__downloadClipboard;return globalThis.__clipboardFailures})()`);
+		// Otherwise the stub missed the app's clipboard and nothing about a busy clipboard was tested.
+		assert.equal(failures, 1, "the download tried the clipboard and met the injected failure");
 		assert.equal(second.ok, true, JSON.stringify(second));
 		assert.ok(second.filePath?.startsWith(secondDir));
 		assert.deepEqual(await readFile(second.filePath), Buffer.from(data,"base64"));
@@ -85,21 +95,12 @@ test("the visible download arrow saves to Desktop or the selected directory and 
 		await app.evaluate(`[...document.querySelectorAll('nav button')].find(e=>e.textContent.trim()==='屏幕截图').setAttribute('data-shot-settings','')`);
 		await click(app, '[data-shot-settings]');
 		await until(app, `Boolean(document.querySelector('[data-view="screenshot"]'))`);
-		const { data } = await app.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
-		const fixture = join(app.home, "own-settings-window.png");
-		await writeFile(fixture, Buffer.from(data, "base64"));
 		const desktop = join(app.home, "System Desktop");
 		await mkdir(desktop);
 		// Only the OS acquisition boundary is a fixture: a real Plume window, never the user's desktop.
 		// Production start/init, pointer handling, cropping, IPC, filesystem and toast all run normally.
-		await app.main(`(() => {
-			const require=process.getBuiltinModule('module').createRequire(process._linkedBinding('electron_browser_app').app.getAppPath()+'/package.json');
-			const e=require('electron'),image=e.nativeImage.createFromPath(${JSON.stringify(fixture)});
-			e.app.setPath('desktop',${JSON.stringify(desktop)});
-			e.systemPreferences.getMediaAccessStatus=()=> 'granted';
-			e.desktopCapturer.getSources=async options=>e.screen.getAllDisplays().map(d=>({id:'screen:'+d.id+':0',display_id:String(d.id),name:'Plume settings window fixture',thumbnail:image.resize(options.thumbnailSize)}));
-			return true;
-		})()`);
+		await captureOwnWindowAsScreen(app);
+		await app.main(`(() => {process._linkedBinding('electron_browser_app').app.setPath('desktop',${JSON.stringify(desktop)});return true;})()`);
 		for (let n = 0; n < 100 && !overlay; n++) {
 			for (const win of await app.windows()) if (await win.evaluate(`Boolean(document.querySelector('[data-capture]'))`)) overlay = win;
 			if (!overlay) await pause(50);
@@ -161,10 +162,11 @@ test("the visible download arrow saves to Desktop or the selected directory and 
 		assert.equal(JSON.parse(await readFile(join(app.home, "settings.json"), "utf8")).screenshot.downloadLocation, chosen);
 		check("directory picked in Settings persists without restart", chosen);
 		await app.evaluate(`window.plume.settings.get().then(s=>window.plume.settings.save({...s,screenshot:{...s.screenshot,copyToClipboard:true}}))`);
-		await app.main(`(() => {process._linkedBinding('electron_common_clipboard').writeImage=()=>{throw new Error('clipboard is busy')};return true;})()`);
+		await app.main(`(() => {${electronClipboard}globalThis.__clipboardFailures=0;c.write=async()=>{globalThis.__clipboardFailures++;throw new Error('clipboard is busy')};return true;})()`);
 		await select();
 		await click(page, 'button:has(.lucide-download)');
 		await saved(chosen);
+		assert.equal(await app.main<number>("globalThis.__clipboardFailures"), 1, "the download met the injected clipboard failure");
 
 		const blocked = join(app.home, "not-a-directory");
 		await writeFile(blocked, "occupied");

@@ -21,6 +21,7 @@ import { after, before, test } from "node:test";
 import { mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { startApp, type RunningApp } from "./app.ts";
+import { captureOwnWindowAsScreen } from "./capture-fixture.ts";
 import { landsOn } from "./lands-on.ts";
 
 const PORT = 9429;
@@ -224,6 +225,7 @@ async function frameRegion(): Promise<{ x: number; y: number; width: number; hei
 before(async () => {
 	app = await startApp({
 		port: PORT,
+		inspectPort: PORT + 1,
 		seed: async (dir) => {
 			downloads = join(dir, "downloads");
 			await mkdir(downloads, { recursive: true });
@@ -234,6 +236,8 @@ before(async () => {
 			);
 		},
 	});
+	// Before the warm-up three seconds after launch, so the real screen is never read at all.
+	await captureOwnWindowAsScreen(app);
 	// The overlay window and one thrown-away capture are built three seconds after launch; measuring
 	// before that measures the warm-up rather than the feature.
 	await pause(4_500);
