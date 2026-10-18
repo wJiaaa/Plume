@@ -7,7 +7,7 @@
 
 import type { AssistantContent } from "@plume/core";
 import type { ToolRun as ToolRunState } from "../../store/index.ts";
-import { baseName } from "../../lib/paths.ts";
+import { baseName, relativeTo, tildeHome } from "../../lib/paths.ts";
 import { translate } from "../../i18n/translate.ts";
 import { describeCall, describeRun } from "../../lib/tool-kinds.ts";
 import type { Call, StepMember } from "./grouping.ts";
@@ -37,10 +37,36 @@ export function describeCalls(calls: Call[]): string {
  * core 给这两个工具留着一句给人看的 `description`：它们的参数是正则和通配，人读不出来。bash 的那句走
  * `summarize`，到这里已经在 `summary` 里。
  *
- * read 和 ls 不在这里：它们有文件名、目录名，比模型的转述准。让模型每次读文件都写一句，写出来的是
- * 「读取第三上游响应归一化」「读取第三上游请求分发」——同一个句式套七遍，中间是它自己起的代号。
+ * read 和 ls 不在这里，说的是 `locationOf`：让模型每次读文件都写一句，写出来的是「读取第三上游响应归一化」
+ * 「读取第三上游请求分发」——同一个句式套七遍，中间是它自己起的代号。Claude Code、pi 的 read 也都不收说明。
  */
 const DESCRIBED = new Set(["grep", "glob"]);
+
+/**
+ * 读文件、列目录那一行说的对象：相对工作区的完整路径，照 pi 的写法。
+ *
+ * 只说文件名时，`apps/web/src/main.tsx` 和 `apps/cli/src/main.ts` 读起来是同一个 main。只读了一段的带上
+ * 行号，同一个文件读两段才分得开；目录带 `/`，和文件一眼分开。工作区外的路径照原样，家目录缩成 `~`。
+ */
+export function locationOf(block: ToolCallBlock, root?: string): string | undefined {
+  const { path, offset, limit } = (block.arguments ?? {}) as { path?: unknown; offset?: unknown; limit?: unknown };
+  const shown = (value: string) => tildeHome(root ? relativeTo(root, value) : value);
+  if (block.name === "ls") {
+    const dir = shown(typeof path === "string" && path !== "" ? path : ".");
+    return /[\\/]$/.test(dir) ? dir : `${dir}/`;
+  }
+  if (block.name !== "read" || typeof path !== "string" || path === "") return undefined;
+  return `${shown(path)}${lineRange(offset, limit)}`;
+}
+
+/** `:10-29`；只给了起点是 `:10-`，只给了行数从第 1 行算。模型常把没给的参数写成 null，所以按类型认。 */
+function lineRange(offset: unknown, limit: unknown): string {
+  const from = typeof offset === "number" ? offset : undefined;
+  const count = typeof limit === "number" ? limit : undefined;
+  if (from === undefined && count === undefined) return "";
+  const start = from ?? 1;
+  return `:${start}-${count === undefined ? "" : start + count - 1}`;
+}
 
 /** 一次 `bash_output` 查的是哪个后台任务。停掉它的那一次不是在看输出，不和查看合在一起。 */
 export function polledJob(block: ToolCallBlock): string | undefined {
@@ -101,14 +127,16 @@ export function pollOutput(runs: (ToolRunState | undefined)[]): string {
 }
 
 /**
- * 一次调用在行上怎么说：模型写了一句给人看的说明就用它，没写就退回「读取文件 a.ts」。查后台任务输出的
- * 那一次说是哪个任务（`job`：启动它的那条命令的说明）。
+ * 一次调用在行上怎么说：读文件、列目录说路径（`root` 是工作区，见 `locationOf`）；模型写了一句给人看的
+ * 说明就用它，没写就退回 core 的摘要。查后台任务输出的那一次说是哪个任务（`job`：启动它的那条命令的说明）。
  *
  * grep、glob 的 `description` 还兜着另一种用法：没给 `pattern` 时，模型常把要搜的式子写在那里（core 的
  * `extractGrepPattern`）。那时它是一条正则、不是一句话，照旧说成「搜索内容 …」。
  */
-export function describeOne(block: ToolCallBlock, summary?: string, job?: string): string {
-  if (polledJob(block)) return describePolls(job, 1);
+export function describeOne(block: ToolCallBlock, summary?: string, context: { job?: string; root?: string } = {}): string {
+  if (polledJob(block)) return describePolls(context.job, 1);
+  const location = locationOf(block, context.root);
+  if (location) return describeRun([{ toolName: block.name, subject: location }]);
   const { description, pattern } = (block.arguments ?? {}) as { description?: unknown; pattern?: unknown };
   const said = typeof description === "string" ? description.trim() : "";
   const asPattern = (block.name === "grep" || block.name === "glob") && typeof pattern !== "string";

@@ -1,8 +1,10 @@
 /* oxlint-disable no-console -- probe CLI that prints what the real window did */
 /**
- * 转录里一次调用那一行怎么说：读文件说文件名，同一个后台任务连着查几次输出合成一行、说的是那个任务。
+ * 转录里一次调用那一行怎么说：读文件、列目录说相对工作区的完整路径（只读一段的带行号，目录带 `/`），
+ * 同一个后台任务连着查几次输出合成一行、说的是那个任务。
  *
- * 假模型一次一个调用：两次带说明的 read、一条后台命令、对它连查三次输出、一条前台命令，然后回答。
+ * 假模型一次一个调用：列一次目录、两次 read（一次带着历史里的说明，一次只读一段）、一条后台命令、
+ * 对它连查三次输出、一条前台命令，然后回答。
  * 跑完把每一段都展开，读每一行的字；再点开合起来的那一行，看三次的输出是不是都在。
  *
  * 用法：先 `pnpm --filter @plume/desktop build`，再 `node --experimental-strip-types packages/desktop/e2e/tool-rows-demo.ts [输出目录]`
@@ -25,8 +27,9 @@ const JOB = "抓取各上游技能清单";
 type Step = { tool: string; args: Record<string, unknown> } | { text: string };
 /** `bash_output` 要的任务 id 只有跑起来才知道，从请求里那句「Started background job …」取。 */
 const SCRIPT: ((job: string) => Step)[] = [
+	() => ({ tool: "ls", args: { path: "src" } }),
 	() => ({ tool: "read", args: { path: "src/normalize.ts", description: "读取第三上游响应归一化" } }),
-	() => ({ tool: "read", args: { path: "src/dispatch.ts", description: "读取第三上游请求分发" } }),
+	() => ({ tool: "read", args: { path: "src/dispatch.ts", offset: 10, limit: 20 } }),
 	() => ({ tool: "bash", args: { command: "for i in 1 2 3 4; do echo 抓取第 $i 批; sleep 1; done", description: JOB, run_in_background: true } }),
 	(job) => ({ tool: "bash_output", args: { id: job } }),
 	(job) => ({ tool: "bash_output", args: { id: job } }),
@@ -74,7 +77,7 @@ async function seed(home: string): Promise<void> {
 	const project = join(home, "project");
 	await mkdir(join(project, "src"), { recursive: true });
 	await writeFile(join(project, "src", "normalize.ts"), "export const normalize = (x: unknown) => x;\n");
-	await writeFile(join(project, "src", "dispatch.ts"), "export const dispatch = () => {};\n");
+	await writeFile(join(project, "src", "dispatch.ts"), Array.from({ length: 40 }, (_, i) => `export const step${i} = ${i};`).join("\n"));
 	await writeFile(join(home, "window.json"), JSON.stringify({ width: 1100, height: 900, x: 0, y: 0 }));
 	await writeFile(join(home, "settings.json"), JSON.stringify({
 		version: 1,
@@ -147,7 +150,9 @@ try {
 	const said = await rows();
 	console.log("每一行：", said);
 
-	check("读文件说的是文件名，不是模型那句「读取第三上游…」", said.some((row) => row.startsWith("读取文件 normalize.ts")) && said.some((row) => row.startsWith("读取文件 dispatch.ts")) && said.every((row) => !row.includes("第三上游")), said);
+	check("读文件说相对工作区的完整路径，不是模型那句「读取第三上游…」", said.some((row) => row.startsWith("读取文件 src/normalize.ts")) && said.every((row) => !row.includes("第三上游")), said);
+	check("只读了一段的带上行号范围", said.some((row) => row.startsWith("读取文件 src/dispatch.ts:10-29")), said);
+	check("列目录说完整路径，末尾带 /", said.some((row) => row.startsWith("列出目录 src/")), said);
 	const polls = said.filter((row) => row.includes("的输出") || row === "查看输出");
 	check("同一个任务连着查三次，只有一行，说的是那个任务", polls.length === 1 && polls[0].startsWith(`查看「${JOB}」的输出 3 次`), polls);
 	check("没有光秃秃的「查看输出」", said.every((row) => row !== "查看输出"), said);

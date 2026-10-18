@@ -21,7 +21,7 @@
 import { Fragment, useRef, type ReactNode } from "react";
 import { CircleX } from "../../ui/icons/index.ts";
 import { Collapse } from "../../ui/layout/Collapse.tsx";
-import { useScopedFromToolRuns } from "../../app/session-scope.tsx";
+import { useScopedFromToolRuns, useScopedMeta } from "../../app/session-scope.tsx";
 import { translate } from "../../i18n/translate.ts";
 import { StepDispatchFaces } from "./DelegationCard.tsx";
 import { FlowRow } from "./FlowRow.tsx";
@@ -119,6 +119,7 @@ function StepGroup({ step, thought, live, thinking, from, draw, drawCall }: {
 	const said = held === STEP ? null : (calls.find(({ block }) => block.id === held) ?? calls[calls.length - 1]).block;
 	// bash 给人看的那句话只在记录的 `summary` 里，参数里是命令本身。
 	const saidSummary = useScopedFromToolRuns((runs) => (said ? runs[said.id]?.summary : undefined));
+	const root = useScopedMeta()?.cwd;
 	// 查后台任务输出的那一次，说的是那条命令的说明，不是光秃秃的「查看输出」。
 	const saidJob = useScopedFromToolRuns((runs) => {
 		const job = said ? polledJob(said) : undefined;
@@ -128,7 +129,7 @@ function StepGroup({ step, thought, live, thinking, from, draw, drawCall }: {
 	// 哪样先来哪样在前：先有的那半句不能被后来的「思考 N 次」从前面挤开。
 	const parts = [describeCalls(calls)];
 	if (thought > 0) parts[step.members[0].kind === "thinking" ? "unshift" : "push"](translate("step.thinking", { n: thought }));
-	const words = said ? describeOne(said, saidSummary, saidJob) : parts.join(translate("step.separator"));
+	const words = said ? describeOne(said, saidSummary, { job: saidJob, root }) : parts.join(translate("step.separator"));
 	// 换一次调用、或者从跑着换成总的，就是换了一句话，滚一下；同一次调用的参数还在流进来，只缓宽度。
 	const rollKey = said ? `call-${said.id}` : STEP;
 	const faces = step.category === "task" ? <StepDispatchFaces calls={calls.map(({ block }) => block)} /> : null;

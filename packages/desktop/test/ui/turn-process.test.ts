@@ -8,7 +8,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { act, createElement as h } from "react";
-import type { AssistantContent, Message, Settings } from "@plume/core";
+import type { AssistantContent, Message, SessionMeta, Settings } from "@plume/core";
 import { LiveToolCard, ToolRun } from "../../src/features/conversation/runs.tsx";
 import { TurnWork } from "../../src/features/conversation/TurnWork.tsx";
 import { WorkStep, type DrawCall } from "../../src/features/conversation/WorkStep.tsx";
@@ -161,23 +161,34 @@ test("thinking still being written at the end of a stretch is said at the end of
 	}
 });
 
-test("a read says its file, a search says the model's words", async () => {
+test("a read says its path from the workspace, a search says the model's words", async () => {
 	const tool = (id: string, name: string, args: Record<string, unknown>): Call => ({ block: { type: "toolCall", id, name, arguments: args }, stopReason: "toolUse" });
 	const calls = [
-		// 历史里还带着说明的读文件：文件名比模型的转述准，说明不再上行。
-		tool("d1", "read", { path: "docs/safety.md", description: "读取第三上游响应归一化" }),
-		tool("d2", "grep", { pattern: "timeout|overtime", description: "找超时相关的处理" }),
+		// 历史里还带着说明的读文件：路径比模型的转述准，说明不再上行。
+		tool("d1", "read", { path: "/repo/apps/web/src/main.tsx", description: "读取第三上游响应归一化" }),
+		tool("d2", "read", { path: "apps/cli/src/main.ts", offset: 10, limit: 20 }),
+		// 模型把没给的参数写成 null：不当行号。
+		tool("d3", "read", { path: "README.md", offset: null, limit: null }),
+		tool("d4", "ls", { path: "/repo/apps/api/src" }),
+		tool("d5", "ls", {}),
+		tool("d6", "grep", { pattern: "timeout|overtime", description: "找超时相关的处理" }),
 		// 没给 pattern：description 里是模型错放的式子，core 拿它当 pattern 搜，这里不当一句话说。
-		tool("d3", "grep", { description: "timeout|overtime" }),
+		tool("d7", "grep", { description: "timeout|overtime" }),
 	];
 	const restore = withRuns(calls);
+	useApp.setState({ meta: { cwd: "/repo" } as SessionMeta });
 	// 一个一个挂：`act` 叠在一起时，后面几条测试拿到的是没提交完的树。
 	const rows = [];
 	for (const call of calls) rows.push(await mount(drawCall(call)));
 	try {
-		assert.match(rows[0].text(), /^读取文件 safety\.md/);
-		assert.match(rows[1].text(), /^找超时相关的处理/, "正则人读不出来，说明留着");
-		assert.match(rows[2].text(), /^搜索内容/);
+		const said = rows.map((row) => row.text());
+		assert.match(said[0], /^读取文件 apps\/web\/src\/main\.tsx/, "相对工作区的完整路径，两个 main 分得开");
+		assert.match(said[1], /^读取文件 apps\/cli\/src\/main\.ts:10-29/, "只读一段的带行号");
+		assert.match(said[2], /^读取文件 README\.md(?!:)/);
+		assert.match(said[3], /^列出目录 apps\/api\/src\//, "目录带 /");
+		assert.match(said[4], /^列出目录 \.\//);
+		assert.match(said[5], /^找超时相关的处理/, "正则人读不出来，说明留着");
+		assert.match(said[6], /^搜索内容/);
 	} finally {
 		for (const row of rows) await row.unmount();
 		restore();
@@ -256,7 +267,7 @@ test("panels without an anchor still draw each call as a row of its own when ask
 		assert.equal(view.all("[data-ly-run] > button").length, 0, "no group line over them");
 		const rows = view.all<HTMLElement>("[data-ly-tool]");
 		assert.equal(rows.length, 2, "one row per call");
-		assert.match(rows[0].textContent ?? "", /读取文件 a\.ts/, "core's English summary is not what the row says");
+		assert.match(rows[0].textContent ?? "", /读取文件 src\/a\.ts/, "core's English summary is not what the row says");
 	} finally {
 		await view.unmount();
 		useApp.setState(previous, true);

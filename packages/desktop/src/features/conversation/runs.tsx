@@ -13,7 +13,7 @@ import { DispatchFaces, useDelegation, useDispatches } from "./DelegationCard.ts
 import { SessionSuggestionCard } from "./SessionSuggestionCard.tsx";
 import { ToolGroup } from "./ToolGroup.tsx";
 import type { ToolRun as ToolRunState } from "../../store/index.ts";
-import { useScopedFromToolRuns, useScopedRunning } from "../../app/session-scope.tsx";
+import { useScopedFromToolRuns, useScopedMeta, useScopedRunning } from "../../app/session-scope.tsx";
 import type { Dispatch } from "../../lib/dispatches.ts";
 import { toolCardFallback } from "./tool-status.ts";
 import { sameRun, type Call } from "./grouping.ts";
@@ -151,6 +151,7 @@ function PlainToolCard({ block, run: own, stopReason, runs, turnRunning, thinkin
   const run = ids ? latest : own;
   const result = useMemo(() => (joined !== undefined && run?.result ? { ...run.result, content: [{ type: "text" as const, text: joined }] } : run?.result), [joined, run]);
   const command = starter?.args.command;
+  const root = useScopedMeta()?.cwd;
   // A checked page is drawn by its check, from the call that published it.
   const publishedBy = page && "publishedBy" in page ? page.publishedBy : undefined;
   const stored = useScopedFromToolRuns((toolRuns) => (publishedBy ? toolRuns[publishedBy] : undefined));
@@ -164,7 +165,7 @@ function PlainToolCard({ block, run: own, stopReason, runs, turnRunning, thinkin
       // 任务 id 是一串 uuid，人读不出东西；展开时摆那条命令本身。
       args={ids && typeof command === "string" ? { command } : block.arguments}
       // The model's own words when it gave some, else core's English summary said the way the turn line says it; see `describeOne`.
-      summary={ids ? describePolls(starter?.summary, ids.length) : describeOne(block, run?.summary ?? title)}
+      summary={ids ? describePolls(starter?.summary, ids.length) : describeOne(block, run?.summary ?? title, { root })}
       // 没有记录时说什么，以及为什么不能只看这条消息定没定稿：见 `tool-status.ts`。
       status={status}
       result={result}

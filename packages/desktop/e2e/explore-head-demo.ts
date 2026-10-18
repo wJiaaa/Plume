@@ -30,7 +30,7 @@ const SCRIPT: ({ tool: string; args: Record<string, unknown> } | { text: string 
 	{ text: ANSWER },
 ];
 /** 跑着时那一行应该依次说的话。 */
-const LIVE = ["读取文件 safety.md", "找超时相关的处理", "列出目录 src", "读取文件 two.ts", "搜索内容 overtime"];
+const LIVE = ["读取文件 docs/safety.md", "找超时相关的处理", "列出目录 src/", "读取文件 src/two.ts", "搜索内容 overtime"];
 const TOTAL = "读取文件 2 个、搜索内容 2 个、列出目录 src";
 
 function sse(res: ServerResponse, payload: { type: string }): void {
@@ -167,7 +167,7 @@ try {
 	await d.until(`(${head}).includes("找超时相关的处理")`, 30000);
 	await pause(500);
 	await capture("跑着_说的是最新那一次");
-	await d.until(`(${head}).includes("读取文件 two.ts")`, 30000);
+	await d.until(`(${head}).includes("读取文件 src/two.ts")`, 30000);
 	await pause(500);
 	await capture("跑着_没写说明的照旧");
 	await d.until(`(${head}).includes(${JSON.stringify(TOTAL)})`, 30000);
@@ -207,7 +207,7 @@ try {
 	check("成了一组之后每换一次调用都是滚进来的新一层", layersSeen.length === LIVE.length - 1 && grouped.every((entry) => entry.rolled), grouped);
 	const total = log[turned];
 	check("最后一次调用之后才滚成总的", turned > 0 && log[turned - 1].words.startsWith(LIVE.at(-1)!) && Boolean(total?.rolled) && total.layer > Math.max(...layersSeen), total);
-	check("展开后带说明的搜索说的是模型那句话，读文件、列目录说名字", rows[1]?.startsWith("找超时相关的处理") && rows[2]?.startsWith("列出目录 src") && rows[3]?.startsWith("读取文件 two.ts") && rows[4]?.startsWith("搜索内容 overtime"), rows);
+	check("展开后带说明的搜索说的是模型那句话，读文件、列目录说相对工作区的路径", rows[1]?.startsWith("找超时相关的处理") && rows[2]?.startsWith("列出目录 src/") && rows[3]?.startsWith("读取文件 src/two.ts") && rows[4]?.startsWith("搜索内容 overtime"), rows);
 
 	const passed = checks.filter((c) => c.ok).length;
 	await encode(frames, join(OUT_DIR, `${STAMP}_探索行跑着说最新一次_${passed}of${checks.length}.mp4`));
