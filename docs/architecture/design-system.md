@@ -275,6 +275,7 @@ Windows 浅色原来单独加深的那一档（雅黑没有 Medium，画得更�
 | `Text` | 七级字阶 × `default` `muted` `faint` `danger` `accent` 五种墨色；`numeric` 给会原地跳动的数字 |
 | `Menu` | `float` 底卡片，行高 32、圆角 6、内衬 4；分隔线 `line-float`；行内开关 28×16 |
 | `Dialog` / `Overlay` | `float` 底、`line-float` 边、16px 圆角、最高 85dvh；内衬 20px（`px-5`）；底部动作 `.ly-dialog-action` 是 34px 无描边 8px 圆角：secondary `card` 底 + `ink-muted`，primary 墨底，danger 10% 红底 |
+| `SearchField` / `Select` / `InlineSelect` / `TextArea` | 都是 `.ly-field` 那一族（`ui/inputs/`）：8px、无描边、`card` 底；`SearchField` 默认、`InlineSelect` 传 `compact` 时是面板标题栏里的 26px 一档 |
 | `Tooltip` | 整个窗口一个，挂在 `data-ly-tip` 属性上，CodeMirror 生成的节点也能用；禁用的控件默认不弹，除非 `explainDisabled` |
 | 开关旋钮 `.ly-knob` | 两种主题都是白色；灰旋钮压在强调色上读起来是「脏了一块」 |
 | 图标 | 一律从 `ui/icons` 导入 lucide，描边 2；悬停不播动画 |

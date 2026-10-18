@@ -10,6 +10,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import type { LucideIcon } from "../../ui/icons/index.ts";
 
 export * from "./inputs.tsx";
+export { InlineSelect, Select } from "../../ui/inputs/Select.tsx";
 export * from "./layout.tsx";
 
 /**

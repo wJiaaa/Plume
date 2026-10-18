@@ -24,7 +24,7 @@ import { Input } from "../../ui/inputs/NativeField.tsx";
 import { Minus, Plus } from "../../ui/icons/index.ts";
 import { useEffect, useRef, useState, type JSX } from "react";
 
-import { InlineSelect } from "./inputs.tsx";
+import { InlineSelect } from "../../ui/inputs/Select.tsx";
 
 /**
  * A slider whose track and handle are ours.

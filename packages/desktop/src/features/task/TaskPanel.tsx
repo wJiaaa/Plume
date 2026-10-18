@@ -7,7 +7,7 @@ import { PanelEmpty } from "../../ui/layout/PanelEmpty.tsx";
 import { Mark, lastTurnFailed } from "./Mark.tsx";
 import { isUserPaused } from "./task-list-state.ts";
 import { SearchField } from "../../ui/inputs/SearchField.tsx";
-import { InlineSelect } from "../settings/index.ts";
+import { InlineSelect } from "../../ui/inputs/Select.tsx";
 import { filterRuns } from "./filter-runs.ts";
 import { TaskRuns } from "./TaskRuns.tsx";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";

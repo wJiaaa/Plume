@@ -11,7 +11,8 @@ import { useI18n } from "../../i18n/index.ts";
 import { TextArea } from "../../ui/inputs/TextArea.tsx";
 import { Button } from "../../ui/primitives/Button.tsx";
 import { Toggle } from "./controls.tsx";
-import { Select, TextInput } from "./inputs.tsx";
+import { TextInput } from "./inputs.tsx";
+import { Select } from "../../ui/inputs/Select.tsx";
 import { Card, Field } from "./layout.tsx";
 
 const EVENTS: HookEventName[] = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest", "PostToolUse", "PostToolUseFailure", "Stop", "StopFailure", "SessionEnd"];

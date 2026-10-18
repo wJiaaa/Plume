@@ -12,7 +12,8 @@ import { translate } from "../../../i18n/translate.ts";
 import { Check } from "../../../ui/icons/index.ts";
 import { text } from "@plume/core/ui-language";
 import { Button } from "../../../ui/primitives/Button.tsx";
-import { Segmented, Select, Slider, TextInput, Toggle } from "../../settings/index.ts";
+import { Segmented, Slider, TextInput, Toggle } from "../../settings/index.ts";
+import { Select } from "../../../ui/inputs/Select.tsx";
 
 interface FieldProps {
 	value: unknown;

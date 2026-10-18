@@ -2,7 +2,8 @@ import { useState, type ReactNode } from "react";
 import { translate } from "../../i18n/translate.ts";
 import { Check, Eye, RotateCcw } from "../../ui/icons/index.ts";
 import { Button } from "../../ui/primitives/Button.tsx";
-import { ColorField, Select, Slider, Toggle } from "../settings/index.ts";
+import { ColorField, Slider, Toggle } from "../settings/index.ts";
+import { Select } from "../../ui/inputs/Select.tsx";
 import type { TweakControl, TweakGroup, TweakValue } from "../../../shared/preview.ts";
 
 function Field({ label, aside, children }: { label: string; aside?: ReactNode; children: ReactNode }) {
