@@ -259,10 +259,17 @@ test("a row with room keeps its meter and its label", async () => {
 	 * It was 440, under the label's old 420 as well. The row has since grown — the ZCode-aligned type
 	 * and controls — and at 440 the name would now be ~79px with the label beside it, under
 	 * MIN_NAME_WIDTH: giving the label up there is the rule working, not the old fault.
+	 *
+	 * The same thing happened again at 480: the plan-mode toggle (76164283) put another 28px button
+	 * into the row, and at 480 the name would be ~83px beside the label. So the label is checked at
+	 * 500, where the name is ~103px with everything drawn; the meter is still checked at 480 itself,
+	 * because 480 is exactly where the old breakpoint took it away.
 	 */
-	const row = await at(480);
+	const atOldBreakpoint = await at(480);
+	assert.equal(atOldBreakpoint.meterShown, true, `the context meter went at ${atOldBreakpoint.shell}px with room to spare`);
+	const row = await at(500);
 	assert.equal(row.meterShown, true, `the context meter went at ${row.shell}px with room to spare`);
-	assert.equal(row.labelShown, true, "and so did 完全访问");
+	assert.equal(row.labelShown, true, `and so did 完全访问: ${JSON.stringify(row)}`);
 	assert.equal(row.fit, 0, "nothing was given up");
 	assert.ok(row.nameWidth > MIN_NAME_WIDTH, `the name is still readable: ${row.nameWidth}px`);
 });
