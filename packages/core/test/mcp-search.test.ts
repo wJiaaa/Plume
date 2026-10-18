@@ -212,19 +212,16 @@ test("技能的 allowed-tools 按真名管：mcp_search 能用，经 mcp_call �
 	assert.equal(found.isError, false, text(found));
 });
 
-test("计划模式：经 mcp_call 或直接点名叫被延迟的 MCP 工具，会改东西的照样被拒、只读的放行；发出去的工具表不变", async () => {
+test("计划模式只拦写文件：经 mcp_call 或直接点名叫被延迟的 MCP 工具都照常执行；发出去的工具表不变", async () => {
 	const h = harness({ planMode: true });
 	const viaCall = await h.run(MCP_CALL, { tool: "mcp__linear__create_issue", arguments: goodIssue });
 	assert.equal(viaCall.toolName, "mcp__linear__create_issue");
-	assert.match(text(viaCall), /Plan mode: it can change things, so "mcp__linear__create_issue" did not run/);
+	assert.equal(viaCall.isError, false, text(viaCall));
 	const direct = await h.run("mcp__linear__create_issue", goodIssue);
-	assert.match(text(direct), /Plan mode: it can change things/);
-	assert.deepEqual(h.calls, [], "两条路都没到服务器");
-	assert.deepEqual(h.approvals, [], "被拒的调用不会先弹审批");
-
+	assert.equal(direct.isError, false, text(direct));
 	const read = await h.run(MCP_CALL, { tool: "mcp__linear__get_issue", arguments: { id: "ENG-1" } });
 	assert.equal(read.isError, false, text(read));
-	assert.deepEqual(h.calls, [{ server: "linear", tool: "get_issue", args: { id: "ENG-1" } }]);
+	assert.deepEqual(h.calls.map((call) => call.tool), ["create_issue", "create_issue", "get_issue"], "三条都到了服务器");
 
 	const sent = (tools: readonly Tool[]) => JSON.stringify(toolTable(tools).map(({ name, description, parameters }) => ({ name, description, parameters })));
 	assert.equal(sent(h.available), sent(harness().available));

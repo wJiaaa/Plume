@@ -1,5 +1,5 @@
 /**
- * 计划模式：工具表不变、执行期拒绝；批准那一刻开关关掉、步骤进清单、计划跨压缩不丢。
+ * 计划模式：工具表不变、执行期只拒写文件；批准那一刻开关关掉、步骤进清单、计划跨压缩不丢。
  */
 
 import assert from "node:assert/strict";
@@ -35,7 +35,7 @@ function fake(name: string, extra: Partial<Tool> = {}) {
 const ctxWith = (state: Map<string, unknown>, sandboxMode = "workspace-write"): ToolContext =>
 	({ cwd: "/tmp", sessionId: "s", state, sandboxMode }) as unknown as ToolContext;
 
-test("in plan mode only read-only calls run, and the schemas are untouched", async () => {
+test("in plan mode only file writes are refused, and the schemas are untouched", async () => {
 	const state = new Map<string, unknown>([[PLAN_MODE_KEY, true]]);
 	const edit = fake("edit", { mutating: true });
 	const read = fake("read");
@@ -54,24 +54,30 @@ test("in plan mode only read-only calls run, and the schemas are untouched", asy
 	const [wEdit, wRead, wBash, wLsp, wMcpRead, wMcpWrite, wUnknown] = wrapped;
 	const ctx = ctxWith(state);
 
-	assert.match(textOf(await wEdit.execute({}, ctx)), /Plan mode: it can change things, so "edit" did not run/);
+	assert.match(textOf(await wEdit.execute({}, ctx)), /Plan mode: it edits files, so "edit" did not run/);
 	assert.equal(edit.calls.length, 0);
+	const write = fake("write");
+	assert.match(textOf(await planModeTools([write.tool], state)[0].execute({}, ctx)), /it edits files/);
+	assert.equal(write.calls.length, 0);
 	await wRead.execute({ path: "a" }, ctx);
 	assert.equal(read.calls.length, 1);
 
-	assert.match(textOf(await wBash.execute({ command: "rm -rf x" }, ctx)), /not recognised as read-only/);
+	// 命令不按文本认：组合命令、没见过的程序都照跑，写不写文件交给只读沙箱。
 	assert.match(textOf(await wBash.execute({ command: "ls", escalate: "danger-full-access" }, ctx)), /read-only sandbox/);
-	await wBash.execute({ command: "ls -la" }, ctx);
-	assert.deepEqual(bash.calls.map((call) => call.sandboxMode), ["read-only"], "a read-only command still runs confined");
+	await wBash.execute({ command: "cd apps && grep -rn \"split(\\\"#\\\")\" src | head -40" }, ctx);
+	await wBash.execute({ command: "flows-cli task get --task-id 1 --json" }, ctx);
+	await wBash.execute({ command: "rm -rf x" }, ctx);
+	assert.equal(bash.calls.length, 3, "everything but the escalation ran");
+	assert.deepEqual(new Set(bash.calls.map((call) => call.sandboxMode)), new Set(["read-only"]), "and every one of them confined");
 
 	assert.match(textOf(await wLsp.execute({ operation: "rename", newName: "x" }, ctx)), /rename edits files/);
 	await wLsp.execute({ operation: "references" }, ctx);
 	assert.equal(lsp.calls.length, 1);
 
 	await wMcpRead.execute({}, ctx);
-	assert.equal(mcpRead.calls.length, 1, "an MCP tool that says it is read-only passes");
-	assert.match(textOf(await wMcpWrite.execute({}, ctx)), /did not run/);
-	assert.match(textOf(await wUnknown.execute({}, ctx)), /did not run/, "unknown tools are refused, not waved through");
+	await wMcpWrite.execute({}, ctx);
+	await wUnknown.execute({}, ctx);
+	assert.deepEqual([mcpRead.calls.length, mcpWrite.calls.length, unknown.calls.length], [1, 1, 1], "only file writes are plan mode's business");
 	// 子代理拿到的是同一张包过的表、带着自己的状态图；管事的是包的时候那一张（主会话的）。
 	assert.match(textOf(await wEdit.execute({}, ctxWith(new Map()))), /did not run/);
 	assert.equal(edit.calls.length, 0);

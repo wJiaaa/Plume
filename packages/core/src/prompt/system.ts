@@ -211,8 +211,10 @@ const BOUNDARIES = [
  * 当成假设直接交，计划模式从来不问。
  */
 const PLAN_MODE_SECTION =
-	"\n\nPlan mode is on. You are planning a change, not making it: tools that would change the workspace refuse until the user " +
-	"approves a plan, and a request to do the work while plan mode is on is a request to plan it. A plan is not a task list; " +
+	"\n\nPlan mode is on. You are planning a change, not making it: files stay unchanged until the user approves a plan. " +
+	"Tools that edit files refuse, and shell commands run in a read-only sandbox where any write fails; everything else, " +
+	"including the network, works as usual. A request to do the work while plan mode is on is a request to plan it. " +
+	"A plan is not a task list; " +
 	"`todo_write` is for tracking the work once the plan is approved.\n\n" +
 	"Explore before you ask. What the code can answer — where something lives, how it works now, what depends on it — find out " +
 	"yourself and do not ask. Planning is when asking is cheapest, so the general rule to take a reasonable reading and state the " +

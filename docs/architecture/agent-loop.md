@@ -216,11 +216,11 @@
 
 没有按花费或「多久没说话」停的线，两种都试过并拆掉了，见 `repetition.ts` 顶上。
 
-## 计划模式：同一张工具表，开关开着时只放行只读
+## 计划模式：同一张工具表，开关开着时不改文件
 
 `SessionMeta.planMode` 开着的那一轮，`assembleTurn` 把工具表交给 `planModeTools` 包一层（`runtime/plan-mode.ts`）
-并加上 `submit_plan`。schema 一个字节不变，只有 `execute` 在开关开着时按只读名单放行、其余拒绝；`bash`
-只放 `isReadOnlyCommand` 认得的命令，并压进只读沙箱。`submit_plan` 走 `interactive` 审批卡片，批准那一刻
+并加上 `submit_plan`。schema 一个字节不变，只有 `execute` 在开关开着时拒绝写文件的调用（`write`、`edit`、
+`lsp` 的 `rename`），其余放行；`bash` 不按命令文本认，一律压进只读沙箱。`submit_plan` 走 `interactive` 审批卡片，批准那一刻
 把状态图里的开关关掉（计划不写进清单，拆步由模型自己 `todo_write`）——同一轮里下一次调用就直接放行，不用换表、不用等下一轮。
 这条工具结果提交时会话把 meta 清掉（`recordTurnEvent`）。计划进 `task-context`，压缩后原样注入。
 这一轮派出去的子代理拿到的是包过的表，开关是主会话的。设计取舍见 ADR-0044。
