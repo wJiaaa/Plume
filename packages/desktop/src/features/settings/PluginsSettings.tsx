@@ -19,7 +19,7 @@ import { useApp } from "../../store/index.ts";
 import { usePluginsProject } from "./usePluginsProject.ts";
 import { SkeletonList, useSlowLoad } from "../../ui/primitives/Skeleton.tsx";
 import { settingsAfterToggle, useLocalScan, type MarketMark } from "../plugins/index.ts";
-import { Card, ListRow, Toggle } from "./controls.tsx";
+import { Card, ListRow, Notice, Toggle } from "./controls.tsx";
 import { PluginIcon } from "./PluginIcon.tsx";
 import { ProjectOverrideNotice } from "./ProjectOverrideNotice.tsx";
 import { bridge } from "../../services/index.ts";
@@ -80,8 +80,7 @@ export function PluginsSettings({ filter = "", markOf }: { filter?: string; mark
 			<ProjectOverrideNotice keys={["disabledPlugins"]} cwd={cwd} />
 			{/* The notices are the commands page's, so a failure reads the same on every definition page. */}
 			{diagnostics.length > 0 && (
-				<div className="mb-5 flex items-start gap-2 rounded-lg border border-accent/35 bg-accent/6 px-3.5 py-2.5 text-detail text-ink-muted">
-					<TriangleAlert size={14} className="mt-0.5 shrink-0 text-accent" aria-hidden />
+				<Notice tone="accent" icon={TriangleAlert} className="mb-5">
 					<div className="min-w-0">
 						<div className="text-accent">{t("pluginsSettings.problems", { n: diagnostics.length })}</div>
 						{/* By position: a path repeats when one file has two diagnostics, and these rows hold no state. */}
@@ -91,12 +90,11 @@ export function PluginsSettings({ filter = "", markOf }: { filter?: string; mark
 							</div>
 						))}
 					</div>
-				</div>
+				</Notice>
 			)}
 
 			{warnings.length > 0 && (
-				<div className="mb-5 flex items-start gap-2 rounded-lg border border-line px-3.5 py-2.5 text-detail text-ink-faint">
-					<TriangleAlert size={14} className="mt-0.5 shrink-0 text-ink-muted" aria-hidden />
+				<Notice tone="muted" icon={TriangleAlert} className="mb-5 text-ink-faint">
 					<div className="min-w-0">
 						<div className="text-ink-muted">{t("pluginsSettings.warnings", { n: warned })}</div>
 						{warnings.map((warning, index) => (
@@ -105,7 +103,7 @@ export function PluginsSettings({ filter = "", markOf }: { filter?: string; mark
 							</div>
 						))}
 					</div>
-				</div>
+				</Notice>
 			)}
 
 			{/*
@@ -113,10 +111,10 @@ export function PluginsSettings({ filter = "", markOf }: { filter?: string; mark
 			 * visible reason — indistinguishable from having switched each one off.
 			 */}
 			{allOff && plugins.length > 0 && (
-				<p className="mb-5 rounded-lg border border-line px-3.5 py-2.5 text-detail leading-relaxed text-ink-muted">
+				<Notice tone="muted" className="mb-5 leading-relaxed text-ink-muted">
 					{t("plugins.settingsSays")} <code className="font-mono">disabledPlugins: ["*"]</code>
 					{t("plugins.allOffDetail")}
-				</p>
+				</Notice>
 			)}
 
 			{slow ? (

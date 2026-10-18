@@ -10,7 +10,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createElement as h } from "react";
 
-import { Badge, Segmented, Toggle } from "../../src/features/settings/controls.tsx";
+import { Badge, Notice, Segmented, Toggle } from "../../src/features/settings/controls.tsx";
+import { TriangleAlert } from "../../src/ui/icons/index.ts";
 import { click, mount } from "../helpers/mount.ts";
 
 test("Toggle: 是 switch 角色，状态走 aria-checked 而不是靠颜色", async () => {
@@ -94,4 +95,21 @@ test("Badge: 四种语气各自成立，内容原样渲染", async () => {
 		assert.equal(view.text(), "已安装");
 		await view.unmount();
 	}
+});
+
+test("Notice: 框和色调由组件出，普通档的字色留给调用方", async () => {
+	const danger = await mount(h(Notice, { tone: "danger", role: "alert" }, "保存失败"));
+	const box = danger.find("[role=alert]");
+	assert.match(box.className, /\brounded-lg\b/);
+	assert.match(box.className, /\btext-danger\b/);
+	assert.equal(box.querySelector("svg"), null);
+	await danger.unmount();
+
+	const muted = await mount(h(Notice, { tone: "muted", icon: TriangleAlert, className: "text-ink-faint" }, "两条警告"));
+	const quiet = muted.find("div");
+	assert.match(quiet.className, /\bborder-line\b/);
+	// 字色只有调用方给的那一个，组件不再塞第二个进来和它抢。
+	assert.deepEqual(quiet.className.match(/\btext-ink-[a-z]+/g), ["text-ink-faint"]);
+	assert.match(quiet.querySelector("svg")?.getAttribute("class") ?? "", /\btext-ink-muted\b/);
+	await muted.unmount();
 });

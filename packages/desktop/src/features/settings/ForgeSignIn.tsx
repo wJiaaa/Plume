@@ -20,7 +20,7 @@ import { ActionSpinner } from "../../ui/motion/loaders.tsx";
 import { useState } from "react";
 import type { ForgeKind, ForgeKindInfo } from "../../../electron/ipc-types.ts";
 import { useAccountActions } from "../pull-requests/index.ts";
-import { Field, SecretInput, TextInput } from "./controls.tsx";
+import { Card, Field, Notice, SecretInput, TextInput } from "./controls.tsx";
 import { bridge } from "../../services/index.ts";
 import { useI18n } from "../../i18n/index.ts";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
@@ -92,7 +92,7 @@ export function ForgeSignIn({ kinds, onDone, onCancel }: { kinds: ForgeKindInfo[
 	};
 
 	return (
-		<div className="rounded-lg border border-line bg-card/40 p-4">
+		<Card className="p-4">
 			<div className="mb-4 flex flex-wrap gap-1.5">
 				{kinds.map((entry) => (
 					<Button key={entry.kind} pressed={kind === entry.kind} onClick={() => choose(entry.kind)}>
@@ -149,9 +149,9 @@ export function ForgeSignIn({ kinds, onDone, onCancel }: { kinds: ForgeKindInfo[
 			</div>
 
 			{error && (
-				<p className="mt-3 break-words rounded-lg border border-danger/35 bg-danger/8 px-3 py-2 text-detail leading-relaxed text-danger">
+				<Notice tone="danger" className="mt-3 break-words leading-relaxed">
 					{error}
-				</p>
+				</Notice>
 			)}
 
 			{/* 动词写在按钮上。这两颗曾经是一个盾牌一个叉，名字挂在 tooltip 上——见 `DialogAction`。 */}
@@ -166,6 +166,6 @@ export function ForgeSignIn({ kinds, onDone, onCancel }: { kinds: ForgeKindInfo[
 				</Button>
 				<Button onClick={onCancel}>{t("common.cancel")}</Button>
 			</div>
-		</div>
+		</Card>
 	);
 }

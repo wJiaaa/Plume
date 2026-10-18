@@ -290,13 +290,13 @@ function Dashboard({
 				</Card>
 			</div>
 
-			<div aria-label={t("usage.metrics")} className="mt-3 grid grid-cols-2 overflow-hidden rounded-lg border border-line bg-card/40 @2xl:grid-cols-5">
+			<Card aria-label={t("usage.metrics")} className="mt-3 grid grid-cols-2 @2xl:grid-cols-5">
 				<Metric label={t("usage.tokensProcessed")} value={totals.tokens} format={formatCompact} sub={t("usage.perActiveDay", { n: formatCompact(totals.activeDays > 0 ? totals.tokens / totals.activeDays : 0) })} />
 				<Metric label={t("usage.cacheHit")} value={totals.cacheRead} format={formatCompact} sub={t("usage.ofInput", { percent: percent(totals.cacheRead, totals.input + totals.cacheRead + totals.cacheWrite) })} />
 				<Metric label={t("usage.uncachedInput")} value={totals.input} format={formatCompact} sub={t("usage.cacheWrites", { n: formatCompact(totals.cacheWrite) })} />
 				<Metric label={t("common.output")} value={totals.output} format={formatCompact} sub={t("usage.withReasoning", { n: formatCompact(totals.reasoning) })} />
 				<Metric label={t("usage.cacheSaving")} value={totals.cacheSavings} format={signedCost} sub={t("usage.withoutCache", { cost: costLabel(totals.rawCost) })} />
-			</div>
+			</Card>
 
 			{/*
 			 * `items-start`, so the right-hand card is only as tall as what it says.

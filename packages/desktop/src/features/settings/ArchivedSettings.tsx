@@ -8,7 +8,7 @@ import { SearchField } from "../../ui/inputs/SearchField.tsx";
 import { ScrollText } from "../../ui/scroll/ScrollText.tsx";
 import { Caret } from "../../ui/primitives/Caret.tsx";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
-import { InlineSelect } from "./controls.tsx";
+import { Card, InlineSelect } from "./controls.tsx";
 import { groupIsOpen, toggleOpened } from "./archived-groups.ts";
 import { useApp } from "../../store/index.ts";
 import { sessionTitle } from "../../lib/session-title.ts";
@@ -168,7 +168,7 @@ export function ArchivedSettings() {
 
 								<div className="ly-reveal" data-open={open} aria-hidden={!open}>
 									<div>
-										<div className="overflow-hidden rounded-lg border border-line">
+										<Card>
 											{group.sessions.map((session, index) => (
 												<Row
 													key={session.id}
@@ -182,7 +182,7 @@ export function ArchivedSettings() {
 													onDelete={() => void deleteSession(session)}
 												/>
 											))}
-										</div>
+										</Card>
 									</div>
 								</div>
 							</section>

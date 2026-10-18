@@ -9,7 +9,7 @@ import type { AgentCapabilities } from "../../../electron/ipc-types.ts";
 import { useApp } from "../../store/index.ts";
 import { useAgentAvatars, type AvatarOf } from "../../store/agent-avatars.ts";
 import { AgentAvatar } from "../../ui/avatar/AgentAvatar.tsx";
-import { Card, InlineSelect } from "./controls.tsx";
+import { Card, InlineSelect, Notice } from "./controls.tsx";
 import { ModelSelect } from "../models/index.ts";
 import { AgentDefinitionEditor } from "./AgentDefinitionEditor.tsx";
 import { useAgentDefinitions } from "./useAgentDefinitions.ts";
@@ -218,7 +218,7 @@ export function AgentsSettings() {
 }
 
 function Banner({ children, action }: { children: React.ReactNode; action?: React.ReactNode }) {
-	return <div role="alert" className="mt-5 flex items-center justify-between gap-3 rounded-lg border border-danger/30 bg-danger/10 px-3.5 py-2.5 text-detail text-danger"><span className="min-w-0">{children}</span>{action}</div>;
+	return <Notice tone="danger" role="alert" className="mt-5 flex items-center justify-between gap-3"><span className="min-w-0">{children}</span>{action}</Notice>;
 }
 
 function GroupHeader({ title, count, children }: { title: string; count?: number; children?: React.ReactNode }) {

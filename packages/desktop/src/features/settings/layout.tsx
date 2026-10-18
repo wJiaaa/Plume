@@ -6,6 +6,7 @@
  * a full-width input needs. Both are here, side by side, where the choice between them is visible.
  */
 
+import type { LucideIcon } from "../../ui/icons/index.ts";
 import { ScrollText } from "../../ui/scroll/ScrollText.tsx";
 import { Text } from "../../ui/primitives/Text.tsx";
 
@@ -28,6 +29,38 @@ export function SectionTitle({ children }: { children: React.ReactNode }) {
  */
 export function Card({ children, className = "", ...rest }: React.ComponentProps<"div">) {
 	return <div {...rest} className={`ly-settings-card overflow-hidden rounded-lg border border-line-float bg-float ${className}`}>{children}</div>;
+}
+
+const NOTICE_TONES = {
+	danger: "border-danger/30 bg-danger/10 text-danger",
+	accent: "border-accent/35 bg-accent/6 text-ink-muted",
+	muted: "border-line",
+} as const;
+
+const NOTICE_ICONS = { danger: "text-danger", accent: "text-accent", muted: "text-ink-muted" } as const;
+
+/**
+ * A line the page needs to tell you: something failed (`danger`), something to look at (`accent`),
+ * or just so you know (`muted`).
+ *
+ * A dozen pages each wrote this out as a class string, and the copies drifted — a little more
+ * padding here, a different border alpha there, 12px corners on some. The box and the tone live
+ * here. The quiet tone leaves the text colour to the caller: its pages set a muted heading over
+ * faint detail lines, and one colour here would flatten that.
+ */
+export function Notice({
+	tone,
+	icon: Icon,
+	className = "",
+	children,
+	...rest
+}: React.ComponentProps<"div"> & { tone: keyof typeof NOTICE_TONES; icon?: LucideIcon }) {
+	return (
+		<div {...rest} className={`rounded-lg border px-3.5 py-2.5 text-detail ${NOTICE_TONES[tone]} ${Icon ? "flex items-start gap-2" : ""} ${className}`}>
+			{Icon && <Icon size={14} className={`mt-0.5 shrink-0 ${NOTICE_ICONS[tone]}`} aria-hidden />}
+			{children}
+		</div>
+	);
 }
 
 /** One labelled row inside a card, with the control right-aligned. */

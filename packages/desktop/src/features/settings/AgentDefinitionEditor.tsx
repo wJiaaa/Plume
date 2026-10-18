@@ -9,7 +9,7 @@ import { AgentAvatar } from "../../ui/avatar/AgentAvatar.tsx";
 import { Popover, usePopover } from "../../ui/overlay/Popover.tsx";
 import { formatAvatar, freshAvatar, parseAvatar, type Avatar } from "../../lib/agent-avatar.ts";
 import type { AvatarOf } from "../../store/agent-avatars.ts";
-import { InlineSelect, TextInput } from "./controls.tsx";
+import { InlineSelect, Notice, TextInput } from "./controls.tsx";
 import { AvatarPicker, avatarName } from "./AvatarPicker.tsx";
 import { bridge } from "../../services/index.ts";
 import { useI18n } from "../../i18n/index.ts";
@@ -88,7 +88,7 @@ export function AgentDefinitionEditor({ record, copy, projectId, projectName, de
 					<Button variant="danger" size="sm" onClick={discard}>{t("agentEditor.discard")}</Button>
 				</div>
 			</div>}
-			{error && <div role="alert" className="rounded-lg border border-danger/30 bg-danger/10 px-3.5 py-2.5 text-detail text-danger">{error}</div>}
+			{error && <Notice tone="danger" role="alert">{error}</Notice>}
 			{/* The settings card the hook form sits in, so its fields are the same fields. */}
 			<fieldset disabled={busy} className="ly-settings-card m-0 min-w-0 space-y-4 rounded-lg border border-line-float bg-float p-4 disabled:opacity-60">
 				<div className="flex justify-end">

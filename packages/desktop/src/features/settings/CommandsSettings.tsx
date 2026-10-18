@@ -9,7 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useApp } from "../../store/index.ts";
 import { TextInput } from "./inputs.tsx";
 import { ProjectScope } from "./ProjectScope.tsx";
-import { Card } from "./layout.tsx";
+import { Card, Notice } from "./layout.tsx";
 import { SearchField } from "../../ui/inputs/SearchField.tsx";
 import { Button } from "../../ui/primitives/Button.tsx";
 import { bridge } from "../../services/index.ts";
@@ -137,8 +137,7 @@ function SlashCommands() {
 			</div>
 
 			{diagnostics.length > 0 && (
-				<div className="mt-5 flex items-start gap-2 rounded-lg border border-accent/35 bg-accent/6 px-3.5 py-2.5 text-detail text-ink-muted">
-					<TriangleAlert size={14} className="mt-0.5 shrink-0 text-accent" aria-hidden />
+				<Notice tone="accent" icon={TriangleAlert} className="mt-5">
 					<div className="min-w-0">
 						<div className="text-accent">{t("commandsSettings.failedToLoad", { n: failed })}</div>
 						{/* By position: a path repeats when one file has two lines, and these rows hold no state. */}
@@ -148,12 +147,11 @@ function SlashCommands() {
 							</div>
 						))}
 					</div>
-				</div>
+				</Notice>
 			)}
 
 			{warnings.length > 0 && (
-				<div className="mt-5 flex items-start gap-2 rounded-lg border border-line px-3.5 py-2.5 text-detail text-ink-faint">
-					<TriangleAlert size={14} className="mt-0.5 shrink-0 text-ink-muted" aria-hidden />
+				<Notice tone="muted" icon={TriangleAlert} className="mt-5 text-ink-faint">
 					<div className="min-w-0">
 						<div className="text-ink-muted">{t("commandsSettings.warnings", { n: warned })}</div>
 						{warnings.map((warning, index) => (
@@ -162,7 +160,7 @@ function SlashCommands() {
 							</div>
 						))}
 					</div>
-				</div>
+				</Notice>
 			)}
 
 			<section className="mt-6">

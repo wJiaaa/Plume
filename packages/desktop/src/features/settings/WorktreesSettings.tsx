@@ -165,7 +165,7 @@ export function WorktreesSettings() {
 					<div className="mt-1 text-caption text-ink-faint">{t("worktrees.emptyDetail")}</div>
 				</div>
 			) : (
-				<div className="divide-y divide-line/60 rounded-lg border border-line bg-card">
+				<Card className="divide-y divide-line/60">
 					{worktrees.map((tree) => (
 						<div key={tree.path} className="flex items-center justify-between px-3.5 py-2.5">
 							<div className="min-w-0 flex-1">
@@ -195,7 +195,7 @@ export function WorktreesSettings() {
 							</div>
 						</div>
 					))}
-				</div>
+				</Card>
 			)}
 		</div>
 	);

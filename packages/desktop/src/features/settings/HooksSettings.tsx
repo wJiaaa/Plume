@@ -18,7 +18,7 @@ import { Button } from "../../ui/primitives/Button.tsx";
 import { Toggle } from "./controls.tsx";
 import { HookForm } from "./HookForm.tsx";
 import { ProjectScope } from "./ProjectScope.tsx";
-import { Card } from "./layout.tsx";
+import { Card, Notice } from "./layout.tsx";
 
 function matchesQuery(hook: HookView, query: string): boolean {
 	if (!query) return true;
@@ -137,17 +137,16 @@ export function HooksSettings() {
 			</div>
 
 			{untrusted && view?.projectPath && (
-				<div className="mt-5 flex items-start gap-2 rounded-lg border border-accent/35 bg-accent/6 px-3.5 py-2.5 text-detail text-ink-muted">
-					<TriangleAlert size={14} className="mt-0.5 shrink-0 text-accent" aria-hidden />
+				<Notice tone="accent" icon={TriangleAlert} className="mt-5">
 					<span>{t("hooks.trustNotice", { path: view.projectPath })}</span>
-				</div>
+				</Notice>
 			)}
 			{scope === "project" && view?.projectError && (
-				<p className="mt-5 rounded-lg border border-danger/30 bg-danger/10 px-3.5 py-2.5 text-detail text-danger">
+				<Notice tone="danger" className="mt-5">
 					{t("hooks.projectError", { error: view.projectError })}
-				</p>
+				</Notice>
 			)}
-			{error && <p className="mt-5 rounded-lg border border-danger/30 bg-danger/10 px-3.5 py-2.5 text-detail text-danger">{error}</p>}
+			{error && <Notice tone="danger" className="mt-5">{error}</Notice>}
 
 			<section className="mt-6">
 				<div className="mb-4 flex items-center justify-between gap-3">

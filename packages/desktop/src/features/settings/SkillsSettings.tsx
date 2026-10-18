@@ -213,7 +213,7 @@ export function SkillsSettings({ filter = "" }: { filter?: string }) {
 								{group.title}
 								<span className="text-label font-normal text-ink-muted tabular-nums">{group.skills.length}</span>
 							</h3>
-							<div className="overflow-hidden rounded-lg bg-card">
+							<Card>
 								{group.skills.map((skill, index) => (
 									<div key={skill.path}>
 										{index > 0 && <div aria-hidden className="h-px bg-line" />}
@@ -250,7 +250,7 @@ export function SkillsSettings({ filter = "" }: { filter?: string }) {
 										/>
 									</div>
 								))}
-							</div>
+							</Card>
 						</section>
 					))}
 				</div>
