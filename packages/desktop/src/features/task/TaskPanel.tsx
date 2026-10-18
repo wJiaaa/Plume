@@ -90,7 +90,7 @@ export const TaskPanel = memo(function TaskPanel() {
 						 * 触发器。应用里其它给你选东西的地方都走 `Popover`——模型选择器、力度选择器、分支菜单，
 						 * 这个也一样，顺带继承它们的键盘操作和关闭规则。
 						 */}
-						<InlineSelect ariaLabel={t("taskPanel.filterStatus")} value={status} onChange={setStatus}
+						<InlineSelect compact ariaLabel={t("taskPanel.filterStatus")} value={status} onChange={setStatus}
 							options={[
 						{ value: "", label: t("common.all") },
 						{ value: "running", label: t("common.inProgress") },

@@ -130,8 +130,11 @@ function Dropdown<T extends string>({
 	value: T;
 	onChange: (value: T) => void;
 	options: { value: T; label: string; detail?: string; icon?: React.ReactNode }[];
-	/** `field` fills a form row; `inline` is the compact one that sits at the end of a setting. */
-	size: "field" | "inline";
+	/**
+	 * `field` fills a form row; `inline` is the compact one that sits at the end of a setting;
+	 * `compact` is the 26px one for a panel header, the same height as `SearchField` beside it.
+	 */
+	size: "field" | "inline" | "compact";
 	/** For a dropdown whose own label does not say what it is — two of them reading `09` and `30`. */
 	ariaLabel?: string;
 	/** No fill until it is pointed at — for a control repeated down a list. See `ModelSelect`. */
@@ -142,6 +145,7 @@ function Dropdown<T extends string>({
 	const menu = usePopover();
 	const current = options.find((option) => option.value === value);
 	const field = size === "field";
+	const compact = size === "compact";
 
 	return (
 		<>
@@ -154,14 +158,14 @@ function Dropdown<T extends string>({
 				data-ly-field=""
 				data-ly-select=""
 				data-set={set ? "" : undefined}
-				className={`${quiet ? "ly-field-quiet" : "ly-field"} justify-between gap-2 ${field ? "w-full" : ""}`}
+				className={`${quiet ? "ly-field-quiet" : "ly-field"} justify-between ${compact ? "ly-field-compact gap-1.5" : "gap-2"} ${field ? "w-full" : ""}`}
 			>
 				<span className="flex min-w-0 items-center gap-2">
 					{current?.icon}
 					<span className="min-w-0 truncate">{current?.label ?? value}</span>
 				</span>
 				<ChevronDown
-					size={field ? 15 : 13}
+					size={field ? 15 : compact ? 12 : 13}
 					strokeWidth={1.9}
 					className="shrink-0 text-ink-faint transition-transform duration-[var(--ly-t-quick)]"
 					style={menu.open ? { transform: "rotate(180deg)" } : undefined}
@@ -286,6 +290,9 @@ export function InlineSelect<T extends string>(props: {
 	ariaLabel?: string;
 	quiet?: boolean;
 	set?: boolean;
+	/** For a panel header rather than a setting row — see `size` on `Dropdown`. */
+	compact?: boolean;
 }) {
-	return <Dropdown {...props} size="inline" />;
+	const { compact, ...rest } = props;
+	return <Dropdown {...rest} size={compact ? "compact" : "inline"} />;
 }
