@@ -259,8 +259,12 @@ export function UsageTrendChart({
 	};
 
 	/*
-	 * The viewBox follows the element, and the element does not follow the viewBox — `w-full h-full`
-	 * makes its size the card's business — so measuring here cannot feed itself a new size.
+	 * The viewBox follows the element, and the element must not follow the viewBox — that is what
+	 * `contain-size` on the svg is for. `h-full` alone did not do it: a viewBox gives the svg an
+	 * intrinsic aspect ratio, and both the flex column's automatic minimum and the grid row's
+	 * content contribution read the height off it. Every narrowing of the window raised the
+	 * viewBox, every widening then made the svg taller, and it never came back down — after one
+	 * pass at 375px the chart stood 10,849px high.
 	 */
 	useEffect(() => {
 		const svg = svgRef.current;
@@ -305,7 +309,7 @@ export function UsageTrendChart({
 				ref={svgRef}
 				viewBox={`0 0 ${CHART.width} ${viewHeight}`}
 				preserveAspectRatio="none"
-				className="block h-full w-full flex-1 overflow-visible"
+				className="block h-full w-full flex-1 overflow-visible contain-size"
 				role="img"
 				aria-label={t(metric === "cost" ? "usage.dailyCost" : "usage.dailyTokens")}
 			>
