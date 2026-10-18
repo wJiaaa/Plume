@@ -73,6 +73,31 @@ test("while the answer arrives the row is only hidden: it keeps its height, and 
 	}
 });
 
+test("stopped while the answer streams, the row folds away still hidden instead of fading the indicator back in", async () => {
+	const view = await mount(h(RunningRow, { running: true, answering: true, answered: false, compacting: false }));
+	try {
+		const row = view.find(".ly-reveal");
+		assert.ok(view.host.querySelector("[data-ly-running-quiet]"));
+
+		// 停止：`running` 落下，被中断的回答不算写完（`answered` 为 false），于是走动画收起。
+		await view.rerender(h(RunningRow, { running: false, answering: false, answered: false, compacting: false }));
+		assert.equal(row.dataset.open, "false");
+		assert.ok(view.host.querySelector("[data-ly-running]"), "the fold still has its content");
+		assert.ok(view.host.querySelector("[data-ly-running-quiet]"), "the indicator faded back in over the fold, right after the stop");
+
+		await foldEnds(row, "grid-template-rows");
+		assert.ok(!view.host.querySelector("[data-ly-running]"));
+
+		// 下一轮照常展开，不带着上一轮收起时的隐。
+		await view.rerender(h(RunningRow, { running: true, answering: false, answered: false, compacting: false }));
+		assert.equal(row.dataset.open, "true");
+		assert.ok(view.host.querySelector("[data-ly-running]"));
+		assert.ok(!view.host.querySelector("[data-ly-running-quiet]"), "the next turn opened with the indicator hidden");
+	} finally {
+		await view.unmount();
+	}
+});
+
 test("a finished answer takes the row's place in one frame, with nothing left behind", async () => {
 	const view = await mount(h(RunningRow, { running: true, answering: true, answered: false, compacting: false }));
 	try {

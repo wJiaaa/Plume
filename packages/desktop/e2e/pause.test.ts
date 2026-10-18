@@ -170,7 +170,7 @@ interface Row {
 	buttons: string[];
 	/** Whether it sits below the last reply rather than anywhere else in the transcript. */
 	belowTheReply: boolean;
-	/** Whether the turn is still going, read from the running indicator's loader. */
+	/** Whether the window says the turn is still going, read from the running indicator (see `RUNNING`). */
 	running: boolean;
 }
 
@@ -183,6 +183,21 @@ interface Row {
  * empty reading also satisfies "the row is not there mid-turn".
  */
 const NAME = `(b) => (b.getAttribute("aria-label") ?? b.textContent ?? "").trim()`;
+
+/*
+ * The running indicator saying the turn is going: in an open row, or anywhere it can still be seen.
+ *
+ * Not merely "mounted". A turn that stops folds the row with the indicator still inside it, and
+ * unmounts it only when the fold is done (see `RunningRow`) — about 300ms in which it is in the DOM
+ * but on its way out. Mid-answer it sits in an open row at opacity 0, which still counts: the turn
+ * is going, the line only keeps out of the words' way. What must not happen is the line coming
+ * back into view while it folds — a stop answered with 「Thinking…」.
+ */
+const RUNNING = `(() => {
+	const line = document.querySelector("main [data-ly-running]");
+	if (!line) return false;
+	return line.closest(".ly-reveal")?.dataset.open === "true" || line.checkVisibility({ opacityProperty: true });
+})()`;
 
 const READ_ROW = `(() => {
 	const name = ${NAME};
@@ -199,14 +214,14 @@ const READ_ROW = `(() => {
 	});
 	// The innermost match: the outer ones are its ancestors, which contain the whole transcript.
 	const row = rows[rows.length - 1];
-	if (!row) return { text: "", buttons: [], belowTheReply: false, running: Boolean(document.querySelector("main [data-ly-running]")) };
+	if (!row) return { text: "", buttons: [], belowTheReply: false, running: ${RUNNING} };
 	const replies = [...document.querySelectorAll("main .group\\\\/msg")];
 	const last = replies[replies.length - 1];
 	return {
 		text: row.innerText ?? "",
 		buttons: [...row.querySelectorAll("button")].map(name),
 		belowTheReply: Boolean(last) && row.getBoundingClientRect().top >= last.getBoundingClientRect().bottom - 1,
-		running: Boolean(document.querySelector("main [data-ly-running]")),
+		running: ${RUNNING},
 	};
 })()`;
 
@@ -307,8 +322,28 @@ test("nothing is offered while the turn is still going", async () => {
 
 test("pressing stop leaves the conversation saying it is paused, not that it broke", async () => {
 	assert.ok(await pressStop(), "the stop button was not on screen during a running turn");
+	/*
+	 * Every frame of the fold, not one reading. The row the resume offer lands in is drawn while
+	 * the indicator is still at opacity 0, so a single look straight after it passes either way;
+	 * the line fading back in happens over the next 300ms.
+	 */
+	const reappeared = app.evaluate<number[]>(`new Promise((resolve) => {
+		const seen = [];
+		const t0 = performance.now();
+		const tick = () => {
+			const line = document.querySelector("main [data-ly-running]");
+			if (line && line.closest(".ly-reveal")?.dataset.open !== "true" && line.checkVisibility({ opacityProperty: true })) {
+				seen.push(Math.round(performance.now() - t0));
+			}
+			if (performance.now() - t0 < 1500) requestAnimationFrame(tick);
+			else resolve(seen);
+		};
+		requestAnimationFrame(tick);
+	})`);
 
 	paused = await until((row) => Boolean(row.text));
+	const frames = await reappeared;
+	assert.deepEqual(frames, [], `the running line came back into view while it folded, ${frames.length} frame(s) after the stop`);
 
 	assert.match(paused.text, /已暂停/, `the row said "${paused.text}" instead`);
 	assert.doesNotMatch(
@@ -351,7 +386,14 @@ test("重试 throws the half-written reply away and has the answer again", async
 
 	const text = await transcript();
 	assert.ok(!text.includes(HALF), `the discarded reply is still in the transcript:\n${text}`);
-	assert.equal(text.split("干活").length - 1, 1, `the question was left in the transcript twice:\n${text}`);
+	/*
+	 * Counted in the transcript itself, not the whole of `main`: the pane's header carries the
+	 * conversation's title, which is the question, and would make every pass of this read "twice".
+	 */
+	const rows = await app.evaluate<string>(
+		`([...document.querySelectorAll("main [data-ly-transcript-rows]")].find((el) => el.checkVisibility())?.innerText ?? "")`,
+	);
+	assert.equal(rows.split("干活").length - 1, 1, `the question was left in the transcript twice:\n${rows}`);
 
 	const after = await app.evaluate<Row>(READ_ROW);
 	assert.equal(after.text, "", `the resume offer stayed up after the answer arrived: ${after.text}`);

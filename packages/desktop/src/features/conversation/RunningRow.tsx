@@ -41,8 +41,16 @@ export function RunningRow({ running, answering, answered, compacting }: {
 	compacting: boolean;
 }) {
 	const open = running && !compacting;
-	const quiet = open && (answering || answered);
+	/*
+	 * 收起时沿用收起前那一刻的隐/显。回答写到一半被停下（或开始压缩）时这一行正隐着，`open` 一落、
+	 * 只按 `open && …` 算的话它就不再隐，于是在往下收的那 300ms 里把「Thinking…」淡入回来——
+	 * 人刚按了停止，看到的却是它又在想。收完、指示器卸掉以后才放开，下一轮展开时照旧。
+	 */
+	const quietNow = open && (answering || answered);
+	const [foldQuiet, setFoldQuiet] = useState(quietNow);
+	if (open && foldQuiet !== quietNow) setFoldQuiet(quietNow);
 	const [retained, setRetained] = useState(open);
+	const quiet = open ? quietNow : foldQuiet && retained;
 	useLayoutEffect(() => {
 		if (open) setRetained(true);
 		else if (answered || motionReduced()) setRetained(false);
