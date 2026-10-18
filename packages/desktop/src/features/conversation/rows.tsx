@@ -180,6 +180,10 @@ function AssistantRow({
   /*
    * 这条回复是不是看着它写完的：挂上的时候还在写。只有这种，底下那行操作在写完时展开出来——
    * 一下子多出一行，贴着底部的转录会整段往上跳。打开一段历史时它们本来就在，不演。
+   *
+   * 收尾那一句也不演：它的操作行和运行行在同一次提交里一出一进（见 `RunningRow`），本来就没有
+   * 「多出一行」。演的话运行行当帧没了、操作行从 0 慢慢长，贴底的转录先掉 26px 再被顶回来。
+   * 只剩一轮中间说完的那一句（`pauses`）要演——那时运行行还在底下，没有东西替它抵掉。
    */
   const [watched] = useState(() => message.stopReason === "pending");
 
@@ -267,7 +271,7 @@ function AssistantRow({
        */}
       {!lead && settled(message.stopReason) && (!continued || pauses) && text.trim() && (
         <MessageActions
-          className={watched ? "-mt-1.5 ly-actions-in" : "-mt-1.5"}
+          className={watched && continued ? "-mt-1.5 ly-actions-in" : "-mt-1.5"}
           timestamp={message.timestamp}
           text={() => copyableReply(text, sessionId)}
           durationMs={stats?.durationMs ?? message.durationMs}

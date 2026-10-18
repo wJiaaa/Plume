@@ -22,9 +22,13 @@ import { RunningIndicator } from "./RunningIndicator.tsx";
  * 放出来，比这一行收起晚一到四帧，于是贴底的转录先掉下去 30px、再被字顶回来；回答停顿超过
  * `STALL_MS` 它又长回来，把转录往上推 30px，字接着来再掉一次。一轮里高度不变，这些就都不会发生。
  *
- * 回答写完（`answered`）时它当帧收起，不走过渡：回答底下那一行时间和复制按钮正是在这一次提交里
- * 长出来的，两者一出一进，转录只挪两者的差（实测 8px）。慢慢收的话，刚读完的那段话会先被操作行
- * 顶上去 38px、再随着这一行变矮往下沉 30px。
+ * 回答写完（`answered`）以后它先只是看不见，等 `running` 落下那一次提交才当帧收起，不走过渡：
+ * 回答底下那一行时间和复制按钮也是等 `running` 落下才长出来的（一轮没结束谁是最后一句还没定，
+ * 见 `Conversation` 里的 `continued`），两者在同一次提交里一出一进。两者一样高（都是 28px，
+ * 见 `RunningIndicator` 的上边距），转录一像素也不动。操作行这时也不演进场（见 `MessageRow` 的
+ * `watched`）：演的话它从 0 慢慢长，这一行却当帧没了，转录先掉一行再被顶回来。
+ * 在 `answered` 那一次就收的话，中间隔着一次提交，贴底的转录同样先掉下去一行、再被操作行顶回来；
+ * 慢慢收的话，刚读完的那段话会先被操作行顶上去、再随着这一行变矮往下沉。
  */
 export function RunningRow({ running, answering, answered, compacting }: {
 	running: boolean;
@@ -36,7 +40,8 @@ export function RunningRow({ running, answering, answered, compacting }: {
 	answered: boolean;
 	compacting: boolean;
 }) {
-	const open = running && !compacting && !answered;
+	const open = running && !compacting;
+	const quiet = open && (answering || answered);
 	const [retained, setRetained] = useState(open);
 	useLayoutEffect(() => {
 		if (open) setRetained(true);
@@ -48,7 +53,7 @@ export function RunningRow({ running, answering, answered, compacting }: {
 		<div
 			className="ly-reveal"
 			data-open={open}
-			aria-hidden={!open || answering}
+			aria-hidden={!open || quiet}
 			style={answered ? { transition: "none" } : undefined}
 			onTransitionEnd={(event) => {
 				if (event.target === event.currentTarget && event.propertyName === "grid-template-rows" && !open) setRetained(false);
@@ -56,10 +61,10 @@ export function RunningRow({ running, answering, answered, compacting }: {
 		>
 			<div>
 				<div
-					data-ly-running-quiet={(open && answering) || undefined}
-					className={`transition-opacity ${open && answering ? "opacity-0 duration-0" : "duration-[var(--ly-t-base)]"}`}
+					data-ly-running-quiet={quiet || undefined}
+					className={`transition-opacity ${quiet ? "opacity-0 duration-0" : "duration-[var(--ly-t-base)]"}`}
 				>
-					{((running && !compacting && !answered) || retained) && <RunningIndicator />}
+					{(open || retained) && <RunningIndicator />}
 				</div>
 			</div>
 		</div>

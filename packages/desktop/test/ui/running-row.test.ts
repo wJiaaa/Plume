@@ -77,13 +77,14 @@ test("a finished answer takes the row's place in one frame, with nothing left be
 	const view = await mount(h(RunningRow, { running: true, answering: true, answered: false, compacting: false }));
 	try {
 		const row = view.find(".ly-reveal");
-		// 消息先定稿（回答底下的操作行在这一次提交里长出来），`running` 晚一步才落下。
+		// 消息先定稿，`running` 晚一步才落下；回答底下的操作行要等 `running` 落下才长出来。
 		await view.rerender(h(RunningRow, { running: true, answering: false, answered: true, compacting: false }));
-		assert.equal(row.dataset.open, "false", "the reply's action row is growing in this same commit");
-		assert.equal(row.style.transition, "none", "an animated fold would sink the answer after the action row lifted it");
-		assert.ok(!view.host.querySelector("[data-ly-running-quiet]"), "not flashed back in before the turn ends");
+		assert.equal(row.dataset.open, "true", "folding before the action row grows drops a pinned transcript by the row's height");
+		assert.ok(view.host.querySelector("[data-ly-running-quiet]"), "not flashed back in before the turn ends");
 
 		await view.rerender(h(RunningRow, { running: false, answering: false, answered: true, compacting: false }));
+		assert.equal(row.dataset.open, "false", "the reply's action row is growing in this same commit");
+		assert.equal(row.style.transition, "none", "an animated fold would sink the answer after the action row lifted it");
 		assert.ok(!view.host.querySelector("[data-ly-running]"), "an indicator stayed mounted after the turn");
 
 		// 下一轮开始：最后一条成了人说的话，照常展开。

@@ -187,7 +187,7 @@ export function RunningIndicator() {
 				data-ly-running
 				data-ly-mood="waiting"
 				data-ly-waiting={waitingKind}
-				className="ly-enter mt-2.5 flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1 text-detail text-ink-muted whitespace-nowrap"
+				className="ly-enter mt-2 flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1 text-detail text-ink-muted whitespace-nowrap"
 			>
 				<StatusSpinner size={14} className="text-ink-muted" />
 				<span className="ly-fade-in">{waitingKind === "plan" ? translate("running.waitingForPlan") : waitingKind === "question" ? translate("running.waitingForAnswer") : translate("sessionStatus.waiting")}</span>
@@ -224,7 +224,11 @@ export function RunningIndicator() {
 			 * also the fastest way to see what the window thinks it is doing while using it.
 			 */
 			data-ly-mood={mood}
-			className="ly-enter mt-2.5 flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1 text-detail text-ink-muted whitespace-nowrap"
+			/*
+			 * 8px 而不是正文里的 10px：这一行连上间距要和回答底下的操作行一样高（28px），
+			 * 答完时两者同一帧一出一进才是 0px；差 2px，贴底的转录就在收尾那一帧抖一下。见 `RunningRow`。
+			 */
+			className="ly-enter mt-2 flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1 text-detail text-ink-muted whitespace-nowrap"
 		>
 			{/*
 			 * Decorative, so `aria-hidden`: the phrase beside it already says what this is, and a

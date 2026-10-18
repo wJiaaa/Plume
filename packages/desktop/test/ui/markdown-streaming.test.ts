@@ -99,7 +99,7 @@ test("输出中的新字淡入，写完之后不留淡入用的 span", async () 
 	}
 });
 
-test("看着写完的回复，底下那行操作是长出来的；打开历史时不演", async () => {
+test("一轮中间看着写完的一句，底下那行操作是长出来的；收尾那一句和打开历史时不演", async () => {
 	const base: AssistantMessage = {
 		role: "assistant",
 		content: [{ type: "text", text: "好的，需要的时候叫我。" }],
@@ -110,12 +110,22 @@ test("看着写完的回复，底下那行操作是长出来的；打开历史�
 		stopReason: "pending",
 		timestamp: 1,
 	};
-	const live = await mount(h(I18nProvider, { locale: "zh-CN", children: h(MessageRow, { message: base, index: 0, upTo: 1 }) }));
+	const live = await mount(h(I18nProvider, { locale: "zh-CN", children: h(MessageRow, { message: base, index: 0, upTo: 1, continued: true, pauses: true }) }));
 	try {
-		await live.rerender(h(I18nProvider, { locale: "zh-CN", children: h(MessageRow, { message: { ...base, stopReason: "stop" }, index: 0, upTo: 1 }) }));
-		assert.equal(live.all(".ly-actions-in").length, 1, "写完的那一刻展开，而不是一下子多出一行把回复顶上去");
+		await live.rerender(h(I18nProvider, { locale: "zh-CN", children: h(MessageRow, { message: { ...base, stopReason: "stop" }, index: 0, upTo: 1, continued: true, pauses: true }) }));
+		assert.equal(live.all(".ly-actions-in").length, 1, "运行行还在底下，写完的那一刻展开，而不是一下子多出一行把回复顶上去");
 	} finally {
 		await live.unmount();
+	}
+
+	// 收尾那一句：操作行和运行行同一帧一出一进，再慢慢长就是先掉一行、再被顶回来。
+	const closing = await mount(h(I18nProvider, { locale: "zh-CN", children: h(MessageRow, { message: base, index: 0, upTo: 1 }) }));
+	try {
+		await closing.rerender(h(I18nProvider, { locale: "zh-CN", children: h(MessageRow, { message: { ...base, stopReason: "stop" }, index: 0, upTo: 1 }) }));
+		assert.ok(closing.all("button").length > 0, "操作行照常出现，只是不演");
+		assert.equal(closing.all(".ly-actions-in").length, 0, "收尾那一句的操作行一下子就在，不从 0 长");
+	} finally {
+		await closing.unmount();
 	}
 
 	const history = await mount(h(I18nProvider, { locale: "zh-CN", children: h(MessageRow, { message: { ...base, stopReason: "stop" }, index: 0, upTo: 1 }) }));
