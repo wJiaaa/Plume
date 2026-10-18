@@ -36,7 +36,9 @@ test("项目关闭图标悬停时保留整块项目背景，并显示独立按�
 
 test("question navigation is mouse reachable and jumps to an unmounted historical question without a moving first frame", async (t) => {
 	await click(app, '[data-ly-row="qa-long"] > button');
-	await until(app, 'document.querySelectorAll(".ly-question-mark").length === 15');
+	// 只数 qa-long 自己的刻度：上一条看过的 qa-short 由 RetainedViews 留在后台（display: none），
+	// 它那条导航的 5 个刻度也还在文档里，数全文档会得到 20。
+	await until(app, 'document.querySelectorAll(\'[data-view="qa-long"] .ly-question-mark\').length === 15');
 	await click(app, '.ly-question-mark');
 	await app.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Home", windowsVirtualKeyCode: 36 });
 	await app.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Home", windowsVirtualKeyCode: 36 });
@@ -137,8 +139,15 @@ test("Git uses Index counts, colours added C# syntax, aligns checkout branches a
 	const aligned = await app.evaluate<number[]>(`[...document.querySelectorAll('[data-view="branches"] button[data-ly-tip]')].filter(b=>b.dataset.lyTip.includes('project')||b.dataset.lyTip.includes('second-checkout')).map(b=>b.lastElementChild.getBoundingClientRect().right)`);
 	assert.equal(aligned.length, 2); assert.ok(Math.abs(aligned[0] - aligned[1]) < 1, JSON.stringify(aligned));
 	const at = await app.evaluate<{ x: number; y: number }>(`(()=>{const b=[...document.querySelectorAll('[data-view="branches"] button[data-ly-tip]')].find(b=>b.dataset.lyTip.includes('second-checkout'));const r=b.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
-	await app.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...at }); await frames(app, 45);
-	const tooltip = await app.evaluate<{ height: number; line: number; right: number; bottom: number; width: number; viewport: number; viewportHeight: number }>(`(()=>{const e=document.querySelector('[role="tooltip"]');const r=e.getBoundingClientRect();return {height:r.height,line:parseFloat(getComputedStyle(e).lineHeight),right:r.right,bottom:r.bottom,width:r.width,viewport:innerWidth,viewportHeight:innerHeight};})()`);
+	/*
+	 * 等气泡本身，不数帧：气泡要等 420ms（tooltip.ts 的 DELAY_MS），45 帧在 120Hz 的屏上只有
+	 * 375ms，于是在 ProMotion 的 Mac 上它永远还没出来。也只认应用自己那只 `.ly-tooltip`——问题导航
+	 * 的预览同样是 role="tooltip"，上一条用例悬停过以后它就留在文档里，排在前面。
+	 */
+	await app.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...at });
+	await until(app, `document.querySelector('.ly-tooltip[role="tooltip"]:not([hidden])')?.textContent.includes('second-checkout') ?? false`);
+	await frames(app, 20);
+	const tooltip = await app.evaluate<{ height: number; line: number; right: number; bottom: number; width: number; viewport: number; viewportHeight: number }>(`(()=>{const e=document.querySelector('.ly-tooltip[role="tooltip"]');const r=e.getBoundingClientRect();return {height:r.height,line:parseFloat(getComputedStyle(e).lineHeight),right:r.right,bottom:r.bottom,width:r.width,viewport:innerWidth,viewportHeight:innerHeight};})()`);
 	assert.ok(tooltip.height > tooltip.line * 2, JSON.stringify(tooltip));
 	assert.ok(tooltip.right <= tooltip.viewport - 5 && tooltip.bottom <= tooltip.viewportHeight - 5);
 	await shot(app, "branch-tooltip");
