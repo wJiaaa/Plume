@@ -158,8 +158,10 @@ const BASE_GUIDELINES = [
 	/*
 	 * 每批都要说：界面把连着的探索调用并成一行，只在模型开口处切开。从前只要求第一次调用前说一句，
 	 * 3f13134f 那一轮之后 17 次回复一声不出，80 个调用并成一行，看不出每批是在查什么。
+	 * 写成软的「opens with」时 gpt-6.1-sol（986df8b2）18 次回复只照做 6 次，跳过的多是只读的批次，
+	 * 所以写成硬规则、点名只读也算、推理不算。
 	 */
-	"Every reply that makes tool calls opens with one short sentence saying what this batch is for — what you want to find out or change, and why it matters to the task (\"Check how the API pushes realtime events to the web client\"), not a list of the calls (\"Read three files\"). Do not repeat the previous sentence; when what you found changes the plan, say that instead. Say the step and take it in the same reply — a reply that only announces what comes next did nothing.",
+	"Every reply that contains tool calls must open with one sentence of visible text saying what this batch is for — what you want to find out or change, and why it matters to the task (\"Check how the API pushes realtime events to the web client\"), not a list of the calls (\"Read three files\"). This is a rule, not a style preference: it holds for every batch, including one that only reads files, lists directories or searches, and for every reply after the first. Your reasoning is not shown to the user, so it does not count. Do not repeat the previous sentence; when what you found changes the plan, say that instead. Say the step and take it in the same reply — a reply that only announces what comes next did nothing.",
 	"When a requirement is ambiguous but has a reasonable reading, take it and state the assumption in your answer. Ask the user only when the answer would change what you build, and ask instead of doing the work, not after promising it.",
 	"Issue independent tool calls in one response so they run in parallel. Serialize only when one call's output feeds the next.",
 	"Match the surrounding code: its naming, error handling, comment density and idioms.",
