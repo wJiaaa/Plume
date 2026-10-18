@@ -108,6 +108,21 @@ test("prose resumed after a call is the answer arriving again", () => {
 	assert.equal(answering([user, pending(text("先看看"), call(), text("看完了，结论是"))]), true);
 });
 
+test("a commentary before the calls is not the answer, so the indicator stays", () => {
+	/*
+	 * Responses marks the sentence a model says before a batch of calls as `commentary`. Folding for
+	 * it left the bottom of the screen empty for the sentence plus `STALL_MS`, before every batch.
+	 */
+	const commentary: AssistantContent = { type: "text", text: "先看看项目目录里有什么。", phase: "commentary" };
+	assert.equal(answering([user, pending(commentary)]), false);
+	assert.equal(answering([user, pending(thinking("想想"), commentary)]), false);
+});
+
+test("the final answer still folds it, and so does text without a phase", () => {
+	assert.equal(answering([user, pending({ type: "text", text: "项目只有一个文件。", phase: "final_answer" })]), true);
+	assert.equal(answering([user, pending(text("项目只有一个文件。"))]), true);
+});
+
 test("reasoning after prose is not prose", () => {
 	// Thinking that follows a sentence is the model gone quiet again, not the answer continuing.
 	assert.equal(answering([user, pending(text("先说结论"), thinking("再想想"))]), false);

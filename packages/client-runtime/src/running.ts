@@ -138,7 +138,12 @@ export function proseLength(messages: Message[]): number | null {
 export function tailProse(last: Message | undefined): number | null {
 	if (last?.role !== "assistant" || last.stopReason !== "pending") return null;
 	const block = last.content[last.content.length - 1];
-	if (block?.type !== "text") return null;
+	/*
+	 * 播报不是回答：它是调工具前的一句「接下来做什么」，说完活才开始。当它是回答来收起运行行，
+	 * 每一批调用前都要空白「播报的时长 + STALL_MS」——这时转录上只有一句话，底下什么都没有，
+	 * 看上去这一轮已经停了。没有 phase 的（别的接口、旧会话）照旧按正文算，不猜。
+	 */
+	if (block?.type !== "text" || block.phase === "commentary") return null;
 	// 文本块先开一个空的再一点点填；把空白算作开始写，运行行会早收一拍、接着又弹回来。
 	const text = block.text.trim();
 	return text.length > 0 ? text.length : null;
