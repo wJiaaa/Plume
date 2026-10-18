@@ -183,9 +183,14 @@ test("session switching never renders the previous trace selection or filter con
 	assert.equal(await app.evaluate(`document.querySelector('[data-trajectory]').textContent.includes('trace-run-2499')`), false);
 });
 
-// 面板是右栏的标签，同一时间只画一个；前面几条留在前面的可能是任务或文件。
+/*
+ * 面板是右栏的标签，同一时间只画一个；前面几条留在前面的可能是任务或文件。
+ *
+ * 点前台那一格标签条上的：每一格都画着同一条标签条（a8a5261e），没在前台的 `inert` 着叠在后面，
+ * DOM 里却可能排在前面，按文档顺序找到的那颗，落点上是前台那条的另一个标签。见 drive.ts 的 `closeTab`。
+ */
 async function showTrajectory() {
-	await click(app, '[data-panel-tab="trajectory"] [role="tab"]');
+	await click(app, '[data-dock-pane]:not([inert]) [data-panel-tab="trajectory"] [role="tab"]');
 	await settle();
 }
 
