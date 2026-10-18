@@ -61,7 +61,8 @@ async function editor(modelId: string) {
 const readFields = `(()=>{const modal=document.querySelector('[data-ly-modal]');const read=t=>[...modal.querySelectorAll('label')].find(e=>e.textContent.startsWith(t)).querySelector('input').value;return {id:read('模型 ID'),context:read('上下文窗口'),output:read('最大输出'),input:read('输入价格'),priceOut:read('输出价格'),cache:read('缓存命中价格'),toggles:[...modal.querySelectorAll('[role="switch"]')].map(e=>e.getAttribute('aria-checked')),text:modal.innerText};})()`;
 
 /*
- * 内置智能体七个，见 `core/src/agents-builtin.ts`；加上「会话」那一段里的 `compact`，页面上一共八行。
+ * 内置智能体七个，见 `core/src/agents-builtin.ts`。「会话」那一段里原来还有一行 `compact`，压缩改成从
+ * 主请求分叉之后删掉了（c9fcf77e：换模型写摘要就读不到主请求的缓存），页面上就是七行。
  */
 test("all built-in agents can be configured before any session is created", async (t) => {
 	await click(app, "[data-ly-open-settings]");
@@ -69,25 +70,20 @@ test("all built-in agents can be configured before any session is created", asyn
 	/*
 	 * 等数量不再变，而不是等它等于某个数。
 	 *
-	 * 智能体名单是异步取回来的，`compact` 那一行不依赖它、先画出来——盯着一个固定数字等，要么
-	 * 撞上只有它一个的那一瞬，要么错过。`setInterval` 而不是 `until` 里的 rAF：窗口被别的窗口
+	 * 智能体名单是异步取回来的，盯着一个固定数字等，要么撞上名单还没回来的那一瞬，要么错过。`setInterval` 而不是 `until` 里的 rAF：窗口被别的窗口
 	 * 盖住时 rAF 会降频，这个等待就成了看运气。
 	 */
 	await app.evaluate(`new Promise(resolve=>{let last=-1,same=0;const timer=setInterval(()=>{const n=document.querySelectorAll('[data-agent-profile]').length;same=n===last?same+1:0;last=n;if(n>0&&same>=3){clearInterval(timer);resolve();}},80);setTimeout(()=>{clearInterval(timer);resolve();},10000);})`);
 	const visible = await app.evaluate<{ names: string[]; controls: number; overflow: number }>(`({names:[...document.querySelectorAll('[data-agent-profile]')].map(e=>e.getAttribute('data-agent-profile')),controls:document.querySelectorAll('[data-agent-profile] fieldset').length,overflow:document.documentElement.scrollWidth-window.innerWidth})`);
-	assert.deepEqual(visible.names, ["general", "explore", "review", "verify", "plan", "simple", "reason", "compact"]);
-	/*
-	 * 八行，七组 fieldset。
-	 *
-	 * 前七个是内置智能体，每个带一整组运行配置。`compact` 排在「会话」那一段里，是这次会话的
-	 * 压缩模型而不是一个可派活的智能体，控件只有一个模型选择，不套 fieldset——数量对不上不是
-	 * 缺了控件，是这一行本来就是另一回事。
-	 */
+	assert.deepEqual(visible.names, ["general", "explore", "review", "verify", "plan", "simple", "reason"]);
+	// 七行，每个内置智能体一整组运行配置。
 	assert.equal(visible.controls, 7);
+	// 「会话」那一段不依赖智能体名单，没有会话也要能选模型；压缩模型那一行不该再回来。
 	assert.ok(
-		await app.evaluate(`Boolean(document.querySelector('[data-agent-profile="compact"] button[aria-label]'))`),
-		"compact 那一行也要能选模型，只是控件形状不同",
+		await app.evaluate(`Boolean(document.querySelector('button[aria-label="侧边聊天默认模型"]'))`),
+		"会话级的模型行没有会话也要能配",
 	);
+	assert.equal(await app.evaluate(`document.querySelector('[data-agent-profile="compact"]')`), null);
 	assert.equal(visible.overflow, 0);
 	await click(app, '[aria-label="explore 模型"]');
 	await until(app, `document.querySelector('[data-model="relay/gemini-3.7-flash-high"] button')`, 900);
@@ -101,7 +97,7 @@ test("all built-in agents can be configured before any session is created", asyn
 	await click(app, "nav button", "智能体");
 	// 回到这一页，等的还是「名单不再变」——理由同上面那处。
 	await app.evaluate(`new Promise(resolve=>{let last=-1,same=0;const timer=setInterval(()=>{const n=document.querySelectorAll('[data-agent-profile]').length;same=n===last?same+1:0;last=n;if(n>0&&same>=3){clearInterval(timer);resolve();}},80);setTimeout(()=>{clearInterval(timer);resolve();},10000);})`);
-	assert.equal(await app.evaluate(`document.querySelectorAll('[data-agent-profile]').length`), 8);
+	assert.equal(await app.evaluate(`document.querySelectorAll('[data-agent-profile]').length`), 7);
 	await until(app, `document.querySelector('[aria-label="explore 模型"]').textContent.includes('gemini-3.7-flash-high')`, 900);
 	t.diagnostic(JSON.stringify(visible)); await shot("builtin-agents");
 });

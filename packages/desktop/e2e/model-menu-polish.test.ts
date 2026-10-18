@@ -109,7 +109,9 @@ test("starring a model pins it to the top and persists", async () => {
 		await wait(500);
 		const settings = await window.plume.settings.get();
 		const first = rows()[0] || "";
-		const lit = menu().querySelector('button[aria-pressed="true"]');
+		// 按名字找亮着的那颗星：厂商侧栏（40a5eb6a）的「全部模型」也是一个 aria-pressed="true" 的按钮，排在前面。
+		const lit = [...menu().querySelectorAll('button[aria-pressed="true"]')].find((button) => button.getAttribute("aria-label") === "取消收藏 claude-3");
+		if (!lit) throw new Error("claude-3 did not turn into a lit star");
 		click(lit);
 		await wait(500);
 		const after = await window.plume.settings.get();
