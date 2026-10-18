@@ -153,7 +153,7 @@ Windows 浅色原来单独加深的那一档（雅黑没有 Medium，画得更�
 
 | 高度 | 是谁 |
 | --- | --- |
-| 34px `--ly-control` | 字段 `.ly-field`、下拉、对话框底部的动作——同一个无描边胶囊（`--radius-field: 999px`，`card` 底）；设置页、对话框、弹出层里收成 8px（`overlay.css`） |
+| 34px `--ly-control` | 字段 `.ly-field`、下拉、对话框底部的动作——同一个无描边的 8px 圆角块（`--radius-field`，`card` 底），在哪儿都一样 |
 | 32px | `Button` `md`（默认）；菜单行 `--ly-menu-row` |
 | 28px `--ly-composer-control` | 输入框工具条上的每一颗；卡片标题栏的按钮 |
 | 26px | `Button` `sm`；`IconButton` `md`（默认） |
@@ -177,7 +177,7 @@ Windows 浅色原来单独加深的那一档（雅黑没有 Medium，画得更�
 
 | token / 值 | 用在 |
 | --- | --- |
-| `--radius-field` 999px | 字段、下拉、对话框动作 |
+| `--radius-field` 8px | 字段、下拉、对话框动作。曾是 999 胶囊、在设置页、对话框、弹出层、面板里各自覆盖成 8px；胶囊只剩几个页面和卡片里，挨着 8px 的按钮和标签，于是 token 本身改成 8px |
 | `--radius-menu` 8px | 菜单卡片 |
 | `--radius-item` 6px | 菜单里的行；内衬 `--ly-menu-inset` 4px，四边一样，悬停底才不会左近右远 |
 | `--radius-panel` 12px | 面板 |
@@ -271,7 +271,7 @@ Windows 浅色原来单独加深的那一档（雅黑没有 Medium，画得更�
 | `IconButton` | `label` 同时是 tooltip 和无障碍名，不能只给一个；`emphasis` 用全墨色表示「这颗现在值得按」，不用填色；角标在图标外，数字变化不挪动行 |
 | `Text` | 七级字阶 × `default` `muted` `faint` `danger` `accent` 五种墨色；`numeric` 给会原地跳动的数字 |
 | `Menu` | `float` 底卡片，行高 32、圆角 6、内衬 4；分隔线 `line-float`；行内开关 28×16 |
-| `Dialog` / `Overlay` | `float` 底、`line-float` 边、16px 圆角、最高 85dvh；内衬 20px（`px-5`）；底部动作 `.ly-dialog-action` 是 34px 无描边胶囊：secondary `card` 底 + `ink-muted`，primary 墨底，danger 10% 红底 |
+| `Dialog` / `Overlay` | `float` 底、`line-float` 边、16px 圆角、最高 85dvh；内衬 20px（`px-5`）；底部动作 `.ly-dialog-action` 是 34px 无描边 8px 圆角：secondary `card` 底 + `ink-muted`，primary 墨底，danger 10% 红底 |
 | `Tooltip` | 整个窗口一个，挂在 `data-ly-tip` 属性上，CodeMirror 生成的节点也能用；禁用的控件默认不弹，除非 `explainDisabled` |
 | 开关旋钮 `.ly-knob` | 两种主题都是白色；灰旋钮压在强调色上读起来是「脏了一块」 |
 | 图标 | 一律从 `ui/icons` 导入 lucide，描边 2；悬停不播动画 |

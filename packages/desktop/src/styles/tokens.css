@@ -66,13 +66,15 @@
 
   --radius-panel: 12px;
   /*
-   * Fields, dropdowns and dialog actions share one capsule.
+   * Fields, dropdowns and dialog actions share one radius.
    *
-   * The dialog foot already settled on 34 × 999: a row of those next to a 38 × 10 input
-   * read as two toolkits glued together. One radius and one height is the whole point of
-   * having tokens rather than a number at each call site.
+   * A row of 34px dialog actions next to a 38 × 10 input read as two toolkits glued together.
+   * One radius and one height is the whole point of having tokens rather than a number at each
+   * call site. It used to be a 999 capsule with an 8px override for settings, dialogs, popovers
+   * and panels — by then the capsule only survived in a few pages and cards, next to 8px buttons
+   * and tabs, so the token itself became 8px.
    */
-  --radius-field: 999px;
+  --radius-field: var(--radius-lg);
   --ly-control: 34px;
   /*
    * Floating menus are a card with rows inside it.

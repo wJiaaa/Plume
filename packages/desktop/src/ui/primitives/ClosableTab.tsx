@@ -40,7 +40,7 @@ export function ClosableTab({
 		<div
 			{...data}
 			onContextMenu={onContextMenu}
-			className={`group/tab flex shrink-0 items-center gap-1 rounded-md pr-0.5 pl-2 transition-colors duration-[var(--ly-t-quick)] ${
+			className={`group/tab flex shrink-0 items-center gap-1 rounded-lg pr-0.5 pl-2 transition-colors duration-[var(--ly-t-quick)] ${
 				// Lit on hover as well, or a row of names does not say which one the pointer is on.
 				current ? "bg-card-hover text-ink" : "text-ink-faint hover:bg-card-hover/60 hover:text-ink"
 			} ${className}`}
