@@ -102,15 +102,14 @@ test("循环依赖的数目", () => {
  * 最后一条不数数字，查一个说法。
  *
  * ARCHITECTURE.md 从前写着 e2e 的稳定失败「见 testing.md」，而那份文档里没有这个清单——一句
- * 指向空处的话比没有话更糟，它让人以为找过了。现在那里写的是「没有写下来过」；哪天真写了，
- * 这条测试会红，提醒把说法改回去。
+ * 指向空处的话比没有话更糟，它让人以为找过了。清单后来真写进了 testing.md，ARCHITECTURE.md
+ * 改成指向那一节；这条守的是那个指向不落空——小节改了名或被删掉，这里会红。
  */
-test("e2e 稳定失败的清单，要么在 testing.md 里，要么文档承认它不在", () => {
+test("ARCHITECTURE.md 指向的 e2e 已知失败清单，在 testing.md 里真有那一节", () => {
 	const testing = read("docs/architecture/testing.md");
-	const listed = /稳定失败|已知红|known failures/i.test(testing);
-	const admits = architecture.includes("没有写下来过");
-	assert.ok(listed || admits, "两边都没有：清单不在 testing.md，而 ARCHITECTURE.md 又说它在");
-	assert.equal(listed, false, "清单进了 testing.md，把 ARCHITECTURE.md 那句「没有写下来过」换成指路");
+	const heading = "### 干净 main 上的已知失败";
+	assert.ok(architecture.includes("testing.md#干净-main-上的已知失败"), "ARCHITECTURE.md 不再指向已知失败清单");
+	assert.ok(testing.includes(heading), `testing.md 里没有「${heading.slice(4)}」这一节，ARCHITECTURE.md 的链接落空了`);
 });
 
 /*
