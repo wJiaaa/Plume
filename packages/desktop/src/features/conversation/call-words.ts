@@ -48,7 +48,7 @@ const DESCRIBED = new Set(["grep", "glob"]);
  * 只说文件名时，`apps/web/src/main.tsx` 和 `apps/cli/src/main.ts` 读起来是同一个 main。只读了一段的带上
  * 行号，同一个文件读两段才分得开；目录带 `/`，和文件一眼分开。工作区外的路径照原样，家目录缩成 `~`。
  */
-export function locationOf(block: ToolCallBlock, root?: string): string | undefined {
+function locationOf(block: ToolCallBlock, root?: string): string | undefined {
   const { path, offset, limit } = (block.arguments ?? {}) as { path?: unknown; offset?: unknown; limit?: unknown };
   const shown = (value: string) => tildeHome(root ? relativeTo(root, value) : value);
   if (block.name === "ls") {
