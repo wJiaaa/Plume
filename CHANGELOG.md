@@ -2,6 +2,35 @@
 
 这个文件由 `pnpm release` 生成，条目来自提交信息。写得含糊的提交在这里也含糊，所以值得在提交时就写清楚。
 
+## [0.9.39](https://github.com/wJiaaa/Plume/releases/tag/v0.9.39) - 2026-10-18
+
+<!-- plume:notes en -->
+
+### Changes
+
+- **DeepSeek is now a web search provider.** In Settings › Web search it sits beside Tavily, Exa and Brave. Pick it if you ask in Chinese: its own index returns far more relevant pages, and it understands `site:`, `lang:` and `after:` in the query. There is no free tier — about ¥5 per 1,000 searches, billed by DeepSeek. Each result also carries a 600–800 character summary instead of a one-line snippet, so the model has more to work with before it decides to open a page.
+
+### Fixes
+
+- **Sending a second message no longer shifts the whole conversation 24 px to the right.** The question rail on the left only appears once there are two questions, and the text column took its narrower padding in the same frame. The space is now reserved from the first message, except in side chats, which have no rail.
+- **A finished answer no longer drops the conversation a line and then pushes it back up.** Three things moved on the last frame: the status line closed, the time-and-copy row under the answer was still opening, and the two differed by 2 px in height. A transcript scrolled to the bottom fell about 30 px and was shoved back. They now swap in the same frame at the same height, and the last reply's action row no longer animates in. Measured frame by frame in the app: 29 px before, 0 now.
+
+<!-- plume:notes zh-CN -->
+
+<details>
+<summary>中文（简体）</summary>
+
+### 变化
+
+- **网页搜索多了 DeepSeek。** 在「设置 › 网页搜索」里和 Tavily、Exa、Brave 并列。问中文问题选它：自家索引在中文上的结果对题得多，查询里也认识 `site:`、`lang:`、`after:`。没有免费额度，按次计费，每 1000 次 5 元。每条结果附的是 600～800 字的摘要，不是一两句话的片断，模型在决定点开网页之前能看到更多。
+
+### 修复
+
+- **发出第二条消息时，整段对话不再往右挪 24px。** 左侧的问题导航条要在有两个问题时才出现，正文的边距在同一帧跟着变窄。现在除了没有导航条的侧边对话，从第一条消息起就把位置留好。
+- **一轮答完时，对话不再先往下掉一行、再被顶回来。** 收尾那一帧同时动了三处：底部那行状态收起了，回答底下带时间和复制的那一行还在长出来，两行高度还差 2px。贴着底部的对话先掉约 30px，再被顶回去。现在两行在同一帧、同样高度一换一，收尾那句的操作行也不再演进场。在应用里逐帧量过：改之前掉 29px，现在 0。
+
+</details>
+
 ## [0.9.38](https://github.com/wJiaaa/Plume/releases/tag/v0.9.38) - 2026-10-17
 
 <!-- plume:notes en -->
