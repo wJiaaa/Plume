@@ -179,6 +179,22 @@ test("工具：模型拿到的是一句能据以行动的话", async () => {
 	assert.match(text(reply), /bbbb 说：做完了。/);
 });
 
+test("工具：拿子代理 id 当会话地址，说清它不是会话、结果会自己送回来，而不是「没有这个会话」", async () => {
+	const a = fakeSession("aaaaaaaa-10", "/w/p");
+	const { send, wait } = tools(a);
+	const ctx = ctxFor("aaaaaaaa-10");
+	for (const to of ["aaaaaaaa-10:sub:4b3478c2", "sub:4b3478c2"]) {
+		const waited = await wait.execute({ to, timeout_seconds: 180 }, ctx);
+		assert.ok(waited.isError);
+		assert.match(text(waited), /is a sub-agent you dispatched with task/);
+		assert.match(text(waited), /Do not write your final answer before its result arrives/);
+		assert.doesNotMatch(text(waited), /No running session/);
+	}
+	const sent = await send.execute({ to: "aaaaaaaa-10:sub:4b3478c2", message: "好了没" }, ctx);
+	assert.match(text(sent), /is a sub-agent you dispatched with task/);
+	assert.match(text(await wait.execute({ to: "nobody" }, ctx)), /No running session/, "真找不到的会话照旧");
+});
+
 test("工具：等着的时候人开口了，当场交回，路由器那头也不再挂着", async () => {
 	const a = fakeSession("aaaaaaaa-9", "/w/p");
 	const b = fakeSession("bbbbbbbb-9", "/w/p");

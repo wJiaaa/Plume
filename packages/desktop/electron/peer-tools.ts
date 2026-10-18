@@ -51,6 +51,7 @@ export function createPeerTools(router: PeerRouter): Tool[] {
 			const to = String(args.to ?? "").trim();
 			const message = typeof args.message === "string" ? args.message.trim() : "";
 			if (!to) return errorResult("`to` is required: an address from list_sessions.");
+			if (SUB_AGENT_ID.test(to)) return errorResult(subAgentAddressed(to));
 			if (!message) return errorResult("`message` is required.");
 			if (args.mode !== undefined && args.mode !== "queue" && args.mode !== "steer") return errorResult("`mode` must be \"queue\" or \"steer\".");
 			const outcome = await router.send(ctx.sessionId, { to, message, steer: args.mode === "steer" });
@@ -76,6 +77,7 @@ export function createPeerTools(router: PeerRouter): Tool[] {
 		async execute(args, ctx) {
 			const to = String(args.to ?? "").trim();
 			if (!to) return errorResult("`to` is required: an address from list_sessions.");
+			if (SUB_AGENT_ID.test(to)) return errorResult(subAgentAddressed(to));
 			const timeoutSeconds = typeof args.timeout_seconds === "number" && Number.isFinite(args.timeout_seconds) ? args.timeout_seconds : undefined;
 			/*
 			 * 人一开口就不再等：插话只在两次请求之间才有人读，等在这里会把人说的话压到对方做完为止
@@ -99,6 +101,21 @@ export function createPeerTools(router: PeerRouter): Tool[] {
 	};
 
 	return [listSessions as unknown as Tool, sendMessage as unknown as Tool, waitForSession as unknown as Tool];
+}
+
+/**
+ * `task` 派出的子代理的 id（`<会话>:sub:<8 位>`，或模型只抄了后半截）。
+ *
+ * 它不是会话，路由器里找不到。落到「No running session」那句，模型读到的是「它已经不在了」——
+ * 实际踩过：模型据此不再等，抢在复核结果回来之前交了一份完整回答，结果送到后又整份重写一遍。
+ */
+const SUB_AGENT_ID = /(?:^|:)sub:[0-9a-f]{8}$/i;
+
+function subAgentAddressed(to: string): string {
+	return (
+		`"${to}" is a sub-agent you dispatched with task, not a session, so these tools cannot reach it. There is nothing to wait on: when it finishes, its result arrives here as a message by itself (if it already has, that message is in your conversation). ` +
+		"Until then, do other work that does not depend on it; if there is none, tell your user in a sentence or two what it is doing and end this turn. Do not write your final answer before its result arrives."
+	);
 }
 
 type Missed = Extract<SendOutcome, { kind: "unreachable" | "none" | "self" | "ambiguous" }>;

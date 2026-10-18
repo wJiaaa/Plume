@@ -327,6 +327,13 @@ test("送达消息：还有没回来的就点名，只叫它说这几份带来�
 	assert.doesNotMatch(text, /合并成一份/);
 });
 
+test("送达消息：都回来了，已经答过用户的只说改变了什么，不整份重写", () => {
+	const text = textOf(deliveryMessage([{ report: { id: "s:sub:1", answer: { text: "A 的结论" } }, summary: { agent: "review", description: "复核", status: "done" } }]));
+	assert.match(text, /已经给过用户完整的回答，不要把它重写一遍/);
+	assert.match(text, /新增的、修正的、推翻了之前哪条结论/);
+	assert.match(text, /还没回答过的.*合并成一份/);
+});
+
 test("送达消息：几个结果一条消息，失败的说出原因，给界面的那一份不带报告正文", () => {
 	const message = deliveryMessage([
 		{ report: { id: "s:sub:1", answer: { text: "A 的结论" } }, summary: { agent: "review", description: "审查 \"前端\"", status: "done" } },
