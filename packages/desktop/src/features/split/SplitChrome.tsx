@@ -102,7 +102,9 @@ function ScreenTitle({ sessionId, screen }: { sessionId: string | null; screen: 
 		<>
 			{meta && <Folder size={15} strokeWidth={1.7} aria-hidden className="shrink-0 text-ink-faint" />}
 			{/* 不加粗：同一句话在侧栏和这里各画一遍，侧栏那份是常规字重，顶栏加粗就成两种标题。 */}
-			<span data-ly-screen-title className="min-w-0 truncate text-label text-ink select-none">{title}</span>
+			{/* `shrink-[1000]`：排不下时先缩它，缩到 0 才轮到右边的按钮。不写成右边 `shrink` 取一个小数——
+			    能缩的只剩它们时，系数加起来小于 1，浏览器只分出那一小部分，等于没缩。 */}
+			<span data-ly-screen-title className="min-w-0 shrink-[1000] truncate text-label text-ink select-none">{title}</span>
 			{meta && (
 				<div className="no-drag flex shrink-0">
 					<ToolbarButton label={t("split.sessionActions")} onClick={menu.toggle} active={menu.open}>
@@ -129,7 +131,12 @@ function ScreenTitle({ sessionId, screen }: { sessionId: string | null; screen: 
 function ScreenTools({ sessionId, screen, after }: { sessionId: string | null; screen: boolean; after?: React.ReactNode }) {
 	const { t } = useI18n();
 	return (
-		<div data-ly-split-tools data-dock-actions className="no-drag relative z-[1] ml-auto flex shrink-0 items-center gap-0.5">
+		/*
+		 * 排不下时它也让：标题先缩到 0（`ScreenTitle` 的 `shrink-[1000]`），再轮到快捷面板按钮从后往前
+		 * 折走（`PanelMenu`），按钮自己不压扁。原来整块 `shrink-0`，单屏标题栏自 485cc847 起长在会话卡片里、
+		 * 左边还要给红绿灯和侧栏开关让出 180px 上下，最小窗口开着会话时溢出二十多像素，「面板」在窗口外面。
+		 */
+		<div data-ly-split-tools data-dock-actions className="no-drag relative z-[1] ml-auto flex min-w-0 items-center gap-0.5 [&_button]:shrink-0">
 			<PanelMenu
 				scope={paneKey(sessionId)}
 				extras={screen && sessionId ? (onClose) => <SplitMoveItems sessionId={sessionId} onClose={onClose} includeWindow /> : undefined}

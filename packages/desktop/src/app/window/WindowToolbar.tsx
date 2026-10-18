@@ -142,8 +142,13 @@ export function PanelMenu({
 
 	return (
 		<>
-			<div className="flex items-center gap-0.5">
-				<span data-ly-panel-quick className="contents">
+			<div className="flex min-w-0 items-center gap-0.5">
+				{/*
+				 * 标题栏排不下时，放不下的那几颗折到第二行、被裁掉：它们在「面板」菜单里都有一项，「面板」
+				 * 本身不在这一组里，一直留着。`clip` 不是 `hidden`：后者能被焦点滚动，Tab 到被折走的那颗时
+				 * 整组会往上滚一行。
+				 */}
+				<span data-ly-panel-quick className="flex h-7 min-w-0 flex-wrap items-center gap-0.5 overflow-clip">
 				{QUICK.map((kind) => {
 					const def = definitions.find((entry) => entry.kind === kind);
 					// Absent rather than disabled when it cannot be opened: a row of greyed buttons
