@@ -74,6 +74,8 @@ async function seed(home: string): Promise<void> {
 				cwd: `/w/${name}`,
 				projectId: name,
 				projectName: name,
+				// 归属只认 `project`（72efa40b），不从 cwd 推算：不写它，这些会话全落进「聊天」。
+				project: name,
 				createdAt: updatedAt - 60_000,
 				updatedAt,
 				modelId: "m",
@@ -113,7 +115,7 @@ async function seed(home: string): Promise<void> {
 			version: 1,
 			providers: [],
 			mcpServers: [],
-			projects: PROJECTS.map((name, i) => ({ path: `/w/${name}`, name, pinned: false, lastOpenedAt: 100 - i })),
+			projects: PROJECTS.map((name, i) => ({ id: name, path: `/w/${name}`, name, pinned: false, lastOpenedAt: 100 - i })),
 			defaultModelId: null,
 			permissionMode: "auto",
 			thinking: "medium",
