@@ -244,9 +244,8 @@ test("provider and effort controls persist, align, and adapt to narrow settings"
 	await click(app, 'button:has(svg.lucide-settings)'); await click(app, "nav button", "智能体", "starts");
 	try {
 		await until(app, `document.querySelector('[data-agent-profile="explore"]')`, 900);
-		assert.equal(await app.evaluate(`document.querySelectorAll('[aria-label="compact 思考等级"]').length`), 0);
-		await click(app, '[aria-label="compact 模型"]'); await click(app, '[data-model="secondary/model"] [role="menuitem"]');
-		await until(app, `document.querySelector('[aria-label="compact 模型"]').dataset.lyTip.includes('第二供应商')`, 900);
+		// 压缩模型那一行删掉了：压缩从主请求分叉才吃得到缓存，换模型就读不到（c9fcf77e）。
+		assert.equal(await app.evaluate(`document.querySelectorAll('[aria-label="compact 模型"], [data-agent-profile="compact"]').length`), 0);
 		await click(app, '[aria-label="explore 模型"]'); await click(app, '[data-model="secondary/model"] [role="menuitem"]');
 		await until(app, `document.querySelector('[aria-label="explore 模型"]').dataset.lyTip.includes('第二供应商')`, 900);
 		await click(app, '[aria-label="explore 思考等级"]');
@@ -310,7 +309,7 @@ test("sidechat shows its earlier exchange, queries early history and full tool t
 	savedProfiles = JSON.parse(await readFile(join(app.home, "settings.json"), "utf8")).subAgentProfiles;
 });
 
-test("@ agents are selectable and @compact executes real compaction with the configured model", async (t) => {
+test("@ agents are selectable and @compact executes real compaction with the session's own model", async (t) => {
 	const composer = '[data-dock-pane="conversation"] textarea';
 	for (const name of ["simple", "reason"]) {
 		await click(app, composer); await app.send("Input.insertText", { text: "@" + name });
@@ -326,9 +325,15 @@ test("@ agents are selectable and @compact executes real compaction with the con
 	await app.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", windowsVirtualKeyCode: 13, text: "\r" });
 	await app.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", windowsVirtualKeyCode: 13 });
 	await until(app, `document.querySelector('[data-command-status="done"]')?.innerText.includes('保留 EARLY_MAIN_DECISION')`, 900);
-	const compact = requests.slice(start).find(request => request.path.startsWith("/secondary"));
-	assert.ok(compact); assert.match(JSON.stringify(compact.body), /保留 EARLY_MAIN_DECISION/);
-	t.diagnostic(JSON.stringify({ command: "@compact", provider: compact.path }));
+	const compact = requests.slice(start).find(request => JSON.stringify(request.body).includes("保留 EARLY_MAIN_DECISION"));
+	assert.ok(compact, "压缩真的带着那句指令发出了请求");
+	/*
+	 * 写摘要的是这次会话自己的模型，不是别的供应商。设置里的压缩模型删掉了（c9fcf77e）：摘要请求从上一次
+	 * 主请求分叉，换模型就读不到主请求的缓存。第二供应商上配着的 explore 不该被借来压缩。
+	 */
+	assert.ok(!compact.path.startsWith("/secondary"), compact.path);
+	assert.equal(compact.body.model, "gpt-5.6-sol");
+	t.diagnostic(JSON.stringify({ command: "@compact", provider: compact.path, forked: Array.isArray(compact.body.tools) }));
 	const previous = await app.evaluate<number>(`document.querySelector('[data-dock-pane="chat"]').innerText.split('查到早期决策').length`);
 	await send("EARLY_REQUEST 压缩后再次核对原始决策");
 	await until(app, `document.querySelector('[data-dock-pane="chat"]').innerText.split('查到早期决策').length > ${previous}`, 900);
@@ -397,9 +402,11 @@ test("retry settings apply without a save button and fixed waits last about five
 	 *
 	 * This is the thing the old dropdown could not do: say what each fault does without being
 	 * asked. The defaults differ, and the point of the page is that the difference is visible.
+	 * Network faults back off and give up after about four minutes since 12bb7b0b; they used to
+	 * retry forever, which once kept a run "going" for 54 minutes against a dead relay.
 	 */
 	assert.deepEqual(await app.evaluate(`[...document.querySelectorAll('[data-retry-summary]')].map(e=>e.dataset.retrySummary+' → '+e.textContent)`),
-		["network → 无限重试 · 每 5 秒", "upstream → 重试 10 次 · 每 5 秒"]);
+		["network → 重试 10 次 · 5 秒起递增，最长 30 秒", "upstream → 重试 10 次 · 每 5 秒"]);
 	await openRetryRule("上游故障");
 	assert.equal(await app.evaluate(`document.querySelector('[aria-label="上游故障重试间隔秒数"]').value`), "5");
 	await click(app, '[aria-label="上游故障重试次数"]'); await app.evaluate(`document.querySelector('[aria-label="上游故障重试次数"]').select()`); await app.send("Input.insertText", { text: "4" });
@@ -411,7 +418,7 @@ test("retry settings apply without a save button and fixed waits last about five
 	assert.equal(await app.evaluate(`document.querySelectorAll('[data-retry-settings] button[type="submit"], [data-retry-settings] form').length`), 0);
 	assert.deepEqual(await persistedUpstream(rule => rule.retries === 4 && rule.strategy === "linear"), { retries: 4, strategy: "linear", intervalMs: 5000, maxIntervalMs: 30000 });
 	// The rule nobody touched is still the one that shipped.
-	assert.deepEqual(JSON.parse(await readFile(join(app.home, "settings.json"), "utf8")).retryPolicy.network, { retries: null, strategy: "fixed", intervalMs: 5000, maxIntervalMs: 30000 });
+	assert.deepEqual(JSON.parse(await readFile(join(app.home, "settings.json"), "utf8")).retryPolicy.network, { retries: 10, strategy: "linear", intervalMs: 5000, maxIntervalMs: 30000 });
 	for (const width of [1280, 375]) {
 		await app.send("Emulation.setDeviceMetricsOverride", { width, height: 850, deviceScaleFactor: 1, mobile: false }); await frames(app);
 		await click(app, '[aria-label="上游故障重试次数"]');
