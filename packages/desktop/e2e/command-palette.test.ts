@@ -38,6 +38,8 @@ async function seed(home: string): Promise<void> {
 				cwd,
 				projectId: name,
 				projectName: name,
+				// 归属只认 `project`（72efa40b），不从 cwd 推算；项目也要有 id 才认得出来。
+				project: name,
 				createdAt: updatedAt - 60_000,
 				updatedAt,
 				modelId: "m",
@@ -53,7 +55,7 @@ async function seed(home: string): Promise<void> {
 	await writeFile(join(home, "window.json"), JSON.stringify({ width: 1200, height: 800 }));
 	await writeFile(join(home, "settings.json"), JSON.stringify({
 		providers: [],
-		projects: PROJECTS.map((name, i) => ({ path: join(home, "work", name), name, pinned: false, lastOpenedAt: 100 - i })),
+		projects: PROJECTS.map((name, i) => ({ id: name, path: join(home, "work", name), name, pinned: false, lastOpenedAt: 100 - i })),
 		appearance: { theme: "light" },
 	}));
 }
