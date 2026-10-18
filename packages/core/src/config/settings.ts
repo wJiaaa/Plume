@@ -269,7 +269,7 @@ export interface Settings {
 	 * is an upgrade rather than a prerequisite. Read at call time so pasting one in takes effect
 	 * without a restart.
 	 */
-	searchApiKeys?: { tavily?: string; exa?: string; brave?: string };
+	searchApiKeys?: { tavily?: string; exa?: string; brave?: string; deepseek?: string };
 	/** Which search provider to use when more than one is usable. */
 	searchProvider?: string | null;
 	/**

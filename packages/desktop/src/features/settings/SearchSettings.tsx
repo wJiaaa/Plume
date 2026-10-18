@@ -27,7 +27,7 @@ interface Choice {
 	costKey: MessageKey;
 	detailKey: MessageKey;
 	/** Absent for the keyless one. */
-	key?: "tavily" | "exa" | "brave";
+	key?: "tavily" | "exa" | "brave" | "deepseek";
 	signup?: string;
 }
 
@@ -39,6 +39,14 @@ const CHOICES: Choice[] = [
 		detailKey: "search.tavily",
 		key: "tavily",
 		signup: "https://tavily.com",
+	},
+	{
+		id: "deepseek",
+		name: "DeepSeek",
+		costKey: "search.needsKeyPaid",
+		detailKey: "search.deepseek",
+		key: "deepseek",
+		signup: "https://platform.deepseek.com/api_keys",
 	},
 	{
 		id: "brave",
@@ -106,10 +114,10 @@ export function SearchSettings() {
 	/*
 	 * 每次落盘都从 store 现读，不用这一次渲染闭包里的 `settings`。
 	 *
-	 * 三个 key 各自防抖提交，第二个框的写入完全可能落在第一个框之后一瞬。合并进渲染时那份副本，
+	 * 几个 key 各自防抖提交，第二个框的写入完全可能落在第一个框之后一瞬。合并进渲染时那份副本，
 	 * 会把刚存好的另一个 key 悄悄改回原值。
 	 */
-	const setKey = (which: "tavily" | "exa" | "brave", value: string) => {
+	const setKey = (which: "tavily" | "exa" | "brave" | "deepseek", value: string) => {
 		const current = useApp.getState().settings;
 		if (!current) return;
 		const now = current.searchApiKeys ?? {};
@@ -133,7 +141,7 @@ export function SearchSettings() {
 						<div key={choice.id} className={index === 0 ? "" : "border-t border-line-soft"}>
 							<button
 								type="button"
-								/* 探针和 e2e 靠它认出这五条，而不是靠文字或者「带个圆圈的按钮」这种碰运气的选择器。 */
+								/* 探针和 e2e 靠它认出每一条，而不是靠文字或者「带个圆圈的按钮」这种碰运气的选择器。 */
 								data-search-provider={choice.id}
 								data-selected={active || undefined}
 								onClick={() => void saveSettings({ ...settings, searchProvider: active ? null : choice.id })}

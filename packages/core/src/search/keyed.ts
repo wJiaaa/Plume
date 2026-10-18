@@ -1,8 +1,8 @@
 /**
  * The providers that want an API key, and give better answers for it.
  *
- * Both are search services built for programs rather than browsers: they return structured
- * results with snippets already extracted, they do not rate-limit a normal session, and their
+ * Each is a search service built for programs rather than browsers: it returns structured
+ * results with snippets already extracted, it does not rate-limit a normal session, and its
  * markup cannot change under us because there is no markup. The cost is an account.
  *
  * They are written against the same shape because the differences between them are two field
@@ -14,6 +14,7 @@ import { SearchError, type SearchProvider, type SearchRequest, type SearchResult
 export const TAVILY_PROVIDER_ID = "tavily";
 export const EXA_PROVIDER_ID = "exa";
 export const BRAVE_PROVIDER_ID = "brave";
+export const DEEPSEEK_PROVIDER_ID = "deepseek";
 
 /**
  * How a service takes its request: some want a POST body, Brave wants a GET query string.
@@ -112,6 +113,38 @@ const SPECS: Record<string, KeyedSpec> = {
 					...(item.title ? { title: stripHighlightMarkers(item.title) } : {}),
 					...(item.description ? { snippet: stripHighlightMarkers(item.description) } : {}),
 					...(item.age ? { publishedAt: item.age } : {}),
+				});
+			}
+			return { sources, truncated: false };
+		},
+	},
+	[DEEPSEEK_PROVIDER_ID]: {
+		id: DEEPSEEK_PROVIDER_ID,
+		name: "DeepSeek",
+		endpoint: "https://api.deepseek.com/v1/tools/search",
+		auth: (key) => ({ authorization: `Bearer ${key}` }),
+		body: (request) => ({
+			query: request.query,
+			count: request.maxResults ?? 8,
+			// `need_content` stays at its default: eight full pages per search is a page of context
+			// the model did not ask for, and `summary` below is the field meant for it to read.
+		}),
+		parse: (payload) => {
+			const data = payload as {
+				results?: { url?: string; title?: string; snippet?: string; summary?: string; date?: string }[];
+			};
+			const sources: SearchSource[] = [];
+			for (const item of data.results ?? []) {
+				if (!item.url) continue;
+				// `summary` is the 600–800 character version written for a model; `snippet` is the
+				// 100–200 character one written for a UI. The model gets the longer one when both
+				// exist, because a short snippet is usually where a useful answer stops.
+				const snippet = item.summary?.trim() || item.snippet?.trim();
+				sources.push({
+					url: item.url,
+					...(item.title ? { title: item.title } : {}),
+					...(snippet ? { snippet } : {}),
+					...(item.date ? { publishedAt: item.date } : {}),
 				});
 			}
 			return { sources, truncated: false };

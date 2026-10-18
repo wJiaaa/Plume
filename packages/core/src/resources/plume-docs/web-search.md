@@ -2,11 +2,12 @@
 
 ## web_search 用的是哪个服务
 
-`web_search` 不绑定某一家，用的是「设置 › 网页搜索」里选中的那个。可选五个：
+`web_search` 不绑定某一家，用的是「设置 › 网页搜索」里选中的那个。可选六个：
 
 | 服务 | 要不要 key | 说明 |
 | --- | --- | --- |
 | Tavily | 要，每月 1000 次免费 | 为 agent 设计，会连带返回一段总结 |
+| DeepSeek | 要，按次计费（每 1000 次 5 元） | 自研搜索引擎，中文结果好，支持 `site:`、`lang:`、`after:` 这类搜索语法 |
 | Brave Search | 要，每月 2000 次免费 | 独立索引，免费额度最大 |
 | Exa | 要，有免费额度 | 语义检索，找概念和相似内容更强 |
 | DuckDuckGo 速答 | 不要 | 官方接口、不限流，但只有百科式答案，不是网页结果列表，基本只对英文词条有效 |
@@ -28,11 +29,11 @@
 
 改动立即生效，不用重启。选了一个要 key 但没填 key 的服务，搜索会失败并提示「还不能用（多半是没填 key）」。
 
-搜索服务的 key 保存在 `~/.plume/settings.json` 的 `searchApiKeys` 里，选中的服务记在 `searchProvider`（值是 `tavily`、`brave`、`exa`、`ddg-instant`、`duckduckgo` 之一）。注意：这些 key 不像模型供应商的 API Key 那样另行加密存放。
+搜索服务的 key 保存在 `~/.plume/settings.json` 的 `searchApiKeys` 里，选中的服务记在 `searchProvider`（值是 `tavily`、`deepseek`、`brave`、`exa`、`ddg-instant`、`duckduckgo` 之一）。注意：这些 key 不像模型供应商的 API Key 那样另行加密存放。
 
 ## 每次搜索的行为
 
-- 每次最多返回 8 条结果（标题、链接、摘要）；Tavily 还会附一段总结。条数不能调。
+- 每次最多返回 8 条结果（标题、链接、摘要）；Tavily 还会附一段总结，DeepSeek 每条带的是 600～800 字符的长摘要。条数不能调。
 - 30 秒没有响应算超时。
 - 搜索不需要审批：它只把查询词发给选中的服务。结果按不可信内容处理，agent 不会把搜到的文字当成给它的指令。
 

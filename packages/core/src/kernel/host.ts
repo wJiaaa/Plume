@@ -20,7 +20,13 @@ import { useSandbox } from "../sandbox/index.ts";
 import { duckDuckGoProvider } from "../search/duckduckgo.ts";
 import { registerSearchProvider } from "../search/index.ts";
 import { instantAnswerProvider } from "../search/instant.ts";
-import { BRAVE_PROVIDER_ID, EXA_PROVIDER_ID, keyedSearchProvider, TAVILY_PROVIDER_ID } from "../search/keyed.ts";
+import {
+	BRAVE_PROVIDER_ID,
+	DEEPSEEK_PROVIDER_ID,
+	EXA_PROVIDER_ID,
+	keyedSearchProvider,
+	TAVILY_PROVIDER_ID,
+} from "../search/keyed.ts";
 import type { SessionStorage } from "../session/storage.ts";
 import { plumeHome } from "../session/store.ts";
 import { useSkillRegistry } from "../skills/registry.ts";
@@ -150,4 +156,5 @@ export function registerDefaultSearchProviders(keys: () => Settings["searchApiKe
 	registerSearchProvider(keyedSearchProvider(TAVILY_PROVIDER_ID, () => keys()?.tavily));
 	registerSearchProvider(keyedSearchProvider(EXA_PROVIDER_ID, () => keys()?.exa));
 	registerSearchProvider(keyedSearchProvider(BRAVE_PROVIDER_ID, () => keys()?.brave));
+	registerSearchProvider(keyedSearchProvider(DEEPSEEK_PROVIDER_ID, () => keys()?.deepseek));
 }

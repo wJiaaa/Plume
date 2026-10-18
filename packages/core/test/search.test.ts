@@ -27,7 +27,13 @@ import {
 	type SearchProvider,
 } from "../src/search/index.ts";
 import { instantAnswerProvider } from "../src/search/instant.ts";
-import { keyedSearchProvider, BRAVE_PROVIDER_ID, TAVILY_PROVIDER_ID, EXA_PROVIDER_ID } from "../src/search/keyed.ts";
+import {
+	keyedSearchProvider,
+	BRAVE_PROVIDER_ID,
+	DEEPSEEK_PROVIDER_ID,
+	TAVILY_PROVIDER_ID,
+	EXA_PROVIDER_ID,
+} from "../src/search/keyed.ts";
 
 function fake(id: string, usable: boolean, sources = 1): SearchProvider {
 	return {
@@ -342,6 +348,47 @@ test("Brave sends its query in the URL and strips the bolding it adds", async ()
 	assert.match(seen, /[?&]count=5/);
 	assert.equal(result.sources[0].title, "Node fs");
 	assert.equal(result.sources[0].snippet, "The fs module");
+});
+
+test("DeepSeek sends its query as JSON and prefers the long summary", async () => {
+	let body: Record<string, unknown> = {};
+	let authorization = "";
+	const provider = keyedSearchProvider(
+		DEEPSEEK_PROVIDER_ID,
+		() => "k",
+		async (_url, init) => {
+			const headers = init?.headers as Record<string, string> | undefined;
+			body = JSON.parse(String(init?.body));
+			authorization = headers?.authorization ?? "";
+			return new Response(
+				JSON.stringify({
+					results: [
+						{
+							url: "https://a.example",
+							title: "A",
+							snippet: "short",
+							summary: "the long version written for a model",
+							date: "2026-06-01T00:00:00+00:00",
+						},
+						{ url: "https://b.example", title: "B", snippet: "short only" },
+						{ title: "no url" },
+					],
+				}),
+				{ status: 200, headers: { "content-type": "application/json" } },
+			);
+		},
+	);
+	const result = await provider.search({ query: "DeepSeek V4", maxResults: 5 });
+	assert.equal(authorization, "Bearer k");
+	assert.equal(body.query, "DeepSeek V4");
+	assert.equal(body.count, 5);
+	assert.deepEqual(
+		result.sources.map((s) => s.url),
+		["https://a.example", "https://b.example"],
+	);
+	assert.equal(result.sources[0].snippet, "the long version written for a model");
+	assert.equal(result.sources[0].publishedAt, "2026-06-01T00:00:00+00:00");
+	assert.equal(result.sources[1].snippet, "short only");
 });
 
 test("webSearchTool accepts pattern and search aliases", async () => {
