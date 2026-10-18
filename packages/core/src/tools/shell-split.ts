@@ -597,6 +597,85 @@ export function sequence(command: string): SequenceEntry[] {
 }
 
 /**
+ * Whether the line runs anything that is not one of its own commands: a substitution (`$(…)`, a
+ * backtick pair, `<(…)`) or a heredoc. `sequence` folds those into `…`, so it cannot say.
+ */
+export function nests(command: string): boolean {
+	return scan(command).some((piece) => piece.depth > 0 || piece.body || piece.after === "sub" || piece.after === "close");
+}
+
+/** A word the shell passes on as written, once quotes and escapes are gone. */
+export interface LiteralWord {
+	text: string;
+	/** Where in `text` the first unquoted `*`, `?` or `[` is, or -1. From there the shell may put file names in its place. */
+	glob: number;
+}
+
+/**
+ * One command's words when the shell would pass every one of them on as written — or `null` when it
+ * would not: a variable or substitution (`$`, a backtick), a redirection, a subshell or group, brace
+ * expansion, a comment, or another command joined on.
+ *
+ * Bash's rules. A backtick, PowerShell's escape, is taken as a substitution, so a PowerShell line
+ * that leans on it comes back `null` rather than misread.
+ */
+export function literalWords(command: string): LiteralWord[] | null {
+	const words: LiteralWord[] = [];
+	let text = "";
+	let glob = -1;
+	let started = false;
+	let quote: "'" | '"' | null = null;
+	const end = () => {
+		if (started) words.push({ text, glob });
+		text = "";
+		glob = -1;
+		started = false;
+	};
+	for (let i = 0; i < command.length; i++) {
+		const char = command[i];
+		const next = command[i + 1];
+		if (quote === "'") {
+			if (char === "'") quote = null;
+			else text += char;
+			continue;
+		}
+		if (quote === '"') {
+			if (char === "$" || char === "`") return null;
+			if (char === "\\" && next !== undefined && /[$`"\\]/.test(next)) {
+				text += next;
+				i++;
+			} else if (char === '"') quote = null;
+			else text += char;
+			continue;
+		}
+		if (/\s/.test(char)) {
+			end();
+			continue;
+		}
+		if (char === "'" || char === '"') {
+			quote = char;
+			started = true;
+			continue;
+		}
+		if (char === "\\") {
+			if (next === undefined || next === "\n") return null;
+			text += next;
+			i++;
+			started = true;
+			continue;
+		}
+		// `#` starts a comment only at the beginning of a word; `issue#12` is one word.
+		if ("$`()<>{}|&;".includes(char) || (char === "#" && !started)) return null;
+		if (glob === -1 && (char === "*" || char === "?" || char === "[")) glob = text.length;
+		text += char;
+		started = true;
+	}
+	if (quote) return null;
+	end();
+	return words;
+}
+
+/**
  * One command's words, with quotes and escapes respected and then removed.
  *
  * `bash -c "rm -rf ~"` is three words, the third of which is a whole command line — and a rule

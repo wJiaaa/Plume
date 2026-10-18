@@ -167,7 +167,7 @@ test("a read-only program with something to run is not read-only", () => {
 	assert.equal(isReadOnlyCommand("env FOO=1 rm -rf ~"), false);
 
 	// `find` deletes and executes.
-	assert.equal(isReadOnlyCommand("find . -name '*.ts'"), false, "引号也是元字符");
+	assert.equal(isReadOnlyCommand("find . -name '*.ts'"), false, "find 不在只读表上");
 	assert.equal(isReadOnlyCommand("find . -type f"), false, "find 不再无条件放行");
 	assert.equal(isReadOnlyCommand("find . -delete"), false);
 
@@ -248,6 +248,89 @@ test("what is read-only stays read-only", () => {
 	]) {
 		assert.equal(isReadOnlyCommand(command), true, `应免审批: ${command}`);
 	}
+});
+
+test("a chain of read-only commands is read-only: what models write to look around", () => {
+	// Real commands from 2026-10 sessions. Every one was judged a write before, and run one at a time.
+	for (const command of [
+		'cd packages/core/src/tools && grep -rn "as text before editing" . ; wc -l edit.ts',
+		"git status --porcelain | head -20",
+		'cd /work/Eim && grep -rn "MessageSelector\\|Callback" --include=*.java eim-echat/src | grep -v "/target/" | head -20',
+		"cat VERSION 2>/dev/null; git log --oneline -8",
+		"git ls-files 2>&1 | wc -l",
+		"ls src && ls test",
+		"ls &>/dev/null && git status",
+		"ls '$(rm -rf ~)'",
+		"echo '; rm -rf ~'",
+		// A comment, as bash reads it: only `ls` runs.
+		"ls # ; rm -rf ~",
+		"cd ~/projects/app && git diff --stat",
+	]) {
+		assert.equal(isReadOnlyCommand(command), true, `应免审批: ${command}`);
+	}
+});
+
+test("a chain is not read-only when any link writes, runs something else, or hides a command", () => {
+	for (const command of [
+		// A link that is not read-only.
+		"cd src && rm -rf ~",
+		"ls | xargs rm",
+		"grep -rl x . | sh",
+		"git log --output=x | head",
+		"FOO=bar ls",
+		"sed -n 1,80p a.txt",
+		// Redirections that keep what they write.
+		"cat a > b",
+		"cat a >> ~/.bashrc",
+		"ls 2>out.txt",
+		"ls >/dev/nullx",
+		// Something runs that is not a link of the chain.
+		"echo $(rm -rf ~)",
+		"echo `rm -rf ~`",
+		"cat <(rm -rf ~)",
+		'grep "$HOME" notes.txt',
+		"cat $HOME/.ssh/id_rsa",
+		"(rm -rf ~)",
+		"{ rm -rf ~; }",
+		"ls & rm -rf ~",
+		"ls &",
+		"cat <<EOF\nhi\nEOF",
+		// Quoting the scanner must not misread.
+		'echo \\"; rm -rf ~',
+	]) {
+		assert.equal(isReadOnlyCommand(command), false, command);
+	}
+});
+
+test("a leading cd counts only when the read check can see where it goes", () => {
+	/*
+	 * `authorizeCommandReads` judges the `cd` target as a path the command names. Each of these goes
+	 * somewhere it cannot see — home, the previous directory, a variable, a glob that may be a link
+	 * out — or resolves against a directory it does not track.
+	 */
+	for (const command of [
+		"cd && cat .ssh/id_rsa",
+		"cd ~root && cat .ssh/id_rsa",
+		"cd - && cat secrets.txt",
+		"cd $HOME && cat .ssh/id_rsa",
+		"cd lnk* && cat secrets.txt",
+		"cd -P out && cat secrets.txt",
+		"cd a && cd .. && cat secrets.txt",
+		"ls && cd .. && cat secrets.txt",
+		"cd a; cat secrets.txt",
+		"cd a",
+	]) {
+		assert.equal(isReadOnlyCommand(command), false, command);
+	}
+});
+
+test("a word that starts as a glob may expand into a flag, where a flag can write", () => {
+	// A file named `--output=x` in the directory turns `git diff *` into a write.
+	for (const command of ["git diff *", "rg TODO *", "fd x ?", "git log '--output='*"])
+		assert.equal(isReadOnlyCommand(command), false, command);
+	// Where no flag writes, or the glob can only become names with a fixed start, it stays read-only.
+	for (const command of ["ls *.ts", "wc -l src/*.ts", "git branch --list feat*", "cat docs/*.md | head"])
+		assert.equal(isReadOnlyCommand(command), true, command);
 });
 
 test("the scanner reads quoting, comments and heredocs the way bash does", () => {

@@ -296,6 +296,28 @@ test("a credential read through bash asks, despite the read-only table", async (
 	assert.ok(!/BEGIN .* PRIVATE KEY/.test(textOf(result)), "and nothing may come back");
 });
 
+test("a chain that enters a credential directory first still asks", async (t) => {
+	/*
+	 * `cd ~/.ssh && cat id_ed25519` is read-only now, so nothing but the read check stands before the
+	 * key. The key's own word is relative and lands inside the workspace; what is judged is the `cd`
+	 * target — which is why `isReadOnlyCommand` only lets a `cd` through when that target is spelled out.
+	 */
+	const sshDir = join(HOME, ".ssh");
+	await mkdir(sshDir, { recursive: true });
+	await writeFile(join(sshDir, "id_ed25519"), "-----BEGIN OPENSSH PRIVATE KEY-----\nfake\n-----END OPENSSH PRIVATE KEY-----\n", "utf8");
+	t.after(() => rm(sshDir, { recursive: true, force: true }));
+
+	const command = `cd ${sh(sshDir)} && cat id_ed25519`;
+	assert.equal(isReadOnlyCommand(command), true, "the premise: no approval of its own");
+	const approvals = { decisions: ["reject" as const], seen: [] as ApprovalRequest[] };
+	const result = await bashTool.execute({ command } as never, ctxFor(WS, approvals));
+
+	assert.equal(approvals.seen.length, 1, "it must be asked about");
+	assert.equal(approvals.seen[0].kind, "read");
+	assert.equal(result.isError, true);
+	assert.ok(!/BEGIN .* PRIVATE KEY/.test(textOf(result)), "and nothing may come back");
+});
+
 test("the file tool and the shell now give the same answer for the same path", async (t) => {
 	const ws = await workspace(t);
 	const outside = await mkdtemp(join(HOME, ".plume-test-outside-"));

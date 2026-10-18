@@ -15,6 +15,7 @@ import { errorResult } from "./result.ts";
 import { OutputBuffer } from "./bash-output.ts";
 import { FRESH_RESULT_MAX_CHARS } from "../agent/prune.ts";
 import { authorizeCommandReads } from "./read-access.ts";
+import { literalWords, nests, sequence, type LiteralWord } from "./shell-split.ts";
 import { describeStatus, readExit } from "./exit-status.ts";
 import { commandShell, type CommandShell } from "../platform.ts";
 import type { SandboxProcess } from "../kernel/services.ts";
@@ -117,20 +118,62 @@ const WRITES_ANYWAY: Record<string, RegExp> = {
 
 export function isReadOnlyCommand(command: string): boolean {
 	/*
-	 * Any shell metacharacter can chain a mutating command onto a safe one.
+	 * A chain is as read-only as its every link, so the line is taken apart first.
 	 *
-	 * `\n` and `\r` included. They separate commands exactly as `;` does, and their absence here
-	 * was a complete bypass: `ls\nrm -rf ~` has `ls` as its first word, no metacharacter from the
-	 * old set, and so skipped the approval prompt while running both halves.
+	 * This used to refuse any shell metacharacter at all, because one can chain a mutating command
+	 * onto a safe one. That kept `ls; rm -rf ~` out, and also nearly everything a model actually
+	 * writes to look around: of 534 real commands, 3 passed — `cd x && grep -rn … | head` and
+	 * `git status | head` were judged writes, asked for approval and run one at a time. The split
+	 * is now `shell-split.ts`, the scanner the risk classifier already reads (its header lists
+	 * the quoting tricks it was hardened against), and each link must pass on its own.
+	 *
+	 * Still refused outright: a substitution or heredoc, which runs something that is not a link
+	 * of the chain; a job sent to the background; and any newline — `ls\nrm -rf ~` is the bypass
+	 * this function had before, and a read-only one-liner has no need of one.
 	 */
-	if (/[;&|><`$(){}\n\r]/.test(command)) return false;
-	const parts = command.trim().split(/\s+/);
-	const head = parts[0];
-	if (!head) return false;
-	const args = parts.slice(1);
+	if (/[\n\r]/.test(command) || nests(command)) return false;
+	const links = sequence(command);
+	if (links.length === 0) return false;
+	return links.every((link, index) => {
+		if (link.after === "&") return false;
+		const words = literalWords(withoutDiscardedOutput(link.text));
+		if (!words?.length) return false;
+		if (words[0].text === "cd") return index === 0 && link.after === "&&" && links.length > 1 && entersKnownPlace(words);
+		return readsOnly(words);
+	});
+}
 
+/** `2>/dev/null` and `2>&1` write nothing anyone keeps; any other redirection stays a write. */
+function withoutDiscardedOutput(command: string): string {
+	return command.replace(/(^|\s)(?:\d?>|&>)\s*\/dev\/null(?=\s|$)/g, "$1").replace(/(^|\s)\d?>&\d(?=\s|$)/g, "$1");
+}
+
+/**
+ * A leading `cd` changes nothing on disk; what it can change is which files the rest reads.
+ *
+ * `authorizeCommandReads` judges the directory named here like any other path a command names, so
+ * leaving the workspace is still asked about — but only when it can see where `cd` goes. Bare
+ * `cd` and `cd ~user` go home, `cd -` goes wherever the shell was, and a glob may land on a link
+ * pointing out; that check sees none of them. It also resolves every path against the session's
+ * directory, not cumulatively, which is why only the first link may be a `cd`.
+ */
+function entersKnownPlace(words: LiteralWord[]): boolean {
+	if (words.length !== 2) return false;
+	const [, target] = words;
+	if (target.glob !== -1 || !target.text || target.text.startsWith("-")) return false;
+	return !target.text.startsWith("~") || target.text === "~" || target.text.startsWith("~/");
+}
+
+function readsOnly(words: LiteralWord[]): boolean {
+	const [head, ...args] = words.map((word) => word.text);
+
+	/*
+	 * A word that starts as a glob may come back as any file name there is, `--output=x` included.
+	 * Only matters where some flag writes or runs something; `feat*` can only become `feat…`.
+	 */
 	const veto = WRITES_ANYWAY[head];
 	if (veto && args.some((arg) => veto.test(arg))) return false;
+	if (veto && words.slice(1).some((word) => word.glob === 0 || (word.glob > 0 && word.text.startsWith("-")))) return false;
 
 	if (READ_ONLY_COMMANDS.has(head)) return true;
 
