@@ -290,7 +290,7 @@ function Dashboard({
 				</Card>
 			</div>
 
-			<div aria-label={t("usage.metrics")} className="mt-3 grid grid-cols-2 overflow-hidden rounded-xl border border-line bg-card/40 @2xl:grid-cols-5">
+			<div aria-label={t("usage.metrics")} className="mt-3 grid grid-cols-2 overflow-hidden rounded-lg border border-line bg-card/40 @2xl:grid-cols-5">
 				<Metric label={t("usage.tokensProcessed")} value={totals.tokens} format={formatCompact} sub={t("usage.perActiveDay", { n: formatCompact(totals.activeDays > 0 ? totals.tokens / totals.activeDays : 0) })} />
 				<Metric label={t("usage.cacheHit")} value={totals.cacheRead} format={formatCompact} sub={t("usage.ofInput", { percent: percent(totals.cacheRead, totals.input + totals.cacheRead + totals.cacheWrite) })} />
 				<Metric label={t("usage.uncachedInput")} value={totals.input} format={formatCompact} sub={t("usage.cacheWrites", { n: formatCompact(totals.cacheWrite) })} />

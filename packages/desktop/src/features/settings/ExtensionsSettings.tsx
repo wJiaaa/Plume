@@ -153,7 +153,7 @@ export function ExtensionsSettings() {
 
 			{(outdated.length > 0 || (updates?.updating.length ?? 0) > 0) && (
 				<div className={`mx-auto w-full max-w-[900px] shrink-0 pb-4 ${gutter}`}>
-					<div className="flex items-center gap-3 rounded-xl bg-accent/8 px-4 py-2.5" data-settings-updates="">
+					<div className="flex items-center gap-3 rounded-lg bg-accent/8 px-4 py-2.5" data-settings-updates="">
 						<ArrowUp size={14} strokeWidth={2.2} className="shrink-0 text-accent" />
 						<p className="min-w-0 flex-1 truncate text-label text-ink">
 							{updates?.updating.length ? t("market.updatingN", { n: updates.updating.length }) : t("market.updatesN", { n: outdated.length })}

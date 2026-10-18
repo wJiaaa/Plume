@@ -134,7 +134,7 @@ try {
 
 	const memory = await app.evaluate<{ found: boolean; iconDelta: number; trashDelta: number }>(`(() => {
 		const meta = document.querySelector("[data-memory-meta]");
-		const card = meta?.closest("[class*='rounded-xl']");
+		const card = meta?.closest("[class*='rounded-lg']");
 		if (!card) return { found: false, iconDelta: -1, trashDelta: -1 };
 		const icon = card.querySelector("svg");
 		const trash = card.querySelector("button svg");

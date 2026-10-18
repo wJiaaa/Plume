@@ -301,7 +301,7 @@ export function PersonalizationSettings() {
 								{memoryEntries.map((m) => (
 									<div
 										key={m.id}
-										className="flex items-center justify-between gap-3 rounded-xl border border-line bg-card p-3 transition-colors hover:border-line-soft"
+										className="flex items-center justify-between gap-3 rounded-lg border border-line bg-card p-3 transition-colors hover:border-line-soft"
 									>
 										{/*
 										 * 脑图标对着这条记忆的中线，跟右边的删除按钮同高。
@@ -326,7 +326,7 @@ export function PersonalizationSettings() {
 								))}
 							</div>
 						) : (
-							<div className="rounded-xl border border-line/60 bg-card/40 py-8 text-center text-caption text-ink-faint">
+							<div className="rounded-lg border border-line/60 bg-card/40 py-8 text-center text-caption text-ink-faint">
 								{loadingMemory ? t("memory.reading") : t("memory.empty")}
 							</div>
 						)}
@@ -357,7 +357,7 @@ export function PersonalizationSettings() {
 							)}
 						</div>
 						{!(projectMemory && (projectMemory.lessons.length > 0 || projectMemory.extracted)) ? (
-							<div className="rounded-xl border border-line/60 bg-card/40 py-8 text-center text-caption text-ink-faint" data-project-memory-empty>
+							<div className="rounded-lg border border-line/60 bg-card/40 py-8 text-center text-caption text-ink-faint" data-project-memory-empty>
 								{projectMemory === undefined ? t("memory.reading") : t("personalization.projectMemoryEmpty")}
 							</div>
 						) : (
@@ -371,7 +371,7 @@ export function PersonalizationSettings() {
 								 * 项目记忆没有，纯粹是漏了。
 								 */}
 								{projectMemory.lessons.map((lesson) => (
-									<div key={`${lesson.at}-${lesson.text}`} className="flex items-start justify-between gap-2 rounded-xl border border-line bg-card p-3" data-project-lesson>
+									<div key={`${lesson.at}-${lesson.text}`} className="flex items-start justify-between gap-2 rounded-lg border border-line bg-card p-3" data-project-lesson>
 										<div className="min-w-0">
 											<span className="text-detail text-ink leading-relaxed break-words">{lesson.text}</span>
 											{lesson.context && <span className="block text-caption text-ink-muted">{t("personalization.appliesTo", { context: lesson.context })}</span>}
@@ -387,7 +387,7 @@ export function PersonalizationSettings() {
 									</div>
 								))}
 								{projectMemory.extracted && (
-									<div className="flex items-start justify-between gap-2 rounded-xl border border-line bg-card p-3" data-project-extracted>
+									<div className="flex items-start justify-between gap-2 rounded-lg border border-line bg-card p-3" data-project-extracted>
 										<div className="min-w-0">
 											<pre className="whitespace-pre-wrap font-sans text-detail text-ink leading-relaxed break-words">{projectMemory.extracted.text}</pre>
 											<MemoryMeta

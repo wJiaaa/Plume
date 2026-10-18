@@ -21,7 +21,7 @@ import { useI18n } from "../../i18n/index.ts";
 export function InlineCodeSpecimen() {
 	const { t } = useI18n();
 	return (
-		<div className="prose-dw rounded-xl border border-line-soft bg-shell px-3 py-2.5">
+		<div className="prose-dw rounded-lg border border-line-soft bg-shell px-3 py-2.5">
 			<p>{withCodeSpans(t("codePreview.inlineSentence"))}</p>
 		</div>
 	);

@@ -104,7 +104,7 @@ export function AddressBar({ url, bookmarks, search, onOpen, onOutside, inputRef
 		go(choice ? choice.url : value);
 	};
 
-	return <div className="relative min-w-0 flex-1" data-browser-omnibox>
+	return <div className="ly-field ly-field-compact relative min-w-0 flex-1" data-ly-field="" data-browser-omnibox>
 		<span aria-hidden className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-ink-faint" data-omnibox-kind={target?.kind ?? "empty"}>
 			{target?.kind === "search" ? <Search size={12} /> : <Globe size={12} />}
 		</span>
@@ -135,7 +135,8 @@ export function AddressBar({ url, bookmarks, search, onOpen, onOutside, inputRef
 				// Escape hands the field back to the page rather than leaving a half-typed address.
 				if (event.key === "Escape") { setValue(settled); setTyped(false); inputRef.current?.blur(); }
 			}}
-			className="h-[26px] w-full rounded-md border border-line bg-input pl-7 pr-7 text-detail text-ink placeholder:text-ink-faint focus:border-ink-faint"
+			// 字段的底和圆角在外层（`.ly-field`），这里只铺字；左右让出绝对定位的图标和按钮，字仍落在 28px 处。
+			className="h-full min-w-0 flex-1 bg-transparent px-[18px] text-detail text-ink placeholder:text-ink-faint"
 		/>
 		{/*
 		  * Always there, disabled with nothing typed on an empty tab: a button that comes and goes with the page reads as

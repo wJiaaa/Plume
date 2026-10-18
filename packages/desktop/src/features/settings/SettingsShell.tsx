@@ -180,7 +180,7 @@ export function SettingsShell() {
 								setView("chat");
 								dismissNav();
 							}}
-							className={`m-1 flex w-[calc(100%-0.5rem)] items-center gap-2 rounded-xl px-1.5 text-left text-label text-ink-muted transition-colors duration-[var(--ly-t-quick)] hover:bg-card-hover hover:text-ink active:bg-elevated ${
+							className={`m-1 flex w-[calc(100%-0.5rem)] items-center gap-2 rounded-lg px-1.5 text-left text-label text-ink-muted transition-colors duration-[var(--ly-t-quick)] hover:bg-card-hover hover:text-ink active:bg-elevated ${
 								compact ? "h-[40px]" : "h-[32px]"
 							}`}
 						>

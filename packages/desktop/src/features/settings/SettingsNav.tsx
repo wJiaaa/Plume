@@ -36,7 +36,7 @@ export function SettingsNav({
 								aria-current={section === item.id ? "page" : undefined}
 								type="button"
 								onClick={() => onPick(item.id)}
-								className={`flex w-full items-center gap-2 rounded-xl px-2.5 text-left text-label text-ink ${
+								className={`flex w-full items-center gap-2 rounded-lg px-2.5 text-left text-label text-ink ${
 									compact ? "h-[40px]" : "h-[32px]"
 								} ${section === item.id ? "bg-card-hover" : "hover:bg-card-hover"}`}
 							>

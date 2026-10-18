@@ -129,7 +129,7 @@ function Row({ entry, checked, onToggle }: { entry: ImportEntry; checked: boolea
 
 	return (
 		<label
-			className={`flex cursor-pointer items-center gap-3 rounded-xl border p-2.5 transition-colors select-none ${
+			className={`flex cursor-pointer items-center gap-3 rounded-lg border p-2.5 transition-colors select-none ${
 				checked ? "border-accent/40 bg-accent/[0.04]" : "border-line bg-card hover:bg-card-hover/40"
 			}`}
 		>

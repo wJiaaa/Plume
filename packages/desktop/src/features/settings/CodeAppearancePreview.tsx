@@ -194,7 +194,7 @@ function CodeSnippetBox({
 				colorScheme: theme.mode,
 				fontFamily: metrics.fontFamily,
 			}}
-			className="group/spec relative overflow-hidden rounded-xl border border-line-soft transition-colors duration-[var(--ly-t-base)]"
+			className="group/spec relative overflow-hidden rounded-lg border border-line-soft transition-colors duration-[var(--ly-t-base)]"
 		>
 			{/*
 			 * Header, and the only control on the box.

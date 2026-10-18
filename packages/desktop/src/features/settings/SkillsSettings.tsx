@@ -213,7 +213,7 @@ export function SkillsSettings({ filter = "" }: { filter?: string }) {
 								{group.title}
 								<span className="text-label font-normal text-ink-muted tabular-nums">{group.skills.length}</span>
 							</h3>
-							<div className="overflow-hidden rounded-xl bg-card">
+							<div className="overflow-hidden rounded-lg bg-card">
 								{group.skills.map((skill, index) => (
 									<div key={skill.path}>
 										{index > 0 && <div aria-hidden className="h-px bg-line" />}
@@ -223,7 +223,7 @@ export function SkillsSettings({ filter = "" }: { filter?: string }) {
 												group.plugin ? (
 													<PluginIcon logo={group.plugin.manifest.interface?.logo} brandColor={group.plugin.manifest.interface?.brandColor} kind="plugin" size={36} />
 												) : (
-													<span className="flex size-9 items-center justify-center rounded-xl bg-shell text-ink-muted">
+													<span className="flex size-9 items-center justify-center rounded-lg bg-shell text-ink-muted">
 														<WandSparkles size={16} strokeWidth={1.8} />
 													</span>
 												)

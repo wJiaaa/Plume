@@ -92,7 +92,7 @@ export function ForgeSignIn({ kinds, onDone, onCancel }: { kinds: ForgeKindInfo[
 	};
 
 	return (
-		<div className="rounded-xl border border-line bg-card/40 p-4">
+		<div className="rounded-lg border border-line bg-card/40 p-4">
 			<div className="mb-4 flex flex-wrap gap-1.5">
 				{kinds.map((entry) => (
 					<Button key={entry.kind} pressed={kind === entry.kind} onClick={() => choose(entry.kind)}>

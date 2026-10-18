@@ -90,7 +90,7 @@ export function AgentDefinitionEditor({ record, copy, projectId, projectName, de
 			</div>}
 			{error && <div role="alert" className="rounded-lg border border-danger/30 bg-danger/10 px-3.5 py-2.5 text-detail text-danger">{error}</div>}
 			{/* The settings card the hook form sits in, so its fields are the same fields. */}
-			<fieldset disabled={busy} className="ly-settings-card m-0 min-w-0 space-y-4 rounded-xl border border-line-float bg-float p-4 disabled:opacity-60">
+			<fieldset disabled={busy} className="ly-settings-card m-0 min-w-0 space-y-4 rounded-lg border border-line-float bg-float p-4 disabled:opacity-60">
 				<div className="flex justify-end">
 					<div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
 						<span className="shrink-0 text-label text-ink-muted">{t("agentEditor.scopeLabel")}</span>
