@@ -59,6 +59,9 @@ test("独立手机界面操作真实桌面运行时与授权", { timeout: 120_00
 	 * 同一屏再拍一张亮色：手机跟随系统，亮色是很多人真正看到的那一套，只验暗色等于只验了一半。
 	 * 切的是桌面的外观设置而不是 CDP 的 setEmulatedMedia——后者在 Electron 里不改 prefers-color-scheme，
 	 * 设置会写进 nativeTheme，这一页的媒体查询跟着变。
+	 *
+	 * 起始的暗色也只靠设置（seed 里就是 dark），不要再发一次 setEmulatedMedia：在现在的 Electron 44
+	 * 上实测，CDP 的这项覆盖会把 prefers-color-scheme 钉死，设置再怎么切这里都等不到亮色。
 	 */
 	async function lightShot(name: string) {
 		const theme = (value: string) => app.evaluate(`window.plume.settings.get().then((s) => window.plume.settings.save({ ...s, appearance: { ...s.appearance, theme: ${JSON.stringify(value)} } }))`);
@@ -109,7 +112,6 @@ test("独立手机界面操作真实桌面运行时与授权", { timeout: 120_00
 	await app.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
 	// 系统语言给英文：手机界面默认中文，不跟系统走。下面的选择器全是中文，默认一旦变回跟随系统，这条用例第一步就停。
 	await app.send("Emulation.setLocaleOverride", { locale: "en-US" });
-	await app.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] });
 	await app.send("Page.navigate", { url: `http://127.0.0.1:${webPort}` });
 	await until(app, 'Boolean(document.querySelector(\'input[aria-label="桌面地址"]\'))');
 	await frames(app, 30); await shot(app, `${stamp}-mobile-connect`); await lightShot("mobile-connect");
