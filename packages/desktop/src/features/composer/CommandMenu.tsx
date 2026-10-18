@@ -38,8 +38,15 @@ export function CommandMenu({ commands, active, keyboardSelection, onPick, onHov
 		if (!anchor) return;
 		// Up to the pane's top, not the window's: the window toolbar sits above the pane and over this menu,
 		// and with the composer mid-window in an empty conversation the first rows went under it.
+		// Since 485cc847 dropped the window's top bar, the pane draws its own title bar *inside* its top 44px
+		// (`.ly-dock-chrome`, absolute, above the content) — so the ceiling is that bar's bottom edge, not the pane's top.
 		const pane = anchor.closest("[data-dock-pane]");
-		const measure = () => setHeight(Math.max(0, Math.min(340, anchor.getBoundingClientRect().top - (pane?.getBoundingClientRect().top ?? 0) - 12)));
+		const ceiling = () => {
+			if (!pane) return 0;
+			const chrome = pane.querySelector(".ly-dock-chrome");
+			return chrome ? chrome.getBoundingClientRect().bottom : pane.getBoundingClientRect().top;
+		};
+		const measure = () => setHeight(Math.max(0, Math.min(340, anchor.getBoundingClientRect().top - ceiling() - 12)));
 		measure();
 		const observer = new ResizeObserver(measure);
 		observer.observe(anchor);
