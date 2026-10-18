@@ -8,24 +8,107 @@
 import type { AssistantContent } from "@plume/core";
 import type { ToolRun as ToolRunState } from "../../store/index.ts";
 import { baseName } from "../../lib/paths.ts";
+import { translate } from "../../i18n/translate.ts";
 import { describeCall, describeRun } from "../../lib/tool-kinds.ts";
-import type { Call } from "./grouping.ts";
+import type { Call, StepMember } from "./grouping.ts";
 
-/** What a set of calls did, in words — the same sentence a run line and a turn line use. */
-export function describeCalls(calls: Call[]): string {
-  return describeRun(calls.map(({ block }) => ({ toolName: block.name, subject: subjectOf(block) })));
-}
-
-/** core 给这几个探索工具加了一句给人看的 `description`。bash 的那句走 `summarize`，到这里已经在 `summary` 里。 */
-const DESCRIBED = new Set(["read", "grep", "glob", "ls"]);
+type ToolCallBlock = Extract<AssistantContent, { type: "toolCall" }>;
 
 /**
- * 一次调用在行上怎么说：模型写了一句给人看的说明就用它，没写就退回「读取文件 a.ts」。
+ * What a set of calls did, in words — the same sentence a run line and a turn line use.
+ *
+ * 查输出是那条后台命令的一部分：这一段里有命令时不另记；只有查看时，一个任务记一次。从前按调用数，
+ * 一条命令被查了九次，这一行就说「执行命令 1 个、查看输出 9 个」。
+ */
+export function describeCalls(calls: Call[]): string {
+  const commands = calls.some(({ block }) => block.name === "bash");
+  const jobs = new Set<unknown>();
+  const counted = calls.filter(({ block }) => {
+    if (block.name !== "bash_output") return true;
+    const job = (block.arguments as { id?: unknown } | undefined)?.id;
+    if (commands || jobs.has(job)) return false;
+    jobs.add(job);
+    return true;
+  });
+  return describeRun(counted.map(({ block }) => ({ toolName: block.name, subject: subjectOf(block) })));
+}
+
+/**
+ * core 给这两个工具留着一句给人看的 `description`：它们的参数是正则和通配，人读不出来。bash 的那句走
+ * `summarize`，到这里已经在 `summary` 里。
+ *
+ * read 和 ls 不在这里：它们有文件名、目录名，比模型的转述准。让模型每次读文件都写一句，写出来的是
+ * 「读取第三上游响应归一化」「读取第三上游请求分发」——同一个句式套七遍，中间是它自己起的代号。
+ */
+const DESCRIBED = new Set(["grep", "glob"]);
+
+/** 一次 `bash_output` 查的是哪个后台任务。停掉它的那一次不是在看输出，不和查看合在一起。 */
+export function polledJob(block: ToolCallBlock): string | undefined {
+  if (block.name !== "bash_output") return undefined;
+  const { id, kill } = (block.arguments ?? {}) as { id?: unknown; kill?: unknown };
+  return typeof id === "string" && kill !== true ? id : undefined;
+}
+
+/** 启动这个后台任务的那次 `bash`：它的 `summary` 是模型给那条命令写的说明。 */
+export function startedJob(runs: Record<string, ToolRunState>, job: string): ToolRunState | undefined {
+  for (const run of Object.values(runs)) {
+    const details = run.result?.details as { kind?: unknown; id?: unknown } | undefined;
+    if (details?.kind === "bash_background" && details.id === job) return run;
+  }
+  return undefined;
+}
+
+/** 查看后台任务输出那一行：说是哪个任务，连着查了几次也说。找不到启动它的那次调用，就只说「查看输出」。 */
+export function describePolls(what: string | undefined, times: number): string {
+  if (what) return times > 1 ? translate("tools.outputOfTimes", { what, n: times }) : translate("tools.outputOf", { what });
+  return times > 1 ? translate("tools.outputTimes", { n: times }) : translate("tools.output");
+}
+
+/** 转录里挂在竖线上的一行：一次调用、一段推理，或者连着查同一个后台任务的几次输出。 */
+export type StepLine = StepMember | { kind: "polls"; calls: Call[] };
+
+/**
+ * 连着查同一个后台任务的几次合成一行。
+ *
+ * 只合紧挨着的：中间隔了推理、别的调用，就是模型在两次查看之间做了别的事，那是两件事。
+ */
+export function foldPolls(members: StepMember[]): StepLine[] {
+  const lines: StepLine[] = [];
+  for (const member of members) {
+    const job = member.kind === "call" ? polledJob(member.call.block) : undefined;
+    const last = lines[lines.length - 1];
+    const before = last?.kind === "polls" ? last.calls : last?.kind === "call" ? [last.call] : [];
+    if (job && member.kind === "call" && before.length > 0 && polledJob(before[0].block) === job) {
+      lines[lines.length - 1] = { kind: "polls", calls: [...before, member.call] };
+    } else {
+      lines.push(member);
+    }
+  }
+  return lines;
+}
+
+/**
+ * 几次查看读到的输出，接成一段。
+ *
+ * 每一次 `bash_output` 只给上次之后新打出来的，所以按顺序接起来就是这段时间里的全部，不重复。去掉的
+ * 是给模型看的那两样：开头那行带任务 id 的状态（`[job … running]`），和没有新输出时的那句占位。
+ */
+export function pollOutput(runs: (ToolRunState | undefined)[]): string {
+  return runs
+    .map((run) => (run?.result?.content ?? []).flatMap((block) => (block.type === "text" ? [block.text] : [])).join("\n"))
+    .map((text) => text.replace(/^\[job [^\]\n]*\]\n?/, "").replace(/^\(no new output\)/, ""))
+    .join("");
+}
+
+/**
+ * 一次调用在行上怎么说：模型写了一句给人看的说明就用它，没写就退回「读取文件 a.ts」。查后台任务输出的
+ * 那一次说是哪个任务（`job`：启动它的那条命令的说明）。
  *
  * grep、glob 的 `description` 还兜着另一种用法：没给 `pattern` 时，模型常把要搜的式子写在那里（core 的
  * `extractGrepPattern`）。那时它是一条正则、不是一句话，照旧说成「搜索内容 …」。
  */
-export function describeOne(block: Extract<AssistantContent, { type: "toolCall" }>, summary?: string): string {
+export function describeOne(block: ToolCallBlock, summary?: string, job?: string): string {
+  if (polledJob(block)) return describePolls(job, 1);
   const { description, pattern } = (block.arguments ?? {}) as { description?: unknown; pattern?: unknown };
   const said = typeof description === "string" ? description.trim() : "";
   const asPattern = (block.name === "grep" || block.name === "glob") && typeof pattern !== "string";
@@ -34,7 +117,7 @@ export function describeOne(block: Extract<AssistantContent, { type: "toolCall" 
 }
 
 /** The file a call is about, when it is about one — the part worth naming in a summary. */
-function subjectOf(block: Extract<AssistantContent, { type: "toolCall" }>): string | undefined {
+function subjectOf(block: ToolCallBlock): string | undefined {
   const { path, url } = (block.arguments ?? {}) as { path?: unknown; url?: unknown };
   // Either separator: a Windows path split on "/" alone came back whole, drive letter and all.
   if (typeof path === "string") return baseName(path);

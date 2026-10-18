@@ -5,7 +5,7 @@
  * subscribes to its own tool run and a group that reads the totals across one.
  */
 
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import type { AssistantContent, AssistantMessage } from "@plume/core";
 import { PreviewCall, PreviewCard, type PreviewInfo } from "../files/index.ts";
 import { ToolCard } from "./ToolCard.tsx";
@@ -18,7 +18,7 @@ import type { Dispatch } from "../../lib/dispatches.ts";
 import { toolCardFallback } from "./tool-status.ts";
 import { sameRun, type Call } from "./grouping.ts";
 import type { PageState } from "./preview-pages.ts";
-import { describeCalls, describeOne, diffOf } from "./call-words.ts";
+import { describeCalls, describeOne, describePolls, diffOf, pollOutput, polledJob, startedJob } from "./call-words.ts";
 
 /**
  * How much of a long transcript is mounted at once, and how much each "show more" adds — **in turns**.
@@ -79,11 +79,14 @@ export function LiveToolCard({
   thinking,
   extra,
   page,
+  polls,
 }: {
   block: Extract<AssistantContent, { type: "toolCall" }>;
   stopReason: AssistantMessage["stopReason"];
   /** A preview's part in checking and publishing a page — see `preview-pages.ts`. */
   page?: PageState;
+  /** 这一行代表连着查同一个后台任务的几次 `bash_output`：它们的调用 id，第一个就是 `block`。见 `foldPolls`。 */
+  polls?: string[];
   /**
    * Where to read this call's record, for a transcript that is not the main session's.
    *
@@ -114,7 +117,7 @@ export function LiveToolCard({
    */
   const turnRunning = useScopedRunning();
   if (block.name === "task") return <DelegationCard block={block} run={run} stopReason={stopReason} dispatch={dispatch} detached={Boolean(runs)} thinking={thinking} extra={extra} />;
-  const plain = <PlainToolCard block={block} run={run} stopReason={stopReason} runs={runs} turnRunning={turnRunning} thinking={thinking} extra={extra} page={page} />;
+  const plain = <PlainToolCard block={block} run={run} stopReason={stopReason} runs={runs} turnRunning={turnRunning} thinking={thinking} extra={extra} page={page} polls={polls} />;
   // 子智能体的转录里没有这件工具（`sessionOnly`），带着 `runs` 来的照旧是工具行。
   if (block.name === "spawn_session" && !runs) return <SessionSuggestionCard block={block} run={run} stopReason={stopReason} turnRunning={turnRunning} fallback={plain} />;
   return plain;
@@ -125,7 +128,7 @@ function DelegationCard({ thinking, extra, ...props }: Parameters<typeof useDele
   return <ToolCard {...useDelegation(props)} thinking={thinking} extra={extra} />;
 }
 
-function PlainToolCard({ block, run, stopReason, runs, turnRunning, thinking, extra, page }: {
+function PlainToolCard({ block, run: own, stopReason, runs, turnRunning, thinking, extra, page, polls }: {
   block: Extract<AssistantContent, { type: "toolCall" }>;
   run?: ToolRunState;
   stopReason: AssistantMessage["stopReason"];
@@ -134,7 +137,20 @@ function PlainToolCard({ block, run, stopReason, runs, turnRunning, thinking, ex
   thinking?: React.ReactNode;
   extra?: React.ReactNode;
   page?: PageState;
+  polls?: string[];
 }) {
+  /*
+   * 查后台任务输出：这一行说的是哪个任务，展开是那条命令和这几次读到的全部输出。状态跟最后一次走——
+   * 前几次早答完了，还在等的只会是最后那一次。
+   */
+  const job = polledJob(block);
+  const ids = job ? (polls ?? [block.id]) : undefined;
+  const starter = useScopedFromToolRuns((toolRuns) => (job ? startedJob(runs ?? toolRuns, job) : undefined));
+  const latest = useScopedFromToolRuns((toolRuns) => (ids ? (runs ?? toolRuns)[ids[ids.length - 1]] : undefined));
+  const joined = useScopedFromToolRuns((toolRuns) => (ids ? pollOutput(ids.map((id) => (runs ?? toolRuns)[id])) : undefined));
+  const run = ids ? latest : own;
+  const result = useMemo(() => (joined !== undefined && run?.result ? { ...run.result, content: [{ type: "text" as const, text: joined }] } : run?.result), [joined, run]);
+  const command = starter?.args.command;
   // A checked page is drawn by its check, from the call that published it.
   const publishedBy = page && "publishedBy" in page ? page.publishedBy : undefined;
   const stored = useScopedFromToolRuns((toolRuns) => (publishedBy ? toolRuns[publishedBy] : undefined));
@@ -145,12 +161,13 @@ function PlainToolCard({ block, run, stopReason, runs, turnRunning, thinking, ex
     <ToolCard
       stateKey={runs ? undefined : `tool-${block.id}`}
       toolName={block.name}
-      args={block.arguments}
+      // 任务 id 是一串 uuid，人读不出东西；展开时摆那条命令本身。
+      args={ids && typeof command === "string" ? { command } : block.arguments}
       // The model's own words when it gave some, else core's English summary said the way the turn line says it; see `describeOne`.
-      summary={describeOne(block, run?.summary ?? title)}
+      summary={ids ? describePolls(starter?.summary, ids.length) : describeOne(block, run?.summary ?? title)}
       // 没有记录时说什么，以及为什么不能只看这条消息定没定稿：见 `tool-status.ts`。
       status={status}
-      result={run?.result}
+      result={result}
       startedAt={run?.startedAt}
       thinking={thinking}
       extra={extra}

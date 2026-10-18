@@ -29,7 +29,7 @@ import { LiveThought } from "./LiveThought.tsx";
 import { ToolIcon } from "./tool-icons.tsx";
 import { RollWords } from "../../ui/motion/RollWords.tsx";
 import { useHeldKey } from "../../ui/motion/held.ts";
-import { describeCalls, describeOne, diffOf } from "./call-words.ts";
+import { describeCalls, describeOne, diffOf, foldPolls, polledJob, startedJob } from "./call-words.ts";
 import { thinkingLive, type Call, type Run, type Step } from "./grouping.ts";
 import { useTranscriptDisclosure } from "./view-state.ts";
 
@@ -39,7 +39,7 @@ import { useTranscriptDisclosure } from "./view-state.ts";
  * 不在这里 import：`runs.tsx` 经文件预览、`ToolCard` 经 diff 视图、`ThinkingBlock` 经 Markdown，都会连回
  * 转录本身，这里引它们就是新的循环依赖。转录本来就引着它们，由它递进来。
  */
-export type DrawCall = (call: Call, line?: { thinking?: ReactNode; extra?: ReactNode }) => ReactNode;
+export type DrawCall = (call: Call, line?: { thinking?: ReactNode; extra?: ReactNode; polls?: string[] }) => ReactNode;
 
 export function WorkStep({ step, live, draw, drawCall }: {
 	step: Step;
@@ -119,11 +119,16 @@ function StepGroup({ step, thought, live, thinking, from, draw, drawCall }: {
 	const said = held === STEP ? null : (calls.find(({ block }) => block.id === held) ?? calls[calls.length - 1]).block;
 	// bash 给人看的那句话只在记录的 `summary` 里，参数里是命令本身。
 	const saidSummary = useScopedFromToolRuns((runs) => (said ? runs[said.id]?.summary : undefined));
+	// 查后台任务输出的那一次，说的是那条命令的说明，不是光秃秃的「查看输出」。
+	const saidJob = useScopedFromToolRuns((runs) => {
+		const job = said ? polledJob(said) : undefined;
+		return job ? startedJob(runs, job)?.summary : undefined;
+	});
 
 	// 哪样先来哪样在前：先有的那半句不能被后来的「思考 N 次」从前面挤开。
 	const parts = [describeCalls(calls)];
 	if (thought > 0) parts[step.members[0].kind === "thinking" ? "unshift" : "push"](translate("step.thinking", { n: thought }));
-	const words = said ? describeOne(said, saidSummary) : parts.join(translate("step.separator"));
+	const words = said ? describeOne(said, saidSummary, saidJob) : parts.join(translate("step.separator"));
 	// 换一次调用、或者从跑着换成总的，就是换了一句话，滚一下；同一次调用的参数还在流进来，只缓宽度。
 	const rollKey = said ? `call-${said.id}` : STEP;
 	const faces = step.category === "task" ? <StepDispatchFaces calls={calls.map(({ block }) => block)} /> : null;
@@ -164,7 +169,11 @@ function StepGroup({ step, thought, live, thinking, from, draw, drawCall }: {
 			{/* 竖线在行首图标的正下方，挂在上面的每一行读起来都属于这一行。 */}
 			<Collapse open={open} bodyClassName="pt-2.5">
 				<div data-ly-step-rail="" className="ml-[7px] flex flex-col gap-2.5 border-l border-line-soft pl-[14px]">
-					{step.members.map((member) => (member.kind === "call" ? <Fragment key={member.call.block.id}>{drawCall(member.call)}</Fragment> : draw(member.run)))}
+					{foldPolls(step.members).map((line) =>
+						line.kind === "call" ? <Fragment key={line.call.block.id}>{drawCall(line.call)}</Fragment>
+						// 连着查同一个任务的几次是一行，key 跟第一次走：再查一次，这一行不卸掉重挂。
+						: line.kind === "polls" ? <Fragment key={line.calls[0].block.id}>{drawCall(line.calls[0], { polls: line.calls.map(({ block }) => block.id) })}</Fragment>
+						: draw(line.run))}
 				</div>
 			</Collapse>
 		</div>

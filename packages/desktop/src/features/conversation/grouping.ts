@@ -852,7 +852,7 @@ export interface Step {
 	members: StepMember[];
 }
 
-type StepMember = { kind: "call"; call: Call } | { kind: "thinking"; run: Extract<Run, { kind: "message" }> };
+export type StepMember = { kind: "call"; call: Call } | { kind: "thinking"; run: Extract<Run, { kind: "message" }> };
 
 /** 这一条 run 是不是「过程」——相对于说出口的话。 */
 function isProcess(run: Run): boolean {

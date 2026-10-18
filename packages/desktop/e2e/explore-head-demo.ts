@@ -2,7 +2,7 @@
 /**
  * 一段探索跑着时那一行说什么：最新那一次调用，每来一次滚一下；后面接上回答了，再滚成总的。
  *
- * 假模型一次一个调用：带说明的 read、带说明的 grep、带说明的 ls、不带说明的 read、不带说明的 grep，
+ * 假模型一次一个调用：read、带说明的 grep、带说明的 ls（历史里留下的写法，不上行）、read、不带说明的 grep，
  * 然后慢慢写出回答。每一帧记下探索那一行的字和滚进来的那一层，边验边录。
  *
  * 用法：先 `pnpm build`，再 `node --experimental-strip-types e2e/explore-head-demo.ts [输出目录]`
@@ -22,7 +22,7 @@ const STAMP = new Date().toLocaleString("sv-SE", { timeZone: "Asia/Shanghai" }).
 
 const ANSWER = "超时回复的处理在 src/one.ts，审批规则写在 docs/safety.md。";
 const SCRIPT: ({ tool: string; args: Record<string, unknown> } | { text: string })[] = [
-	{ tool: "read", args: { path: "docs/safety.md", description: "看审批规则怎么写" } },
+	{ tool: "read", args: { path: "docs/safety.md" } },
 	{ tool: "grep", args: { pattern: "timeout|overtime", description: "找超时相关的处理" } },
 	{ tool: "ls", args: { path: "src", description: "看看 src 下有哪些文件" } },
 	{ tool: "read", args: { path: "src/two.ts" } },
@@ -30,7 +30,7 @@ const SCRIPT: ({ tool: string; args: Record<string, unknown> } | { text: string 
 	{ text: ANSWER },
 ];
 /** 跑着时那一行应该依次说的话。 */
-const LIVE = ["看审批规则怎么写", "找超时相关的处理", "看看 src 下有哪些文件", "读取文件 two.ts", "搜索内容 overtime"];
+const LIVE = ["读取文件 safety.md", "找超时相关的处理", "列出目录 src", "读取文件 two.ts", "搜索内容 overtime"];
 const TOTAL = "读取文件 2 个、搜索内容 2 个、列出目录 src";
 
 function sse(res: ServerResponse, payload: { type: string }): void {
@@ -207,7 +207,7 @@ try {
 	check("成了一组之后每换一次调用都是滚进来的新一层", layersSeen.length === LIVE.length - 1 && grouped.every((entry) => entry.rolled), grouped);
 	const total = log[turned];
 	check("最后一次调用之后才滚成总的", turned > 0 && log[turned - 1].words.startsWith(LIVE.at(-1)!) && Boolean(total?.rolled) && total.layer > Math.max(...layersSeen), total);
-	check("展开后带说明的调用说的是模型那句话，没带的照旧", rows[0]?.startsWith("看审批规则怎么写") && rows[2]?.startsWith("看看 src 下有哪些文件") && rows[3]?.startsWith("读取文件 two.ts") && rows[4]?.startsWith("搜索内容 overtime"), rows);
+	check("展开后带说明的搜索说的是模型那句话，读文件、列目录说名字", rows[1]?.startsWith("找超时相关的处理") && rows[2]?.startsWith("列出目录 src") && rows[3]?.startsWith("读取文件 two.ts") && rows[4]?.startsWith("搜索内容 overtime"), rows);
 
 	const passed = checks.filter((c) => c.ok).length;
 	await encode(frames, join(OUT_DIR, `${STAMP}_探索行跑着说最新一次_${passed}of${checks.length}.mp4`));

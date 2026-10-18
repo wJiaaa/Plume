@@ -161,11 +161,12 @@ test("thinking still being written at the end of a stretch is said at the end of
 	}
 });
 
-test("one call says the model's own words when it gave some", async () => {
+test("a read says its file, a search says the model's words", async () => {
 	const tool = (id: string, name: string, args: Record<string, unknown>): Call => ({ block: { type: "toolCall", id, name, arguments: args }, stopReason: "toolUse" });
 	const calls = [
-		tool("d1", "read", { path: "docs/safety.md", description: "看审批规则怎么写" }),
-		tool("d2", "read", { path: "docs/safety.md" }),
+		// 历史里还带着说明的读文件：文件名比模型的转述准，说明不再上行。
+		tool("d1", "read", { path: "docs/safety.md", description: "读取第三上游响应归一化" }),
+		tool("d2", "grep", { pattern: "timeout|overtime", description: "找超时相关的处理" }),
 		// 没给 pattern：description 里是模型错放的式子，core 拿它当 pattern 搜，这里不当一句话说。
 		tool("d3", "grep", { description: "timeout|overtime" }),
 	];
@@ -174,12 +175,57 @@ test("one call says the model's own words when it gave some", async () => {
 	const rows = [];
 	for (const call of calls) rows.push(await mount(drawCall(call)));
 	try {
-		assert.match(rows[0].text(), /^看审批规则怎么写/);
-		assert.match(rows[1].text(), /^读取文件 safety\.md/, "没写就照旧");
+		assert.match(rows[0].text(), /^读取文件 safety\.md/);
+		assert.match(rows[1].text(), /^找超时相关的处理/, "正则人读不出来，说明留着");
 		assert.match(rows[2].text(), /^搜索内容/);
 	} finally {
 		for (const row of rows) await row.unmount();
 		restore();
+	}
+});
+
+test("checking one background job three times in a row is one line that names the job", async () => {
+	const tool = (id: string, name: string, args: Record<string, unknown>): Call => ({ block: { type: "toolCall", id, name, arguments: args }, stopReason: "toolUse" });
+	const calls = [
+		tool("j0", "bash", { command: "pnpm test:e2e", description: "跑端到端测试", run_in_background: true }),
+		tool("j1", "bash_output", { id: "job-1" }),
+		tool("j2", "bash_output", { id: "job-1" }),
+		tool("j3", "bash_output", { id: "job-1" }),
+		tool("j4", "bash", { command: "git status", description: "看看改了哪些文件" }),
+	];
+	const previous = useApp.getState();
+	const text = (value: string) => ({ content: [{ type: "text" as const, text: value }] });
+	const results: Record<string, { summary: string; result: { content: { type: "text"; text: string }[]; details?: unknown } }> = {
+		j0: { summary: "跑端到端测试", result: { ...text("Started background job job-1."), details: { kind: "bash_background", id: "job-1", command: "pnpm test:e2e" } } },
+		j1: { summary: "Check job", result: text("[job job-1 running]\n第 1 批通过\n") },
+		j2: { summary: "Check job", result: text("[job job-1 running]\n(no new output)") },
+		j3: { summary: "Check job", result: text("[job job-1 exited with code 0]\n第 2 批通过\n") },
+		j4: { summary: "看看改了哪些文件", result: text("clean") },
+	};
+	useApp.setState({
+		activeSessionId: "s",
+		capabilities: null,
+		settings: { appearance: {} } as Settings,
+		toolRuns: Object.fromEntries(calls.map(({ block }) => [block.id, { toolCallId: block.id, toolName: block.name, args: block.arguments, status: "done" as const, startedAt: Date.now() - 1000, ...results[block.id] }])),
+	});
+	const view = await mount(h(WorkStep, { step: { ...step(calls), category: "terminal" }, live: false, draw: () => null, drawCall }));
+	try {
+		const head = view.find(".ly-flow-row").textContent ?? "";
+		assert.match(head, /^执行命令 2 个/, "查输出是那条命令的一部分，不另记");
+		assert.doesNotMatch(head, /查看输出/);
+		await click(view.find(".ly-flow-row"));
+		const lines = view.all("[data-ly-step-rail] [data-ly-tool] > .ly-flow-row").map((row) => row.textContent ?? "");
+		assert.deepEqual(lines.map((line) => line.replace(/\s+/g, " ").trim()), ["跑端到端测试", "查看「跑端到端测试」的输出 3 次", "看看改了哪些文件"]);
+		// 点开合起来的那一行：摆的是那条命令，三次的输出接在一起，任务 id 和占位都不出现。
+		const polls = view.all<HTMLElement>("[data-ly-step-rail] [data-ly-tool]")[1];
+		await click(polls.querySelector(".ly-flow-row")!);
+		const body = polls.textContent ?? "";
+		assert.match(body, /pnpm test:e2e/);
+		assert.match(body, /第 1 批通过\s*第 2 批通过/);
+		assert.doesNotMatch(body, /job-1|no new output/);
+	} finally {
+		await view.unmount();
+		useApp.setState(previous, true);
 	}
 });
 

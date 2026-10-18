@@ -240,7 +240,13 @@ export const bashTool: Tool<BashArgs> = {
 		type: "object",
 		properties: {
 			command: { type: "string", description: "The command to run." },
-			description: { type: "string", description: "5-10 word description shown to the user, in plain words and the user's language." },
+			description: {
+				type: "string",
+				description:
+					"What this command is for, in 5-10 words and the user's language — it is the line the user reads instead of the command. " +
+					"Say the purpose in plain words (\"Run the e2e tests\", \"Check which branches are merged\"), not the command, its flags or file paths; " +
+					"not a generic label (\"Run command\", \"Check output\"), and no names you coined yourself that the user has never seen.",
+			},
 			timeout: {
 				type: "number",
 				description:
