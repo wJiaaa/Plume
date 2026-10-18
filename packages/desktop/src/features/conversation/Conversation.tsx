@@ -405,8 +405,11 @@ export const Conversation = memo(function Conversation({ sessionId: _sessionId, 
          * as centred in a wide column and as visibly off-centre in a narrow one: 48 against 16 is a
          * twelfth of a 380px pane, and the whole transcript sits to the right of its own box. Below
          * `NARROW_COLUMN` the rail moves to the very edge and 28px each side clears it evenly.
+         *
+         * Reserved from the first message, not from the second question: switching padding when the
+         * rail appears shoved the whole transcript sideways in the frame the second message was sent.
          */
-        contentClassName={questions.length > 1 && !side ? (narrowColumn ? "px-7" : "pl-12 pr-4 @min-[600px]:pr-8") : gutter}
+        contentClassName={!side ?(narrowColumn ? "px-7" : "pl-12 pr-4 @min-[600px]:pr-8") : gutter}
         /*
          * 32px on top, the depth Claude's desktop transcript uses; the bottom's default 48 already
          * matches it.
