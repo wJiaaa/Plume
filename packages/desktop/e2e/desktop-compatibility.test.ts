@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { MAIN_WINDOW_ROW_OFFSET, NATIVE_HEADER_HEIGHT, WINDOW_HEADER_HEIGHT } from "../shared/window-chrome.ts";
 import { startApp, type RunningApp } from "./app.ts";
-import { click, frames } from "./drive.ts";
+import { click, frames, openPane } from "./drive.ts";
 
 /** The conversation's terminal button, in its card's title bar. */
 const TERMINAL_BUTTON = '[data-dock-header] button[aria-label^="终端 "]';
@@ -285,19 +285,21 @@ test("toolbar and pane icons keep their pixel column wherever the sidebar's edge
 	 * as the toolbar shaking for the length of the slide. Held at a series of edges here, since a
 	 * screenshot per animation frame is not something a test can ask for reliably.
 	 *
-	 * Two rows: the three that were reported shaking — terminal, browser, panels — on the conversation's
-	 * title bar, and a pane's own buttons on its card's, so a pane is opened beside the conversation
-	 * (or stacked under it, when this window is too narrow for both across) and its buttons are held too.
+	 * Two rows: the ones that were reported shaking on the conversation's title bar — terminal, browser,
+	 * panels then; the browser has had no button of its own there since 64bfa7f6 and opens from the
+	 * panels menu, so terminal and panels now — and a pane's own buttons on its card's, so a pane is
+	 * opened beside the conversation (or stacked under it, when this window is too narrow for both
+	 * across) and its buttons are held too.
 	 */
 	const app = await startApp({ port: 9598, scaleFactor: 1.25, seed: (home) => plainProfile(home) });
 	try {
 		await frames(app, 24);
-		await click(app, ':is([data-ly-split-tools], [data-dock-header]) button[aria-label^="浏览器"]');
+		await openPane(app, "浏览器");
 		await app.evaluate(`new Promise((resolve, reject) => { let n = 240; const step = () => document.querySelector(${PANE_ACTIONS}) ? resolve() : --n ? requestAnimationFrame(step) : reject(new Error('the browser pane did not open')); step(); })`);
 		await frames(app, 40);
 		// The toolbar also holds buttons that only show on hover; those are not drawn, so not counted.
 		const rows = {
-			toolbar: `[...document.querySelectorAll('[data-ly-split-tools] button')].filter(b => /^(终端|浏览器|面板)/.test(b.getAttribute('aria-label') ?? '') && b.checkVisibility({ opacityProperty: true }))`,
+			toolbar: `[...document.querySelectorAll('[data-ly-split-tools] button')].filter(b => /^(终端|面板)/.test(b.getAttribute('aria-label') ?? '') && b.checkVisibility({ opacityProperty: true }))`,
 			pane: `[...document.querySelectorAll(${PANE_ACTIONS})].filter(b => b.checkVisibility({ opacityProperty: true }))`,
 		};
 		const dpr = await app.evaluate<number>("devicePixelRatio");
@@ -307,7 +309,7 @@ test("toolbar and pane icons keep their pixel column wherever the sidebar's edge
 			const left = Math.floor(icons[0].x) - 4, right = Math.ceil(icons.at(-1)!.x + icons.at(-1)!.width) + 4;
 			placed[name] = { icons, clip: { x: left, y: Math.floor(Math.min(...icons.map((icon) => icon.y))) - 4, width: right - left, height: 36 } };
 		}
-		assert.equal(placed.toolbar.icons.length, 3, `terminal, browser and panels are on the conversation's title bar: ${JSON.stringify(placed.toolbar.icons)}`);
+		assert.equal(placed.toolbar.icons.length, 2, `terminal and panels are on the conversation's title bar: ${JSON.stringify(placed.toolbar.icons)}`);
 		// Stacked, the title row shows only what is not hover-revealed — one icon is enough to hold to a column.
 		assert.ok(placed.pane.icons.length >= 1, `the browser pane's buttons are drawn: ${JSON.stringify(placed.pane.icons)}`);
 		const edges = [0, -1, -2, -3, -5, -6, -7];
