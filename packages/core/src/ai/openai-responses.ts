@@ -19,6 +19,7 @@ import type {
 	ProviderConfig,
 	RequestOptions,
 	StreamEvent,
+	TextContent,
 } from "../types.ts";
 import { addUsage, emptyUsage } from "../types.ts";
 import { classifyFailure, FailureError, REFUSAL_MESSAGE, spokenSoFar } from "./failure.ts";
@@ -51,6 +52,11 @@ export const openaiResponsesProvider: Provider = {
  */
 const leadsWithReasoning = new Set<string>();
 const MUST_PASS_BACK = /reasoning_text.{0,40}must be passed back/i;
+
+/** message 项的 `phase`。只认这两个值：中转塞进来的别的什么，回放时原样送回去只会换来一个 400。 */
+function messagePhase(value: unknown): TextContent["phase"] {
+	return value === "commentary" || value === "final_answer" ? value : undefined;
+}
 
 async function* streamResponses(
 	provider: ProviderConfig,
@@ -336,6 +342,9 @@ async function* streamResponses(
 			if (target.startedAt !== undefined) target.durationMs = Date.now() - target.startedAt;
 			yield { type: "thinking_end", index: slot };
 		} else if (tracked.kind === "text" && target?.type === "text") {
+			// 只发 `done` 的中转，`phase` 只在这里。
+			const phase = messagePhase(item.phase);
+			if (phase) target.phase = phase;
 			if (!target.text && Array.isArray(item.content)) {
 				target.text = item.content.map((c: { text?: string }) => c.text ?? "").join("");
 			}
@@ -451,10 +460,12 @@ async function* streamResponses(
 						case "response.output_item.added": {
 							const item = event.item ?? {};
 							if (item.type === "message") {
+								const phase = messagePhase(item.phase);
 								partial.content.push({
 									type: "text",
 									text: "",
 									signature: item.id,
+									...(phase ? { phase } : {}),
 								});
 								items.set(outputIndex, {
 									kind: "text",

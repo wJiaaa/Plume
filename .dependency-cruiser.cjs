@@ -124,13 +124,15 @@ module.exports = {
 				"必须是同一个答案——面板自己从历史里另找一遍，迟早和模型手上那份对不上。" +
 				"`tools/shell-split` 一个 import 都没有：命令行怎么切成命令和词，审批判风险时用它，任务面板说「输出写进了哪个文件」" +
 				"也用它——引号、`2>&1`、粘在 `>` 上的路径，两处各写一遍就会对同一行命令给出两种读法。" +
+				"`reply-text` 只有一个 `import type`：一条回复里哪段播报已被最终答复重说过，界面画正文、子代理交回答复、" +
+				"命令行打印答复都要据此跳过——各判一遍，就是这一处不重复了、那一处照样说两遍。" +
 				"这一条是在真窗口里撞出来又验回去的——先看到过一整屏空白。",
 			severity: "error",
 			from: { path: "^packages/desktop/src" },
 			to: {
 				path: "^packages/core/src",
 				pathNot:
-					"^packages/core/src/(types|tokens|activity|trajectory-view|commands-view|model-catalog|agents-builtin|platform)\\.ts$" +
+					"^packages/core/src/(types|tokens|activity|trajectory-view|commands-view|model-catalog|agents-builtin|platform|reply-text)\\.ts$" +
 					"|^packages/core/src/(config/schedule|config/model-choice|config/models|config/image-models|config/project-folders|config/retry-policy|commands/builtin|plugins/install-record|mcp/placeholders|mcp/form|ai/thinking-options|runtime/delegation|runtime/plan-view|tools/shell-split)\\.ts$" +
 					"|^packages/core/src/ui-language/(index|catalog|chart|check|expression|parse)\\.ts$",
 				dependencyTypesNot: ["type-only"],

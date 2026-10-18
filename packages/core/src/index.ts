@@ -205,6 +205,7 @@ export {
 export { compactIfNeeded, compactWith, useCompaction } from "./runtime/compaction/compaction.ts";
 export type { ContextBreakdown, ContextSegment, ContextSegmentKey, MemoryFileItem } from "./runtime/context.ts";
 export { estimateTokens } from "./tokens.ts";
+export { restated } from "./reply-text.ts";
 export { computeCost, costAtRates, selectPricingRates, type SelectedPricingRates } from "./utils/pricing.ts";
 export {
 	CACHE_CAUSES,

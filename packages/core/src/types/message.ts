@@ -19,6 +19,13 @@ export interface TextContent {
 	text: string;
 	/** Opaque provider handle (Responses item id, etc.) needed to replay this block. */
 	signature?: string;
+	/**
+	 * Responses 上 message 项自带的 `phase`：`commentary` 是干活途中的播报，`final_answer` 是收尾的答复。
+	 *
+	 * 最终答复按设计要能单独读懂，会把同一次回复里先播报过的话再说一遍——不记下来就分不清哪段是哪段，
+	 * 界面两段都画、看上去整段重复。回放时也要原样带回去，模型靠它认出自己哪些话是播报。见 `restated`。
+	 */
+	phase?: "commentary" | "final_answer";
 }
 
 export interface ThinkingContent {

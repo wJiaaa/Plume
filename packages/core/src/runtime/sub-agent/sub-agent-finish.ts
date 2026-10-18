@@ -10,6 +10,7 @@ import type { SubAgentAnswer, SubAgentOptions } from "./sub-agent-options.ts";
 import { STOPPED_BY_USER, type Dispatched } from "./sub-agent-dispatch.ts";
 import type { SubAgentRan } from "./sub-agent-run.ts";
 import { renderYield, YIELD_KEY, type YieldOutcome } from "./yield-tool.ts";
+import { restated } from "../../reply-text.ts";
 
 export async function finishSubAgent(
 	options: SubAgentOptions,
@@ -125,8 +126,9 @@ function lastProse(messages: Message[]): string {
 		const message = messages[index];
 		if (message.role !== "assistant") continue;
 		const text = message.content
-			.filter((part) => part.type === "text")
-			.map((part) => part.text)
+			// 播报已经被最终答复重说过一遍，再交上去上级就读两遍。
+			.filter((part) => part.type === "text" && !restated(part, message.content))
+			.map((part) => (part.type === "text" ? part.text : ""))
 			.join("\n")
 			.trim();
 		if (text) return text;

@@ -29,7 +29,8 @@
 		"./mcp-form": "./src/mcp/form.ts",
 		"./sandbox-runner": "./src/sandbox/runner-entry.ts",
 		"./ui-language": "./src/ui-language/index.ts",
-		"./shell-split": "./src/tools/shell-split.ts"
+		"./shell-split": "./src/tools/shell-split.ts",
+		"./reply-text": "./src/reply-text.ts"
 	},
 	"scripts": {
 		"build": "tsc -p tsconfig.json",

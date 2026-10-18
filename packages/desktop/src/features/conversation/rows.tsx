@@ -9,6 +9,7 @@
 
 import { memo, useState } from "react";
 import type { AssistantMessage, Message } from "@plume/core";
+import { restated } from "@plume/core/reply-text";
 import { TurnDeliveryCard } from "./TurnDelivery.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { MessageActions } from "./MessageActions.tsx";
@@ -191,7 +192,7 @@ function AssistantRow({
   const stats = continued ? undefined : turnStats;
 
   const text = own
-    .filter((block) => block.type === "text")
+    .filter((block) => block.type === "text" && !restated(block, message.content))
     .map((block) => (block.type === "text" ? block.text : ""))
     .join("\n\n");
 
@@ -230,7 +231,8 @@ function AssistantRow({
             );
           }
           if (block.type === "text") {
-            return block.text ? (
+            // 最终答复会把同一条回复里先播报过的话再说一遍，播报就不再画了，见 `restated`。
+            return block.text && !restated(block, message.content) ? (
               <div key={at}>
                 <Markdown text={block.text} streaming={message.stopReason === "pending" && at === message.content.length - 1} />
               </div>

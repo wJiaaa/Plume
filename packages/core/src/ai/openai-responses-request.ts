@@ -379,6 +379,8 @@ export function toResponsesInput(
 						type: "message",
 						role: "assistant",
 						content: [{ type: "output_text", text: c.text }],
+						// 不带的话，模型分不清自己哪句是播报、哪句是答复。
+						...(c.phase ? { phase: c.phase } : {}),
 					});
 				} else {
 					input.push({

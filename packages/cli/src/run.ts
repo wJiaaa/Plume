@@ -15,6 +15,7 @@ import {
 	parseSkillMention,
 	resolveInvocation,
 	resolveModel,
+	restated,
 	type AgentEvent,
 	type AgentSessionOptions,
 	type SessionStorage,
@@ -132,7 +133,8 @@ export async function runOnce(options: RunOptions): Promise<RunResult> {
 					break;
 				case "message_end": {
 					if (event.message.role !== "assistant") break;
-					const said = event.message.content.map((part) => part.type === "text" ? part.text : "").join("").trim();
+					const { content } = event.message;
+					const said = content.map((part) => (part.type === "text" && !restated(part, content) ? part.text : "")).join("").trim();
 					if (said) lastSaid = said;
 					if (said && !event.message.content.some((part) => part.type === "toolCall")) answer = said;
 					break;
