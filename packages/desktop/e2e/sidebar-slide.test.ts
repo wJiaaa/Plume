@@ -226,10 +226,17 @@ test("停在底部时开合侧栏，每一帧都贴着底", async () => {
  */
 test("往上滚开之后开合侧栏，眼前那一段不跟着正文重新断行上下跳", async () => {
 	await openNarrowReading();
-	await app.send("Input.dispatchMouseEvent", { type: "mouseWheel", x: 500, y: 400, deltaX: 0, deltaY: -150 });
+	/*
+	 * 滚开 400px，不是 150px。收起侧栏时眼前那一段**下面**的正文也在变矮，变矮的量一旦超过离底部
+	 * 的距离，滚动区就到底了，`scrollTop` 被夹住，谁也放不回原处——那量到的是夹位，不是锚定。150px
+	 * 原本只是刚好够：28640a6f 把每段回复底下的空当收掉 10px 之后，这份 fixture 里滚开 149px、
+	 * 下面那截却变矮 172px，次次在最后几帧被夹住、跳 22px。
+	 */
+	await app.send("Input.dispatchMouseEvent", { type: "mouseWheel", x: 500, y: 400, deltaX: 0, deltaY: -400 });
 	await frames(app, 60);
-	const away = await app.evaluate<number>(`(() => { const v = ${VIEW}; return v.scrollHeight - v.scrollTop - v.clientHeight; })()`);
-	assert.ok(away > 100, `没滚开：离底部只有 ${away}px`);
+	const away = () => app.evaluate<number>(`(() => { const v = ${VIEW}; return v.scrollHeight - v.scrollTop - v.clientHeight; })()`);
+	const start = await away();
+	assert.ok(start > 100, `没滚开：离底部只有 ${start}px`);
 	const heights: number[] = [];
 	const drifts: string[] = [];
 	for (const label of ["隐藏侧边栏", "显示侧边栏"]) {
@@ -237,6 +244,8 @@ test("往上滚开之后开合侧栏，眼前那一段不跟着正文重新断�
 		const tops = await readingSlide(label);
 		const drift = tops.map((top) => Math.round(top - tops[0]));
 		if (drift.some((d) => Math.abs(d) > 1)) drifts.push(`${label}：眼前那一段跟着跳了 ${[...new Set(drift)].join(" ")}px`);
+		const left = await away();
+		assert.ok(left > 1, `${label}之后滚到了底（离底部 ${left}px），这一次量到的是夹位，不是锚定`);
 		await frames(app, 30);
 	}
 	assert.notEqual(heights[0], heights[1], "侧栏开合时转录的高度没变，这条量不到要量的东西");
