@@ -177,6 +177,8 @@ function readsOnly(words: LiteralWord[]): boolean {
 
 	if (READ_ONLY_COMMANDS.has(head)) return true;
 
+	if (head === "sed") return printsLines(words.slice(1));
+
 	/*
 	 * `env` prints the environment, which is read-only — right up until it is given something to
 	 * run. With assignments and nothing else, there is nothing to run.
@@ -190,6 +192,19 @@ function readsOnly(words: LiteralWord[]): boolean {
 	if (head === "git" && args[0] === "branch") return gitBranchReads(args.slice(1));
 	if (head === "git" && args[0] === "remote") return gitRemoteReads(args.slice(1));
 	return sub ? sub.has(args[0] ?? "") : false;
+}
+
+/**
+ * `sed -n '1,80p' a.ts` 是模型读一段文件的习惯写法：真实会话 77 次 `sed` 里 69 次是这个形状。
+ *
+ * 只认这一种。sed 脚本能写文件（`w`、`-i`）、能跑命令（`e`），所以脚本只能是纯行号范围加 `p`，
+ * 其余写法照旧算写。文件参数不能以 `-` 开头，也不能以 glob 开头——目录里一个叫 `-i` 的文件，
+ * 就能把 `sed -n 1,5p *` 展开成原地改写。
+ */
+function printsLines(args: LiteralWord[]): boolean {
+	const [quiet, script, ...files] = args;
+	if (quiet?.text !== "-n" || !script || !/^\d+(,\d+)?p$/.test(script.text)) return false;
+	return files.every((file) => file.glob !== 0 && !file.text.startsWith("-"));
 }
 
 /**

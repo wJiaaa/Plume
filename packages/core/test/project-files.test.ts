@@ -14,6 +14,7 @@ import { test, type TestContext } from "node:test";
 import { buildIndex } from "../src/index/symbols.ts";
 import { globTool } from "../src/tools/glob.ts";
 import { grepTool } from "../src/tools/grep.ts";
+import { readTool } from "../src/tools/read.ts";
 
 const ctx = (cwd: string) => ({ cwd, sessionId: "s", state: new Map<string, unknown>() });
 
@@ -109,4 +110,37 @@ test("symbol 索引：被忽略的目录不进；提交了的 vendor/ 仍按名�
 	const files = new Set((await buildIndex(cwd)).symbols.map((entry) => entry.file));
 
 	assert.deepEqual([...files], ["src/app.ts"]);
+});
+
+test("read：找不到文件时列出项目里的同名文件，猜错模块名的那个排最前，被忽略的不列", async (t) => {
+	const cwd = await repo(t, {
+		".gitignore": "release/\n",
+		"eim-echat/src/main/java/handle/RequestDistributor.java": "class A {}",
+		"eim-ecom/src/other/RequestDistributor.java": "class B {}",
+		"release/RequestDistributor.java": "class C {}",
+		"eim-echat/src/main/java/handle/Unrelated.java": "class D {}",
+	});
+	const text = async (path: string) => {
+		const res = await readTool.execute({ path }, ctx(cwd));
+		assert.equal(res.isError, true);
+		return res.content.map((part) => (part.type === "text" ? part.text : "")).join("");
+	};
+
+	// 真实会话里的样子：模块名猜错，后半截是对的。
+	assert.equal(
+		await text("eim-eicq/src/main/java/handle/RequestDistributor.java"),
+		"File not found: eim-eicq/src/main/java/handle/RequestDistributor.java. Files with that name in the project:\n" +
+			"  eim-echat/src/main/java/handle/RequestDistributor.java\n" +
+			"  eim-ecom/src/other/RequestDistributor.java",
+	);
+	// 只拿文件名去读（glob 分组以后容易这样）。
+	assert.equal(
+		await text("RequestDistributor.java"),
+		"File not found: RequestDistributor.java. Files with that name in the project:\n" +
+			"  eim-echat/src/main/java/handle/RequestDistributor.java\n" +
+			"  eim-ecom/src/other/RequestDistributor.java",
+		"对得上的一样多时按路径排，结果是确定的",
+	);
+	// 没有同名的：还是原来那一句，不猜「相近」的。
+	assert.equal(await text("src/Nope.java"), "File not found: src/Nope.java");
 });

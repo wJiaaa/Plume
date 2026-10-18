@@ -7,6 +7,7 @@ import { outline, outlineFooter } from "./outline.ts";
 import { displayPath, imageMimeType, looksBinary } from "./paths.ts";
 import { authorizeRead, toAbsolute } from "./read-access.ts";
 import { markRead } from "./read-state.ts";
+import { sameNamed } from "./project-files.ts";
 import { scratchFile } from "./scratch-file.ts";
 export { hasRead, markRead } from "./read-state.ts";
 import { decodeText } from "./text-layout.ts";
@@ -30,6 +31,13 @@ function extensionOf(path: string): string {
 	const base = path.toLowerCase().split(/[/\\]/).pop() ?? "";
 	const dot = base.lastIndexOf(".");
 	return dot > 0 ? base.slice(dot + 1) : "";
+}
+
+/** 找不到时附上项目里的同名文件，见 `sameNamed`。 */
+async function notFound(cwd: string, path: string): Promise<string> {
+	const named = await sameNamed(cwd, path).catch(() => []);
+	if (named.length === 0) return `File not found: ${path}`;
+	return `File not found: ${path}. Files with that name in the project:\n${named.map((one) => `  ${one}`).join("\n")}`;
 }
 
 export const readTool: Tool<ReadArgs> = {
@@ -90,7 +98,7 @@ export const readTool: Tool<ReadArgs> = {
 		try {
 			absolute = await realpath(scratch ?? toAbsolute(ctx.cwd, path));
 		} catch {
-			return errorResult(`File not found: ${path}`);
+			return errorResult(scratch ? `File not found: ${path}` : await notFound(ctx.cwd, path));
 		}
 		const authorized = await authorizeRead(ctx, absolute, { allowSkillReads: true });
 		if (!authorized.ok) return errorResult(authorized.message);

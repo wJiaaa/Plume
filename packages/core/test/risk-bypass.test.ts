@@ -278,7 +278,7 @@ test("a chain is not read-only when any link writes, runs something else, or hid
 		"grep -rl x . | sh",
 		"git log --output=x | head",
 		"FOO=bar ls",
-		"sed -n 1,80p a.txt",
+		"sort -o out.txt a.txt",
 		// Redirections that keep what they write.
 		"cat a > b",
 		"cat a >> ~/.bashrc",
@@ -331,6 +331,32 @@ test("a word that starts as a glob may expand into a flag, where a flag can writ
 	// Where no flag writes, or the glob can only become names with a fixed start, it stays read-only.
 	for (const command of ["ls *.ts", "wc -l src/*.ts", "git branch --list feat*", "cat docs/*.md | head"])
 		assert.equal(isReadOnlyCommand(command), true, command);
+});
+
+test("sed reading a range of lines is read-only; any other sed is not", () => {
+	for (const command of [
+		"sed -n '1,80p' src/a.ts",
+		"sed -n 120,160p a.ts b.ts",
+		"sed -n 5p a.ts",
+		'cd backend && sed -n "1,60p" main.go | head',
+		"ls migrations | sed -n '1,60p'",
+	])
+		assert.equal(isReadOnlyCommand(command), true, `应免审批: ${command}`);
+	for (const command of [
+		// Writes and runs: the reasons sed is not on the table.
+		"sed -i '' 1d a.ts",
+		"sed -n 1,5p -i a.ts",
+		"sed -n '1,5w out.txt' a.ts",
+		"sed -n '1e rm -rf ~' a.ts",
+		"sed -n '1,5p;w out.txt' a.ts",
+		// Shapes outside the one allowed.
+		"sed 's/a/b/' a.ts",
+		"sed -n '/^fmt:/,/^$/p' Makefile",
+		"sed 1,5p a.ts",
+		// A file named `-i` turns `*` into an in-place edit.
+		"sed -n 1,5p *",
+	])
+		assert.equal(isReadOnlyCommand(command), false, command);
 });
 
 test("the scanner reads quoting, comments and heredocs the way bash does", () => {
