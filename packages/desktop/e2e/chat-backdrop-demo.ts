@@ -209,6 +209,8 @@ async function main() {
 			return { backdrop: Math.round(backdrop), card: Math.round(card) };
 		})()`);
 		check("背景从卡片内沿铺起，标题栏底下也有图", edges.backdrop === edges.card, JSON.stringify(edges));
+		const mask = await app.evaluate<string>(`getComputedStyle(document.querySelector(${JSON.stringify(PANE)})).maskImage`);
+		check("除雾化以外不加遮罩，图从上铺到底", mask === "none", mask);
 		const textarea = await app.evaluate<boolean>(`(() => {
 			const field = document.querySelector("main textarea").getBoundingClientRect();
 			const hit = document.elementFromPoint(field.x + field.width / 2, field.y + field.height / 2);

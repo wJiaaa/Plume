@@ -1,21 +1,13 @@
 /* ---------------------------------------------------------------------------
  * 新对话背景图
  *
- * 一层铺满窗格、`cover` 裁切的图，往输入框那头淡出。只在还没有消息的会话里看得见，发出第一条
+ * 一层铺满窗格、`cover` 裁切的图，从上到下同一个浓度。只在还没有消息的会话里看得见，发出第一条
  * 消息时退到透明。见 `ChatBackdrop.tsx`。
+ *
+ * 不往下淡出：那是给正文让位的做法，而这张图只在没有正文的新对话里出现，淡出只会让窗格下半截空着。
  * ------------------------------------------------------------------------- */
 
 .ly-chat-backdrop {
-  --ly-backdrop-mask: linear-gradient(
-    to bottom,
-    rgb(0 0 0) 0 19%,
-    rgb(0 0 0 / 79%) 30%,
-    rgb(0 0 0 / 50%) 42%,
-    rgb(0 0 0 / 20%) 54%,
-    rgb(0 0 0 / 5%) 64%,
-    transparent 72%
-  );
-
   position: absolute;
   inset: 0;
   /* 往上铺进窗格标题栏底下：标题栏是透明的，只在它下沿开始的图会在那里切出一道横边。见 `DockPane`。 */
@@ -27,7 +19,6 @@
   background-position: center;
   background-size: cover;
   background-repeat: no-repeat;
-  mask-image: var(--ly-backdrop-mask);
   transition: opacity var(--ly-t-slow) var(--ly-e-out);
 
   /* 第一次挂上时从透明进来，而不是图一读完就硬切出现。 */
@@ -40,7 +31,7 @@
  * Haze：同一张图叠三份，往下越来越糊，再盖一层往底色走的渐变和细扫描线。
  *
  * 糊只作用在图上，所以是两个子层各自 `filter: blur`，而不是整层糊——整层糊会把遮罩的边也糊开。
- * 它自己就往下变暗，遮罩因此可以放得更长。
+ * 只有它往下淡出：淡进底色就是这种效果本身，不是给正文让位。
  */
 .ly-chat-backdrop[data-ly-chat-backdrop="haze"] {
   --ly-haze-soft: 7px;
@@ -54,7 +45,7 @@
     color-mix(in srgb, var(--color-shell) 55%, transparent) 55%,
     color-mix(in srgb, var(--color-shell) 78%, transparent) 75%
   );
-  --ly-backdrop-mask: linear-gradient(
+  mask-image: linear-gradient(
     to bottom,
     rgb(0 0 0) 0 19%,
     rgb(0 0 0 / 94%) 30%,
