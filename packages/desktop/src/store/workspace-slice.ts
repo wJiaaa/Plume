@@ -199,17 +199,20 @@ export function workspaceSlice(set: Set, get: Get) {
   /**
    * 「编辑项目」 — the name and the source folders, which are the two things the dialog shows.
    *
-   * The main folder is not editable here and is not meant to be. It is the session's working
-   * directory: every stored conversation records it, git reads it, and changing it out from under
-   * them is `sessions:move`'s problem rather than a text field's. Extra folders can come and go
-   * freely because nothing is anchored to them.
+   * The first folder handed back is the main one, as in `createProject`. It used to be locked here,
+   * because conversations were filed by their folder and moving the main one stranded them. They
+   * are filed by `project` now (ADR-0053) and keep their own `cwd`, so a new main folder only
+   * decides where the *next* conversation runs. The old main folder stays on as an extra one
+   * unless it is taken out too, which keeps its conversations' read scope (`projectRootsFor`).
    */
   async updateProject(id: string, patch: { name?: string; folders?: string[] }) {
     const settings = get().settings;
-    const path = settings?.projects.find((project) => project.id === id)?.path;
-    if (!settings || path === undefined) return;
+    const current = settings?.projects.find((project) => project.id === id);
+    if (!settings || !current) return;
     const trimmed = patch.name?.trim();
-    const rest = (patch.folders ?? []).map((folder) => folder.trim()).filter((folder) => folder && folder !== path);
+    const [main, ...others] = (patch.folders ?? []).map((folder) => folder.trim()).filter(Boolean);
+    const path = main ?? current.path;
+    const rest = others.filter((folder) => folder !== path);
     await get().saveSettings({
       ...settings,
       projects: settings.projects.map((project) =>
@@ -217,6 +220,7 @@ export function workspaceSlice(set: Set, get: Get) {
           ? {
               ...project,
               name: trimmed || project.name,
+              path,
               // `undefined` rather than `[path]`: a project back down to one folder should look
               // exactly like one that never had a second, on disk and to every reader.
               folders: patch.folders === undefined ? project.folders : rest.length > 0 ? [path, ...rest] : undefined,
@@ -224,9 +228,16 @@ export function workspaceSlice(set: Set, get: Get) {
           : project,
       ),
     });
-    // The header reads the workspace, not the project list, so it needs telling separately.
     const workspace = get().workspace;
-    if (trimmed && workspace?.projectId === id) set({ workspace: { ...workspace, name: trimmed } });
+    if (workspace?.projectId !== id) return;
+    // A blank draft in this project is about to run in the main folder, so it follows the new one.
+    // An open conversation keeps its own `cwd` and is left where it is.
+    if (path !== current.path && !get().activeSessionId && workspace.path === current.path) {
+      await get().openWorkspace(path, id);
+      return;
+    }
+    // The header reads the workspace, not the project list, so it needs telling separately.
+    if (trimmed) set({ workspace: { ...workspace, name: trimmed } });
   },
 
   async setSessionPinned(sessionId: string, pinned: boolean) {

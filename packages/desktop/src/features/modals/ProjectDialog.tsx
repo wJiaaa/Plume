@@ -7,8 +7,7 @@
  * not always called what the directory is called.
  *
  * One component for both 创建 and 编辑, because they are the same form. The difference is what
- * already exists: editing cannot move the main folder (see `SourceFolders`) and offers to remove
- * the project, creating cannot.
+ * already exists: editing offers to remove the project, creating cannot.
  */
 
 import { Folder, FolderPlus, Monitor, X } from "../../ui/icons/index.ts";
@@ -16,6 +15,7 @@ import { useState } from "react";
 
 import { projectFolders } from "@plume/core/project-folders";
 import { useI18n } from "../../i18n/index.ts";
+import { Button } from "../../ui/primitives/Button.tsx";
 import { baseName } from "../../lib/paths.ts";
 import { Input } from "../../ui/inputs/NativeField.tsx";
 import { Dialog, DialogAction } from "../../ui/overlay/Dialog.tsx";
@@ -43,15 +43,15 @@ export interface ProjectDraft {
  */
 function SourceFolders({
 	folders,
-	lockFirst,
 	onAdd,
 	onRemove,
+	onMakeMain,
 }: {
+	/** The first one is the main folder: where new conversations run and what git reads. */
 	folders: string[];
-	/** Editing: the first folder is the working directory of every session filed under this project. */
-	lockFirst: boolean;
 	onAdd: () => void;
 	onRemove: (folder: string) => void;
+	onMakeMain: (folder: string) => void;
 }) {
 	const { t } = useI18n();
 	return (
@@ -80,21 +80,32 @@ function SourceFolders({
 						{folders.map((folder, index) => (
 							/* The path is the tooltip, not the row: a row of absolute paths is a column of
 							   prefixes you have to read past to find the one that differs. */
-							<div key={folder} data-ly-source-folder={folder} className="flex h-11 items-center gap-2.5 px-4" data-ly-tip={folder}>
+							<div key={folder} data-ly-source-folder={folder} data-row-actions="" className="flex h-11 items-center gap-2.5 px-4" data-ly-tip={folder}>
 								<Folder size={15} strokeWidth={1.8} className="shrink-0 text-ink-muted" aria-hidden />
 								<span className="ly-fade-tail min-w-0 flex-1 truncate text-label text-ink">{baseName(folder)}</span>
-								{lockFirst && index === 0 ? (
-									<span className="shrink-0 text-caption text-ink-faint" data-ly-tip={t("project.mainFolderHint")}>
+								{index === 0 ? (
+									/* `px-1.5` is the `xs` button's inset, so this and 「设为主文件夹」 end on one edge. */
+									<span className="shrink-0 px-1.5 text-caption text-ink-faint" data-ly-main-folder="" data-ly-tip={t("project.mainFolderHint")}>
 										{t("project.mainFolder")}
 									</span>
 								) : (
-									<IconButton
-										size="sm"
-										label={t("project.removeFolderNamed", { name: baseName(folder) })}
-										onClick={() => onRemove(folder)}
-										icon={<X size={14} strokeWidth={2} aria-hidden />}
-									/>
+									<Button
+										variant="subtle"
+										size="xs"
+										className="ly-row-action shrink-0"
+										data-ly-make-main=""
+										ariaLabel={t("project.makeMainNamed", { name: baseName(folder) })}
+										onClick={() => onMakeMain(folder)}
+									>
+										{t("project.makeMain")}
+									</Button>
 								)}
+								<IconButton
+									size="sm"
+									label={t("project.removeFolderNamed", { name: baseName(folder) })}
+									onClick={() => onRemove(folder)}
+									icon={<X size={14} strokeWidth={2} aria-hidden />}
+								/>
 							</div>
 						))}
 						<button
@@ -229,9 +240,9 @@ export function ProjectDialog({ project, onClose }: { project?: ProjectDraft; on
 
 					<SourceFolders
 						folders={folders}
-						lockFirst={editing}
 						onAdd={() => void addFolder()}
 						onRemove={(folder) => setFolders((current) => current.filter((entry) => entry !== folder))}
+					onMakeMain={(folder) => setFolders((current) => [folder, ...current.filter((entry) => entry !== folder)])}
 					/>
 					{/* Submits the form without being reachable: the visible submit is in the actions row,
 					    which `DialogFrame` renders outside this form. */}

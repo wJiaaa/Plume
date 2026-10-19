@@ -303,6 +303,14 @@ export async function openProjectMenu(page: Page, project: string, within = "mai
 	await frames(page, 60);
 }
 
+/** 侧栏项目行的「⋯」→「编辑项目」，等编辑弹窗挂上再走完过渡。项目要在侧栏里有一行（有会话或置顶）。 */
+export async function openProjectEditor(page: Page, project: string): Promise<void> {
+	await click(page, "button", `「${project}」的项目操作`);
+	await click(page, '[role="menuitem"]', "编辑项目");
+	await until(page, `document.querySelector('[data-ly-project-dialog="edit"]')`);
+	await frames(page, 30);
+}
+
 /** 打开设置并切到某一页（按左侧导航里写的名字，比如「外观」），再等它画完。 */
 export async function openSettings(page: Page, section: string): Promise<void> {
 	await click(page, "[data-ly-open-settings]");

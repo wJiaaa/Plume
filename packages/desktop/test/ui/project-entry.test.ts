@@ -195,10 +195,26 @@ test("taking the last extra folder out puts the entry back to having none", asyn
 	assert.equal(projects()[0].folders, undefined);
 });
 
-test("the main folder stays first however the dialog hands the list back", async () => {
-	await useApp.getState().createProject("双仓", ["/Users/x/app"]);
-	await useApp.getState().updateProject(projects()[0].id, { folders: ["/Users/x/api", "/Users/x/app"] });
-	assert.deepEqual(projects()[0].folders, ["/Users/x/app", "/Users/x/api"]);
+/*
+ * 主文件夹能换了。会话按 `project` 归属、各自记着 `cwd`，换主文件夹只决定下一条对话在哪跑；
+ * 原来的主文件夹留在列表里，已有对话的读取范围不变。
+ */
+test("the folder the dialog hands back first becomes the main one, and the old main one stays on", async () => {
+	await useApp.getState().createProject("双仓", ["/Users/x/app", "/Users/x/api"]);
+	const id = projects()[0].id;
+	await useApp.getState().updateProject(id, { folders: ["/Users/x/api", "/Users/x/app"] });
+	assert.equal(projects()[0].path, "/Users/x/api");
+	assert.deepEqual(projects()[0].folders, ["/Users/x/api", "/Users/x/app"]);
+	assert.equal(projects()[0].id, id, "the project kept its id");
+});
+
+test("a blank draft in the project moves to the new main folder", async () => {
+	await useApp.getState().createProject("双仓", ["/Users/x/app", "/Users/x/api"]);
+	const id = projects()[0].id;
+	assert.equal(useApp.getState().workspace?.path, "/Users/x/app");
+	await useApp.getState().updateProject(id, { folders: ["/Users/x/api", "/Users/x/app"] });
+	assert.equal(useApp.getState().workspace?.path, "/Users/x/api");
+	assert.equal(useApp.getState().workspace?.projectId, id);
 });
 
 test("编辑项目 changes only the project it was opened on, not another on the same folder", async () => {
