@@ -8,6 +8,7 @@ import { Card, InlineSelect, Row, SectionTitle, Segmented, TextInput, Toggle } f
 import { DialogAction } from "../../ui/overlay/Dialog.tsx";
 import { findCodeTheme, LIGHT_CODE_THEMES, DARK_CODE_THEMES } from "../../lib/code/themes.ts";
 import { CodeAppearancePreview } from "./CodeAppearancePreview.tsx";
+import { ChatBackgroundSettings } from "./ChatBackgroundSettings.tsx";
 import { InlineCodeSpecimen } from "./InlineCodeSpecimen.tsx";
 import { CODE_DEFAULTS, FACTORY_APPEARANCE } from "./appearance-defaults.ts";
 import { withHanFallback } from "../../lib/code/font-stack.ts";
@@ -169,6 +170,8 @@ export function AppearanceSettings() {
 					}
 				/>
 			</Card>
+
+			<ChatBackgroundSettings appearance={appearance} patch={patch} />
 
 			{/*
 			 * The heading, with a way back to where it started.

@@ -62,4 +62,7 @@ export const FACTORY_APPEARANCE: Appearance = {
 	errorDetail: "compact",
 	fontSmoothing: false,
 	vibrancy: true,
+	chatBackground: null,
+	chatBackgroundEffect: "none",
+	chatBackgroundOpacity: 0.24,
 };

@@ -146,7 +146,22 @@ export interface AppearanceSettings {
 	 * 关掉时回到不透明的主题色——材质叠在桌面上，颜色跟着壁纸走，有人要的是一块颜色确定的底。
 	 */
 	vibrancy: boolean;
+	/**
+	 * 新对话的背景图：`~/.plume/backgrounds/` 下的文件名，没有为 null。
+	 *
+	 * 只铺在还没有消息的会话里——它是开场的样子，不是阅读时的底纹；发出第一条消息就淡出。
+	 *
+	 * 存文件名而不是图本身：图可以是几 MB，而设置每存一次都要整份经过 IPC。文件名里带着时间戳，
+	 * 换一张图名字就变，各个窗口据此知道要重新读，不用另记版本号。
+	 */
+	chatBackground: string | null;
+	/** 背景图怎么画：原图，或在渲染进程里重绘成网点、字符、扫描线，`haze` 是往下模糊淡出。 */
+	chatBackgroundEffect: ChatBackgroundEffect;
+	/** 0.05–0.65。背景的不透明度。 */
+	chatBackgroundOpacity: number;
 }
+
+export type ChatBackgroundEffect = "none" | "dither" | "ascii" | "halftone" | "scanlines" | "haze";
 
 export const DEFAULT_APPEARANCE: AppearanceSettings = {
 	/*
@@ -206,6 +221,9 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
 	// 不设 `-webkit-font-smoothing`，字按系统默认的粗细画。
 	fontSmoothing: false,
 	vibrancy: true,
+	chatBackground: null,
+	chatBackgroundEffect: "none",
+	chatBackgroundOpacity: 0.24,
 };
 
 /** A prompt the app sends on its own schedule, in a fresh session each time. */

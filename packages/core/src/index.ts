@@ -114,6 +114,7 @@ export {
 	saveSettings,
 	settingsPath,
 	type AppearanceSettings,
+	type ChatBackgroundEffect,
 	type PermissionMode,
 	type ScheduledTask,
 	type ProjectEntry,

@@ -221,6 +221,11 @@ export const METHODS = {
 		restorePanel: { channel: "windows:restorePanel" },
 		closePanel: { channel: "windows:closePanel" },
 	},
+	chatBackground: {
+		pick: { channel: "chatBackground:pick" },
+		read: { channel: "chatBackground:read" },
+		remove: { channel: "chatBackground:remove" },
+	},
 	system: {
 		openPath: { channel: "system:openPath" },
 		openExternal: { channel: "system:openExternal" },

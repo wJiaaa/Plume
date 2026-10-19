@@ -310,6 +310,19 @@ export interface PlumeApi {
 		 */
 		onChanged(handler: (settings: Settings) => void): () => void;
 	};
+	/**
+	 * 会话窗背景图，存在 `~/.plume/backgrounds/`。
+	 *
+	 * 页面的 `ly-media` 只认已打开项目里的文件，而这张图来自哪里都行，所以选、读、删各走一条自己的
+	 * 路；设置里只记文件名，见 `AppearanceSettings.chatBackground`。
+	 */
+	chatBackground: {
+		/** 弹出选图对话框，复制进去，返回新文件名；取消或图太大时为 null。 */
+		pick(): Promise<{ name: string } | { error: "too-large" } | null>;
+		/** 那张图的字节；文件不在了为 null。 */
+		read(name: string): Promise<Uint8Array | null>;
+		remove(): Promise<void>;
+	};
 	/** 钩子：用户级和项目级，外加项目钩子的信任。每个写操作都回一份新的完整列表。 */
 	hooks: {
 		list(cwd: string | null): Promise<HooksView>;

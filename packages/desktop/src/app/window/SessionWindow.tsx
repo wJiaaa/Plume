@@ -9,7 +9,7 @@
 import { AppWindow } from "../../ui/icons/index.ts";
 import { useEffect } from "react";
 import { SessionScope } from "../session-scope.tsx";
-import { Conversation, ConversationSkeleton } from "../../features/conversation/index.ts";
+import { ChatBackdrop, Conversation, ConversationSkeleton } from "../../features/conversation/index.ts";
 import { chatSurface } from "../../lib/chat-surface.ts";
 import { sessionTitle } from "../../lib/session-title.ts";
 import { useApp } from "../../store/index.ts";
@@ -72,7 +72,8 @@ export function SessionWindow() {
 				</div>
 			</header>
 			<SessionScope.Provider value={sessionId}>
-				<div className="flex min-h-0 flex-1 flex-col">
+				<div className="relative isolate flex min-h-0 flex-1 flex-col">
+					<ChatBackdrop empty={surface === "empty"} />
 					{surface === "skeleton" || !sessionId ? <ConversationSkeleton /> : <Conversation sessionId={sessionId} />}
 				</div>
 			</SessionScope.Provider>

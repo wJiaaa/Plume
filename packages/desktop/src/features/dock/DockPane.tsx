@@ -187,7 +187,8 @@ export function DockPane({
 			<div data-tile={tile} className="ly-dock-card flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden" style={{ margin }}>
 			{/* Controls keep their endpoint geometry while this retained surface composites its resize. */}
 			{chrome && <div aria-hidden className="shrink-0" style={{ height: HEADER_HEIGHT }} />}
-			<div data-dock-content={kind} className="relative flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
+			{/* 标题栏压在内容上面那一截的高度：会话背景图要往上铺满它，不在标题栏下沿切出一道边。 */}
+			<div data-dock-content={kind} className="relative flex min-h-0 min-w-0 flex-1 flex-col" style={chrome ? ({ "--ly-pane-header": `${HEADER_HEIGHT}px` } as React.CSSProperties) : undefined}>{children}</div>
 			</div>
 		</PaneSurface>
 	);

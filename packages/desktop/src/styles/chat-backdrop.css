@@ -1,0 +1,99 @@
+/* ---------------------------------------------------------------------------
+ * 新对话背景图
+ *
+ * 一层铺满窗格、`cover` 裁切的图，往输入框那头淡出。只在还没有消息的会话里看得见，发出第一条
+ * 消息时退到透明。见 `ChatBackdrop.tsx`。
+ * ------------------------------------------------------------------------- */
+
+.ly-chat-backdrop {
+  --ly-backdrop-mask: linear-gradient(
+    to bottom,
+    rgb(0 0 0) 0 19%,
+    rgb(0 0 0 / 79%) 30%,
+    rgb(0 0 0 / 50%) 42%,
+    rgb(0 0 0 / 20%) 54%,
+    rgb(0 0 0 / 5%) 64%,
+    transparent 72%
+  );
+
+  position: absolute;
+  inset: 0;
+  /* 往上铺进窗格标题栏底下：标题栏是透明的，只在它下沿开始的图会在那里切出一道横边。见 `DockPane`。 */
+  top: calc(-1 * var(--ly-pane-header, 0px));
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background-image: var(--ly-backdrop-image);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  mask-image: var(--ly-backdrop-mask);
+  transition: opacity var(--ly-t-slow) var(--ly-e-out);
+
+  /* 第一次挂上时从透明进来，而不是图一读完就硬切出现。 */
+  @starting-style {
+    opacity: 0;
+  }
+}
+
+/*
+ * Haze：同一张图叠三份，往下越来越糊，再盖一层往底色走的渐变和细扫描线。
+ *
+ * 糊只作用在图上，所以是两个子层各自 `filter: blur`，而不是整层糊——整层糊会把遮罩的边也糊开。
+ * 它自己就往下变暗，遮罩因此可以放得更长。
+ */
+.ly-chat-backdrop[data-ly-chat-backdrop="haze"] {
+  --ly-haze-soft: 7px;
+  --ly-haze-strong: 18px;
+  --ly-haze-soft-mask: linear-gradient(to bottom, transparent 18%, rgb(0 0 0) 60%);
+  --ly-haze-strong-mask: linear-gradient(to bottom, transparent 28%, rgb(0 0 0) 76%);
+  --ly-haze-overlay: linear-gradient(
+    to bottom,
+    transparent 16%,
+    color-mix(in srgb, var(--color-shell) 26%, transparent) 38%,
+    color-mix(in srgb, var(--color-shell) 55%, transparent) 55%,
+    color-mix(in srgb, var(--color-shell) 78%, transparent) 75%
+  );
+  --ly-backdrop-mask: linear-gradient(
+    to bottom,
+    rgb(0 0 0) 0 19%,
+    rgb(0 0 0 / 94%) 30%,
+    rgb(0 0 0 / 72%) 42%,
+    rgb(0 0 0 / 42%) 54%,
+    rgb(0 0 0 / 16%) 66%,
+    rgb(0 0 0 / 4%) 78%,
+    transparent 90%
+  );
+}
+
+.ly-chat-backdrop > span {
+  position: absolute;
+  inset: 0;
+  background-image: var(--ly-backdrop-image);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+.ly-chat-backdrop > .ly-haze-soft {
+  filter: blur(var(--ly-haze-soft));
+  mask-image: var(--ly-haze-soft-mask);
+}
+
+.ly-chat-backdrop > .ly-haze-strong {
+  filter: blur(var(--ly-haze-strong));
+  mask-image: var(--ly-haze-strong-mask);
+}
+
+.ly-chat-backdrop[data-ly-chat-backdrop="haze"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    repeating-linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--color-shell) 36%, transparent) 0 1px,
+      transparent 1px 3px
+    ),
+    var(--ly-haze-overlay);
+}

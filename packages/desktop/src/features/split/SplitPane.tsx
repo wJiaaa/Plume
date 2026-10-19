@@ -1,6 +1,6 @@
 import { memo, type ReactNode } from "react";
 import { SessionScope } from "../../app/session-scope.tsx";
-import { Conversation, ConversationSkeleton, EmptyState } from "../conversation/index.ts";
+import { ChatBackdrop, Conversation, ConversationSkeleton, EmptyState } from "../conversation/index.ts";
 import { chatSurface } from "../../lib/chat-surface.ts";
 import { RetainedViews } from "../../ui/layout/RetainedViews.tsx";
 import { useApp } from "../../store/index.ts";
@@ -49,7 +49,8 @@ const SplitScreen = memo(function SplitScreen({
 	});
 	const surface = chatSurface({ messages, loading });
 	const body = (
-		<div className="flex min-h-0 flex-1 flex-col">
+		<div className="relative isolate flex min-h-0 flex-1 flex-col">
+			<ChatBackdrop empty={surface === "empty"} />
 			{!sessionId ? (
 				surface === "skeleton" ? <ConversationSkeleton /> : <EmptyState />
 			) : surface === "empty" ? (

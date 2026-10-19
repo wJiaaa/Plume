@@ -59,6 +59,7 @@
 @import "./styles/avatar.css";
 @import "./styles/interface.css";
 @import "./styles/gallery.css";
+@import "./styles/chat-backdrop.css";
 
 /*
  * `dark:` follows the app's theme, not the system's. Tailwind's default is the

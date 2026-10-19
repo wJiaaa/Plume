@@ -17,6 +17,7 @@ import { registerCommandsIpc } from "./commands.ts";
 import { registerMcpAuthIpc } from "./mcp-auth.ts";
 import { registerPluginsIpc } from "./plugins.ts";
 import { registerSystemIpc } from "./system.ts";
+import { registerChatBackgroundIpc } from "./chat-background.ts";
 import { sessions } from "../session-hub.ts";
 
 export interface ServicesIpcDeps {
@@ -71,6 +72,7 @@ export function registerServicesIpc(deps: ServicesIpcDeps): void {
 	registerCommandsIpc();
 
 	registerSystemIpc();
+	registerChatBackgroundIpc();
 
 	ipcMain.handle("index:stats", async (_event, cwd: string) => indexStats(cwd));
 
