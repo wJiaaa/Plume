@@ -27,6 +27,11 @@
   }
 }
 
+/* 退到透明当场完成，只有出现时淡入。理由见 `ChatBackdrop`。 */
+.ly-chat-backdrop.ly-chat-backdrop-off {
+  transition: none;
+}
+
 /*
  * Haze：同一张图叠三份，往下越来越糊，再盖一层往底色走的渐变和细扫描线。
  *

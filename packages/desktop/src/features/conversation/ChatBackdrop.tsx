@@ -95,7 +95,8 @@ export function useChatBackdropImage(): string | null {
 /**
  * 铺在窗格底下的那一层，只在新对话还没有消息时看得见。
  *
- * 有了消息以后不卸掉，而是退到透明：发出第一条消息时是淡出，不是一帧之内消失。
+ * 有了消息以后不卸掉，而是退到透明——回到新对话时才能从透明淡入。退的那一下不过渡：这一层退的时候
+ * 正文已经画出来了，淡出就是图在字底下多留三百多毫秒，从新对话点进会话看着像整页闪了一下。
  *
  * 父元素要 `relative isolate`：这一层是 `z-index: -1`，隔离之后它压在父元素自己的底色之上、
  * 内容之下，不会掉到窗格外面去。
@@ -104,7 +105,7 @@ export function ChatBackdrop({ empty }: { empty: boolean }) {
 	const appearance = useApp((s) => s.settings?.appearance);
 	const url = useChatBackdropImage();
 	if (!appearance?.chatBackground || !url) return null;
-	return <BackdropLayer url={url} effect={appearance.chatBackgroundEffect} opacity={empty ? appearance.chatBackgroundOpacity : 0} />;
+	return <BackdropLayer url={url} effect={appearance.chatBackgroundEffect} opacity={empty ? appearance.chatBackgroundOpacity : 0} className={empty ? "" : "ly-chat-backdrop-off"} />;
 }
 
 /** 那一层本身。设置页的预览也画它，所以效果和遮罩只写一处。 */
