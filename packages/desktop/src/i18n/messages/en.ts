@@ -1057,6 +1057,7 @@ export const en = {
 	"tools.browserScreenshot": "Screenshot page",
 	"step.thinking": { one: "Thought {n} time", other: "Thought {n} times" },
 	"step.separator": " · ",
+	"step.named": "{names} and {n} more",
 	"tools.create": "Created files",
 	"tools.edit": "Edited files",
 	"tools.read": "Read files",

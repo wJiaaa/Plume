@@ -29,8 +29,8 @@ import { LiveThought } from "./LiveThought.tsx";
 import { ToolIcon } from "./tool-icons.tsx";
 import { RollWords } from "../../ui/motion/RollWords.tsx";
 import { useHeldKey } from "../../ui/motion/held.ts";
-import { describeCalls, describeOne, diffOf, foldPolls, polledJob, startedJob } from "./call-words.ts";
-import { thinkingLive, type Call, type Run, type Step } from "./grouping.ts";
+import { describeCalls, describeOne, diffOf, foldPolls, nameCalls, polledJob, startedJob } from "./call-words.ts";
+import { thinkingLive, workbench, type Call, type Run, type Step } from "./grouping.ts";
 import { useTranscriptDisclosure } from "./view-state.ts";
 
 /**
@@ -126,8 +126,14 @@ function StepGroup({ step, thought, live, thinking, from, draw, drawCall }: {
 		return job ? startedJob(runs, job)?.summary : undefined;
 	});
 
+	/*
+	 * 跑完的探索、终端、改文件说前两次调用各自的说明（`nameCalls`）；跑着时说的是正在跑的那一次，用不上它。
+	 * 浏览器这类照旧报数：「打开网页 todo.html、操作网页 2 次」本来就说清了，换成逐条反而丢了次数。
+	 * 选出字符串，理由同上。
+	 */
+	const named = useScopedFromToolRuns((runs) => (said || !workbench(step.category) ? "" : nameCalls(calls, runs, root)));
 	// 哪样先来哪样在前：先有的那半句不能被后来的「思考 N 次」从前面挤开。
-	const parts = [describeCalls(calls)];
+	const parts = [named || describeCalls(calls)];
 	if (thought > 0) parts[step.members[0].kind === "thinking" ? "unshift" : "push"](translate("step.thinking", { n: thought }));
 	const words = said ? describeOne(said, saidSummary, { job: saidJob, root }) : parts.join(translate("step.separator"));
 	// 换一次调用、或者从跑着换成总的，就是换了一句话，滚一下；同一次调用的参数还在流进来，只缓宽度。

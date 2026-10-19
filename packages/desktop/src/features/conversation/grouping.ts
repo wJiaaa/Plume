@@ -941,6 +941,11 @@ export function thinkingLive(run: Extract<Run, { kind: "message" }>): boolean {
 /** 挨在一起也合成一段的三类：探索、终端、文件更改。 */
 const WORKBENCH = new Set(["explore", "terminal", "files"]);
 
+/** 这一段是不是这三类的：它们的调用各有一句说明（命令的说明、读的文件），跑完的那一行说得出来，见 `nameCalls`。 */
+export function workbench(category: string): boolean {
+	return WORKBENCH.has(category);
+}
+
 /**
  * 这次调用接不接在这一段后面。
  *

@@ -222,7 +222,7 @@ test("checking one background job three times in a row is one line that names th
 	const view = await mount(h(WorkStep, { step: { ...step(calls), category: "terminal" }, live: false, draw: () => null, drawCall }));
 	try {
 		const head = view.find(".ly-flow-row").textContent ?? "";
-		assert.match(head, /^执行命令 2 个/, "查输出是那条命令的一部分，不另记");
+		assert.match(head, /^跑端到端测试、看看改了哪些文件/, "说两条命令各自的说明；查输出是那条命令的一部分，不另记");
 		assert.doesNotMatch(head, /查看输出/);
 		await click(view.find(".ly-flow-row"));
 		const lines = view.all("[data-ly-step-rail] [data-ly-tool] > .ly-flow-row").map((row) => row.textContent ?? "");
