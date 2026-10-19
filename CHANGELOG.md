@@ -2,6 +2,45 @@
 
 这个文件由 `pnpm release` 生成，条目来自提交信息。写得含糊的提交在这里也含糊，所以值得在提交时就写清楚。
 
+## [0.9.42](https://github.com/wJiaaa/Plume/releases/tag/v0.9.42) - 2026-10-19
+
+<!-- plume:notes en -->
+
+### New
+
+- **Any source folder can become the project's main folder.** In Edit project, hover a folder and click Make main. New conversations then run in that folder and git reads it; conversations you already have stay in the folder they started in, and the old main folder stays in the list. An empty new conversation that is open at the time moves over with it. The main folder can also be taken out of the project now, as long as one folder is left.
+
+### Changes
+
+- **The model speaks between tool calls only when it has something to tell you.** Since 0.9.40 it said a sentence before every batch of calls, and most of them were announcements like "First I'll check the source state and the released versions to determine the version number". Now it speaks when it finds something that matters (a version, a failure, a cause, something missing or unexpected), makes a decision, or sees a risk, and it leads with the finding. On the same architecture question in a real repository (deepseek-v4.1-flash, two runs each), 15 notes that were almost all announcements became 12 notes, 10 of them with a concrete finding.
+- **A finished run of commands says what the commands did.** The collapsed line used to read "Ran commands ×5". It now shows the first two commands' own descriptions and the total, for example "List the project root, Read the README, 5 total". Reads and edits work the same way; browser actions still show counts, since "Opened todo.html, Clicked ×2" already says enough.
+- **Long answers open with the answer.** What you asked for — the design, the cause, the decision — comes first, in something you can take in from one screen. Detail you did not ask about waits for a follow-up question.
+
+### Fixes
+
+- **The text at the top of the Retries settings uses the full width.** It wrapped at about 62 characters while the card under it ran across the whole page.
+
+<!-- plume:notes zh-CN -->
+
+<details>
+<summary>中文（简体）</summary>
+
+### 新功能
+
+- **项目里任一源文件夹都可以设为主文件夹。** 在「编辑项目」里把鼠标移到某个文件夹上，点「设为主文件夹」。之后新对话在这个文件夹里跑，git 也读这里；已有的对话留在原来的文件夹，原来的主文件夹也还在列表里。当时开着的空白新对话会跟着换过去。主文件夹现在也能移出项目，只要还剩一个文件夹。
+
+### 变化
+
+- **模型在调用工具的间隙，只在有话可说时才开口。** 0.9.40 起，它每批调用前都要说一句，说出来的多是「我先查看当前源码状态和线上已有版本，以确定新版本号」这种预告。现在只在有发现（版本号、失败、原因、缺了什么或出乎意料的地方）、做了决定、或看到风险时才说，而且先说发现本身。在一个真实仓库上问同一个架构问题对照（deepseek-v4.1-flash，前后各两次）：原来 15 句几乎全是预告，现在 12 句，其中 10 句带具体发现。
+- **跑完的一段命令，折叠的那一行写出它们各自在做什么。** 原来写的是「执行命令 5 个」，现在是前两条命令自己的说明再加总数，比如「列出项目根目录、读项目说明 等 5 项」。读文件、改文件也一样；浏览器操作照旧报次数，「打开网页 todo.html、操作网页 2 次」本来就说清楚了。
+- **长回答先给答案。** 你要的那件事——方案、原因、结论——放在最前面，一屏之内能看完。没问到的细节，等你追问再展开。
+
+### 修复
+
+- **「请求重试」设置顶部那段说明不再缩成窄窄一栏。** 原来它大约 62 个字符就折行，下面的卡片却占满整页宽。
+
+</details>
+
 ## [0.9.41](https://github.com/wJiaaa/Plume/releases/tag/v0.9.41) - 2026-10-19
 
 <!-- plume:notes en -->
