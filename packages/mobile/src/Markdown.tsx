@@ -2,6 +2,7 @@ import { memo, useCallback, useMemo, type ReactNode } from "react";
 import { Linking, ScrollView, StyleSheet, Text, View } from "react-native";
 import Display, { MarkdownIt, type RenderRules } from "react-native-markdown-display";
 import { completeTail } from "@plume/client-runtime/stream-tail";
+import { withoutFollowups } from "@plume/client-runtime/followups";
 import { splitBlocks } from "./markdown-chunks.ts";
 import { useSmoothText } from "./smooth-text.ts";
 import { CopyButton } from "./copy.tsx";
@@ -75,7 +76,8 @@ const Block = memo(function Block({ source, style, rules }: { source: string; st
 export const Markdown = memo(function Markdown({ text, streaming = false, t }: { text: string; streaming?: boolean; t: T }) {
 	const theme = useTheme();
 	const { text: shown, active, tail } = useSmoothText(text, streaming);
-	const source = active ? completeTail(shown) : shown;
+	// 回复末尾的下一步建议是给桌面输入框的，手机上拿掉，不露出标记语法。
+	const source = withoutFollowups(active ? completeTail(shown) : shown);
 	const blocks = useMemo(() => splitBlocks(source, markdown.parse(source, {})), [source]);
 	const style = useMemo(() => ({
 		body: { color: theme.ink, fontSize: 16, lineHeight: 25 },

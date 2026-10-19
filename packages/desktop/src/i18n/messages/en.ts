@@ -159,7 +159,7 @@ export const en = {
 	"general.showThinking": "Show reasoning",
 	"general.showThinkingDetail": "Show the model's reasoning in the conversation, expandable to the full text. When off, you only see that it is thinking at the bottom of the chat.",
 	"general.nextPromptSuggestions": "Next-step suggestions",
-	"general.nextPromptSuggestionsDetail": "After each reply, show a guess at what you'll say next in the message box. Press Tab to use it. Adds one request per turn, which uses model tokens.",
+	"general.nextPromptSuggestionsDetail": "After each reply, suggest a next step in the message box. Press Tab to use it. The model writes it along with its reply, so there are no extra requests.",
 	"general.hideEmptiedProjects": "Fold away emptied projects",
 	"general.hideEmptiedProjectsDetail": "Once every conversation in a project is archived, hide the project too. A project that never had a conversation always keeps its row.",
 	"common.copy": "Copy",

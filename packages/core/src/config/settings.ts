@@ -443,10 +443,10 @@ export interface Settings {
 	 */
 	autoSummarizeTitle?: boolean;
 	/**
-	 * 一轮做完后猜人下一句要说什么，灰字放在输入框里，Tab 填入。默认关。
+	 * 回复后在输入框里用灰字给出下一步建议，Tab 填入。默认关。
 	 *
-	 * 每轮多一次从主请求分叉的请求：缓存读整段上下文，外加几十到几百个输出 token（开着推理的模型还有
-	 * 推理那部分）。见 `runtime/next-prompt.ts`。
+	 * 从前是一轮收尾后另发一次请求去猜；现在由回复的模型顺带写在末尾，不多发请求：系统提示词多一段，
+	 * 写了建议的回复多几十个输出 token。见 `followups.ts`。
 	 */
 	nextPromptSuggestions?: boolean;
 	/**

@@ -26,10 +26,11 @@ module.exports = {
 				"手机端只认 core 的类型。唯一的例外是 `ui-language/` 里给渲染用的那几个文件：整个目录一个 import " +
 				"都不出去，和桌面渲染进程白名单里的是同一批。手机把回复里的 ```ui 画出来，读块的规则必须和提示词、" +
 				"检查、桌面端是同一份——抄一份过去，就是模型学的写法在手机上被读成另一个样子。经 " +
-				"`@plume/client-runtime/ui-language` 转出去，手机不直接依赖 core。",
+				"`@plume/client-runtime/ui-language` 转出去，手机不直接依赖 core。`followups` 同理：回复末尾的下一步建议，" +
+				"手机要把标记拿掉、流式输出时先藏住没写完的那段，认的写法必须和提示词是同一份。",
 			severity: "error",
 			from: { path: "^packages/(mobile|client-runtime)/src/" },
-			to: { path: "^packages/core/", pathNot: "^packages/core/src/ui-language/(index|catalog|chart|check|expression|parse)\\.ts$", dependencyTypesNot: ["type-only"] },
+			to: { path: "^packages/core/", pathNot: "^packages/core/src/ui-language/(index|catalog|chart|check|expression|parse)\\.ts$|^packages/core/src/followups\\.ts$", dependencyTypesNot: ["type-only"] },
 		},
 		{
 			name: "client-runtime-has-no-ui",
@@ -126,13 +127,15 @@ module.exports = {
 				"也用它——引号、`2>&1`、粘在 `>` 上的路径，两处各写一遍就会对同一行命令给出两种读法。" +
 				"`reply-text` 只有一个 `import type`：一条回复里哪段播报已被最终答复重说过，界面画正文、子代理交回答复、" +
 				"命令行打印答复都要据此跳过——各判一遍，就是这一处不重复了、那一处照样说两遍。" +
+				"`followups` 一个 import 都没有：回复末尾下一步建议的写法，提示词教给模型的、输入框取来当灰字的、回复里拿掉的，" +
+				"必须是同一份——各写一遍，就是模型照着写了、界面上却露出一串语法。" +
 				"这一条是在真窗口里撞出来又验回去的——先看到过一整屏空白。",
 			severity: "error",
 			from: { path: "^packages/desktop/src" },
 			to: {
 				path: "^packages/core/src",
 				pathNot:
-					"^packages/core/src/(types|tokens|activity|trajectory-view|commands-view|model-catalog|agents-builtin|platform|reply-text)\\.ts$" +
+					"^packages/core/src/(types|tokens|activity|trajectory-view|commands-view|model-catalog|agents-builtin|platform|reply-text|followups)\\.ts$" +
 					"|^packages/core/src/(config/schedule|config/model-choice|config/models|config/image-models|config/project-folders|config/retry-policy|commands/builtin|plugins/install-record|mcp/placeholders|mcp/form|ai/thinking-options|runtime/delegation|runtime/plan-view|tools/shell-split)\\.ts$" +
 					"|^packages/core/src/ui-language/(index|catalog|chart|check|expression|parse)\\.ts$",
 				dependencyTypesNot: ["type-only"],

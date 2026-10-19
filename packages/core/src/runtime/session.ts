@@ -53,7 +53,6 @@ import { refreshDispatchGate } from "./turn-config.ts";
 import { sessionTaskQueue, type TaskQueue } from "./task-queue.ts";
 import { stripStaleHandles } from "../agent/model-switch.ts";
 import { streamAssistant } from "../ai/index.ts";
-import { NextPrompt } from "./next-prompt.ts";
 import { SessionTitle } from "./session-title.ts";
 import { TODOS_KEY } from "../tools/todo.ts";
 import { manualCompaction, type CompactionParts } from "./compaction/manual-compaction.ts";
@@ -98,11 +97,11 @@ export interface AgentSessionOptions {
 	 */
 	compactWhenIdle?: boolean;
 	/**
-	 * 一轮收尾后猜人下一句要说什么（`next-prompt.ts`），设置里开着才真的发。
+	 * 让模型在回复末尾写下一步建议（`followups.ts`），当输入框的灰字；设置里开着才在提示词里说。
 	 *
-	 * 和 `compactWhenIdle` 一样要宿主点名：命令行没有输入框，侧边聊天也不放这一句。
+	 * 和 `compactWhenIdle` 一样要宿主点名：命令行没有输入框，侧边聊天的输入框也不放这一句。
 	 */
-	suggestNextPrompt?: boolean;
+	suggestFollowups?: boolean;
 	/**
 	 * 有没有人能回答 MCP 服务器中途要填的表单（elicitation）。默认有——桌面端。命令行没有人可问，
 	 * 传 false：不向服务器声明这项能力，服务器硬发来就回 decline。
@@ -118,7 +117,7 @@ export class AgentSession {
 	/** 侧边聊天挂在哪个会话旁边；普通会话是 null。见 `AgentSessionOptions.parent`。 */
 	readonly parent: AgentSession | null;
 	private readonly compactWhenIdle: boolean;
-	private readonly suggestNextPrompt: boolean;
+	private readonly suggestFollowups: boolean;
 	private disposed = false;
 
 	private settings: Settings;
@@ -143,8 +142,6 @@ export class AgentSession {
 	 * 这个类里从此看不到「摘要跑到哪一步了」这种东西。
 	 */
 	private title: SessionTitle;
-	/** 一轮收尾后猜的下一句。见 `next-prompt.ts`。 */
-	private readonly nextPrompt: NextPrompt;
 	/**
 	 * 最近一次 `agent_end` 的原因；收尾后的自动压缩只在干净收尾后才做。
 	 *
@@ -222,7 +219,7 @@ export class AgentSession {
 		this.cwd = options.cwd;
 		this.parent = options.parent ?? null;
 		this.compactWhenIdle = options.compactWhenIdle === true;
-		this.suggestNextPrompt = options.suggestNextPrompt === true;
+		this.suggestFollowups = options.suggestFollowups === true;
 		this.settings = options.settings;
 		this.globalSettings = options.settings;
 		this.store = options.store;
@@ -237,12 +234,6 @@ export class AgentSession {
 			// 见 `TitleDeps.stream` 那段：这两个要一起看，少看一个会在测试里真的发请求。
 			sessionStreamInjected: Boolean(options.streamFn),
 		});
-		this.nextPrompt = new NextPrompt({
-			enabled: () => this.suggestNextPrompt && this.settings.nextPromptSuggestions === true && !this.disposed,
-			parts: () => this.compactionParts(),
-			history: () => this.log.messages,
-			emit: (text) => this.emit({ type: "next_prompt", text }),
-		});
 		/*
 		 * 每一个出门的事件都先过这里翻牌，然后才交给宿主。
 		 *
@@ -256,8 +247,6 @@ export class AgentSession {
 		 */
 		this.log = new SessionLog(options.store, (event) => {
 			if (event.type === "agent_end") this.lastEnd = event.reason;
-			// 人开口了，猜的那句不再有用；还在路上的就别让它落地。
-			if (event.type === "agent_start") this.nextPrompt.cancel();
 			this.activity.observe(event);
 			this.subAgentContexts.observe(event);
 			return options.emit(event);
@@ -997,6 +986,7 @@ export class AgentSession {
 				liveModel: this.liveModel,
 				profile: parent ? SIDE_CHAT_PROFILE : undefined,
 				planMode: this.log.meta.planMode === true,
+				followups: !parent && this.suggestFollowups && this.settings.nextPromptSuggestions === true,
 				context: async () => parent ? mainChatContext(this.log.messages, parent, resolved.model) : this.takeSideChanges(),
 			});
 			this.activity.trackTurn(turn);
@@ -1030,16 +1020,6 @@ export class AgentSession {
 		// The queue moves the moment the workspace is free again. Skipped while draining,
 		// because that loop is already the thing calling us.
 		void this.tasks.drain();
-		/*
-		 * 等会话真闲下来再猜下一句：排着的消息和任务跑完之前，猜了也没用。
-		 *
-		 * 必须排在下面的收尾压缩前面登记：等闲的人按登记顺序被叫到，压缩一被叫到就占住会话，`idle`
-		 * 从那一刻起是 false，排在它后面就一次也猜不到——桌面端每个会话都开着收尾压缩。两者同时跑
-		 * 没有冲突：都只读上一次的请求头，压缩写下的边界不改这一轮的消息。
-		 */
-		if (this.lastEnd === "done") void this.whenIdle().then(() => {
-			if (this.idle) this.nextPrompt.suggest();
-		});
 		// 越线的那次回复刚落地、缓存还热：趁人还没开口先压掉。也等会话真闲下来，排着的先跑。
 		if (this.compactWhenIdle && this.lastEnd === "done") void this.whenIdle().then(() => this.compactIdle());
 	}
@@ -1060,7 +1040,6 @@ export class AgentSession {
 
 	abort(): void {
 		void this.title.cancel();
-		this.nextPrompt.cancel();
 		// The prompt owner records a cancelled startup before resolving, so disposal cannot race
 		// an unawaited append after the caller has already finished the opening submission.
 		this.activity.stop();
@@ -1289,7 +1268,6 @@ export class AgentSession {
 		await this.end(reason).catch(() => {});
 		// A host may delete the log as soon as disposal returns; finish any title write first.
 		await this.title.pending();
-		await this.nextPrompt.pending();
 		// 没人关的 fs.watch 会一直拿着描述符，而一天里会开关几十个会话。
 		this.watcher?.close();
 		this.watcher = null;

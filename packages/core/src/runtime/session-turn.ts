@@ -84,6 +84,8 @@ export interface TurnInputs {
 	context?: () => Promise<Message | null>;
 	/** 这一轮处于计划模式：工具表包一层只放行只读调用，加上 `submit_plan`。见 `plan-mode.ts`。 */
 	planMode?: boolean;
+	/** 让模型在回复末尾写下一步建议，见 `followups.ts`。 */
+	followups?: boolean;
 }
 
 /**
@@ -324,6 +326,7 @@ async function assembleTurn(input: TurnInputs, hooks: TurnHooks): Promise<{ conf
 		dispatchLimits,
 		profile: input.profile,
 		planMode,
+		followups: input.followups,
 		project: log.meta.project,
 	}));
 	const turn = await prepareTurn({

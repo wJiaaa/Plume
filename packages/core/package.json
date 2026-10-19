@@ -30,7 +30,8 @@
 		"./sandbox-runner": "./src/sandbox/runner-entry.ts",
 		"./ui-language": "./src/ui-language/index.ts",
 		"./shell-split": "./src/tools/shell-split.ts",
-		"./reply-text": "./src/reply-text.ts"
+		"./reply-text": "./src/reply-text.ts",
+		"./followups": "./src/followups.ts"
 	},
 	"scripts": {
 		"build": "tsc -p tsconfig.json",

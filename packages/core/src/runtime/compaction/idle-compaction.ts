@@ -26,9 +26,9 @@ import { compactionSpent, modelHistory, summaryStream } from "../session-turn.ts
 /**
  * 一轮收尾后能热分叉的起点：下一轮开头循环要发的同一份消息，接在上一次请求头后面。
  *
- * 换了模型、缓存已凉、没发过请求时没有。下一步建议（`next-prompt.ts`）也从这里分叉。
+ * 换了模型、缓存已凉、没发过请求时没有。
  */
-export async function hotFork(parts: CompactionParts) {
+async function hotFork(parts: CompactionParts) {
 	const { log, can } = parts;
 	const settings = parts.settings();
 	const resolved = resolveModel(settings, log.meta.modelId || settings.defaultModelId);

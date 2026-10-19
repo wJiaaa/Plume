@@ -316,8 +316,11 @@ export async function openSettings(page: Page, section: string): Promise<void> {
  */
 export async function toggleSetting(page: Page, title: string): Promise<void> {
 	const find = `[...document.querySelectorAll('[role="switch"]')].find((s)=>{for(let row=s.parentElement;row;row=row.parentElement){if(row.querySelectorAll('[role="switch"]').length>1)return false;if(row.innerText.trim().startsWith(${JSON.stringify(title)}))return true;}return false;})`;
-	const before = await page.evaluate<{ x: number; y: number; checked: string } | null>(`(()=>{const s=${find};if(!s)return null;const r=s.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,checked:s.getAttribute("aria-checked")};})()`);
-	if (!before) throw new Error(`no settings switch titled ${title}`);
+	// 点的是坐标：页面下方那几行先滚进视口，不然鼠标落在窗口外面，开关一动不动。
+	const found = await page.evaluate<boolean>(`(()=>{const s=${find};if(!s)return false;s.scrollIntoView({block:"center"});return true;})()`);
+	if (!found) throw new Error(`no settings switch titled ${title}`);
+	await frames(page, 10);
+	const before = await page.evaluate<{ x: number; y: number; checked: string }>(`(()=>{const s=${find};const r=s.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,checked:s.getAttribute("aria-checked")};})()`);
 	await clickAt(page, before);
 	await until(page, `${find}?.getAttribute("aria-checked") !== ${JSON.stringify(before.checked)}`);
 }

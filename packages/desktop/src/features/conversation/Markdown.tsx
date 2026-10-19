@@ -27,6 +27,7 @@ import { groupTokens, HUGE_BLOCK } from "../../lib/markdown/slice.ts";
 import { type Inline, parseInline } from "../../lib/markdown/inline.ts";
 import { renderMath } from "../../lib/markdown/math.ts";
 import { stripEmoji } from "../../lib/markdown/strip-emoji.ts";
+import { withoutFollowups } from "@plume/core/followups";
 import { completeTailHeld } from "../../lib/markdown/stream-tail.ts";
 import { bridge } from "../../services/index.ts";
 import { useApp } from "../../store/index.ts";
@@ -146,10 +147,14 @@ export const Markdown = memo(function Markdown({
 	 */
 	// 写完之后还要演完：没放出来的字放完、最后一个字淡完，`active` 才落下。见 `useSmoothText`。
 	const { text: shown, active } = useSmoothText(text, streaming);
-	const { text: clean, heldImage } = useMemo(
-		() => (active ? completeTailHeld(stripEmoji(shown)) : { text: stripEmoji(shown), heldImage: false }),
-		[shown, active],
-	);
+	/*
+	 * 回复末尾的下一步建议（`@plume/core/followups`）是给输入框的，不画：写完的整行拿掉，写到一半的
+	 * 由 `completeTailHeld` 先藏着，所以先补尾巴再去标记。
+	 */
+	const { text: clean, heldImage } = useMemo(() => {
+		const held = active ? completeTailHeld(stripEmoji(shown)) : { text: stripEmoji(shown), heldImage: false };
+		return { text: withoutFollowups(held.text), heldImage: held.heldImage };
+	}, [shown, active]);
 
 	// The class rides alongside `prose-dw` rather than replacing it, so a caller can dial the
 	// size or colour down — reasoning is secondary text — without losing the block styling.

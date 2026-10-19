@@ -146,7 +146,7 @@ function stageSession(saved: SessionSnapshot, parent?: AgentSession): AgentSessi
 	}
 	const browser = createBrowserTools();
 	const session = new AgentSession({ cwd: saved.meta.cwd, settings: deps.settings(), store: deps.store(), meta: saved.meta,
-		extraTools: [...browser.tools, ...peerTools, ...sessionOps], emit: (event) => broadcast(saved.meta.id, event), compactWhenIdle: true, suggestNextPrompt: true });
+		extraTools: [...browser.tools, ...peerTools, ...sessionOps], emit: (event) => broadcast(saved.meta.id, event), compactWhenIdle: true, suggestFollowups: true });
 	session.restore(saved.messages);
 	sessions.set(saved.meta.id, session);
 	browsers.set(saved.meta.id, browser.dispose);
@@ -334,7 +334,7 @@ export async function getOrCreateSession(cwd: string, _modelId: string, project?
 		emit: (event: AgentEvent) => broadcast(session.meta.id, event),
 		// 一轮收尾、缓存还热时先压掉越线的历史；侧边聊天和命令行不开，见 `AgentSessionOptions.compactWhenIdle`。
 		compactWhenIdle: true,
-		suggestNextPrompt: true,
+		suggestFollowups: true,
 	});
 	await session.initialize();
 	// Filed under the project it ran for, not under a folder of its own (`SessionMeta.worktree`, `SessionMeta.project`).

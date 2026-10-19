@@ -41,9 +41,9 @@ import { useLayout } from "../../app/layout.tsx";
 import type { DraftAttachment } from "./attachments/read.ts";
 import { useComposerAttachments } from "./useComposerAttachments.tsx";
 import { useApp } from "../../store/index.ts";
-import { useNextPrompt } from "../../store/next-prompt.ts";
 import {
 	focusScreenOf,
+	useScopedFromMessages,
 	useScopedMessages,
 	useScopedMeta,
 	useScopedRunning,
@@ -63,6 +63,7 @@ import { useJobReveal } from "./job-reveal.ts";
 import { bridge } from "../../services/index.ts";
 import { useI18n } from "../../i18n/index.ts";
 import { blankDraftKey } from "../../lib/draft-key.ts";
+import { nextFollowup } from "../../lib/followups.ts";
 import { compactText } from "../../lib/notice-text.ts";
 import { acceleratorLabel } from "../../ui/keyboard.ts";
 
@@ -99,8 +100,8 @@ export function Composer({ centered = false }: {
 	// A count, not the list: a selector that builds an array hands back a new one on every store tick.
 	const unfinished = useScopedTodos().filter((todo) => todo.status !== "completed").length;
 	const activeSessionId = useScopedSessionId();
-	/** 上一轮收尾后猜的下一句；输入框空着时当灰字，Tab 填入。见 `store/next-prompt.ts`。 */
-	const nextPrompt = useNextPrompt((s) => (activeSessionId ? s.bySession[activeSessionId] : undefined));
+	/** 最新那条回复的第一个后续操作；输入框空着时当灰字，Tab 填入。见 `lib/followups.ts`。 */
+	const nextPrompt = useScopedFromMessages(nextFollowup);
 	const draftPlanMode = useApp((s) => s.draftPlanMode);
 	useJobReveal(activeSessionId, useCallback(() => void openScopedPanel("tasks", activeSessionId ?? undefined), [activeSessionId]));
 	// "底部面板" in Settings → 常规. Saved but read by nothing until now.

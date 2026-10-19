@@ -10,6 +10,7 @@
 import { memo, useState } from "react";
 import type { AssistantMessage, Message } from "@plume/core";
 import { restated } from "@plume/core/reply-text";
+import { withoutFollowups } from "@plume/core/followups";
 import { TurnDeliveryCard } from "./TurnDelivery.tsx";
 import { Markdown } from "./Markdown.tsx";
 import { MessageActions } from "./MessageActions.tsx";
@@ -275,7 +276,7 @@ function AssistantRow({
         <MessageActions
           className={watched && continued ? "-mt-1.5 ly-actions-in" : "-mt-1.5"}
           timestamp={message.timestamp}
-          text={() => copyableReply(text, sessionId)}
+          text={() => withoutFollowups(copyableReply(text, sessionId))}
           durationMs={stats?.durationMs ?? message.durationMs}
           requestMs={stats?.requestMs ?? message.durationMs}
           sseDurationMs={stats?.sseDurationMs ?? message.sseDurationMs}

@@ -53,7 +53,7 @@ export function forkable(
 }
 
 /** 分叉出去的那份请求：上一次的系统提示词、工具和消息原样，末尾接一条指令。 */
-export function forkContext(lineage: CompactionLineage, instruction: string): LlmContext {
+function forkContext(lineage: CompactionLineage, instruction: string): LlmContext {
 	const message: Message = { role: "user", content: [{ type: "text", text: instruction }], timestamp: Date.now(), synthetic: true };
 	return { systemPrompt: lineage.sent.systemPrompt, tools: lineage.sent.tools, messages: [...lineage.messages, message] };
 }
@@ -63,7 +63,7 @@ export function forkContext(lineage: CompactionLineage, instruction: string): Ll
  *
  * `prefix()` 在请求结束（或抛出）之后读：核对发生在 `onPayload` 里，也就是请求出门之前。
  */
-export function prefixGuard(lineage: CompactionLineage, outer?: AbortSignal): {
+function prefixGuard(lineage: CompactionLineage, outer?: AbortSignal): {
 	signal: AbortSignal;
 	onPayload: ((body: unknown) => void) | undefined;
 	prefix: () => RequestPrefix | undefined;

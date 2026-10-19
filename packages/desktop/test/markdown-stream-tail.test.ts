@@ -126,3 +126,12 @@ test("图的地址还在写：先藏起来，并说明藏的是图，好先放�
 	assert.equal(completeTailHeld("[文档](/Users/me/a.m").heldImage, false, "普通链接不是图");
 	assert.equal(completeTailHeld("```md\n![图](/a/b").heldImage, false, "代码块里的不算");
 });
+
+test("下一步建议写到一半不露出语法，写完了原样交给去标记那一步", () => {
+	const done = "好了。 :followup[把 e2e 跑一遍]";
+	assert.equal(completeTail("好了。 :followup[把 e2e"), "好了。 ", "方括号还没收口；空格留在原处");
+	assert.equal(completeTail("好了。 :fol"), "好了。 ", "开头标记才敲出几个字");
+	assert.equal(completeTail(done), done, "写完了原样");
+	assert.equal(completeTail("比例 3:2"), "比例 3:2", "单个冒号不藏");
+	assert.equal(completeTail("看 :followup[a\n下一行"), "看 :followup[a\n下一行", "跨了行的已经不是了");
+});

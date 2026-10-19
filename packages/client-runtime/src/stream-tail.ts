@@ -20,6 +20,8 @@
  * 半截公式先原样露着，等它自己收口。
  */
 
+import { FOLLOWUP_OPEN, matchFollowup } from "@plume/core/followups";
+
 const FENCE_OPEN = /^\s*(\x60{3,}|~{3,})(\S*)\s*$/;
 const TABLE_SEPARATOR = /^\s*\|?[\s:|-]+\|[\s:|-]*$/;
 /** 只写出了块标记、还没有内容的一行：`#`、`-`、`1.`、`>`。 */
@@ -183,6 +185,20 @@ function closeInline(text: string): { text: string; heldImage: boolean } {
 		if (char === "$") {
 			i = mathEnd(text, i) ?? i + 1;
 			continue;
+		}
+
+		if (char === ":" && text.startsWith(FOLLOWUP_OPEN.slice(0, 2), i)) {
+			const followup = matchFollowup(text, i);
+			if (followup) {
+				i = followup.end;
+				continue;
+			}
+			// 下一步建议写完了才认得出、才拿得掉，在那之前露出来的是一串语法。跨了行的已经不会是了，照原样。
+			const rest = text.slice(i);
+			if ((rest.startsWith(FOLLOWUP_OPEN) || FOLLOWUP_OPEN.startsWith(rest)) && !rest.includes("\n")) {
+				end = i;
+				break;
+			}
 		}
 
 		if (char === "[" || (char === "!" && text[i + 1] === "[")) {

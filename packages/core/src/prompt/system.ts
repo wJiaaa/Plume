@@ -26,6 +26,7 @@ import { PromptBuilder, type PromptContext } from "./context.ts";
 import { budgetInstructions } from "./budget.ts";
 import { formatSkills } from "./skills.ts";
 import { interfacePrompt } from "../ui-language/prompt.ts";
+import { FOLLOWUPS_PROMPT } from "../followups.ts";
 
 export interface SystemPromptInput {
 	cwd: string;
@@ -133,6 +134,8 @@ export interface SystemPromptInput {
 	 * `preview`，所以要明说。
 	 */
 	interfaceBlocks?: boolean;
+	/** 回复末尾可以写下一步建议（`followups.ts`）。宿主点名、设置开着、又是桌面端（画得出界面块）时才说。 */
+	followups?: boolean;
 	/**
 	 * 换掉内置的行为准则，来自 `.plume/prompts/guidelines.md`。
 	 *
@@ -277,7 +280,9 @@ export async function buildPromptContext(input: SystemPromptInput): Promise<Prom
 	 * 命令行、评测里说了也画不出来，还每次请求都要为它付一份。
 	 */
 	const preview = input.tools.some((tool) => tool.name === "preview");
-	if (input.interfaceBlocks ?? preview) prompt.add("interface", interfacePrompt({ preview }));
+	const drawn = input.interfaceBlocks ?? preview;
+	if (drawn) prompt.add("interface", interfacePrompt({ preview }));
+	if (drawn && input.followups) prompt.add("followups", FOLLOWUPS_PROMPT);
 	prompt.add("environment", `\n\nEnvironment:
 - Platform: ${input.platform}${input.shell ? `\n- Shell: ${input.shell.label}` : ""}${shellRules.map((rule) => `\n- ${rule}`).join("")}
 - Git repository: ${input.isGitRepo ? "yes" : "no"}

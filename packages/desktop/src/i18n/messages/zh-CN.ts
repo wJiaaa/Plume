@@ -344,7 +344,7 @@ export const zhCN = {
 	"general.showThinking": "显示思考过程",
 	"general.showThinkingDetail": "在对话里显示模型的推理，点开能看全文。关闭时只在底部看到它正在思考。",
 	"general.nextPromptSuggestions": "下一步建议",
-	"general.nextPromptSuggestionsDetail": "每轮回复后，在输入框里用灰字猜你下一句要说什么，按 Tab 填入。每轮多一次请求，会产生模型用量。",
+	"general.nextPromptSuggestionsDetail": "每轮回复后，在输入框里用灰字给出下一步建议，按 Tab 填入。建议由回复的模型顺带写出，不额外发请求。",
 	"general.hideEmptiedProjects": "归档后收起项目",
 	"general.hideEmptiedProjectsDetail": "项目下的会话全部归档后，连项目一起从列表收起。从没有过会话的项目始终保留。",
 	"common.copy": "复制",

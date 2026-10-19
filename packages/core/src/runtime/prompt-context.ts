@@ -35,7 +35,7 @@ export interface PromptProfile {
  * 末尾（`session-turn.ts` 的 `settlePrompt`）。所以这里照旧每轮重读项目指令和技能：改动
  * 要被发现，只是不再改写开头。
  */
-export async function loadPromptContext(input: Pick<SystemPromptInput, "cwd" | "tools" | "skills" | "agents" | "modelName" | "resources" | "dispatchLimits" | "scratchDir" | "planMode"> & {
+export async function loadPromptContext(input: Pick<SystemPromptInput, "cwd" | "tools" | "skills" | "agents" | "modelName" | "resources" | "dispatchLimits" | "scratchDir" | "planMode" | "followups"> & {
 	settings: Settings;
 	recordInjection?: boolean;
 	profile?: PromptProfile;
@@ -59,7 +59,8 @@ export async function loadPromptContext(input: Pick<SystemPromptInput, "cwd" | "
 	return buildPromptContext({
 		...rest,
 		cwd,
-		...(profile ? { skills: [], identity: profile.identity, guidelines: profile.guidelines, interfaceBlocks: profile.interfaceBlocks } : {}),
+		// 侧边聊天的输入框不放下一步建议。
+		...(profile ? { skills: [], identity: profile.identity, guidelines: profile.guidelines, interfaceBlocks: profile.interfaceBlocks, followups: false } : {}),
 		projectRoots: projectRootsFor(settings.projects, cwd, project),
 		projectInstructions,
 		identityOverride,
