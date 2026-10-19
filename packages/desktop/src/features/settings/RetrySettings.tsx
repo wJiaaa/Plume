@@ -76,7 +76,7 @@ export function RetrySettings({ settings }: { settings: Settings }) {
 		<div data-retry-settings>
 			<SectionTitle>{t("retry.title")}</SectionTitle>
 			{/* Said once, above both rules, rather than twice inside them. */}
-			<p className="-mt-1 mb-3 max-w-[62ch] text-label leading-relaxed text-ink-muted">
+			<p className="-mt-1 mb-3 text-label leading-relaxed text-ink-muted">
 				{t("retry.intro")}
 			</p>
 			<Card className="mb-9 px-4">
