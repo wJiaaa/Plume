@@ -219,6 +219,16 @@ test("title requests bound long prompts without splitting Unicode characters", a
 	assert.doesNotMatch(sent, /\\ud[89ab][0-9a-f]{2}/i);
 });
 
+test("the opening message is wrapped as material to title, not a question to answer", async () => {
+	let sent = "";
+	await summarizeTitle({ text: "做出海网站 找新词 这种事什么意思啊？", provider, model, stream: async function* (_provider, _model, context) {
+		const block = context.messages[0].content[0];
+		sent = typeof block === "object" && block.type === "text" ? block.text : "";
+		const message = reply("出海网站找新词含义"); yield { type: "done", message }; return message;
+	} });
+	assert.match(sent, /不要回答它[\s\S]*<message>\n做出海网站 找新词 这种事什么意思啊？\n<\/message>$/);
+});
+
 for (const resumed of [false, true]) {
 	for (const reference of [{ skillRef: { name: "review" } }, { sessionRefs: [{ id: "previous", title: "菜单滚动问题" }] }]) {
 		test(`${resumed ? "resumed" : "direct"} reference-only prompt keeps its visible reference title: ${JSON.stringify(reference)}`, async (t) => {

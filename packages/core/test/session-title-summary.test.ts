@@ -80,6 +80,12 @@ test("cleanTitleSummary strips quotes, prefixes and trailing punctuation", () =>
 	assert.equal(cleanTitleSummary("```\n构建脚本修复\n```"), "构建脚本修复");
 });
 
+test("cleanTitleSummary drops an answer instead of cutting it into half a sentence", () => {
+	// deepseek-v4.1-flash 对「做出海网站 找新词 这种事什么意思啊？」的实际输出，旧逻辑切成「…网站/产品时，去」
+	assert.equal(cleanTitleSummary("“做出海网站、找新词”意思是：做面向海外用户的网站/产品时，去找还没被做烂的搜索关键词。"), "");
+	assert.equal(cleanTitleSummary("😀".repeat(30)), "😀".repeat(30));
+});
+
 test("short prompt (<= 12 chars) uses immediate title and does not trigger LLM summary", async () => {
 	const { store, cleanup } = await harness();
 	try {
