@@ -829,7 +829,18 @@ app.on("before-quit", async (event) => {
 		sessionsEnded = true;
 		const ended = Promise.all([...sessions.values()].map((s) => s.end("quit").catch(() => {})));
 		await Promise.race([ended, new Promise((resolve) => setTimeout(resolve, SESSION_END_GRACE_MS))]);
-		app.quit();
+		/*
+		 * 隔一个宏任务再退，不能直接 `app.quit()`。
+		 *
+		 * 会话这一次启动里没跑过一轮时 `end()` 当场返回，上面的 await 只经过微任务。退出从原生侧
+		 * 进来（⌘Q、Dock 菜单、SIGTERM）时栈上没有 JS，Node 在这次事件回调收尾时就清空微任务——
+		 * Electron 的 `Browser::Quit()` 这时还停在 `is_quitting_ = HandleBeforeQuit()` 里。里层的
+		 * 这次 quit 把标记设成 true、开始关窗，外层返回后又拿第一次「被拦下」的结果把它改回 false。
+		 * 窗口关完时 Electron 已不认为自己在退出，macOS 上停在 `window-all-closed`：窗口全没了，
+		 * Dock 上的点还在。先点关闭把主窗口藏起来、再 ⌘Q 必现，见 `e2e/session-end-quit-probe.ts`。
+		 * 从 JS 里调 `app.quit()` 测不出来：外面那段 JS 返回前微任务不会清。
+		 */
+		setImmediate(() => app.quit());
 		return;
 	}
 	void closeMobileAccess();

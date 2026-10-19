@@ -6,7 +6,10 @@
  * 等各会话收尾、最多 2 秒。这里量两件事，都只能在真进程上量：
  *   1. 一条要 800ms 的同步 SessionEnd 钩子写下了 `quit`，写的那一刻 Electron 还活着——是等它了，
  *      不是它碰巧从脱离的进程组里活了下来；
- *   2. 一条要 5 秒的钩子拖不住退出：进程在 2 秒上下就没了。
+ *   2. 一条要 5 秒的钩子拖不住退出：进程在 2 秒上下就没了；
+ *   3. 会话这次启动里没跑过一轮、主窗口先被点关闭藏起来，再 ⌘Q：进程照样退。从前这里窗口全没了、
+ *      进程还在——收尾不用等，第二次 quit 嵌进了第一次里，被 Electron 改回「不退出」（`main.ts`）。
+ *      退出用 SIGTERM，和 ⌘Q 一样从原生侧进来——从 JS 里退出测不出这个 bug。
  *
  * 钩子是 `node -e` 写一行 JSON 到 profile 里的 trace 文件；模型是本地一个假的 Anthropic 端点。
  *
@@ -96,8 +99,13 @@ const home = await mkdtemp(join(tmpdir(), "ly-session-end-"));
 const trace = join(home, "trace.jsonl");
 const lines = async (): Promise<Line[]> => (await readFile(trace, "utf8").catch(() => "")).split("\n").filter(Boolean).map((line) => JSON.parse(line) as Line);
 
-/** 起应用、进会话、说一句、等回复，然后从主进程退出。返回退出那一刻和进程真正没了的那一刻。 */
-async function talkThenQuit(name: string): Promise<{ quitAt: number; goneAt: number }> {
+/**
+ * 起应用、进会话，然后从主进程退出。返回退出那一刻和进程真正没了的那一刻。
+ *
+ * `talk`：先说一句、等回复，这一轮会跑 SessionStart。`closeFirst`：退出前先点主窗口的关闭，
+ * macOS 上那只是把它藏起来，退出改从原生侧进来（见下面的 SIGTERM）。
+ */
+async function quitAfter(name: string, { talk = true, closeFirst = false } = {}): Promise<{ quitAt: number; goneAt: number; hidden?: boolean }> {
 	const running = await startApp({ port: PORT, inspectPort: INSPECT, reuseHome: home });
 	app = running;
 	stopRecording = await startRecording(PORT, frames);
@@ -113,11 +121,13 @@ async function talkThenQuit(name: string): Promise<{ quitAt: number; goneAt: num
 	await running.evaluate(`[...document.querySelectorAll("a,button,[role=button]")].find((node)=>node.textContent?.trim()==="退出收尾")?.click()`);
 	await until(`document.querySelector("main textarea")`);
 	await pause(800);
-	await running.evaluate(`(()=>{const field=document.querySelector("main textarea");field.focus();const setter=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,"value").set;setter.call(field,"你好");field.dispatchEvent(new Event("input",{bubbles:true}));})()`);
-	await pause(400);
-	await running.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r" });
-	await running.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
-	await until(`document.querySelector("main")?.innerText.includes("好的，收到。")`);
+	if (talk) {
+		await running.evaluate(`(()=>{const field=document.querySelector("main textarea");field.focus();const setter=Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,"value").set;setter.call(field,"你好");field.dispatchEvent(new Event("input",{bubbles:true}));})()`);
+		await pause(400);
+		await running.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r" });
+		await running.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+		await until(`document.querySelector("main")?.innerText.includes("好的，收到。")`);
+	}
 	await pause(1200);
 	const picture = await running.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
 	await writeFile(join(out, `${stamp}_${name}.png`), Buffer.from(picture.data, "base64"));
@@ -125,16 +135,30 @@ async function talkThenQuit(name: string): Promise<{ quitAt: number; goneAt: num
 	stopRecording = undefined;
 
 	const pid = await running.main<number>("process.pid");
+	let hidden: boolean | undefined;
+	if (closeFirst) {
+		const windows = "process._linkedBinding('electron_browser_window').BrowserWindow.getAllWindows()";
+		await running.main(`${windows}.find((w)=>w.isVisible()).close()`);
+		await pause(1000);
+		// 藏起来而不是关掉：窗口还在，只是看不见了。
+		hidden = await running.main<boolean>(`${windows}.length>0&&!${windows}.some((w)=>w.isVisible())`);
+	}
 	const quitAt = Date.now();
+	/*
+	 * 先关窗的那次用 SIGTERM：它和 ⌘Q 一样从原生侧进 `Browser::Quit()`，栈上没有 JS。从这里
+	 * 求值调 `app.quit()` 或 `sendActionToFirstResponder('terminate:')` 都带着 JS 栈，微任务要等
+	 * 求值返回才清，那个 bug 在这条路上永远不出现——旧代码照样 7/7。
+	 */
+	if (closeFirst) process.kill(pid, "SIGTERM");
 	// 不 await 结果：进程在答话之前可能就没了。
-	void running.main("process._linkedBinding('electron_browser_app').app.quit()").catch(() => {});
+	else void running.main("process._linkedBinding('electron_browser_app').app.quit()").catch(() => {});
 	let goneAt = 0;
 	for (let i = 0; i < 200 && !goneAt; i++) {
 		try { process.kill(pid, 0); await pause(25); } catch { goneAt = Date.now(); }
 	}
 	await running.stop();
 	app = undefined;
-	return { quitAt, goneAt };
+	return { quitAt, goneAt, hidden };
 }
 
 try {
@@ -146,7 +170,7 @@ try {
 
 	// 1. 800ms 的 SessionEnd：退出等它写完。
 	await writeSettings(home, address.port, 800);
-	const first = await talkThenQuit("01_说完一句_即将退出");
+	const first = await quitAfter("01_说完一句_即将退出");
 	const once = await lines();
 	const ended = once.find((line) => line.event === "SessionEnd");
 	check("这一轮先后跑了 SessionStart 和 Stop", once[0]?.event === "SessionStart" && once.some((line) => line.event === "Stop"), once.map((line) => `${line.event}:${line.reason ?? ""}`));
@@ -156,9 +180,19 @@ try {
 	// 2. 5 秒的 SessionEnd：退出最多等 2 秒。
 	await writeFile(trace, "");
 	await writeSettings(home, address.port, 5000);
-	const second = await talkThenQuit("02_钩子要5秒_即将退出");
+	const second = await quitAfter("02_钩子要5秒_即将退出");
 	const held = second.goneAt - second.quitAt;
 	check("钩子再慢，退出也只多等 2 秒上下", second.goneAt > 0 && held >= 1800 && held < 4000, { goneAfterQuitMs: held });
+
+	// 3. 这次启动里没说话：收尾不用等。先点关闭把主窗口藏起来，再 ⌘Q。
+	await pause(5000); // 等第 2 次那条 5 秒的钩子写完，免得它的那一行落进这一次的 trace
+	await writeFile(trace, "");
+	await writeSettings(home, address.port, 0);
+	const third = await quitAfter("03_没说话_先关窗再退出", { talk: false, closeFirst: true });
+	const quiet = await lines();
+	check("点关闭以后主窗口是藏起来了，不是关掉了", third.hidden === true, { hidden: third.hidden });
+	check("这一次没跑过 SessionStart（收尾不用等任何东西）", !quiet.some((line) => line.event === "SessionStart"), quiet.map((line) => line.event));
+	check("先关窗再退出（SIGTERM，和 ⌘Q 同走原生侧），进程照样退出", third.goneAt > 0 && third.goneAt - third.quitAt < 1500, { goneAfterQuitMs: third.goneAt ? third.goneAt - third.quitAt : "5 秒后仍在" });
 
 	const passed = checks.filter((item) => item.ok).length;
 	await encode(frames, join(out, `${stamp}_退出时跑SessionEnd钩子_${passed}of${checks.length}.mp4`), undefined, 1500);
