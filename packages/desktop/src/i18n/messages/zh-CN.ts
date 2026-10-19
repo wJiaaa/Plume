@@ -2821,6 +2821,8 @@ export const zhCN = {
 	"browser.openPage": "打开一个网页",
 	"browser.loadFailed": "这个网页没有打开",
 	"browser.pageStopped": "这个网页停止运行了",
+	"browser.blockedTitle": "这个网页要打开一个应用",
+	"browser.blockedReason": "它跳去的不是网页，内置浏览器打不开。在系统浏览器里打开，由它来问要不要启动那个应用。",
 	"browser.reloadPage": "重新加载",
 	"browser.addressPlaceholder": "输入网址或搜索",
 	"browser.selectRegion": "框选区域",

@@ -79,6 +79,7 @@ export function createBrowserTools(): { tools: Tool[]; dispose: () => void } {
 					// 打不开的站点交回来的是 Chromium 的空白错误页：读它什么也看不出，直接说没打开、为什么。
 					const failure = browserState().tabs.find((entry) => entry.id === id)?.failure;
 					if (failure?.kind === "load") throw new Error(nativeText("browser.notOpened", { detail: failure.detail, url: url.href }));
+					if (failure?.kind === "blocked") throw new Error(nativeText("browser.blockedScheme", { target: failure.detail, url: url.href }));
 					const page = await readBrowser(id);
 					return result({ tabId: id, page }, view(id, true));
 				} catch (error) { return fail(error); }

@@ -1,6 +1,6 @@
 import { commitDraft, isLegalDraft } from "../../lib/number-draft.ts";
 import { useI18n } from "../../i18n/index.ts";
-import { ArrowLeft, ArrowRight, Bookmark, Check, ChevronLeft, ChevronRight, CodeXml, Ellipsis, Globe, Minus, MousePointer2, Plus, RotateCw, Scan, TriangleAlert, WifiOff, X } from "../../ui/icons/index.ts";
+import { AppWindow, ArrowLeft, ArrowRight, Bookmark, Check, ChevronLeft, ChevronRight, CodeXml, Ellipsis, ExternalLink, Globe, Minus, MousePointer2, Plus, RotateCw, Scan, TriangleAlert, WifiOff, X } from "../../ui/icons/index.ts";
 import { useEffect, useRef, useState } from "react";
 import { useDockScope, usePanelKind, useScopedSessionId } from "../../app/session-scope.tsx";
 import type { BrowserCommand, BrowserSelection } from "../../../shared/browser.ts";
@@ -101,10 +101,17 @@ export function BrowserPanel() {
 			{blank && <div className="absolute inset-0 flex flex-col bg-shell" data-browser-empty><PanelEmpty icon={Globe} title={t("browser.openPage")} /></div>}
 			{/* 盖在页面上而不是插在它上面：插一行字会把页面挤矮，页面进程已经停了的时候，那次改尺寸曾带走整个应用。 */}
 			{tab?.failure && <div className="absolute inset-0 flex flex-col bg-shell" data-browser-failure={tab.failure.kind}>
-				<PanelEmpty icon={tab.failure.kind === "crash" ? TriangleAlert : WifiOff} title={t(tab.failure.kind === "crash" ? "browser.pageStopped" : "browser.loadFailed")}>
-					<span className="block break-all">{tab.failure.detail}</span>
-					<span className="mt-4 block"><Button icon={<RotateCw size={13} />} onClick={() => command("reload")}>{t("browser.reloadPage")}</Button></span>
-				</PanelEmpty>
+				{tab.failure.kind === "blocked"
+					/* 重新加载只会再被拦一次；系统浏览器认得这类地址，会问要不要打开对应的客户端。 */
+					? <PanelEmpty icon={AppWindow} title={t("browser.blockedTitle")}>
+						<span className="block">{t("browser.blockedReason")}</span>
+						<span className="mt-1 block break-all">{tab.failure.detail}</span>
+						<span className="mt-4 block"><Button icon={<ExternalLink size={13} />} onClick={() => { if (tab.failure?.kind === "blocked") void commandBrowser({ type: "external", url: tab.failure.url }); }}>{t("link.openInSystem")}</Button></span>
+					</PanelEmpty>
+					: <PanelEmpty icon={tab.failure.kind === "crash" ? TriangleAlert : WifiOff} title={t(tab.failure.kind === "crash" ? "browser.pageStopped" : "browser.loadFailed")}>
+						<span className="block break-all">{tab.failure.detail}</span>
+						<span className="mt-4 block"><Button icon={<RotateCw size={13} />} onClick={() => command("reload")}>{t("browser.reloadPage")}</Button></span>
+					</PanelEmpty>}
 			</div>}
 		</div>
 		{selection && <BrowserSelectionCard selection={selection} onClose={() => setSelection(null)} />}

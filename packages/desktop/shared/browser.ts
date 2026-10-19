@@ -13,8 +13,12 @@ export interface BrowserTab {
 	 *
 	 * Apart from `error`, which is a remark beside a page that still works (a popup it was not allowed
 	 * to open), because only this one covers the page.
+	 *
+	 * `blocked`: the page sent the tab to an address that is not a web page (`lark://…` to wake a
+	 * desktop client), which this browser refuses. `detail` is that address, `url` the web page that
+	 * led there — the one to hand the system browser, which can ask whether to open the client.
 	 */
-	failure?: { kind: "load" | "crash"; detail: string };
+	failure?: { kind: "load" | "crash"; detail: string } | { kind: "blocked"; detail: string; url: string };
 	canGoBack: boolean;
 	canGoForward: boolean;
 	zoom: number;

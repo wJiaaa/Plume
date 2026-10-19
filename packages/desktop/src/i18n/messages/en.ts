@@ -2636,6 +2636,8 @@ export const en = {
 	"browser.openPage": "Open a page",
 	"browser.loadFailed": "This page didn't open",
 	"browser.pageStopped": "This page stopped working",
+	"browser.blockedTitle": "This page wants to open an app",
+	"browser.blockedReason": "It went to an address that is not a web page, which the built-in browser cannot open. Your system browser can, and will ask before launching the app.",
 	"browser.reloadPage": "Reload",
 	"browser.addressPlaceholder": "Address or search",
 	"browser.selectRegion": "Select a region",

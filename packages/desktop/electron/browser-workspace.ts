@@ -16,7 +16,7 @@ export class BrowserTabClosed extends Error {
 	constructor() { super("浏览器标签已关闭"); }
 }
 /** `documentReady`：这一页的文档已经能读了，见 `loadedBrowser`；`wake` 叫醒正等着它换页的那一方。 */
-interface Tab { size?: {width: number; height: number}; scale?: number; state: BrowserTab; contents?: WebContents; documentReady?: boolean; wake?: () => void; crashedAt?: number; ready: Promise<WebContents>; resolve: (contents: WebContents) => void; reject: (error: Error) => void }
+interface Tab { size?: {width: number; height: number}; scale?: number; state: BrowserTab; contents?: WebContents; documentReady?: boolean; wake?: () => void; crashedAt?: number; navigating?: string; ready: Promise<WebContents>; resolve: (contents: WebContents) => void; reject: (error: Error) => void }
 const tabs = new Map<string, Tab>();
 let activeId: string | null = null;
 /**
@@ -250,6 +250,7 @@ export function attachBrowser(id: string, contentsId: number, sender: WebContent
 	contents.on("did-start-navigation", (details) => {
 		if (!details.isMainFrame || details.isSameDocument) return;
 		tab.documentReady = false;
+		tab.navigating = details.url;
 		// 又在加载一张文档了：上一次的失败不再是这一页的样子。
 		tab.state.failure = undefined;
 	});
@@ -281,12 +282,20 @@ export function attachBrowser(id: string, contentsId: number, sender: WebContent
 		}
 		publish();
 	});
-	contents.on("will-navigate", (event, next) => {
-		try { browserUrl(next); } catch { event.preventDefault(); }
-	});
-	contents.on("will-redirect", (event, next) => {
-		try { browserUrl(next); } catch { event.preventDefault(); }
-	});
+	/*
+	 * 不是网页的地址（`lark://` 这类唤起客户端的）一律拦下，但主框架的不能拦得一声不吭：被拦的跳转以 -3
+	 * 收场，`did-fail-load` 不报它，标签就停在一张白页上，地址栏也不动。网页要拿 302 唤起客户端时正是这样。
+	 * 页面已经立着、自己用脚本去试唤起的不盖：不少站点一打开就试一次，盖上去会把一张好好的页面挡住。
+	 */
+	const refuse = (event: { preventDefault(): void }, next: string, redirect: boolean, mainFrame: boolean) => {
+		try { browserUrl(next); return; } catch { event.preventDefault(); }
+		const shown = contents.getURL();
+		if (!mainFrame || (!redirect && shown && shown !== "about:blank")) return;
+		tab.state.failure = { kind: "blocked", detail: next, url: (redirect ? tab.navigating : undefined) ?? (shown || tab.state.url) };
+		refresh(tab);
+	};
+	contents.on("will-navigate", (event, next) => refuse(event, next, false, true));
+	contents.on("will-redirect", (event, next) => refuse(event, next, true, event.isMainFrame));
 	// A page opening a window is not a person asking to look — least of all a page an agent is clicking through.
 	contents.setWindowOpenHandler(({ url: next }) => {
 		void openBrowser(next, tab.state.sessionId, true, false).catch((error: unknown) => { tab.state.error = String(error); publish(); });
@@ -294,6 +303,15 @@ export function attachBrowser(id: string, contentsId: number, sender: WebContent
 	});
 	// 离开页面提示被取消时留在这一页：旧文档照旧能读，等着换页的那一方不必等满时限。
 	watchDialogs(contents, () => tab.state.sessionId, () => { tab.documentReady = true; tab.wake?.(); });
+	/*
+	 * `<webview>` 一挂上就照 `src` 加载，上面的监听可能晚到：第一跳在那之前就被 302 送去 `lark://` 的话，
+	 * 它已经无声地断了——什么也没提交、也不在加载，`refuse` 没机会说话，标签停在白页上。点回复里的链接
+	 * 新开标签时面板要先挂出来，正好落在这个窗口里。监听都挂好了，照原地址再走一遍。
+	 */
+	if (!contents.getURL() && !contents.isLoading() && tab.state.url !== "about:blank") {
+		tab.documentReady = false;
+		void contents.loadURL(tab.state.url).catch(() => {});
+	}
 	contents.setZoomFactor(tab.state.zoom);
 	// 挂上时第一页还没提交的话，Chromium 提交时按源换上那个源的缩放，刚设的就没了；等它能读了再设一次。
 	if (!tab.documentReady) contents.once("dom-ready", () => applyView(tab));

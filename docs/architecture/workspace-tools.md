@@ -34,6 +34,11 @@ confirm 与离开提示默认取消、调用带 `dialog: "accept"` 才确认，�
 （Electron 44.7 实测，`applyView` 因此跳过崩溃的页面）。页面进程第一次没了自动重新加载，15 秒内再没了就停在
 盖层上等人；agent 的调用此时直接报错，`reload` 照人点刷新处理。`browser_open` 打不开站点时报出原因，不交回空的错误页。
 
+主框架被送去不是网页的地址（`lark://` 这类唤起客户端的）照旧拦下，但不再无声地停在白页上：重定向或还没有
+文档时记成 `failure.kind === "blocked"`，盖层写出被拦的地址，按钮把来时的网页交给系统浏览器，由它问要不要
+启动客户端。已经立着的页面自己用脚本试唤起的不盖，不少站点一打开就试一次。`<webview>` 挂上就开始加载，
+监听可能晚到，第一跳在那之前断掉（什么也没提交、也不在加载）的，挂上时照原地址再走一遍。
+
 `browser_open`、`browser_tabs`、`browser_act`、`browser_viewport`、`browser_screenshot`
 由当前可信运行上下文取得 sessionId，不能指定其他会话来绕过所有权。浏览器 IPC 仅接受主窗口
 的主 frame；guest 必须确实归属于发送 attach 的窗口。主进程同时校验 URL、命令、缩放和尺寸。

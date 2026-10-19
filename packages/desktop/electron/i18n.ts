@@ -151,6 +151,7 @@ const zhCN = {
 	"browser.waitTimeout": "等了 {seconds} 秒，条件没有满足；当前页面 {url}",
 	"browser.waitTimeoutError": "等了 {seconds} 秒，条件没有满足（最后一次求值出错：{error}）；当前页面 {url}",
 	"browser.notOpened": "页面没有打开：{detail}（{url}）；标签还留着，可以稍后再试",
+	"browser.blockedScheme": "页面没有打开：{url} 跳到了 {target}，那不是网页，内置浏览器不跟过去；多半是要唤起某个桌面客户端",
 	"browser.badRef": "ref 是 read 给出的 e 加数字，比如 e12",
 	"browser.nothingOutside": "这一页没有能在外部浏览器里打开的地址",
 } as const;
@@ -283,6 +284,7 @@ export const NATIVE_CATALOGS: Record<NativeLocale, NativeCatalog> = {
 		"browser.waitTimeout": "Waited {seconds} seconds and the condition was not met; the page is at {url}",
 		"browser.waitTimeoutError": "Waited {seconds} seconds and the condition was not met (the last evaluation failed: {error}); the page is at {url}",
 		"browser.notOpened": "The page did not open: {detail} ({url}); the tab is still there to retry later",
+		"browser.blockedScheme": "The page did not open: {url} sent the tab to {target}, which is not a web page, so the built-in browser did not follow; it most likely wants to launch a desktop app",
 		"browser.badRef": "A ref is e followed by a number from read, such as e12",
 		"browser.nothingOutside": "This page has no address another browser could open",
 	},
