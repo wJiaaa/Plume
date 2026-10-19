@@ -594,6 +594,43 @@
   }
 
   /*
+   * 一张还没到的图站的位置。没有它，回复写图片地址的那几秒屏幕上什么都不长，`)` 一到又整张跳出来。
+   * 尺寸只能猜：4:3 落在二维码（方）和截图（宽）之间，两头跳的都不多。
+   */
+  .prose-dw .ly-md-image-pending {
+    display: block;
+    width: 240px;
+    max-width: 100%;
+    aspect-ratio: 4 / 3;
+    border-radius: var(--radius-lg);
+  }
+
+  /*
+   * 回复里比两行字高的本地图独占一行（判断在 `Markdown.tsx` 的 `fitsInLine`）。上下各留一点，不贴着字。
+   * 占位也是一整行，图来了站在同一个位置。
+   */
+  .prose-dw .ly-md-image-block,
+  .prose-dw .ly-md-image-pending {
+    margin-block: 6px;
+  }
+
+  .prose-dw .ly-md-image-block {
+    display: block;
+  }
+
+  /* 接在一句话后面的那张图的占位：写完它在那一段里换行，没有段间距。 */
+  .prose-dw > p[data-ly-joined] {
+    margin-top: 0;
+  }
+
+  /* 加载完之前图没有高度：不占地方，占位在旁边站着。 */
+  .prose-dw .ly-md-image-waiting {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /*
    * A block-level HTML element from the document — a `<p align="center">` around a logo.
    *
    * The spacing rule at the top of this layer only reaches direct children of `.prose-dw`, so

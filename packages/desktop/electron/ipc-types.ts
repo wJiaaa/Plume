@@ -587,8 +587,12 @@ export interface PlumeApi {
 		 * Served over a private scheme whose handler re-checks the project boundary, so media
 		 * streams (with range requests, so a video can seek) instead of being base64'd through
 		 * IPC — a 40MB clip would otherwise have to become a 55MB string first.
+		 *
+		 * `version` (the file's `modifiedAt`) goes into the query. Chromium reuses a picture it has already
+		 * loaded under the same URL for the rest of the page's life, so a file overwritten in place — an agent
+		 * writing a fresh QR code to the same name — kept showing the old one. The handler reads only the path.
 		 */
-		mediaUrl(path: string): string;
+		mediaUrl(path: string, version?: number): string;
 
 		/*
 		 * Changing files, not just reading them.

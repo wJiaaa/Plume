@@ -27,7 +27,7 @@ import { groupTokens, HUGE_BLOCK } from "../../lib/markdown/slice.ts";
 import { type Inline, parseInline } from "../../lib/markdown/inline.ts";
 import { renderMath } from "../../lib/markdown/math.ts";
 import { stripEmoji } from "../../lib/markdown/strip-emoji.ts";
-import { completeTail } from "../../lib/markdown/stream-tail.ts";
+import { completeTailHeld } from "../../lib/markdown/stream-tail.ts";
 import { bridge } from "../../services/index.ts";
 import { useApp } from "../../store/index.ts";
 import { openFilePane } from "../dock/index.ts";
@@ -59,6 +59,8 @@ interface DocumentContext {
 	baseDir?: string;
 	/** Whether an https `src` may be fetched (through the main process) and drawn. */
 	remoteImages: boolean;
+	/** Whether a path with no `baseDir` may be drawn from this machine's disk — see `localImages`. */
+	localImages?: boolean;
 	preview?: boolean;
 }
 
@@ -78,6 +80,7 @@ export const Markdown = memo(function Markdown({
 	className = "",
 	baseDir,
 	remoteImages = false,
+	localImages = false,
 	preview = false,
 	streaming = false,
 }: {
@@ -100,6 +103,16 @@ export const Markdown = memo(function Markdown({
 	 * process either way — see `system:remoteImage`.
 	 */
 	remoteImages?: boolean;
+	/**
+	 * Draw pictures at paths on this disk even without a `baseDir`.
+	 *
+	 * For the agent's own replies. The `baseDir` note above holds for text written elsewhere; this agent
+	 * runs here, and a path in its reply is one it just wrote on this machine — an absolute path, or one
+	 * relative to the session's project, the same reading `Link` gives it. Left as a link, a QR code it
+	 * generated was a chip to click before it could be scanned. The media protocol still decides what may
+	 * be served; a refused one falls back to that link.
+	 */
+	localImages?: boolean;
 	/** A bounded, non-interactive excerpt without code tools or image loading. */
 	preview?: boolean;
 	/**
@@ -133,7 +146,10 @@ export const Markdown = memo(function Markdown({
 	 */
 	// 写完之后还要演完：没放出来的字放完、最后一个字淡完，`active` 才落下。见 `useSmoothText`。
 	const { text: shown, active } = useSmoothText(text, streaming);
-	const clean = useMemo(() => (active ? completeTail(stripEmoji(shown)) : stripEmoji(shown)), [shown, active]);
+	const { text: clean, heldImage } = useMemo(
+		() => (active ? completeTailHeld(stripEmoji(shown)) : { text: stripEmoji(shown), heldImage: false }),
+		[shown, active],
+	);
 
 	// The class rides alongside `prose-dw` rather than replacing it, so a caller can dial the
 	// size or colour down — reasoning is secondary text — without losing the block styling.
@@ -147,7 +163,7 @@ export const Markdown = memo(function Markdown({
 	 */
 	// Memoised because a new object here re-renders every picture in the document on every keystroke
 	// of a streaming reply — which for a remote one means dropping and re-requesting it.
-	const doc = useMemo(() => ({ baseDir, remoteImages, preview }), [baseDir, remoteImages, preview]);
+	const doc = useMemo(() => ({ baseDir, remoteImages, localImages, preview }), [baseDir, remoteImages, localImages, preview]);
 	// 减弱动效时 `active` 不会亮起：淡入的时长会被压成零，可还没轮到的字仍要等 `animation-delay`。
 	const fade = active;
 	const blocks = useMemo(
@@ -161,7 +177,18 @@ export const Markdown = memo(function Markdown({
 	return (
 		<Doc.Provider value={doc}>
 			<Writing.Provider value={active || streaming}>
-				<div className={`prose-dw min-w-0 ${className}`}>{blocks}</div>
+				<div className={`prose-dw min-w-0 ${className}`}>
+					{blocks}
+					{/*
+					 * 图的地址还在写（本地路径动辄上百字）：先占住它要落的那一段，`)` 到了由 `Image` 接着占，加载完在原处显影。
+					 * 接在一句话后面的图写完是在那一段里换行（独占一行，见 `fitsInLine`），不隔段间距——占位也不隔。
+					 */}
+					{heldImage && localImages && (
+						<p data-ly-joined={/\n\s*$/.test(clean) ? undefined : ""}>
+							<ImagePending />
+						</p>
+					)}
+				</div>
 			</Writing.Provider>
 		</Doc.Provider>
 	);
@@ -681,22 +708,43 @@ function Link({ href, children }: { href: string; children: ReactNode }) {
  * reference and its filename instead of leaving a broken image behind.
  */
 function Image({ src, alt, width, height }: { src: string; alt: string; width?: number; height?: number }) {
-	const { baseDir, remoteImages, preview } = useContext(Doc);
+	const { baseDir, remoteImages, localImages, preview } = useContext(Doc);
+	const project = useScopedProjectPath();
+	/*
+	 * 定在挂上那一刻：回复正在写时落下的图，先站在占位里、加载完再显影；写完的转录里的图直接就在，
+	 * 否则每次滚回视野（重新挂载）都要再显影一遍。
+	 */
+	const [reveal] = useState(useContext(Writing));
+	const [loaded, setLoaded] = useState<string | null>(null);
+	const [small, setSmall] = useState(false);
 	const remote = !preview && remoteImages && src.startsWith("https://") ? src : null;
 	const fetched = useRemoteImage(remote);
+	// A `src` that would not load — refused by the media protocol, or gone from the disk — is drawn as its link.
+	const [broken, setBroken] = useState<string | null>(null);
 
 	const direct = src.startsWith("data:") || src.startsWith("blob:") ? src : null;
-	const onDisk = direct || remote ? null : resolveAsset(baseDir, src);
-	const resolved = direct ?? fetched ?? (onDisk ? bridge.files.mediaUrl(onDisk) : null);
+	const base = baseDir ?? (localImages ? (project ?? (isAbsolutePath(src.trim()) ? "/" : undefined)) : undefined);
+	const onDisk = direct || remote || preview ? null : resolveAsset(base, src);
+	const checked = localImages && !baseDir ? onDisk : null;
+	const version = useFileVersion(checked);
+	const local = !onDisk ? null : !checked ? bridge.files.mediaUrl(onDisk) : typeof version === "number" ? bridge.files.mediaUrl(onDisk, version) : null;
+	const resolved = direct ?? fetched ?? (local === broken ? null : local);
 
 	if (preview) return <span>{alt || translate("markdown.image")}</span>;
 
 	if (resolved) {
-		return (
+		const settling = reveal && checked !== null;
+		const waiting = settling && loaded !== resolved;
+		const picture = (
 			<img
 				src={resolved}
 				alt={alt}
 				loading="lazy"
+				onError={() => setBroken(resolved)}
+				onLoad={(event) => {
+					setLoaded(resolved);
+					if (checked) setSmall(fitsInLine(event.currentTarget, height));
+				}}
 				/*
 				 * The author's `width` as a maximum, not as a width.
 				 *
@@ -705,13 +753,21 @@ function Image({ src, alt, width, height }: { src: string; alt: string; width?: 
 				 * narrower than that rather than shrinking with everything else.
 				 */
 				style={{ maxWidth: width ? `min(100%, ${width}px)` : undefined, maxHeight: height ? `${height}px` : undefined }}
-				className="ly-md-image"
+				className={`ly-md-image${checked && !small ? " ly-md-image-block" : ""}${waiting ? " ly-md-image-waiting" : settling ? " ly-image-reveal" : ""}`}
 			/>
+		);
+		// 加载完之前图本身没有高度：占位留着，图在它旁边不占地方地加载。结构两头一样，图是同一个元素，不重新加载。
+		return (
+			<>
+				{waiting && <ImagePending />}
+				{picture}
+			</>
 		);
 	}
 
 	// In flight: a gap, not a link that is about to be replaced by the picture underneath it.
 	if (remote && fetched === undefined) return null;
+	if (checked && version === undefined) return reveal ? <ImagePending /> : null;
 
 	const name = alt || decodeURIComponent(src.split("/").pop()?.split("?")[0] || translate("markdown.image"));
 	return (
@@ -723,6 +779,49 @@ function Image({ src, alt, width, height }: { src: string; alt: string; width?: 
 			</span>
 		</Link>
 	);
+}
+
+/**
+ * 不超过两行字高的图留在字里，更高的独占一行。
+ *
+ * 只管回复里的本地图。`.ly-md-image` 默认行内是为了 README 的徽章排成一行，那些都在两行字高以内，
+ * 照旧；二维码、截图跟在字里，会把一行字撑成图那么高、字悬在图中间。没加载完之前当它是大图：
+ * 回复里的图多半是大的，先独占一行，小图标加载完再并回字里，比反过来跳得少。
+ */
+function fitsInLine(img: HTMLImageElement, height?: number): boolean {
+	const line = Number.parseFloat(getComputedStyle(img).lineHeight) || 24;
+	return Math.min(img.naturalHeight, height ?? Number.POSITIVE_INFINITY) <= line * 2;
+}
+
+/** 一张还没到的图站的位置：和生成图等图时同一块点阵底板（`.ly-canvas`）。 */
+function ImagePending() {
+	return <span className="ly-md-image-pending ly-canvas" aria-hidden="true" />;
+}
+
+/**
+ * When a file on disk last changed, for the media URL — see `mediaUrl`.
+ *
+ * Read once per mount and per path: the agent overwriting a picture in place and then pointing a new
+ * reply at it is the case this exists for, and that reply mounts a new `Image`. Same three states as
+ * `useRemoteImage`; `null` is a file this window may not read, which stays a link. Only for a reply's
+ * own paths — a file pane's documents are reread with the pane.
+ */
+function useFileVersion(path: string | null): number | null | undefined {
+	const [read, setRead] = useState<{ path: string; version: number | null } | null>(null);
+
+	useEffect(() => {
+		if (!path) return;
+		let alive = true;
+		void bridge.files
+			.read(path)
+			.catch(() => null)
+			.then((contents) => alive && setRead({ path, version: contents ? (contents.modifiedAt ?? 0) : null }));
+		return () => {
+			alive = false;
+		};
+	}, [path]);
+
+	return path && read?.path === path ? read.version : undefined;
 }
 
 /**

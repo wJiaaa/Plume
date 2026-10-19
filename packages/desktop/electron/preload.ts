@@ -251,7 +251,7 @@ const extras = {
 		},
 	},
 	files: {
-		mediaUrl: (path) => `ly-media://f/${encodeURIComponent(path)}`,
+		mediaUrl: (path, version) => `ly-media://f/${encodeURIComponent(path)}${version === undefined ? "" : `?v=${version}`}`,
 		/*
 		 * The only thing in this bridge that is not an IPC call.
 		 *

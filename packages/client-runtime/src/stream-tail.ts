@@ -37,6 +37,16 @@ const URL_SPAN = 2048;
 const UNIT_START = /^\s*(?:[-*+]\s|\d+[.)]\s|#{1,6}\s)/;
 
 export function completeTail(source: string): string {
+	return completeTailHeld(source).text;
+}
+
+/**
+ * `completeTail`，外加最后藏起来的是不是一张图。
+ *
+ * 图的地址写完之前不画（同链接），而本地路径动辄上百字：这段时间里屏幕上什么都不长，像是卡住了，
+ * `)` 一到又整张跳出来。知道藏的是图，调用方就能先在那里放一块占位。
+ */
+export function completeTailHeld(source: string): { text: string; heldImage: boolean } {
 	const lines = source.split("\n");
 	const last = lines.length - 1;
 
@@ -87,11 +97,11 @@ export function completeTail(source: string): string {
 	 * - 刚进来的换行：代码末尾先多出一个空行，收尾之后又没了。
 	 */
 	if (fence) {
-		if (fenceAt === last) return [...lines.slice(0, last), ""].join("\n");
-		if (/^\s*(\x60*|~*)\s*$/.test(lines[last])) return lines.slice(0, last).join("\n");
-		return source;
+		if (fenceAt === last) return { text: [...lines.slice(0, last), ""].join("\n"), heldImage: false };
+		if (/^\s*(\x60*|~*)\s*$/.test(lines[last])) return { text: lines.slice(0, last).join("\n"), heldImage: false };
+		return { text: source, heldImage: false };
 	}
-	if (math || start > last) return source;
+	if (math || start > last) return { text: source, heldImage: false };
 
 	const tail = lines.slice(start);
 
@@ -108,9 +118,9 @@ export function completeTail(source: string): string {
 			break;
 		}
 	}
-	const closed = closeInline(tail.slice(unit).join("\n"));
+	const { text: closed, heldImage } = closeInline(tail.slice(unit).join("\n"));
 
-	return [...lines.slice(0, start), ...tail.slice(0, unit), closed].join("\n");
+	return { text: [...lines.slice(0, start), ...tail.slice(0, unit), closed].join("\n"), heldImage };
 }
 
 /**
@@ -138,10 +148,11 @@ function holdTableHeader(tail: string[]): void {
  * 强调补上收口；代码跨度和链接藏到写完（理由见文件开头）；只写出了开头标记、后面还一个字都没有
  * 的，先不画。
  */
-function closeInline(text: string): string {
+function closeInline(text: string): { text: string; heldImage: boolean } {
 	const open: { fence: string; at: number }[] = [];
 	let end = text.length;
 	let suffix = "";
+	let heldImage = false;
 	let i = 0;
 
 	scan: while (i < text.length) {
@@ -193,11 +204,13 @@ function closeInline(text: string): string {
 				const href = text.slice(from + link.label.length + 3);
 				end = i;
 				suffix = char === "!" || (href.length <= URL_SPAN && !href.includes("\n")) ? "" : link.label;
+				heldImage = char === "!";
 				break;
 			}
 			// 方括号还没收口，或者刚收口、还看不出后面跟不跟地址：先不画，免得方括号露出来再消失。
 			if (link.state === "open" && text.length - from <= HOLD && !text.slice(from).includes("\n")) {
 				end = i;
+				heldImage = char === "!";
 				break;
 			}
 			i = from + 1;
@@ -252,7 +265,7 @@ function closeInline(text: string): string {
 		if (body.length === at + fence.length) body = body.slice(0, at);
 		else closers += fence;
 	}
-	return body + closers + space;
+	return { text: body + closers + space, heldImage };
 }
 
 function runOf(text: string, at: number, char: string): number {

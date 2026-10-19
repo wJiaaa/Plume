@@ -113,6 +113,8 @@ export interface FileContents {
 	bytes: number;
 	/** Set instead of `text` when the bytes are not text at all. */
 	binary?: boolean;
+	/** `mtimeMs` at the read. The media URL carries it, so a file overwritten in place is fetched again — see `mediaUrl`. */
+	modifiedAt?: number;
 }
 
 export interface AgentCapabilities {

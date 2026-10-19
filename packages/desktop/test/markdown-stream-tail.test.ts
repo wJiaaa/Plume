@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseMarkdown, parseMarkdownChunks } from "../src/lib/markdown/blocks.ts";
 import { parseInline } from "../src/lib/markdown/inline.ts";
-import { completeTail } from "../src/lib/markdown/stream-tail.ts";
+import { completeTail, completeTailHeld } from "../src/lib/markdown/stream-tail.ts";
 
 const kinds = (text: string) => parseInline(completeTail(text)).map((token) => token.kind);
 
@@ -116,4 +116,13 @@ test("往后写不改变前面块的原文——按原文记忆的块不会重�
 	const before = parseMarkdownChunks("段落一\n\n段落二");
 	const after = parseMarkdownChunks("段落一\n\n段落二继续\n\n- 新列表");
 	assert.equal(after[0].raw, before[0].raw);
+});
+
+test("图的地址还在写：先藏起来，并说明藏的是图，好先放一块占位", () => {
+	const path = "/Users/me/.plume/workspaces/chats/2026-10-19/badaf2f3/feishu-auth-qr.png";
+	assert.deepEqual(completeTailHeld("也可以使用下面的二维码：\n\n![飞书授权二维码](/Users/me/.plu"), { text: "也可以使用下面的二维码：\n\n", heldImage: true });
+	assert.deepEqual(completeTailHeld("二维码：![飞书授"), { text: "二维码：", heldImage: true }, "说明文字还没写完也算");
+	assert.deepEqual(completeTailHeld(`![飞书授权二维码](${path})`), { text: `![飞书授权二维码](${path})`, heldImage: false }, "写完了就是图本身");
+	assert.equal(completeTailHeld("[文档](/Users/me/a.m").heldImage, false, "普通链接不是图");
+	assert.equal(completeTailHeld("```md\n![图](/a/b").heldImage, false, "代码块里的不算");
 });

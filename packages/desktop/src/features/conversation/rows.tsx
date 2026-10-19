@@ -234,7 +234,7 @@ function AssistantRow({
             // 最终答复会把同一条回复里先播报过的话再说一遍，播报就不再画了，见 `restated`。
             return block.text && !restated(block, message.content) ? (
               <div key={at}>
-                <Markdown text={block.text} streaming={message.stopReason === "pending" && at === message.content.length - 1} />
+                <Markdown text={block.text} localImages streaming={message.stopReason === "pending" && at === message.content.length - 1} />
               </div>
             ) : null;
           }

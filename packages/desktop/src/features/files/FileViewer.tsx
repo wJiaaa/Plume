@@ -93,14 +93,15 @@ export function FileViewer({
 
 	const text = contents.text;
 
-	const media = bridge.files.mediaUrl(path);
+	// Versioned, so reopening a file that was overwritten in place draws the new bytes — see `mediaUrl`.
+	const media = bridge.files.mediaUrl(path, contents.modifiedAt);
 
 	return (
 		<div className="flex min-h-0 min-w-0 flex-1 flex-col">
 			{kind === "image" ? (
 				// Zoom and pan, because an icon and a screenshot are both images and neither is
-				// legible at "whatever fits the pane" — see `ImagePane`.
-				<ImagePane key={path} src={media} name={name} />
+				// legible at "whatever fits the pane" — see `ImagePane`. A new version is a new picture: zoom starts over.
+				<ImagePane key={media} src={media} name={name} />
 			) : kind === "sheet" ? (
 				<SheetView key={path} path={path} />
 			) : kind === "pdf" ? (
