@@ -2,6 +2,57 @@
 
 这个文件由 `pnpm release` 生成，条目来自提交信息。写得含糊的提交在这里也含糊，所以值得在提交时就写清楚。
 
+## [0.9.41](https://github.com/wJiaaa/Plume/releases/tag/v0.9.41) - 2026-10-19
+
+<!-- plume:notes en -->
+
+### New
+
+- **New conversations can have a background image.** Pick one in Settings → Appearance → Chat background. It only shows in a conversation that has no messages yet, and goes away as soon as there is something to read. Besides the original image there are five effects: Dither, ASCII, Halftone, Scanlines and Haze, and the strength can be turned down. The image is copied to `~/.plume/backgrounds` and stays on this computer.
+
+### Changes
+
+- **Next-step suggestions no longer cost an extra request.** The grey text in the message box used to come from a second request after every turn, which only saw one instruction and mostly guessed "continue" or "commit this". The model now writes the suggestion at the end of its own reply, where it knows what it just did. The line itself is never shown in the reply or copied with it. The setting is still off by default (Settings → General → Next-step suggestions), and side chats don't get suggestions.
+- **Images saved on this computer show up in the reply.** When the model puts an image it just saved into its reply, such as a QR code or a screenshot, you now see the picture instead of a link. A path relative to the project works too, and anything that can't be read stays a link. Images taller than two lines of text get a line of their own, and while the path is still being written a placeholder holds the space, so nothing jumps when the image lands.
+- **Read-only batches of tool calls get their sentence too.** Since 0.9.40 the model says what each batch of tool calls is for, but it often skipped batches that only read files, listed folders or searched. Those count now. On the same task, the longest run of calls with no word in between went from 84 (deepseek-v4.1-flash) and 42 (gpt-6.1-sol) down to 9.
+
+### Fixes
+
+- **⌘Q quits Plume completely after the window was closed.** On macOS, closing the window with the red button and then quitting left Plume running with no windows: the dot under the Dock icon stayed, and the only way out was Force Quit. This happened when no conversation had been used since launch.
+- **The running indicator stays visible while the model announces its next step.** With models that narrate before calling tools (the Responses API, e.g. gpt-6.1-sol), the bottom of the conversation went blank for about three seconds after each announcement, as if the turn had stopped.
+- **A conversation that opens with a question gets a proper title.** For a first message like "what does finding new keywords for a global site even mean?", the title model sometimes answered the question, and the sidebar showed the first 30 characters of the answer, cut mid-sentence. In 90 tries per model this went from 2 to 0.
+- **An image overwritten at the same path shows the new version.** Writing a second QR code to the same `feishu-auth-qr.png` used to keep showing the first one, in the reply and in the file panel.
+- **Links that try to open an app no longer leave the built-in browser on a blank page.** When a site redirects to an address like `lark://`, the tab now says what it tried to open and offers to hand the page to your system browser, which asks before launching the app. The agent's `browser_open` gets the same explanation.
+- **Previews come back after switching conversations.** Pages that size themselves to the window, three.js scenes in particular, stayed blank when you returned to a conversation and needed a manual rerun. They now reload on their own at the same height, and state saved with `plume.setState` is restored.
+- **Opening a conversation for the first time no longer flashes an empty page.** For one frame the pane showed a spinner and the message box at the bottom before the messages appeared. Plume now waits up to 120 ms for the conversation to load before switching; a larger one that takes longer still shows the spinner.
+
+<!-- plume:notes zh-CN -->
+
+<details>
+<summary>中文（简体）</summary>
+
+### 新功能
+
+- **新对话可以铺一张背景图。** 在 设置 → 外观 → 会话背景 里选图。只在还没有消息的新对话里出现，有了内容就撤掉。除了原图还有抖动、ASCII、网点、扫描线、雾化五种效果，浓度可以调低。图会复制到 `~/.plume/backgrounds`，只存在这台电脑上。
+
+### 变化
+
+- **下一步建议不再多花一次请求。** 输入框里的灰字，原来是每轮结束后另发一次请求去猜，那次请求只看得到一条指令，猜出来的多半是「继续」「提交一下」。现在由回复的模型在回复末尾顺带写出，它知道自己刚做了什么。这一行不会出现在回复里，复制时也不带。设置默认还是关的（设置 → 常规 → 下一步建议），侧边聊天里不给建议。
+- **存在本机的图片直接显示在回复里。** 模型在回复里放上刚存到本机的图片，比如二维码、截图，现在看到的是图，不再是一条链接。相对项目的路径也行，读不到的照旧是链接。高过两行字的图单独占一行；路径还在往外写的时候先放一块占位，图出来时不跳。
+- **只读的那几批工具调用，前面也会说一句。** 0.9.40 起模型每批调用前会先说这批要做什么，但读文件、列目录、搜索这种只读的批次经常被跳过。现在也算。同一个任务对照：中间一句话都没有、连着跑的调用，最长从 84 个（deepseek-v4.1-flash）、42 个（gpt-6.1-sol）降到 9 个。
+
+### 修复
+
+- **点过红色关闭按钮后，⌘Q 能把 Plume 退干净了。** 在 macOS 上先关窗再退出，Plume 会留在后台：窗口都没了，Dock 图标下面的小点还亮着，只能强制退出。启动后还没用过任何对话时必现。
+- **模型播报下一步时，运行指示不再消失。** 调工具前会先说一句的模型（走 Responses 接口的，比如 gpt-6.1-sol），每说完一句，对话底部就空出三秒左右，看着像这一轮已经停了。
+- **用提问开场的对话，标题不再是半句回答。** 首条消息是「做出海网站 找新词 这种事什么意思啊？」这类问句时，起标题的模型偶尔会去回答它，侧栏里就留下答案的前 30 个字，断在半句。每个模型各试 90 次，从 2 次降到 0 次。
+- **同一路径的图片被覆盖后，显示的是新图。** 第二次把二维码写进同一个 `feishu-auth-qr.png`，回复里和文件面板里看到的都还是第一张。
+- **网页要唤起客户端时，内置浏览器不再停在白页上。** 网站把标签页跳到 `lark://` 这类地址时，页面上会说明它想打开什么，并可以把这一页交给系统浏览器，由系统浏览器问你要不要启动客户端。agent 的 `browser_open` 也会收到同样的说明。
+- **切走再切回对话，预览不再是空白。** 按窗口大小排版的页面，尤其是 three.js 场景，切回来时一片空白，要手动点重新运行。现在会自动重新加载，卡片高度不变，用 `plume.setState` 存下的状态也会交还。
+- **第一次打开某个对话时，不再先闪一下空页面。** 消息出来之前，窗格会先画一帧加载圈、输入框落在底部。现在最多先等 120ms，读到了再换过去；更大的对话读得更久，照旧先显示加载圈。
+
+</details>
+
 ## [0.9.40](https://github.com/wJiaaa/Plume/releases/tag/v0.9.40) - 2026-10-19
 
 <!-- plume:notes en -->
