@@ -365,6 +365,43 @@ export function PreviewCard({ preview, startHeight, onShown }: {
 		return () => clearTimeout(giveUp);
 	}, [ready]);
 
+	/*
+	 * Run the page again, measured again — in the same record, reset in place. The listener holds on
+	 * to that object; swapping in a new one left it reading the old, already settled one, and the page
+	 * never showed again. The card keeps its height meanwhile: dropping to the default and back was a
+	 * jump in the conversation for a page that is usually the same size.
+	 */
+	const reload = () => {
+		const state = survey.current;
+		if (state.timer) clearTimeout(state.timer);
+		Object.assign(state, { settled: false, tallest: 0, adjustments: 0, timer: null });
+		setReady(false);
+		setGaveUp(false);
+		setNonce((value) => value + 1);
+	};
+	/*
+	 * Back from a conversation the reader left: run the page again.
+	 *
+	 * A conversation left is kept as it was under `display: none` (`RetainedViews`), and the frame's
+	 * viewport goes with it, to 0×0 — something no page meets in a browser tab. Pages that size
+	 * against their viewport take that as a size: a three.js scene measured there got an aspect of
+	 * 0/0, its camera went to NaN and stayed there, and the page came back blank until rerun by hand.
+	 * That is the reload the address effect above avoids; a page broken by the hiding loses more, and
+	 * what it saved of itself (`plume.setState`) is handed back on the new load.
+	 *
+	 * Only once it had loaded: a page not yet loaded will still load into a visible card, and the
+	 * mount, cleanup, mount of a development build would otherwise rerun every page on its first mount.
+	 */
+	const loaded = useRef(false);
+	const left = useRef(false);
+	useLayoutEffect(() => {
+		if (left.current && loaded.current) reload();
+		left.current = false;
+		return () => {
+			left.current = true;
+		};
+	}, []);
+
 	// Asking for more space is a decision the page does not get to overrule.
 	const height = full ? full.height : tall ? MAX_HEIGHT : (measured ?? DEFAULT_HEIGHT);
 	// Held back until it has been measured, or until it is clear nothing is coming, so the probe height is never a frame anyone sees.
@@ -447,6 +484,7 @@ export function PreviewCard({ preview, startHeight, onShown }: {
 						title={preview.title}
 						sandbox="allow-scripts allow-pointer-lock allow-forms allow-modals"
 						onLoad={() => {
+							loaded.current = true;
 							setReady(true);
 							// A theme that changed while the page was loading never reached it.
 							postTheme();
@@ -544,21 +582,10 @@ export function PreviewCard({ preview, startHeight, onShown }: {
 					size="sm"
 					tipSide="top"
 					onClick={() => {
-						/*
-						 * A fresh run may draw something a different size, so measure it again — in the
-						 * same record, reset in place. The listener holds on to that object; swapping in
-						 * a new one left it reading the old, already settled one, and the page never
-						 * showed again. The card keeps its height meanwhile: dropping to the default and
-						 * back was a jump in the conversation for a page that is usually the same size.
-						 */
-						const state = survey.current;
-						if (state.timer) clearTimeout(state.timer);
-						Object.assign(state, { settled: false, tallest: 0, adjustments: 0, timer: null });
+						// A fresh run may draw something a different size, so it is measured again (`reload`).
 						setOverflowing(false);
 						setFull(null);
-						setReady(false);
-						setGaveUp(false);
-						setNonce((value) => value + 1);
+						reload();
 					}}
 				/>
 				{tweaks.groups.length > 0 && (

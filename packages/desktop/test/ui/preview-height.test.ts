@@ -10,7 +10,7 @@
 
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, mock, test } from "node:test";
-import { act, createElement as h } from "react";
+import { act, Activity, createElement as h } from "react";
 import { PreviewCard, type PreviewInfo } from "../../src/features/files/PreviewCard.tsx";
 import { I18nProvider } from "../../src/i18n/index.ts";
 import { mount, type Mounted } from "../helpers/mount.ts";
@@ -121,6 +121,33 @@ test("「重新运行」之后重新量：新页面的报告定下新高度，�
 	await tick(400);
 	assert.equal(height(), "300px", "the new page's first report was taken for a late one from the old, settled survey");
 	assert.equal(shown(), true);
+});
+
+test("切走的对话再切回来，页面重跑一次：藏着时它的视口是 0×0，按视口布局的页面量坏了就回不来", async () => {
+	const at = (mode: "visible" | "hidden") => h(I18nProvider, { locale: "zh-CN", children: h(Activity, { mode, children: h(PreviewCard, { preview: PREVIEW }) }) });
+	view = await mount(at("visible"));
+	await loaded();
+	await reports(362);
+	await tick(400);
+	const before = frame();
+
+	await view.rerender(at("hidden"));
+	await view.rerender(at("visible"));
+	assert.notEqual(frame(), before, "the page that sat in a 0×0 viewport was shown again as it was");
+	assert.equal(height(), "362px", "the card dropped its height while the page ran again");
+	await loaded();
+	await reports(362);
+	await tick(400);
+	assert.equal(shown(), true);
+});
+
+test("还没加载完就被切走的页面，回来时不重跑", async () => {
+	const at = (mode: "visible" | "hidden") => h(I18nProvider, { locale: "zh-CN", children: h(Activity, { mode, children: h(PreviewCard, { preview: PREVIEW }) }) });
+	view = await mount(at("visible"));
+	const before = frame();
+	await view.rerender(at("hidden"));
+	await view.rerender(at("visible"));
+	assert.equal(frame(), before);
 });
 
 for (const themed of [false, true]) {
