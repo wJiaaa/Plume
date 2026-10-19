@@ -52,7 +52,7 @@ export function nameCalls(calls: Call[], runs: Record<string, ToolRunState>, roo
   }))];
   if (names.length < 2) return describeCalls(calls);
   if (shown.length === 2) return formatList(names);
-  return translate("step.named", { names: formatList(names.slice(0, 2)), n: shown.length - 2, total: shown.length });
+  return translate("step.named", { names: formatList(names.slice(0, 2)), total: shown.length });
 }
 
 /**

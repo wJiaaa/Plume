@@ -35,7 +35,7 @@ test("多于两次：说前两句，再报一共几项", () => {
 	assert.equal(nameCalls(calls, said), "查看当前提交与工作区状态、查询服务器现有镜像版本 等 3 项");
 	setActiveLocale("en");
 	try {
-		assert.equal(nameCalls(calls, said), "查看当前提交与工作区状态, 查询服务器现有镜像版本 and 1 more");
+		assert.equal(nameCalls(calls, said), "查看当前提交与工作区状态, 查询服务器现有镜像版本, 3 total");
 	} finally {
 		setActiveLocale("zh-CN");
 	}
