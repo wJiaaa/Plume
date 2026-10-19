@@ -222,9 +222,9 @@ export const METHODS = {
 		closePanel: { channel: "windows:closePanel" },
 	},
 	chatBackground: {
-		pick: { channel: "chatBackground:pick" },
-		read: { channel: "chatBackground:read" },
-		remove: { channel: "chatBackground:remove" },
+		pick: { channel: "chatbackground:pick" },
+		read: { channel: "chatbackground:read" },
+		remove: { channel: "chatbackground:remove" },
 	},
 	system: {
 		openPath: { channel: "system:openPath" },

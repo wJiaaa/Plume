@@ -30,7 +30,7 @@ async function clear(dir: string, keep?: string): Promise<void> {
 }
 
 export function registerChatBackgroundIpc(): void {
-	ipcMain.handle("chatBackground:pick", async (event) => {
+	ipcMain.handle("chatbackground:pick", async (event) => {
 		const window = BrowserWindow.fromWebContents(event.sender);
 		const options = {
 			title: nativeText("dialog.chatBackground"),
@@ -57,10 +57,10 @@ export function registerChatBackgroundIpc(): void {
 		return { name };
 	});
 
-	ipcMain.handle("chatBackground:read", async (_event, name: string): Promise<Uint8Array | null> => {
+	ipcMain.handle("chatbackground:read", async (_event, name: string): Promise<Uint8Array | null> => {
 		if (typeof name !== "string" || !NAME.test(name)) return null;
 		return readFile(join(directory(), name)).catch(() => null);
 	});
 
-	ipcMain.handle("chatBackground:remove", async () => clear(directory()));
+	ipcMain.handle("chatbackground:remove", async () => clear(directory()));
 }
