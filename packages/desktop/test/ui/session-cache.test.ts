@@ -24,6 +24,11 @@ function deferredRead() {
 	return { promise, resolve };
 }
 
+/** Past `COLD_OPEN_WAIT_MS` in `session-read.ts`, after which a cold open swaps in without its transcript. */
+function waitPastPreload(): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, 160));
+}
+
 function snapshot(id: string): Snapshot {
 	return { meta: meta(id), messages: [reply(id)], running: false, pendingApprovals: [], compactions: [] };
 }
@@ -166,15 +171,24 @@ test("clicking the loaded conversation from another page reveals it without relo
 	assert.deepEqual(rosterReads, []);
 });
 
-test("a single sidebar click hydrates in the same turn", async () => {
-	revealSession(meta("b"));
-	assert.equal(useApp.getState().activeSessionId, "b");
-	assert.equal(useApp.getState().pendingSessionId, null);
-	assert.equal(useApp.getState().loadingSession, true);
-	assert.equal(useApp.getState().messages.length, 0);
-	for (let i = 0; i < 10 && useApp.getState().loadingSession; i++) await afterPaint();
-	assert.equal(useApp.getState().loadingSession, false);
-	assert.equal(useApp.getState().messages.length, 1);
+test("a cold sidebar click swaps straight to the read transcript, never to an empty one", async () => {
+	let blank = 0;
+	const stop = useApp.subscribe((state) => {
+		if (state.activeSessionId === "b" && state.messages.length === 0) blank += 1;
+	});
+	try {
+		revealSession(meta("b"));
+		assert.equal(useApp.getState().pendingSessionId, "b", "the row lights on the press");
+		assert.equal(useApp.getState().activeSessionId, "a", "the pane waits for the read");
+		for (let i = 0; i < 10 && useApp.getState().activeSessionId !== "b"; i++) await afterPaint();
+		assert.equal(useApp.getState().activeSessionId, "b");
+		assert.equal(useApp.getState().pendingSessionId, null);
+		assert.equal(useApp.getState().loadingSession, false);
+		assert.equal(useApp.getState().messages.length, 1);
+		assert.equal(blank, 0, "an empty conversation was painted before the transcript");
+	} finally {
+		stop();
+	}
 });
 
 test("a burst of sidebar clicks keeps the last row and skips intermediate disk reads", async () => {
@@ -210,7 +224,7 @@ test("an in-flight cold read does not paint if a newer row is pending", async ()
 	const second = deferredRead();
 	readTranscript = (id) => (id === "b" ? first.promise : second.promise);
 	revealSession(meta("b"));
-	await afterPaint();
+	await waitPastPreload();
 	assert.equal(useApp.getState().activeSessionId, "b");
 	assert.equal(useApp.getState().loadingSession, true);
 	revealSession(meta("c"));
@@ -420,26 +434,34 @@ test("background messages update a parked session without flashing a cold loader
 });
 
 
-test("a cold open leaves the previous transcript in this turn", async () => {
+test("a slow cold open keeps the previous transcript only for the bounded wait", async () => {
+	const reads: string[] = [];
 	const deferred = deferredRead();
-	readTranscript = () => deferred.promise;
+	readTranscript = (id) => {
+		reads.push(id);
+		return deferred.promise;
+	};
 	const opening = useApp.getState().openSession({ ...meta("cold"), messageCount: 800 });
+	assert.equal(useApp.getState().activeSessionId, "a", "a read that may land in a few ms is waited for");
+	await waitPastPreload();
 	assert.equal(useApp.getState().activeSessionId, "cold");
 	assert.equal(useApp.getState().messages.length, 0);
-	assert.equal(useApp.getState().loadingSession, true, "the next conversation owns the pane while it is read");
+	assert.equal(useApp.getState().loadingSession, true, "past the wait, the next conversation owns the pane while it is read");
 	assert.equal(useApp.getState().sessionCache.a?.messages.length, 1, "the conversation we left is parked");
 	deferred.resolve(snapshot("cold"));
 	await opening;
 	assert.equal(useApp.getState().activeSessionId, "cold");
 	assert.equal(useApp.getState().loadingSession, false);
 	assert.equal(useApp.getState().messages.length, 1);
+	assert.deepEqual(reads, ["cold"], "the open takes the preload's result instead of reading the file twice");
 });
 
-test("a cold open from a blank slot still shows a loader", async () => {
+test("a slow cold open from a blank slot still shows a loader", async () => {
 	useApp.setState({ activeSessionId: null, meta: null, messages: [], loadingSession: false });
 	const deferred = deferredRead();
 	readTranscript = () => deferred.promise;
 	const opening = useApp.getState().openSession({ ...meta("cold"), messageCount: 800 });
+	await waitPastPreload();
 	assert.equal(useApp.getState().loadingSession, true);
 	assert.equal(useApp.getState().messages.length, 0);
 	assert.equal(useApp.getState().meta?.messageCount, 800);
@@ -447,6 +469,14 @@ test("a cold open from a blank slot still shows a loader", async () => {
 	await opening;
 	assert.equal(useApp.getState().loadingSession, false);
 	assert.equal(useApp.getState().messages.length, 1);
+});
+
+test("a cold open whose preload fails still reports it and releases loading", async () => {
+	readTranscript = async () => { throw new Error("disk unavailable"); };
+	await useApp.getState().openSession(meta("b"));
+	assert.equal(useApp.getState().activeSessionId, "b");
+	assert.equal(useApp.getState().loadingSession, false);
+	assert.ok(useApp.getState().notices.some((notice) => notice.message.includes("disk unavailable")));
 });
 
 test("a cold read retains the history prefix and events arriving while it was in flight", async () => {

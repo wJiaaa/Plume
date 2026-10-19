@@ -10,13 +10,13 @@ import { applySessionChange } from "./session-changes.ts";
 
 import type { SessionMeta } from "@plume/core";
 import type { SessionActivity } from "@plume/core/activity";
-import { cacheIsFresh, prune, without, type CachedSessionState } from "./derive.ts";
+import { cacheIsFresh, prune, without, type Cache, type CachedSessionState } from "./derive.ts";
 import type { AppState } from "./index.ts";
 import { useSubAgents } from "./subAgents.ts";
 import { bridge } from "../services/index.ts";
 import { loadCarried } from "./turn-meter.ts";
 import { flushCoalesced } from "./coalesce.ts";
-import { readSelectedSession, restoreLiveState } from "./session-read.ts";
+import { pendingPreload, preloadSession, readSelectedSession, restoreLiveState, takePreloaded } from "./session-read.ts";
 import { isProjectLess } from "../lib/project-scope.ts";
 import { projectWorkspace, sessionWorkspace } from "./session-workspace.ts";
 import { sessionProject } from "../lib/project-identity.ts";
@@ -31,6 +31,32 @@ function lostSelection(get: Get, id: string): boolean {
 	if (pending && pending !== id) return true;
 	if (!pending && get().activeSessionId != null && get().activeSessionId !== id) return true;
 	return false;
+}
+
+/** The live slot's transcript and turn state for `meta`, from its cache entry when there is one. */
+function slotFrom(meta: SessionMeta, cached: Cache[string] | undefined): Partial<AppState> {
+	return {
+		meta: cached?.meta ?? meta,
+		messages: cached?.messages ?? [],
+		toolRuns: cached?.toolRuns ?? {},
+		approvals: cached?.state?.approvals ?? [],
+		running: cached?.state?.running ?? false,
+		todos: cached?.state?.todos ?? [],
+		compactions: cached?.state?.compactions ?? [],
+		commandRuns: cached?.state?.commandRuns ?? [],
+		hookRuns: cached?.state?.hookRuns ?? [],
+		capabilities: cached?.state?.capabilities ?? null,
+		// Belongs to the turn being left behind; see the note in `newSession`.
+		retrying: cached?.state?.retrying ?? null,
+		// This conversation's own summary, if it has just had one — never the last conversation's.
+		compactedAt: cached?.state?.compactedAt ?? null,
+		hiccups: cached?.state?.hiccups ?? [],
+		stopped: cached?.state?.stopped ?? null,
+		// Only a session with nothing to show is "loading"; a cached one is already on screen
+		// and re-reads quietly behind it.
+		loadingSession: !cached,
+		pendingUserMessage: cached?.state?.pendingUserMessage ?? null,
+	};
 }
 
 /**
@@ -252,6 +278,10 @@ export function sessionSlice(set: Set, get: Get) {
 		return true;
 	},
 
+	preloadSession(meta: SessionMeta) {
+		return preloadSession(meta, set, get);
+	},
+
   async openSession(meta: SessionMeta) {
     /*
      * 「谁更新」不能从 `pendingSessionId` 读出来。
@@ -264,14 +294,24 @@ export function sessionSlice(set: Set, get: Get) {
      * 两条调用路径各自已经问过更准确的问题：`commitSettle` 问 `stillWants`，`openSessionById` 比
      * 自己发起时的 `selectionEpoch`。这里再挡一道，挡掉的只会是它们已经放行的那一次。
      */
-    get().previewSession(meta);
+    const epoch = get().previewSession(meta);
     flushCoalesced();
     /*
-     * Swap in this turn. Prefetch-before-swap kept the previous chat on screen
-     * for the whole disk read — that is the stale page after a click. A cache
-     * hit paints immediately; a miss paints the skeleton and reads behind it.
+     * A cache hit swaps in this turn. A miss reads first, for at most `COLD_OPEN_WAIT_MS`.
+     *
+     * Prefetch-before-swap once kept the previous chat on screen for the *whole* disk read — the
+     * stale page after a click. Swapping first instead painted one frame of an empty conversation
+     * before a read that takes a dozen milliseconds, which reads as the page jumping. Bounded, the
+     * wait is below what a click feels like, and a read that runs past it still gets the skeleton.
      */
     if (lostSelection(get, meta.id)) return;
+    const preload = preloadSession(meta, set, get);
+    if (preload) {
+      await preload;
+      flushCoalesced();
+      // 新对话 during the wait leaves no pending row for `lostSelection` to see; the epoch moved.
+      if (get().selectionEpoch !== epoch || lostSelection(get, meta.id)) return;
+    }
     const leaving = get().activeSessionId;
     const cache = { ...get().sessionCache };
 
@@ -342,16 +382,7 @@ export function sessionSlice(set: Set, get: Get) {
 			selectionEpoch: get().selectionEpoch + 1,
       activeSessionId: meta.id,
       pendingSessionId: null,
-      meta: cached?.meta ?? meta,
-      messages: cached?.messages ?? [],
-      toolRuns: cached?.toolRuns ?? {},
-      approvals: cached?.state?.approvals ?? [],
-      running: cached?.state?.running ?? false,
-      todos: cached?.state?.todos ?? [],
-      compactions: cached?.state?.compactions ?? [],
-			commandRuns: cached?.state?.commandRuns ?? [],
-			hookRuns: cached?.state?.hookRuns ?? [],
-      capabilities: cached?.state?.capabilities ?? null,
+      ...slotFrom(meta, cached),
       /*
        * This conversation's own meter, not whichever one last started a turn.
        *
@@ -373,16 +404,6 @@ export function sessionSlice(set: Set, get: Get) {
       },
       turnStartedAt: get().turns[meta.id]?.startedAt ?? null,
       turnTokens: get().turns[meta.id]?.tokens ?? 0,
-      // Belongs to the turn being left behind; see the note in `newSession`.
-      retrying: cached?.state?.retrying ?? null,
-      // This conversation's own summary, if it has just had one — never the last conversation's.
-      compactedAt: cached?.state?.compactedAt ?? null,
-      hiccups: cached?.state?.hiccups ?? [],
-      stopped: cached?.state?.stopped ?? null,
-      // Only a session with nothing to show is "loading"; a cached one is already on screen
-      // and re-reads quietly behind it.
-      loadingSession: !cached,
-			pendingUserMessage: cached?.state?.pendingUserMessage ?? null,
       view: "chat",
       ...(projectLess ? { workspace: null, scratchCwd: meta.cwd } : { scratchCwd: null }),
     });
@@ -454,9 +475,27 @@ export function sessionSlice(set: Set, get: Get) {
      * clones megabytes onto the renderer in the same click — that is the hitch
      * after a session has already been opened. Dirty or a newer seq still refresh.
      */
-    if (cacheIsFresh(cached, meta)) {
+    // `dirty` says nothing here: merging the events that arrived during the read marks it too.
+    const preloaded = takePreloaded(meta.id);
+    if (cacheIsFresh(cached, meta) || (preloaded && cached)) {
       await restoreLiveState(meta.id, set, get);
       return;
+    }
+    /*
+     * The preload ran past its wait and is still reading. Take its result rather than queue a second
+     * read of the same megabytes behind it.
+     */
+    const inFlight = pendingPreload(meta.id);
+    if (inFlight) {
+      await inFlight;
+      if (get().activeSessionId !== meta.id || !get().loadingSession) return;
+      flushCoalesced();
+      const read = get().sessionCache[meta.id];
+      if (takePreloaded(meta.id) && read) {
+        set(slotFrom(meta, read));
+        await restoreLiveState(meta.id, set, get);
+        return;
+      }
     }
     await readSelectedSession(meta, set, get);
   },

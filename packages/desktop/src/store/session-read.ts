@@ -70,6 +70,70 @@ function stashInCache(
 	});
 }
 
+/**
+ * 冷开最多等这么久再换屏。
+ *
+ * 换屏和读盘一起发出时，读盘只要十几毫秒，屏上却先画出一帧空会话——加载圈、输入框落到底部——
+ * 下一帧内容才整块出现，看上去整页跳了一下。先读、读到了再换，就没有那一帧。上限要短：大会话一次
+ * 读几百毫秒到几秒，一直停在上一页就是「点了没反应」，超时照旧先换屏、后读完（见 `openSession`）。
+ */
+const COLD_OPEN_WAIT_MS = 120;
+
+let preloading: { id: string; done: Promise<void>; until: number } | null = null;
+/*
+ * 预读刚放进缓存、还没被打开的那一个。打开它不再读第二遍，哪怕它在运行：第二遍读到的快照会把
+ * 预读期间合进来的事件盖掉，而原先的冷开本来就只读一次。
+ */
+let preloaded: string | null = null;
+
+/**
+ * 没进缓存的会话先读进缓存，返回最多等到 `COLD_OPEN_WAIT_MS` 的那一段；不需要等时返回 null。
+ *
+ * 不需要等时一定不能 `await`：缓存命中要在这一拍里换屏，多让出一个微任务就晚了一拍。
+ * 仍然只有一份在路上：已经有一份在读（连点时）就不再加，照原样先换屏后读。
+ */
+export function preloadSession(meta: SessionMeta, set: Set, get: Get): Promise<void> | null {
+	if (get().sessionCache[meta.id] || get().activeSessionId === meta.id) return null;
+	if (preloading?.id !== meta.id) {
+		if (reading !== null) return null;
+		reading = meta.id;
+		preloaded = null;
+		const events = beginSessionRead(meta.id);
+		const done = bridge.sessions.transcript(meta.id).then(
+			(snapshot) => {
+				if (!snapshot) return;
+				stashInCache(meta, snapshot, events, set, get);
+				preloaded = meta.id;
+			},
+			// 读不出来交给随后那次正式读：屏上该不该报错、报在哪，它知道。
+			() => {},
+		).finally(() => {
+			endSessionRead(meta.id);
+			reading = null;
+			preloading = null;
+			drainQueued(meta.id, set, get);
+		});
+		preloading = { id: meta.id, done, until: performance.now() + COLD_OPEN_WAIT_MS };
+	}
+	const { done, until } = preloading;
+	const wait = until - performance.now();
+	if (wait <= 0) return null;
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	return Promise.race([done, new Promise<void>((resolve) => { timer = setTimeout(resolve, wait); })]).finally(() => clearTimeout(timer));
+}
+
+/** 这个会话的缓存是不是预读刚读来的；问过一次就不算了。 */
+export function takePreloaded(id: string): boolean {
+	if (preloaded !== id) return false;
+	preloaded = null;
+	return true;
+}
+
+/** 这个会话的预读还在路上时，等它读完的那个 promise。 */
+export function pendingPreload(id: string): Promise<void> | null {
+	return preloading?.id === id ? preloading.done : null;
+}
+
 const sideReads = new Set<string>();
 
 /**

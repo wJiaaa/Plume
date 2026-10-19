@@ -504,6 +504,8 @@ export interface AppState extends QueueSlice {
   /** Light the row now. Returns the selection epoch so a later hydrate can tell if it is stale. */
   previewSession(meta: SessionMeta): number;
   previewSessionId(id: string): number;
+	/** Read a conversation that is not cached yet, briefly, before its screen swaps in. See `preloadSession` in `session-read.ts`. */
+	preloadSession(meta: SessionMeta): Promise<void> | null;
   openSession(meta: SessionMeta): Promise<void>;
 	openSessionById(id: string): Promise<boolean>;
   deleteSession(meta: SessionMeta): Promise<void>;

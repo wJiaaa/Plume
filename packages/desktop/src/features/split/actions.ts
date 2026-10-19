@@ -39,6 +39,16 @@ async function commitSettle(target: SessionMeta): Promise<void> {
 	if (!stillWants(target.id)) return;
 	if (useApp.getState().pendingSessionId == null && useApp.getState().activeSessionId === target.id) return;
 	/*
+	 * A cold conversation is read before its leaf moves, not only before the transcript swaps: once
+	 * the tree names it, its screen paints from a cache that is still empty — the frame of blank
+	 * conversation `openSession` waits to avoid. See `preloadSession`.
+	 */
+	const preload = useApp.getState().preloadSession(target);
+	if (preload) {
+		await preload;
+		if (!stillWants(target.id)) return;
+	}
+	/*
 	 * Replace the focused leaf before the transcript swaps.
 	 *
 	 * `openSession` clears `pendingSessionId` in the same set that writes `activeSessionId`.

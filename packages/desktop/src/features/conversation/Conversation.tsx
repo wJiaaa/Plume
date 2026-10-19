@@ -454,10 +454,11 @@ export const Conversation = memo(function Conversation({ sessionId: _sessionId, 
           {loadingSession && (
             <div
               role="status"
+              /* `ly-defer-in`: a read that finishes just past `openSession`'s wait must not flash a spinner. */
               className={
                 allBlocks.length === 0
-                  ? "absolute inset-0 flex items-center justify-center pointer-events-none"
-                  : "flex items-center justify-center py-4"
+                  ? "ly-defer-in absolute inset-0 flex items-center justify-center pointer-events-none"
+                  : "ly-defer-in flex items-center justify-center py-4"
               }
             >
               <ActionSpinner size={allBlocks.length === 0 ? 20 : 14} className="text-ink-faint" />
