@@ -479,6 +479,16 @@ test("a cold open whose preload fails still reports it and releases loading", as
 	assert.ok(useApp.getState().notices.some((notice) => notice.message.includes("disk unavailable")));
 });
 
+test("a preload whose read throws synchronously does not hold up the next open", async () => {
+	readTranscript = () => { throw new Error("bridge gone"); };
+	await useApp.getState().openSession(meta("b"));
+	assert.equal(useApp.getState().loadingSession, false);
+	readTranscript = async (id) => snapshot(id);
+	await useApp.getState().openSession(meta("c"));
+	assert.equal(useApp.getState().activeSessionId, "c");
+	assert.equal(useApp.getState().messages.length, 1, "the read slot was released, so c was read");
+});
+
 test("a cold read retains the history prefix and events arriving while it was in flight", async () => {
 	const deferred = deferredRead();
 	readTranscript = () => deferred.promise;

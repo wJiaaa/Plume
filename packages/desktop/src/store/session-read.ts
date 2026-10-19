@@ -99,7 +99,8 @@ export function preloadSession(meta: SessionMeta, set: Set, get: Get): Promise<v
 		reading = meta.id;
 		preloaded = null;
 		const events = beginSessionRead(meta.id);
-		const done = bridge.sessions.transcript(meta.id).then(
+		// 包一层 async：同步抛出也得变成 rejection 走下面的 finally，不然 `reading` 永远占着，之后谁都读不了。
+		const done = (async () => bridge.sessions.transcript(meta.id))().then(
 			(snapshot) => {
 				if (!snapshot) return;
 				stashInCache(meta, snapshot, events, set, get);
