@@ -119,7 +119,7 @@ export function Composer({ centered = false }: {
 	 *
 	 * 这时候说的话直接送进去，不排队：排队等的是「这一轮做完」，而这一轮在等子智能体，可能是十几
 	 * 分钟。送进去之后运行时让主会话放手、先回应人，子智能体留在后台跑完（`delegation-waits.ts`）。
-	 * 在等另一个会话做完（`wait_for_session`）也一样。
+	 * 在等另一个会话做完（`ask_session` / `wait_for_session`）也一样。
 	 */
 	const waitingOnSession = awaitingSession(useScopedToolRuns());
 	const parked = (awaitingSubAgents(useScopedSubAgents()) || waitingOnSession) && running;

@@ -8,7 +8,7 @@ import { createPeerRouter, type PeerRouter } from "../../electron/session-peers.
 export type FakeSession = ReturnType<typeof fakeSession>;
 
 export function fakeSession(id: string, cwd: string, mode: PermissionMode = "auto") {
-	const inbox: { letter: PeerLetter; deliver: "steer" | "followUp" }[] = [];
+	const inbox: { letter: PeerLetter; kind: "request" | "notice" }[] = [];
 	let idle = true;
 	let active = false;
 	let wake: (() => void)[] = [];
@@ -29,8 +29,11 @@ export function fakeSession(id: string, cwd: string, mode: PermissionMode = "aut
 		settingsInEffect: { ...DEFAULT_SETTINGS, permissionMode: mode },
 		get idle() { return idle; },
 		whenIdle: () => new Promise<void>((resolve) => { if (idle) resolve(); else wake.push(resolve); }),
-		receive: (letter: PeerLetter, deliver: "steer" | "followUp" = "steer") => {
-			unread.add(inbox.push({ letter, deliver }) - 1);
+		receive: (letter: PeerLetter, kind: "request" | "notice") => {
+			const index = inbox.push({ letter, kind }) - 1;
+			// 通知不开轮，也不让它变忙，和 `AgentSession.receive` 一样。
+			if (kind === "notice") return;
+			unread.add(index);
 			// 攒着待送的那四百毫秒也不算闲，和 `AgentSession.idle` 一样。
 			idle = false;
 		},
@@ -86,3 +89,25 @@ export function routerWith(...live: FakeSession[]) {
 }
 
 export const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+/** 还挂着的问：每个测试收尾时放开，不然它们挂着十分钟的计时器，测试进程不退出。 */
+const asks = new Set<AbortController>();
+
+/**
+ * 问出去、先不等回答：测试接着拨对方的运行。等到信送到对方手里（或者没发出去）才交回。
+ */
+export async function asking(router: PeerRouter, target: FakeSession, fromId: string, input: { to: string; message: string }) {
+	const stop = new AbortController();
+	asks.add(stop);
+	const before = target.inbox.length;
+	const outcome = router.ask(fromId, { ...input, signal: stop.signal });
+	const state = { settled: false };
+	void outcome.then(() => { state.settled = true; });
+	while (target.inbox.length === before && !state.settled) await flush();
+	return { outcome, stop: () => stop.abort() };
+}
+
+export function stopAsking(): void {
+	for (const stop of asks) stop.abort();
+	asks.clear();
+}

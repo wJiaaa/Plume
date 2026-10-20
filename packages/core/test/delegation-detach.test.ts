@@ -15,7 +15,6 @@ import type { AgentEvent } from "../src/agent/events.ts";
 import { AgentSession } from "../src/runtime/session.ts";
 import { deliveryMessage } from "../src/runtime/sub-agent/delegation-waits.ts";
 import { SessionInbox } from "../src/runtime/session-inbox.ts";
-import { peerMessage } from "../src/runtime/peer-letters.ts";
 import { AgedToolPruner } from "../src/agent/aged-prune.ts";
 import { FRESH_RESULT_MAX_CHARS, pruneToolResults } from "../src/agent/prune.ts";
 import { SessionStore } from "../src/session/store.ts";
@@ -259,8 +258,6 @@ test("排着的只有运行时的消息时照旧等：送达不是人在说话",
 	assert.equal(inbox.spoken, true);
 	inbox.takeSteering();
 	assert.equal(inbox.spoken, false, "取走之后就没有没读到的话了");
-	inbox.accept({ message: peerMessage([{ sessionId: "s-b", from: "测试 B [b2b2b2]", text: "构建好了吗" }]) }, "steer", true);
-	assert.equal(inbox.spoken, true, "另一个会话插进来的信也是在找人，虽然它和送达一样是运行时写的");
 });
 
 test("派出之后人按了停止：后台那个也停，停下的结果不再把主会话叫醒", async () => {

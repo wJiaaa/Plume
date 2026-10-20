@@ -531,7 +531,11 @@ function sessionBusy(id: string): boolean {
 	if (submitted.has(id) || initializing.has(id) || sessionOperationHolds.has(id)) return true;
 	const session = sessions.get(id);
 	if (!session) return false;
-	if (session.running || session.meta.pendingPrompt) return true;
+	/*
+	 * `idle` 而不只是 `running`：另一个会话的信送到后要攒 400ms 才进对话，这期间 `running` 还是假，
+	 * 按它回收，信就跟着会话一起没了。`idle` 把攒着待送的、排着的任务、后台子代理都算进去。
+	 */
+	if (!session.idle || session.meta.pendingPrompt) return true;
 	if (liveSides(id).some((side) => sessionBusy(side.meta.id))) return true;
 	if (backgroundJobs(session.can.state).list().some((job) => job.status === "running" || job.status === "stopping")) return true;
 	/*

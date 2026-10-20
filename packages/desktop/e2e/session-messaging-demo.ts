@@ -1,9 +1,11 @@
 /* oxlint-disable no-console -- real-window verification prints measured evidence */
 /**
- * 会话之间的消息，在真窗口里从头走一遍：B 正忙着自己的事时 A 把活交给它并等，A 的消息排在 B 手上
- * 那件之后，A 等到的是 B 处理它那封信的那一次、不是 B 自己那件事的结论；A 在等的时候人开口，A 当场
- * 回应；权限更窄的 D 请 B 代劳被拦下；A 请 D 做事而 D 卡在审批上，A 的等待当场返回；目录不重叠的、
- * 没在跑的都看不见。
+ * 会话之间的消息，在真窗口里从头走一遍：B 正忙着自己的事时 A 问它（ask_session），A 的请求排在 B
+ * 手上那件之后，A 等到的是 B 处理它那封信的那一次、不是 B 自己那件事的结论；A 在等的时候人开口，A
+ * 当场回应，之后用 wait_for_session 接回那次没等完的回答；权限更窄的 D 请 B 代劳被拦下；A 请 D 做事
+ * 而 D 卡在审批上，A 的等待当场返回；目录不重叠的、没在跑的都看不见；A 和 F 同时问忙着的 B，B 各开
+ * 一轮、两边各拿各的回答；A 告诉忙着的 B 一件事（notify_session），当场返回，B 在这一轮里读到；A 告诉
+ * 闲着的 B 一件事，B 不为它开一轮，等人在 B 那边开口时才读到。
  *
  * 模型是本地一个假的 Anthropic 端点，按对话内容决定调哪个工具、说哪句话；要验的是消息真的经过主进程
  * 路由、真的进了对方的对话、对方真的开了一轮，而等的那一方真的等到了它做完。
@@ -34,11 +36,14 @@ const B = "b2b2b2b2-0000-4000-8000-000000000002";
 const C = "c3c3c3c3-0000-4000-8000-000000000003";
 const D = "d4d4d4d4-0000-4000-8000-000000000004";
 const E = "e5e5e5e5-0000-4000-8000-000000000005";
+const F = "f6f6f6f6-0000-4000-8000-000000000006";
 
 /** B 自己那件事、读到交接后、跑慢任务各要多久：够 A 真的等上一阵，也够人在 A 等着的时候开口。 */
 const B_OWN_MS = 4000;
 const B_HANDOFF_MS = 2000;
 const B_SLOW_MS = 8000;
+/** B 手上一件长的事：够 A、F 两边先后把信发到、各自等上，也够 A 的通知插进去。 */
+const B_LONG_MS = 9000;
 
 const checks: { name: string; ok: boolean; measured: unknown }[] = [];
 const check = (name: string, ok: boolean, measured: unknown) => {
@@ -51,7 +56,13 @@ type Wire = { role: string; content: string | Block[] };
 type Reply = ({ text: string } | { tool: { name: string; input: Record<string, unknown> } }) & { delay?: number; sent?: () => void };
 
 /** 模型看到过的东西，供断言用。 */
-const seen = { list: "", handoffSent: "", wait: "", letter: "", refused: "", blocked: "", spoke: "", turnsInA: 0, slowWaiting: false, slowDone: false };
+const seen = {
+	list: "", wait: "", letter: "", refused: "", blocked: "", spoke: "", turnsInA: 0, slowWaiting: false, slowDone: false,
+	/** B 每一轮读到的是谁的信：两家并进一轮会记成 both。 */
+	duoTurns: [] as string[], duoA: "", duoF: "", duoWaiting: 0, note: "", noteAt: 0, longDoneAt: 0, resume: "",
+	/** 闲着时收到的通知：B 读到它的那几次请求，读到时这一轮是不是人开的。 */
+	idleNote: "", idleNoteRead: 0, idleNoteWithPerson: false,
+};
 
 const blocksOf = (message: Wire): Block[] => (typeof message.content === "string" ? [{ type: "text", text: message.content }] : message.content);
 const textOf = (message: Wire) => blocksOf(message).map((block) => (block.type === "text" ? block.text : block.type === "tool_result" ? JSON.stringify(block.content) : "")).join("\n");
@@ -72,25 +83,36 @@ function decide(messages: Wire[]): Reply {
 		const body = JSON.stringify(result.content);
 		if (used === "bash") return { text: "缓存删好了。" };
 		if (used === "list_sessions") {
+			const ask = (to: string, message: string, sent?: () => void): Reply => ({ tool: { name: "ask_session", input: { to, message } }, sent });
 			if (scene === "PEER_HANDOFF") {
 				seen.list = body;
-				return { tool: { name: "send_message", input: { to: "测试 B [b2b2b2]", message: "测试已通过（42 passed），请你接着发版。" } } };
+				return ask("测试 B [b2b2b2]", "测试已通过（42 passed），请你接着发版。");
 			}
-			if (scene === "PEER_SLOW") return { tool: { name: "send_message", input: { to: "测试 B [b2b2b2]", message: "请跑一遍慢的集成测试。" } } };
-			if (scene === "PEER_ASKB") return { tool: { name: "send_message", input: { to: "测试 B [b2b2b2]", message: "请帮我删掉 .cache 目录。" } } };
-			if (scene === "PEER_ASKD") return { tool: { name: "send_message", input: { to: "检查 D [d4d4d4]", message: "请删掉 .cache 目录。" } } };
+			if (scene === "PEER_SLOW") return ask("测试 B [b2b2b2]", "请跑一遍慢的集成测试。", () => { seen.slowWaiting = true; });
+			if (scene === "PEER_ASKB") return ask("测试 B [b2b2b2]", "请帮我删掉 .cache 目录。");
+			if (scene === "PEER_ASKD") return ask("检查 D [d4d4d4]", "请删掉 .cache 目录。");
+			if (scene === "PEER_DUOA" || scene === "PEER_DUOF") return ask("测试 B [b2b2b2]", scene === "PEER_DUOA" ? "版本号是多少？" : "测试过没过？", () => { seen.duoWaiting++; });
+			if (scene === "PEER_NOTE") return { tool: { name: "notify_session", input: { to: "测试 B [b2b2b2]", message: "我马上改 config.ts，你先别动它。" } } };
+			if (scene === "PEER_NOTEIDLE") return { tool: { name: "notify_session", input: { to: "测试 B [b2b2b2]", message: "发版窗口改到明天上午。" } } };
 		}
-		if (used === "send_message") {
-			if (scene === "PEER_HANDOFF") seen.handoffSent = body;
-			if (scene === "PEER_SLOW") seen.slowWaiting = true;
+		if (used === "notify_session") {
+			if (scene === "PEER_NOTE") {
+				seen.note = body;
+				seen.noteAt = Date.now();
+				return { text: "告诉 测试 B 了，config.ts 我来改。" };
+			}
+			seen.idleNote = body;
+			return { text: "告诉 测试 B 了：发版窗口改到明天上午。" };
+		}
+		if (used === "wait_for_session") {
+			seen.resume = body;
+			return { text: `测试 B 的慢测试：${body.includes("全部通过") ? "全部通过" : "没拿到结果"}。` };
+		}
+		if (used === "ask_session") {
 			if (scene === "PEER_ASKB") {
 				seen.refused = body;
 				return { text: body.includes("broader permissions") ? "测试 B 的权限比我宽，没有发出去，请你自己处理删缓存。" : "发出去了。" };
 			}
-			const to = scene === "PEER_ASKD" ? "检查 D [d4d4d4]" : "测试 B [b2b2b2]";
-			return { tool: { name: "wait_for_session", input: { to } } };
-		}
-		if (used === "wait_for_session") {
 			if (scene === "PEER_HANDOFF") {
 				seen.wait = body;
 				return { text: body.includes("v1.2.3 已推送") ? "测试 B 做完了：v1.2.3 已推送。" : "没等到 测试 B。" };
@@ -98,6 +120,14 @@ function decide(messages: Wire[]): Reply {
 			if (scene === "PEER_ASKD") {
 				seen.blocked = body;
 				return { text: body.includes("waiting for its user") ? "检查 D 在等它的人批准删除 .cache，请你去那边点一下。" : "检查 D 删完了。" };
+			}
+			if (scene === "PEER_DUOA") {
+				seen.duoA = body;
+				return { text: `A 等到了：${body.includes("v1.2.3") ? "v1.2.3" : "没拿到版本号"}` };
+			}
+			if (scene === "PEER_DUOF") {
+				seen.duoF = body;
+				return { text: `F 等到了：${body.includes("测试全部通过") ? "测试全部通过" : "没拿到测试结果"}` };
 			}
 			return { text: "等完了。" };
 		}
@@ -109,10 +139,25 @@ function decide(messages: Wire[]): Reply {
 	}
 	if (text.includes("<session-message") && text.includes("慢的集成测试")) return { text: "慢的集成测试跑完了，全部通过。", delay: B_SLOW_MS, sent: () => { seen.slowDone = true; } };
 	if (text.includes("<session-message") && text.includes(".cache")) return { tool: { name: "bash", input: { command: "rm -rf .cache", description: "删掉缓存目录" } } };
+	// 同一轮里两封都看得到，就是两家的信被并进了一轮：照实答一句混在一起的话，等的两边就会串。
+	if (text.includes("<session-message") && (text.includes("版本号是多少") || text.includes("测试过没过"))) {
+		const version = text.includes("版本号是多少");
+		const tests = text.includes("测试过没过");
+		seen.duoTurns.push(version && tests ? "both" : version ? "version" : "tests");
+		return { text: version && tests ? "版本号是 v1.2.3；测试全部通过。" : version ? "版本号是 v1.2.3。" : "测试全部通过。", delay: 1500 };
+	}
+	if (text.includes("<session-message") && text.includes("config.ts")) return { text: "好，我不动 config.ts。", delay: 2500 };
+	if (text.includes("<session-message") && text.includes("发版窗口")) {
+		seen.idleNoteRead++;
+		seen.idleNoteWithPerson = messages.some((message) => textOf(message).includes("PEER_AFTER"));
+		return { text: "知道了，发版窗口按明天上午算，我接着干。" };
+	}
 	if (text.includes("<session-message")) return { text: "多余的一轮：又收到了一条消息。" };
 	if (scene === "PEER_OWN") return { text: "B 自己的检查跑完了。", delay: B_OWN_MS };
+	if (scene === "PEER_OWNLONG") return { text: "B 自己的长检查跑完了。", delay: B_LONG_MS, sent: () => { seen.longDoneAt = Date.now(); } };
 	if (scene === "PEER_HANDOFF") seen.turnsInA++;
-	if (scene === "PEER_HANDOFF" || scene === "PEER_SLOW" || scene === "PEER_ASKB" || scene === "PEER_ASKD") return { tool: { name: "list_sessions", input: {} } };
+	if (scene === "PEER_RESUME") return { tool: { name: "wait_for_session", input: { to: "测试 B [b2b2b2]" } } };
+	if (scene === "PEER_HANDOFF" || scene === "PEER_SLOW" || scene === "PEER_ASKB" || scene === "PEER_ASKD" || scene === "PEER_DUOA" || scene === "PEER_DUOF" || scene === "PEER_NOTE" || scene === "PEER_NOTEIDLE") return { tool: { name: "list_sessions", input: {} } };
 	return { text: "好的，待命。" };
 }
 
@@ -172,6 +217,7 @@ async function seed(home: string, modelPort: number): Promise<void> {
 		session(C, "别处 C", elsewhere, "别处", Date.now() - 10 * 60_000),
 		// 这次启动后谁也没碰过它：侧栏里看得见，后台没在跑，所以谁也联系不到它。
 		session(E, "文档 E", project, "发版", Date.now() - 12 * 60_000),
+		session(F, "排期 F", project, "发版", Date.now() - 14 * 60_000),
 	]);
 	await writeFile(join(home, "window.json"), JSON.stringify({ width: 1240, height: 860, x: 40, y: 40 }));
 	await writeFile(join(home, "settings.json"), JSON.stringify({
@@ -225,7 +271,7 @@ try {
 	const LONG = 1800;
 
 	// 0. 三个会话先各说一句，让它们起来（只有在跑的会话能收发消息）。文档 E 不碰。
-	for (const [sessionId, name] of [[B, "测试 B"], [D, "检查 D"], [C, "别处 C"]] as const) {
+	for (const [sessionId, name] of [[B, "测试 B"], [D, "检查 D"], [C, "别处 C"], [F, "排期 F"]] as const) {
 		await openSession(page, sessionId);
 		await say(`PEER_STANDBY ${name} 先待命`);
 		await until(page, mainHas("好的，待命。"), LONG);
@@ -249,7 +295,6 @@ try {
 	await snap("02_A同一轮里拿到B处理这封信的结果");
 	check("list_sessions 列出目录重叠的 测试 B 与 检查 D，带着权限模式", seen.list.includes("测试 B [b2b2b2] ·") && seen.list.includes("· full ·") && seen.list.includes("检查 D [d4d4d4] · idle · ask"), seen.list.slice(0, 240));
 	check("目录不重叠的 别处 C、没在跑的 文档 E 不在列表里", !seen.list.includes("别处 C") && !seen.list.includes("文档 E"), { C: seen.list.includes("c3c3c3"), E: seen.list.includes("e5e5e5") });
-	check("B 正忙着自己的事：A 的消息排在后面，不插进去", seen.handoffSent.includes("waits until its current work is done"), seen.handoffSent.slice(0, 200));
 	check("A 等到的是 B 处理这封信的那一次，不是 B 自己那件事的结论", seen.wait.includes("v1.2.3 已推送") && !seen.wait.includes("自己的检查"), { took, wait: seen.wait.slice(0, 200) });
 	check("A 只为人那一句开了一轮", seen.turnsInA === 1 && !(await main()).includes("多余的一轮"), seen.turnsInA);
 	check("A 的对话里没有回执行，也没有运行时原文", (await visible("main [data-peer-row]")) === 0 && !(await leaked()), await visible("main [data-peer-row]"));
@@ -263,7 +308,7 @@ try {
 	const order = await page.evaluate<number>(`(()=>{const own=[...document.querySelectorAll("main p")].find((node)=>node.textContent.includes("B 自己的检查跑完了"));const row=document.querySelector("[data-peer-letter]");return Math.round(row.getBoundingClientRect().top-own.getBoundingClientRect().bottom);})()`);
 	check("B 先答完自己那件，A 的消息排在它后面", order > 0, `${order}px`);
 	check("B 处理了 A 的消息", (await main()).includes("收到 发版 A 的交接，开始发版。v1.2.3 已推送。"), "收到 发版 A 的交接");
-	check("B 读到的说明让它把结果写在这一轮里，不必回消息", seen.letter.includes("不需要再用 send_message 回复"), seen.letter.slice(0, 80));
+	check("B 读到的说明让它把结果写在这一轮里，不必回消息", seen.letter.includes("不需要再发消息回复"), seen.letter.slice(0, 80));
 	await click(page, "[data-peer-letter] .ly-flow-row");
 	await until(page, `document.querySelector("[data-peer-open]")?.checkVisibility()`, 300);
 	await frames(page, 30);
@@ -288,9 +333,18 @@ try {
 	await snap("05_人开口后A当场回应");
 	check("A 在等的时候人说的话直接送进去，没有排在输入框上方", queuedRows === 0, queuedRows);
 	check("A 当场放手回应人，没等 B 跑完慢任务", seen.spoke.includes("Your user spoke") && answeredIn < B_SLOW_MS - 2000, { answeredIn, slowMs: B_SLOW_MS });
+	check("放手时告诉 A：请求还在 B 那里，之后用 wait_for_session 接着等", seen.spoke.includes("Your request stays with it") && seen.spoke.includes("wait_for_session"), seen.spoke.slice(0, 240));
 	while (!seen.slowDone) await pause(200);
 	await pause(2000);
-	check("B 跑完之后 A 这边什么都没多出来：没有回执、没有新的一轮", (await visible("main [data-peer-row]")) === 0 && !(await main()).includes("等完了"), await visible("main [data-peer-row]"));
+	check("B 跑完之后 A 这边什么都没多出来：没有回执、没有新的一轮", (await visible("main [data-peer-row]")) === 0 && !(await main()).includes("测试 B 的慢测试"), await visible("main [data-peer-row]"));
+	// 3b. 人再问起：A 接着等那封没等完的，拿回的是 B 跑慢任务那一轮的回答。
+	const resumedAt = Date.now();
+	await say("PEER_RESUME 测试 B 的慢测试结果呢");
+	await until(page, mainHas("测试 B 的慢测试："), LONG * 2);
+	const resumedIn = Date.now() - resumedAt;
+	await pause(1000);
+	await snap("05b_A接回没等完的那次回答");
+	check("wait_for_session 接回的是那封慢测试请求的回答，B 已经做完就当场返回", seen.resume.includes("慢的集成测试跑完了，全部通过。") && resumedIn < 5000, { resumedIn, resume: seen.resume.slice(0, 200) });
 
 	// 4. 权限：D 是 ask，B 是 full。D 请 B 代劳，不送。
 	await openSession(page, D);
@@ -314,6 +368,70 @@ try {
 	await pause(1000);
 	await snap("08_D那边的审批卡片");
 	check("D 那边确实有一张等人点的审批卡片", (await visible("[data-approval-card]")) >= 1, await visible("[data-approval-card]"));
+	await pause(1000);
+
+	// 6. B 忙着一件长的事；A 和 F 先后找它、各自等。B 各开一轮，两边各拿各的回答。
+	await openSession(page, B);
+	await say("PEER_OWNLONG 跑一遍长检查");
+	await pause(300);
+	await openSession(page, A);
+	await say("PEER_DUOA 问 测试 B 版本号，等它答");
+	await openSession(page, F);
+	await say("PEER_DUOF 问 测试 B 测试过没过，等它答");
+	while (seen.duoWaiting < 2) await pause(100);
+	await pause(800);
+	await snap("09_A和F都在等忙着的B");
+	await until(page, mainHas("F 等到了"), LONG * 10);
+	await pause(1000);
+	await snap("10_F拿到自己的回答");
+	check("B 为 A、F 各开了一轮，没有把两封信并进一轮", JSON.stringify(seen.duoTurns) === JSON.stringify(["version", "tests"]), seen.duoTurns);
+	check("A 等到的没有 F 那一问的回答", seen.duoA.includes("v1.2.3") && !seen.duoA.includes("测试全部通过"), seen.duoA.slice(0, 400));
+	check("问只等自己这一封：A 拿回的是一段回答，不夹着别的", !seen.duoA.includes("answer 1 of") && !seen.duoA.includes("慢的集成测试"), seen.duoA.slice(0, 400));
+	check("F 等到的只有测试结果", seen.duoF.includes("测试全部通过") && !seen.duoF.includes("v1.2.3"), seen.duoF.slice(0, 200));
+	await openSession(page, B);
+	await pause(800);
+	await snap("11_B里两封信各占一轮");
+	const letterRows = await visible("main [data-peer-letter]");
+	await openSession(page, A);
+	await pause(1000);
+	await snap("12_A拿到自己的回答");
+	check("A 的对话里是自己的回答", (await main()).includes("A 等到了：v1.2.3"), "A 等到了：v1.2.3");
+
+	// 7. B 又忙着长的事；A 告诉它一件事：当场返回，B 在这一轮里读到。
+	seen.longDoneAt = 0;
+	await openSession(page, B);
+	await say("PEER_OWNLONG 再跑一遍长检查");
+	await pause(300);
+	await openSession(page, A);
+	await say("PEER_NOTE 告诉 测试 B 我要改 config.ts");
+	await until(page, mainHas("告诉 测试 B 了，config.ts 我来改。"), LONG * 3);
+	await pause(1000);
+	await snap("13_A的通知当场返回");
+	check("通知当场返回，说清没有回答", seen.note.includes("It reads it between its steps") && seen.note.includes("There is no answer to a notice"), seen.note.slice(0, 200));
+	while (!seen.longDoneAt) await pause(200);
+	check("A 拿回控制时 B 手上那件长的事还没完", seen.noteAt > 0 && seen.noteAt < seen.longDoneAt, { noteBeforeLongMs: seen.longDoneAt - seen.noteAt });
+	await openSession(page, B);
+	await until(page, mainHas("好，我不动 config.ts。"), LONG * 4);
+	await pause(1000);
+	await snap("14_B在这一轮里读到通知并调整");
+
+	// 8. B 闲着；A 告诉它一件事：B 不为它开一轮，人在 B 那边开口时这一轮最先读到。
+	await openSession(page, A);
+	await say("PEER_NOTEIDLE 告诉 测试 B 发版窗口改到明天上午");
+	await until(page, mainHas("告诉 测试 B 了：发版窗口改到明天上午。"), LONG * 3);
+	await pause(3000);
+	check("B 闲着时收到通知：没有为它开一轮", seen.idleNote.includes("It is idle and reads it when it next starts working") && seen.idleNoteRead === 0, { read: seen.idleNoteRead, note: seen.idleNote.slice(0, 160) });
+	await openSession(page, B);
+	await pause(800);
+	await snap("15_B闲着_通知没有开一轮");
+	const lettersBefore = await visible("main [data-peer-letter]");
+	await say("PEER_AFTER 接着干");
+	await until(page, mainHas("知道了，发版窗口按明天上午算"), LONG * 2);
+	await pause(1000);
+	await snap("16_人开口那一轮最先读到通知");
+	check("人在 B 那边开口的那一轮读到了通知，只读一次", seen.idleNoteRead === 1 && seen.idleNoteWithPerson, { read: seen.idleNoteRead, withPerson: seen.idleNoteWithPerson });
+	check("通知在 B 的对话里显示成一行", (await visible("main [data-peer-letter]")) === lettersBefore + 1, { before: lettersBefore, after: await visible("main [data-peer-letter]") });
+	check("B 里先后有 发版 A、排期 F 的信", letterRows >= 3, letterRows);
 	await pause(1000);
 } finally {
 	await stopRecording?.();

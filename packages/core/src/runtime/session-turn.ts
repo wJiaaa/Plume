@@ -81,7 +81,7 @@ export interface TurnInputs {
 	 * 这一轮开始前要让模型知道的事：侧边聊天附上主会话的进展，主会话收到侧边聊天改过的文件。
 	 * 进日志、界面不画，和钩子给的上下文一样。
 	 */
-	context?: () => Promise<Message | null>;
+	context?: () => Promise<Message[]>;
 	/** 这一轮处于计划模式：工具表包一层只放行只读调用，加上 `submit_plan`。见 `plan-mode.ts`。 */
 	planMode?: boolean;
 	/** 让模型在回复末尾写下一步建议，见 `followups.ts`。 */
@@ -101,7 +101,7 @@ export async function driveTurn(input: TurnInputs): Promise<void> {
 	const hooks = await loadTurnHooks({ settings: input.settings, cwd, sessionId: log.meta.id, signal: input.signal, emit: input.emit });
 	if (!(await runPromptHooks(input, hooks))) return;
 	// 在钩子之后：UserPromptSubmit 要查的是人刚说的那句，往回找第一条 user 消息，先注入就会查到这一条。
-	await injectMessage(input, (await input.context?.()) ?? null);
+	for (const message of (await input.context?.()) ?? []) await injectMessage(input, message);
 	const { config, systemPrompt } = await assembleTurn(input, hooks);
 
 	// 抛出来的异常也是一种没收尾，照样告诉 StopFailure，再原样往上抛。

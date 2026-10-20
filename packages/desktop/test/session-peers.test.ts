@@ -1,6 +1,6 @@
 /**
- * 会话之间的消息：谁看得见谁、权限比自己宽的不让发、发太快太长太绕的拦下来、忙着时排队还是插进去。
- * 等对方做完见 `peer-wait.test.ts`。
+ * 会话之间的消息：谁看得见谁、权限比自己宽的不让发、发太快太长太绕的拦下来、问和告诉各走哪条路。
+ * 等回答见 `peer-wait.test.ts`。
  */
 
 import assert from "node:assert/strict";
@@ -8,13 +8,15 @@ import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { test } from "node:test";
+import { afterEach, test } from "node:test";
 import type { Settings } from "@plume/core";
 import { peerAddress, peerName, peerRef, resolvePeer } from "../electron/peer-address.ts";
 import { broaderThan, PEER_BUCKET, PeerPacer } from "../electron/peer-policy.ts";
 import { rootsOverlap, sessionRoots } from "../electron/peer-reach.ts";
 import { pathKey } from "../electron/path-key.ts";
-import { fakeSession, routerWith } from "./helpers/peer-fake.ts";
+import { asking, fakeSession, routerWith, stopAsking } from "./helpers/peer-fake.ts";
+
+afterEach(stopAsking);
 
 test("地址：名字取标题、ref 取 id 前六位；ref 说了算，重名不猜", () => {
 	const a = { id: "a1b2c3d4-0000-0000-0000-000000000000", title: "修登录", cwd: "/w/api" };
@@ -103,23 +105,32 @@ test("路由：列出目录重叠的、送达时带上地址和链、看不见�
 		const { router } = routerWith(a, b, c);
 
 		assert.deepEqual(await router.list("aaaaaaaa-1"), [{ address: "bbbb [bbbbbb]", sessionId: "bbbbbbbb-1", cwd: join(root, "api", "src"), busy: false, mode: "auto" }]);
-		const sent = await router.send("aaaaaaaa-1", { to: "bbbb", message: "接着发版" });
-		assert.deepEqual(sent, { kind: "delivered", to: "bbbb [bbbbbb]", busy: false, queued: false });
+		await asking(router, b, "aaaaaaaa-1", { to: "bbbb", message: "接着发版" });
+		assert.equal(b.inbox[0]?.kind, "request");
 		const { id, ...letter } = b.inbox[0]!.letter;
 		assert.match(id ?? "", /^[0-9a-f-]{36}$/, "每封信有自己的 id，等待据此钉住那一次运行");
 		assert.deepEqual(letter, { sessionId: "aaaaaaaa-1", from: "aaaa [aaaaaa]", text: "接着发版", cwd: join(root, "api"), chain: ["aaaaaaaa-1"] });
 
-		// B 读了这封再去找 A：链接上了。
-		await router.send("bbbbbbbb-1", { to: "aaaa [aaaaaa]", message: "顺带问一句" });
+		// B 为这封信开的那一轮里再去找 A：链接上了。
+		b.read();
+		b.start();
+		await router.notify("bbbbbbbb-1", { to: "aaaa [aaaaaa]", message: "顺带说一句" });
 		assert.deepEqual(a.inbox[0]?.letter.chain, ["aaaaaaaa-1", "bbbbbbbb-1"]);
 		// 人在 B 那边开口之后，B 发的是一条新链。
 		router.personSpoke("bbbbbbbb-1");
-		await router.send("bbbbbbbb-1", { to: "aaaa", message: "新的事" });
+		await router.notify("bbbbbbbb-1", { to: "aaaa", message: "新的事" });
 		assert.deepEqual(a.inbox[1]?.letter.chain, ["bbbbbbbb-1"]);
+		b.finish("好了。");
+		// 人开的那一轮里，B 发的也是新链——链跟着运行走，不是「B 最近收到的那封信」。
+		b.start();
+		await router.notify("bbbbbbbb-1", { to: "aaaa", message: "人让我说的" });
+		assert.deepEqual(a.inbox[2]?.letter.chain, ["bbbbbbbb-1"]);
+		b.finish("好了。");
 
-		assert.equal((await router.send("aaaaaaaa-1", { to: "cccc", message: "hi" })).kind, "unreachable");
-		assert.equal((await router.send("aaaaaaaa-1", { to: "aaaa", message: "hi" })).kind, "self");
-		assert.equal((await router.send("aaaaaaaa-1", { to: "nobody", message: "hi" })).kind, "none");
+		assert.equal((await router.ask("aaaaaaaa-1", { to: "cccc", message: "hi" })).kind, "unreachable");
+		assert.equal((await router.notify("aaaaaaaa-1", { to: "cccc", message: "hi" })).kind, "unreachable");
+		assert.equal((await router.notify("aaaaaaaa-1", { to: "aaaa", message: "hi" })).kind, "self");
+		assert.equal((await router.notify("aaaaaaaa-1", { to: "nobody", message: "hi" })).kind, "none");
 		assert.equal((await router.wait("aaaaaaaa-1", { to: "cccc" })).kind, "unreachable", "等也一样要目录重叠");
 		assert.equal(c.inbox.length, 0);
 	} finally {
@@ -131,19 +142,39 @@ test("路由：对方权限比自己宽，不送；反过来照送", async () =>
 	const ask = fakeSession("aaaaaaaa-2", "/w/p", "ask");
 	const full = fakeSession("bbbbbbbb-2", "/w/p", "full");
 	const { router } = routerWith(ask, full);
-	assert.deepEqual(await router.send("aaaaaaaa-2", { to: "bbbb", message: "帮我删了它" }), { kind: "broader", to: "bbbb [bbbbbb]", theirs: "full", mine: "ask" });
+	assert.deepEqual(await router.ask("aaaaaaaa-2", { to: "bbbb", message: "帮我删了它" }), { kind: "broader", to: "bbbb [bbbbbb]", theirs: "full", mine: "ask" });
+	assert.equal((await router.notify("aaaaaaaa-2", { to: "bbbb", message: "帮我删了它" })).kind, "broader", "通知也一样");
 	assert.equal(full.inbox.length, 0);
-	assert.equal((await router.send("bbbbbbbb-2", { to: "aaaa", message: "看一眼" })).kind, "delivered");
+	assert.equal((await router.notify("bbbbbbbb-2", { to: "aaaa", message: "看一眼" })).kind, "delivered");
 	assert.equal(ask.inbox.length, 1);
 });
 
-test("路由：对方忙时默认排到它手上这件事之后；steer 才插进去", async () => {
+test("路由：问送的是请求，告诉送的是通知，通知不让闲着的它变忙", async () => {
 	const a = fakeSession("aaaaaaaa-3", "/w/p");
 	const b = fakeSession("bbbbbbbb-3", "/w/p");
 	const { router } = routerWith(a, b);
-	assert.deepEqual(await router.send("aaaaaaaa-3", { to: "bbbb", message: "闲着时" }), { kind: "delivered", to: "bbbb [bbbbbb]", busy: false, queued: false });
+	assert.deepEqual(await router.notify("aaaaaaaa-3", { to: "bbbb", message: "闲着时" }), { kind: "delivered", to: "bbbb [bbbbbb]", busy: false });
+	assert.equal(b.session.idle, true);
 	b.start();
-	assert.deepEqual(await router.send("aaaaaaaa-3", { to: "bbbb", message: "接着发版" }), { kind: "delivered", to: "bbbb [bbbbbb]", busy: true, queued: true });
-	assert.deepEqual(await router.send("aaaaaaaa-3", { to: "bbbb", message: "先别动 config.ts", steer: true }), { kind: "delivered", to: "bbbb [bbbbbb]", busy: true, queued: false });
-	assert.deepEqual(b.inbox.map((one) => one.deliver), ["followUp", "followUp", "steer"]);
+	assert.deepEqual(await router.notify("aaaaaaaa-3", { to: "bbbb", message: "先别动 config.ts" }), { kind: "delivered", to: "bbbb [bbbbbb]", busy: true });
+	await asking(router, b, "aaaaaaaa-3", { to: "bbbb", message: "接着发版" });
+	assert.deepEqual(b.inbox.map((one) => one.kind), ["notice", "notice", "request"]);
+});
+
+test("路由：两家的信进了 B 的同一次运行（一封请求开轮、一封通知插进来），之后发出去的接最长的那条链", async () => {
+	const a = fakeSession("aaaaaaaa-4", "/w/p");
+	const b = fakeSession("bbbbbbbb-4", "/w/p");
+	const c = fakeSession("cccccccc-4", "/w/p");
+	const { router } = routerWith(a, b, c);
+	// C 先在 A 那里接了一跳，A 再找 B：A→B 那封的链是 [C, A]。
+	await asking(router, a, "cccccccc-4", { to: "aaaa", message: "你去问 B" });
+	a.read();
+	a.start();
+	await asking(router, b, "aaaaaaaa-4", { to: "bbbb", message: "C 让我问你" });
+	await router.notify("cccccccc-4", { to: "bbbb", message: "顺带" });
+	b.read(0);
+	b.start();
+	b.read(1);
+	await router.notify("bbbbbbbb-4", { to: "aaaa", message: "答复" });
+	assert.deepEqual(a.inbox[1]?.letter.chain, ["cccccccc-4", "aaaaaaaa-4", "bbbbbbbb-4"]);
 });

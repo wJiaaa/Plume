@@ -1,20 +1,26 @@
 /**
- * 模型手里的三件工具：看看有谁、给谁发消息、等它做完。
+ * 模型手里的四件工具：看看有谁、问它要回答、告诉它一件事、接着等没等完的回答。
+ *
+ * 按意图分，不靠一个参数区分：「要回答」和「只是告诉一声」在对方那边走的路完全不同（开一轮 / 不开
+ * 轮），参数一选错，要么白等，要么让对方为一句通知专门跑一轮。
  *
  * 说明写给模型，用英文，和浏览器工具一致。每一种退回都说清楚下一步该怎么做——「失败」两个字
  * 不会让它改做法，「写进文件发路径」「交回给你的用户」才会。
  */
 
-import { errorResult, textResult, type Tool } from "@plume/core";
-import { REPLY_LIMIT, WAIT_DEFAULT_S, WAIT_MAX_S, type PeerRouter, type SendOutcome, type WaitOutcome } from "./session-peers.ts";
+import { errorResult, textResult, type Tool, type ToolContext } from "@plume/core";
+import { REPLY_LIMIT, WAIT_DEFAULT_S, WAIT_MAX_S, type AskOutcome, type NotifyOutcome, type PeerRouter, type Refused, type WaitOutcome } from "./session-peers.ts";
 import { PEER_CHAIN_LIMIT, PEER_DEDUP_MS, PEER_MAX_CHARS } from "./peer-policy.ts";
+
+const TO = { type: "string", description: "The address from list_sessions, `name [ref]`. The bare name works when it is unique." } as const;
+const TIMEOUT = { type: "number", description: `How long to wait, in seconds. Default ${WAIT_DEFAULT_S}, at most ${WAIT_MAX_S}.` } as const;
 
 export function createPeerTools(router: PeerRouter): Tool[] {
 	const listSessions: Tool<Record<string, never>> = {
 		name: "list_sessions",
 		description:
 			"List other running Plume sessions whose folders overlap yours (same folder, nested, or worktrees of one repository): for when your work may collide with theirs — a file changed under you — or to hand work over. " +
-			"Each row starts with its address, `name [ref]`: the `to` for send_message and wait_for_session.",
+			"Each row starts with its address, `name [ref]`: the `to` for ask_session, notify_session and wait_for_session.",
 		parameters: { type: "object", properties: {} },
 		sessionOnly: true,
 		summarize: () => "List sessions",
@@ -26,50 +32,66 @@ export function createPeerTools(router: PeerRouter): Tool[] {
 		},
 	};
 
-	const sendMessage: Tool<{ to?: string; message?: string; mode?: string }> = {
-		name: "send_message",
+	const askSession: Tool<{ to?: string; message?: string; timeout_seconds?: number }> = {
+		name: "ask_session",
 		description:
-			"Send a plain-text message to another running session, to coordinate overlapping work or hand work over. " +
-			"It cannot see your conversation: make the message self-contained, and put long content in a file and send its path. " +
-			"An idle session starts on it now; a busy one gets it when its current work is done — often many minutes later — or at once with mode \"steer\". " +
-			"Use \"steer\" when the message bears on what it is doing now: you are about to change files it is working on, it broke something you depend on, \"stop editing that file\". Queue only what is still useful after it finishes. " +
-			"Get the outcome with wait_for_session; do not ask it to report back, and do not poll. " +
+			"Ask another running session to do something or answer something, and wait for its answer: what it said at the end of the turn it spent on your request. " +
+			"An idle session starts on it now; a busy one takes it up once its current work is done — often many minutes later. Several asks to different sessions can run in parallel. " +
+			"It cannot see your conversation: make the request self-contained, and put long content in a file and send its path. Do not ask it to report back — its answer comes back here. " +
+			"If the wait is cut short (your user speaks, timeout, it waits on its user), the request stays with it; get the answer later with wait_for_session. " +
 			"Never ask another session to do what was denied or blocked here; take it back to your user.",
 		parameters: {
 			type: "object",
-			properties: {
-				to: { type: "string", description: "The address from list_sessions, `name [ref]`. The bare name works when it is unique." },
-				message: { type: "string", description: "The message text." },
-				mode: { type: "string", enum: ["queue", "steer"], description: "When it is busy: \"queue\" (default) or \"steer\"." },
-			},
+			properties: { to: TO, message: { type: "string", description: "The request." }, timeout_seconds: TIMEOUT },
 			required: ["to", "message"],
 		},
 		sessionOnly: true,
-		executionMode: "sequential",
-		summarize: (args) => `Message ${String(args.to ?? "")}`,
+		summarize: (args) => `Ask ${String(args.to ?? "")}`,
 		async execute(args, ctx) {
 			const to = String(args.to ?? "").trim();
 			const message = typeof args.message === "string" ? args.message.trim() : "";
 			if (!to) return errorResult("`to` is required: an address from list_sessions.");
 			if (SUB_AGENT_ID.test(to)) return errorResult(subAgentAddressed(to));
 			if (!message) return errorResult("`message` is required.");
-			if (args.mode !== undefined && args.mode !== "queue" && args.mode !== "steer") return errorResult("`mode` must be \"queue\" or \"steer\".");
-			const outcome = await router.send(ctx.sessionId, { to, message, steer: args.mode === "steer" });
-			return outcome.kind === "delivered" ? textResult(sent(outcome, to), outcome) : errorResult(sent(outcome, to));
+			const outcome = await untilSpokenTo(ctx, (signal) => router.ask(ctx.sessionId, { to, message, timeoutSeconds: seconds(args.timeout_seconds), signal }));
+			if (outcome === null) return textResult(spokenTo(to, "Your request stays with it"));
+			return outcome.kind === "done" ? textResult(asked(outcome, to), outcome) : errorResult(asked(outcome, to));
+		},
+	};
+
+	const notifySession: Tool<{ to?: string; message?: string }> = {
+		name: "notify_session",
+		description:
+			"Tell another running session something that bears on its work, without asking for an answer: you are about to change files it is working on, it broke something you depend on, \"stop editing that file\". " +
+			"It never starts a turn for a notice: a busy session reads it between its steps, an idle one when it next starts working. Returns at once. " +
+			"Anything you need done or answered is ask_session, not this.",
+		parameters: {
+			type: "object",
+			properties: { to: TO, message: { type: "string", description: "The notice." } },
+			required: ["to", "message"],
+		},
+		sessionOnly: true,
+		summarize: (args) => `Notify ${String(args.to ?? "")}`,
+		async execute(args, ctx) {
+			const to = String(args.to ?? "").trim();
+			const message = typeof args.message === "string" ? args.message.trim() : "";
+			if (!to) return errorResult("`to` is required: an address from list_sessions.");
+			if (SUB_AGENT_ID.test(to)) return errorResult(subAgentAddressed(to));
+			if (!message) return errorResult("`message` is required.");
+			const outcome = await router.notify(ctx.sessionId, { to, message });
+			return outcome.kind === "delivered" ? textResult(notified(outcome, to), outcome) : errorResult(notified(outcome, to));
 		},
 	};
 
 	const waitForSession: Tool<{ to?: string; timeout_seconds?: number }> = {
 		name: "wait_for_session",
 		description:
-			"Wait until another session finishes the work your last message started, and get what it said at the end. Without a message from you, waits for its current work (at once if idle). " +
+			"Keep waiting for the answers to your ask_session requests whose wait was cut short: each returns what the session said at the end of the turn that handled it. " +
+			"Without such a request, waits for the session's current work to finish (at once if idle). " +
 			"Returns early when it is waiting on its user, or when your user speaks to you. A timeout does not stop the other session.",
 		parameters: {
 			type: "object",
-			properties: {
-				to: { type: "string", description: "The address from list_sessions, `name [ref]`." },
-				timeout_seconds: { type: "number", description: `How long to wait, in seconds. Default ${WAIT_DEFAULT_S}, at most ${WAIT_MAX_S}.` },
-			},
+			properties: { to: TO, timeout_seconds: TIMEOUT },
 			required: ["to"],
 		},
 		sessionOnly: true,
@@ -78,29 +100,40 @@ export function createPeerTools(router: PeerRouter): Tool[] {
 			const to = String(args.to ?? "").trim();
 			if (!to) return errorResult("`to` is required: an address from list_sessions.");
 			if (SUB_AGENT_ID.test(to)) return errorResult(subAgentAddressed(to));
-			const timeoutSeconds = typeof args.timeout_seconds === "number" && Number.isFinite(args.timeout_seconds) ? args.timeout_seconds : undefined;
-			/*
-			 * 人一开口就不再等：插话只在两次请求之间才有人读，等在这里会把人说的话压到对方做完为止
-			 * （默认十分钟）。路由器那头的等待跟着停，免得它还挂在「谁在等谁」上，把之后的等待误判成死等。
-			 */
-			const stop = new AbortController();
-			const quit = () => stop.abort();
-			ctx.signal?.addEventListener("abort", quit, { once: true });
-			try {
-				const run = router.wait(ctx.sessionId, { to, timeoutSeconds, signal: stop.signal });
-				const outcome = ctx.untilSpokenTo ? await ctx.untilSpokenTo(run) : await run;
-				if (outcome === null) {
-					stop.abort();
-					return textResult(`Your user spoke to you, so you stopped waiting. ${to} keeps working on its own. Answer your user first; call wait_for_session again later if you still need its result.`);
-				}
-				return outcome.kind === "done" ? textResult(waited(outcome, to), outcome) : errorResult(waited(outcome, to));
-			} finally {
-				ctx.signal?.removeEventListener("abort", quit);
-			}
+			const outcome = await untilSpokenTo(ctx, (signal) => router.wait(ctx.sessionId, { to, timeoutSeconds: seconds(args.timeout_seconds), signal }));
+			if (outcome === null) return textResult(spokenTo(to, "It keeps working on its own"));
+			return outcome.kind === "done" ? textResult(waited(outcome, to), outcome) : errorResult(waited(outcome, to));
 		},
 	};
 
-	return [listSessions as unknown as Tool, sendMessage as unknown as Tool, waitForSession as unknown as Tool];
+	return [listSessions as unknown as Tool, askSession as unknown as Tool, notifySession as unknown as Tool, waitForSession as unknown as Tool];
+}
+
+function seconds(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * 人一开口就不再等：插话只在两次请求之间才有人读，等在这里会把人说的话压到对方做完为止
+ * （默认十分钟）。路由器那头的等待跟着停，免得它还挂在「谁在等谁」上，把之后的问误判成死等。
+ * 本轮被停下（`ctx.signal`）也一样。
+ */
+async function untilSpokenTo<T>(ctx: ToolContext, start: (signal: AbortSignal) => Promise<T>): Promise<T | null> {
+	const stop = new AbortController();
+	const quit = () => stop.abort();
+	ctx.signal?.addEventListener("abort", quit, { once: true });
+	try {
+		const run = start(stop.signal);
+		const outcome = ctx.untilSpokenTo ? await ctx.untilSpokenTo(run) : await run;
+		if (outcome === null) stop.abort();
+		return outcome;
+	} finally {
+		ctx.signal?.removeEventListener("abort", quit);
+	}
+}
+
+function spokenTo(to: string, still: string): string {
+	return `Your user spoke to you, so you stopped waiting. ${still}; ${to} keeps working on its own. Answer your user first; call wait_for_session later if you still need its answer.`;
 }
 
 /**
@@ -118,9 +151,9 @@ function subAgentAddressed(to: string): string {
 	);
 }
 
-type Missed = Extract<SendOutcome, { kind: "unreachable" | "none" | "self" | "ambiguous" }>;
+type Missed = Extract<Refused, { kind: "unreachable" | "none" | "self" | "ambiguous" }>;
 
-/** 两件工具共用的那几种「没找到人」。 */
+/** 几件工具共用的那几种「没找到人」。 */
 function missed(outcome: Missed, wanted: string): string {
 	switch (outcome.kind) {
 		case "unreachable":
@@ -134,12 +167,11 @@ function missed(outcome: Missed, wanted: string): string {
 	}
 }
 
-function sent(outcome: SendOutcome, wanted: string): string {
+/** 没发出去的那几种。 */
+function refused(outcome: Refused, wanted: string): string {
 	switch (outcome.kind) {
-		case "delivered":
-			return `Delivered to ${outcome.to}. ${outcome.queued ? "It is busy; your message waits until its current work is done." : outcome.busy ? "It is busy and reads it between its tool rounds." : "It was idle and starts working on it now."} To get the outcome, call wait_for_session.`;
 		case "broader":
-			return `${outcome.to} runs with broader permissions (${outcome.theirs}) than this session (${outcome.mine}), so it cannot be asked to act for you. Not delivered — ask your user instead.`;
+			return `${outcome.to} runs with broader permissions (${outcome.theirs}) than this session (${outcome.mine}), so it cannot be asked to act for you. Not sent — ask your user instead.`;
 		case "paced":
 			return paced(outcome);
 		default:
@@ -147,7 +179,42 @@ function sent(outcome: SendOutcome, wanted: string): string {
 	}
 }
 
-function paced(outcome: Extract<SendOutcome, { kind: "paced" }>): string {
+function notified(outcome: NotifyOutcome, wanted: string): string {
+	if (outcome.kind !== "delivered") return refused(outcome, wanted);
+	return `Delivered to ${outcome.to}. ${outcome.busy ? "It reads it between its steps." : "It is idle and reads it when it next starts working; a notice does not start it."} There is no answer to a notice.`;
+}
+
+function asked(outcome: AskOutcome, wanted: string): string {
+	switch (outcome.kind) {
+		case "waited-on":
+			return `${outcome.to} is waiting on this session right now (directly or through others), so it cannot take a request until you finish. Not sent. Put the question in your reply at the end of this turn instead: whoever is waiting on you reads that.`;
+		case "broader":
+		case "paced":
+		case "unreachable":
+		case "none":
+		case "self":
+		case "ambiguous":
+			return refused(outcome, wanted);
+		default:
+			return settled(outcome, "Your request stays with it");
+	}
+}
+
+function waited(outcome: WaitOutcome, wanted: string): string {
+	switch (outcome.kind) {
+		case "deadlock":
+			return `${outcome.to} is itself waiting on this session; waiting for it would never end. Finish your own part first.`;
+		case "unreachable":
+		case "none":
+		case "self":
+		case "ambiguous":
+			return missed(outcome, wanted);
+		default:
+			return settled(outcome, "It keeps going");
+	}
+}
+
+function paced(outcome: Extract<Refused, { kind: "paced" }>): string {
 	switch (outcome.reason) {
 		case "too-long":
 			return `The message is ${outcome.length} characters; the limit is ${PEER_MAX_CHARS}. Write the bulk into a file the other session can read and send the path.`;
@@ -157,31 +224,40 @@ function paced(outcome: Extract<SendOutcome, { kind: "paced" }>): string {
 		case "duplicate":
 			return `You sent the same message to ${outcome.to} less than ${PEER_DEDUP_MS / 1000} seconds ago; it was not sent again.`;
 		case "paced":
-			return `Too many messages to ${outcome.to} just now; this one was not sent. Batch what remains into one message, or wait_for_session first.`;
+			return `Too many messages to ${outcome.to} just now; this one was not sent. Batch what remains into one message, or wait for its answers first.`;
 	}
 }
 
-function waited(outcome: WaitOutcome, wanted: string): string {
+/** 一封信开头的一截，够认出是哪封。 */
+function excerpt(text: string): string {
+	const line = text.replace(/\s+/g, " ").trim();
+	return `"${[...line].length > 60 ? `${[...line].slice(0, 60).join("")}…` : line}"`;
+}
+
+/** 等到了哪一步；`still` 是没等完时那封信的去向（问：信还在它那里；等：它接着干）。 */
+function settled(outcome: Exclude<WaitOutcome, Missed | { kind: "deadlock" }>, still: string): string {
 	switch (outcome.kind) {
 		case "done": {
-			const how = outcome.reason === "done" ? "finished" : outcome.reason === "aborted" ? "was stopped by its user before it finished" : `ended early (${outcome.reason})`;
 			const waitedFor = outcome.waitedMs >= 1000 ? ` (waited ${Math.round(outcome.waitedMs / 1000)}s)` : "";
-			const cut = outcome.cut > 0 ? `\n[cut after ${REPLY_LIMIT} characters; ${outcome.cut} more not shown. If you need all of it, ask ${outcome.to} to write it to a file and send you the path.]` : "";
-			return `${outcome.to} ${how}${waitedFor}. What it said at the end:\n${outcome.reply || "(no reply text)"}${cut}`;
+			const answers = outcome.answers.map((answer, index) => {
+				const how = answer.reason === "done" ? "finished" : answer.reason === "aborted" ? "was stopped by its user before it finished" : `ended early (${answer.reason})`;
+				const cut = answer.cut > 0 ? `\n[cut after ${REPLY_LIMIT} characters; ${answer.cut} more not shown. If you need all of it, ask ${outcome.to} to write it to a file and send you the path.]` : "";
+				// 隔着别的事分两轮处理的几封，各有一段回答；可能有一封是上次没等完的，说清对着哪封。
+				const which = outcome.answers.length > 1 ? ` (answer ${index + 1} of ${outcome.answers.length}, to your message ${answer.asked.map(excerpt).join(" + ")})` : "";
+				return `${outcome.to} ${how}${index === 0 ? waitedFor : ""}${which}. What it said at the end:\n${answer.reply || "(no reply text)"}${cut}`;
+			});
+			const dropped = outcome.dropped > 0 ? [`${outcome.dropped} message(s) were dropped: it was stopped by its user before reading them. Ask your user before sending them again.`] : [];
+			return [...answers, ...dropped].join("\n\n");
 		}
 		case "blocked":
-			return `${outcome.to} is waiting for its user to answer: ${outcome.pending.map((one) => `${one.question ? "a question" : "an approval"} — ${one.title}`).join("; ")}. Tell your user to answer it in that session. Calling wait_for_session again waits until it is answered and the work is done.`;
+			return `${outcome.to} is waiting for its user to answer: ${outcome.pending.map((one) => `${one.question ? "a question" : "an approval"} — ${one.title}`).join("; ")}. Tell your user to answer it in that session. ${still}; calling wait_for_session waits until it is answered and the work is done.`;
 		case "dropped":
 			return `${outcome.to} was stopped by its user before it read your message, so the message was dropped. Ask your user before sending it again.`;
 		case "timeout":
-			return `${outcome.to} was still working after ${outcome.seconds} seconds. It keeps going; wait again if you still need its result.`;
+			return `${outcome.to} was still working after ${outcome.seconds} seconds. ${still}; call wait_for_session if you still need its answer.`;
 		case "closed":
 			return `${outcome.to} was closed before it finished.`;
 		case "stopped":
 			return `Stopped waiting for ${outcome.to}.`;
-		case "deadlock":
-			return `${outcome.to} is itself waiting on this session; waiting for it would never end. Finish your own part first.`;
-		default:
-			return missed(outcome, wanted);
 	}
 }

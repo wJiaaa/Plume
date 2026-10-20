@@ -61,6 +61,7 @@ import { adoptModelSwitch, recordModel, recordPlanMode, recordThinking } from ".
 import { PLAN_MODE_KEY } from "./plan-mode.ts";
 import { rewind, type RewindParts } from "./session-rewind.ts";
 import { changedPaths, mainChatContext, SIDE_CHAT_PROFILE, sideChangesNote, sideChatTools } from "./side-chat/side-session.ts";
+import { peerMessage } from "./peer-letters.ts";
 
 export interface AgentSessionOptions {
 	cwd: string;
@@ -176,7 +177,7 @@ export class AgentSession {
 	private readonly subAgentContexts = new SubAgentContexts();
 	/** 主会话派出去的子代理：派出即放手，跑完一个送回一个。见 `delegation-waits.ts`。 */
 	private readonly delegations = new DelegationWaits({
-		spoken: () => this.inbox.spoken,
+		spoken: () => this.inbox.spoken || (this.running && this.notices.length > 0),
 		detached: (id) => this.subAgents.background(id),
 		settled: (report) => this.deliveries.report(report),
 	});
@@ -214,6 +215,8 @@ export class AgentSession {
 	});
 	/** 侧边聊天改过、这个会话还没被告知的文件；下一轮开头说一次。见 `noteSideChanges`。 */
 	private readonly sideChanges = new Set<string>();
+	/** 其他会话发来、还没读到的通知：下一个空档读到，从不为它开一轮。见 `receive`。 */
+	private notices: PeerLetter[] = [];
 
 	constructor(options: AgentSessionOptions) {
 		this.cwd = options.cwd;
@@ -341,14 +344,31 @@ export class AgentSession {
 	}
 
 	/**
-	 * 另一个会话发来的一条消息。
+	 * 另一个会话发来的一条消息。不是人开口，所以不清技能限制——见 `submit` 的 `fromPerson`。
 	 *
-	 * 和后台结果走同一条路：攒一小会儿，闲着就开一轮。忙着时 `followUp` 排到这一轮做完之后，
-	 * `steer` 插进这一轮，并且和人插话一样放开正在等的子代理（`addressed`）。不是人开口，所以
-	 * 不清技能限制——见 `submit` 的 `fromPerson`。
+	 * - 请求：和后台结果走同一条路，攒一小会儿；闲着就开一轮，忙着排到这一轮做完之后，单独一轮。
+	 *   发件方等的就是这一轮最后说的话。
+	 * - 通知：不开轮。在跑就在下一步之前读到，闲着就等下一次开轮时排在最前面读到（照 codex 的
+	 *   `trigger_turn = false`）。「我要改 config.ts」这种话不值得对方为它花一整轮。在跑时和人插话
+	 *   一样放开正在等的事，不然它要等那件事等完才读得到。
 	 */
-	receive(letter: PeerLetter, deliver: "steer" | "followUp" = "steer"): void {
-		this.deliveries.letter(letter, deliver);
+	receive(letter: PeerLetter, kind: "request" | "notice"): void {
+		if (kind === "request") {
+			this.deliveries.letter(letter);
+			return;
+		}
+		this.notices.push(letter);
+		if (this.running) this.delegations.release();
+	}
+
+	/** 攒着的通知，作为这一轮里的一条消息交出去；没有就是空的。 */
+	private takeNotices(): Message[] {
+		if (this.notices.length === 0) return [];
+		const message = peerMessage(this.notices, "notice");
+		this.notices = [];
+		// 它是这一轮的输入，不是新开的一轮：界面据此不把它画成一轮的开头（`grouping.ts` 的 `opensTurn`）。
+		if (message.role === "user") message.steered = true;
+		return [message];
 	}
 
 	/** 从这里的建议开出来的会话交回了第一轮的回复：和子代理的结果走同一条送达。宿主决定交不交。 */
@@ -980,14 +1000,14 @@ export class AgentSession {
 				scratchDir: scratchDir(this.log.meta.id),
 				requestApproval: (request) => this.requestApproval(request),
 				emit: (event) => this.emit(event),
-				drainSteering: () => this.inbox.takeSteering(),
+				drainSteering: () => [...this.inbox.takeSteering(), ...this.takeNotices()],
 				subAgents: this.subAgents,
 				delegations: this.delegations,
 				liveModel: this.liveModel,
 				profile: parent ? SIDE_CHAT_PROFILE : undefined,
 				planMode: this.log.meta.planMode === true,
 				followups: !parent && this.suggestFollowups && this.settings.nextPromptSuggestions === true,
-				context: async () => parent ? mainChatContext(this.log.messages, parent, resolved.model) : this.takeSideChanges(),
+				context: async () => parent ? [mainChatContext(this.log.messages, parent, resolved.model)] : [...this.takeSideChanges(), ...this.takeNotices()],
 			});
 			this.activity.trackTurn(turn);
 			await turn;
@@ -1100,11 +1120,11 @@ export class AgentSession {
 		for (const path of paths) this.sideChanges.add(path);
 	}
 
-	private takeSideChanges(): Message | null {
-		if (this.sideChanges.size === 0) return null;
+	private takeSideChanges(): Message[] {
+		if (this.sideChanges.size === 0) return [];
 		const note = sideChangesNote([...this.sideChanges]);
 		this.sideChanges.clear();
-		return note;
+		return [note];
 	}
 
 	// -------------------------------------------------------------------------

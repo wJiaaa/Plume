@@ -15,15 +15,13 @@ export interface Queued {
 }
 
 /**
- * 有人在找这个会话：人说的话，或另一个会话插进来的信。父会话据此不再干等它派出去的子代理。
+ * 人说的话：父会话据此不再干等它派出去的子代理和别的会话。
  *
- * 信也算，是因为它和人插话一样在等这边读到——发信的那一方常常正卡在 `wait_for_session` 上；
- * 只认人的时候，一封插进来的信要压到子代理全部跑完才被读到（实测等一次子代理平均七分多钟）。
- * 后台结果的送达不算：它是在交差，不是在找人；算上的话，一个放了手的子代理跑完，会把其余还在
- * 等的也一并放掉。
+ * 后台结果的送达、别的会话的请求都不算：前者在交差，后者排在这一轮之后，都不是在找正等着的这一方。
+ * 别的会话的通知在 `AgentSession.receive` 里直接放手，它不经过这里。
  */
 export function addressed(message: Message): boolean {
-	return message.role === "user" && (!message.synthetic || message.peer !== undefined);
+	return message.role === "user" && !message.synthetic;
 }
 
 export class SessionInbox {
@@ -78,21 +76,25 @@ export class SessionInbox {
 	 * there another way in" — the kind of failure that should not rest on reasoning that it cannot
 	 * happen. Ahead of the queue, because it was said earlier.
 	 *
-	 * Letters from other sessions that queued back to back go out as one message, one turn. They
+	 * Requests from the same session that queued back to back go out as one message, one turn. They
 	 * arrive minutes apart during a long turn, so the 400ms gathering in `session-deliveries.ts` never
 	 * joins them; run one by one, each is a turn that resends the whole prefix, often to read a letter
 	 * the next one has already made stale. Only adjacent ones: merging past a queued message from the
 	 * person would move letters ahead of what was said before them.
+	 *
+	 * 不同会话的请求不合并：发件方等回来的是处理它那封信的那一轮最后说的话，两家的信并成一轮，
+	 * 两边拿到的就是同一段回答，其中一半在回答别人。
 	 */
 	next(): Queued | undefined {
 		if (this.steering.length > 0) this.queued.unshift(...this.takeSteering().map((message) => ({ message })));
 		const head = this.queued.shift();
 		const letters = head && lettersOnly(head.message);
 		if (!head || !letters) return head;
+		const sender = letters[0]?.sessionId;
 		const merged = [...letters];
 		while (this.queued.length > 0) {
 			const more = lettersOnly(this.queued[0]!.message);
-			if (!more) break;
+			if (!more || more.some((letter) => letter.sessionId !== sender)) break;
 			merged.push(...more);
 			this.queued.shift();
 		}

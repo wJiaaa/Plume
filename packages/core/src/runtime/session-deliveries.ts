@@ -4,7 +4,9 @@
  * Three sources: sub-agents the parent stopped waiting for (`delegation-waits.ts`), background
  * commands that ended (`tools/background-jobs.ts`), and conversations started from this one's
  * suggestion that were asked to report back (`FinishedSession`). All are gathered for a moment and
- * handed to the session as one message — mid-turn it is spliced in, idle it starts a turn.
+ * handed to the session as one message — mid-turn it is spliced in, idle it starts a turn. Requests
+ * from other sessions travel the same way but never in that message: see `flush`. (Notices from other
+ * sessions do not come here at all: they never start a turn, see `AgentSession.receive`.)
  *
  * Kept out of `AgentSession` because it needs four things from it and nothing else: a way to submit,
  * the roster to check a report against, the background-job registry, and the session's activity to
@@ -16,8 +18,8 @@ import type { SessionActivity } from "./session-activity.ts";
 import type { SubAgentSummary } from "../types/sub-agent.ts";
 import type { BackgroundJob, BackgroundJobs } from "../tools/background-jobs.ts";
 import { readJob } from "../tools/bash.ts";
-import type { Message, PeerLetter, UserContent } from "../types.ts";
-import { peerMessage } from "./peer-letters.ts";
+import type { Message, PeerLetter } from "../types.ts";
+import { bySender, peerMessage } from "./peer-letters.ts";
 
 /**
  * How long background results are gathered before they are delivered.
@@ -46,10 +48,8 @@ export class SessionDeliveries {
 	private reports: SettledDispatch[] = [];
 	private finishedJobs: BackgroundJob[] = [];
 	private finishedSessions: FinishedSession[] = [];
-	/** 其他会话发来的消息；和后台结果一起攒，一起送，见 `peer-letters.ts`。 */
-	private letters: PeerLetter[] = [];
-	/** 要排到收件方这一轮之后的那些：插进去会打断它手上的事，单独成一条、排队送。 */
-	private queuedLetters: PeerLetter[] = [];
+	/** 其他会话的请求：排到收件方这一轮之后，每个发件会话单独一轮。 */
+	private requests: PeerLetter[] = [];
 	private timer: ReturnType<typeof setTimeout> | null = null;
 	/** 已经取出、还没交到会话手里的那一次送达；这期间也不算空闲。 */
 	private flushing = false;
@@ -79,15 +79,15 @@ export class SessionDeliveries {
 		this.schedule();
 	}
 
-	/** 另一个会话的消息到了；和同一时刻到的其他东西合成一条再送。 */
-	letter(letter: PeerLetter, deliver: "steer" | "followUp" = "steer"): void {
-		(deliver === "followUp" ? this.queuedLetters : this.letters).push(letter);
+	/** 另一个会话的请求到了；和同一时刻到的一起送，但不和后台结果、别的会话的请求并成一条。 */
+	letter(letter: PeerLetter): void {
+		this.requests.push(letter);
 		this.schedule();
 	}
 
 	/** 没有攒着待送的东西。会话判断空闲时要看它：攒着的那一条四百毫秒后就会开一轮。 */
 	get empty(): boolean {
-		return this.timer === null && !this.flushing && this.reports.length === 0 && this.finishedJobs.length === 0 && this.finishedSessions.length === 0 && this.letters.length === 0 && this.queuedLetters.length === 0;
+		return this.timer === null && !this.flushing && this.reports.length === 0 && this.finishedJobs.length === 0 && this.finishedSessions.length === 0 && this.requests.length === 0;
 	}
 
 	/**
@@ -104,8 +104,7 @@ export class SessionDeliveries {
 		this.reports.length = 0;
 		this.finishedJobs.length = 0;
 		this.finishedSessions.length = 0;
-		this.letters.length = 0;
-		this.queuedLetters.length = 0;
+		this.requests.length = 0;
 		if (this.timer) clearTimeout(this.timer);
 		this.timer = null;
 	}
@@ -144,9 +143,8 @@ export class SessionDeliveries {
 			.filter(({ report, summary }) => summary?.status !== "aborted" && !report.answer?.stoppedByUser);
 		const jobs = this.takeFinishedJobs();
 		const sessions = this.finishedSessions.splice(0, this.finishedSessions.length);
-		const letters = this.letters.splice(0, this.letters.length);
-		const queued = this.queuedLetters.splice(0, this.queuedLetters.length);
-		if (reports.length === 0 && jobs.length === 0 && sessions.length === 0 && letters.length === 0 && queued.length === 0) return;
+		const requests = this.requests.splice(0, this.requests.length);
+		if (reports.length === 0 && jobs.length === 0 && sessions.length === 0 && requests.length === 0) return;
 		const { activity } = this.deps;
 		// A manual compaction is rewriting the history: wait until it has written the boundary
 		// before coming in, the same as a message from the person.
@@ -157,12 +155,18 @@ export class SessionDeliveries {
 		 * `clear` cannot reach them. Drop them for the same reason, rather than putting them back.
 		 */
 		if (activity.stoppedSince(mark)) return;
+		/*
+		 * 一组一条，同步交进去：闲着时第一条开一轮，其余的这时已经算忙，排在后面，顺序就是这里的顺序。
+		 *
+		 * 请求不并进后台结果，不同会话的请求也不并在一起：发件方等回来的是处理它那封信的那一轮最后
+		 * 说的话，几家并成一轮，每一家拿到的都是同一段回答。
+		 */
 		const background = reports.length + jobs.length + sessions.length;
-		if (background + letters.length > 0) {
-			await this.deps.submit(combined(background > 0 ? deliveryMessage(reports, jobs, reports.length > 0 ? this.deps.outstanding() : [], sessions) : null, letters));
-		}
-		// 会话闲着时这一条照样开一轮；忙着（或上面那条刚开了一轮）就排到那一轮之后。
-		if (queued.length > 0) await this.deps.submit(peerMessage(queued), "followUp");
+		const parts: { message: Message; deliver?: "followUp" }[] = [
+			...(background > 0 ? [{ message: deliveryMessage(reports, jobs, reports.length > 0 ? this.deps.outstanding() : [], sessions) }] : []),
+			...bySender(requests).map((group) => ({ message: peerMessage(group), deliver: "followUp" as const })),
+		];
+		await Promise.all(parts.map(({ message, deliver }) => this.deps.submit(message, deliver)));
 	}
 
 	/**
@@ -184,15 +188,4 @@ export class SessionDeliveries {
 				return { id: job.id, command: job.command, description: job.description, exitCode: job.exitCode, status, failed: job.status === "failed", output: text };
 			});
 	}
-}
-
-/**
- * 同一刻到的后台结果和来信合成一条：一条消息、一个回合。分开送的话，闲着的会话会为第一条开一轮，
- * 第二条排在后面再开一轮，每一轮都把整段前缀重发一遍。
- */
-function combined(delivery: Message | null, letters: PeerLetter[]): Message {
-	if (letters.length === 0 && delivery) return delivery;
-	const mail = peerMessage(letters);
-	if (!delivery || delivery.role !== "user" || mail.role !== "user") return mail;
-	return { ...delivery, peer: letters, content: [...(mail.content as UserContent[]), ...(delivery.content as UserContent[])] };
 }

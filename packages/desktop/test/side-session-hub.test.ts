@@ -46,6 +46,7 @@ async function idleSession(overrides: Record<string, unknown> = {}) {
 		meta,
 		cwd: home,
 		running: false,
+		idle: true,
 		messages: [{ role: "user" }],
 		can: { state: new Map() },
 		subAgents: { list: () => [] },
@@ -98,13 +99,20 @@ test("主会话撤空，旁边的侧边聊天跟着收掉；撤到中间不碰",
 test("侧边聊天还在答，父会话不算空闲", async () => {
 	const parent = await idleSession();
 	const side = await sideChatOpen(parent, DEFAULT_SIDE_CHAT_ID);
-	const live = { meta: side, parent: hub.sessions.get(parent), running: true, can: { state: new Map() }, subAgents: { list: () => [] }, dispose: async () => {} };
+	const live = { meta: side, parent: hub.sessions.get(parent), running: true, get idle() { return !this.running; }, can: { state: new Map() }, subAgents: { list: () => [] }, dispose: async () => {} };
 	hub.sessions.set(side.id, live as never);
 
 	assert.deepEqual(await hub.deleteIdleSessions([parent]), [], "the person is talking to it");
 	live.running = false;
 	assert.deepEqual(await hub.deleteIdleSessions([parent]), [parent]);
 	assert.equal(await store.get(side.id), null);
+});
+
+test("另一个会话的信攒着还没进对话（`running` 还是假），不算空闲，不会连信一起被清掉", async () => {
+	const id = await idleSession({ idle: false });
+	assert.deepEqual(await hub.deleteIdleSessions([id]), []);
+	(hub.sessions.get(id) as unknown as { idle: boolean }).idle = true;
+	assert.deepEqual(await hub.deleteIdleSessions([id]), [id]);
 });
 
 test("建侧边聊天的过程中父会话被删了，不留一个挂在空处的会话", async () => {

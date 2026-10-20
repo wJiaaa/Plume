@@ -61,6 +61,16 @@ test("主会话在等它派出去的子智能体：排着的队首送进去，�
 	assert.deepEqual(h.steered, ["q1"]);
 });
 
+test("主会话问了另一个会话、在等回答：排着的队首同样送进去；发通知不等，不动队伍", async () => {
+	const asking = harness();
+	asking.dispatch({ type: "tool_start", toolCallId: "c1", toolName: "ask_session", args: {}, summary: "Ask 测试 B" });
+	const notifying = harness();
+	notifying.dispatch({ type: "tool_start", toolCallId: "c2", toolName: "notify_session", args: {}, summary: "Notify 测试 B" });
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	assert.deepEqual(asking.steered, ["q1"]);
+	assert.deepEqual(notifying.steered, []);
+});
+
 test("子智能体都转到后台了、或者主会话没在跑：不动队伍", async () => {
 	const background = harness();
 	background.dispatch({ type: "subagents", agents: [summary({ id: "a", background: true })] });

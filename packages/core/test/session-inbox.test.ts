@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { SessionInbox } from "../src/runtime/session-inbox.ts";
 import { lettersOnly, peerMessage } from "../src/runtime/peer-letters.ts";
-import type { Message, PeerLetter, UserContent } from "../src/types.ts";
+import type { Message, PeerLetter } from "../src/types.ts";
 
 const said = (text: string): Message => ({ role: "user", content: [{ type: "text", text }], timestamp: 1 });
 const text = (message: Message | undefined) => (message?.content[0] as { text: string } | undefined)?.text;
@@ -38,10 +38,10 @@ test("stop drops both what would steer and what was queued", () => {
 	assert.deepEqual(inbox.takeSteering(), []);
 });
 
-const letter = (text: string, id: string): PeerLetter => ({ id, sessionId: "a1b2c3d4", from: "修登录 [a1b2c3]", text });
+const letter = (text: string, id: string, sessionId = "a1b2c3d4"): PeerLetter => ({ id, sessionId, from: "修登录 [a1b2c3]", text });
 const lettersOf = (message: Message | undefined) => (message?.role === "user" ? message.peer?.map((one) => one.id) : undefined);
 
-test("letters queued back to back come out as one message; one queued from the person stops the merge", () => {
+test("requests from one session queued back to back come out as one message; one queued from the person stops the merge", () => {
 	const inbox = new SessionInbox();
 	inbox.accept({ message: peerMessage([letter("我要改 log_types.go", "L1")]) }, "followUp", true);
 	inbox.accept({ message: peerMessage([letter("typecheck 过了", "L2"), letter("准备提交", "L3")]) }, "followUp", true);
@@ -55,12 +55,24 @@ test("letters queued back to back come out as one message; one queued from the p
 	assert.equal(inbox.empty, true);
 });
 
-test("a letter that came with background results is not taken apart to merge", () => {
+test("requests from different sessions each get a turn of their own, in the order they came", () => {
 	const inbox = new SessionInbox();
-	const plain = peerMessage([letter("a", "L1")]);
-	const withResults: Message = { ...plain, content: [...(plain.content as UserContent[]), { type: "text", text: "<background-results>…</background-results>" }] };
-	inbox.accept({ message: plain }, "followUp", true);
-	inbox.accept({ message: withResults }, "followUp", true);
-	assert.equal(inbox.next()?.message, plain);
-	assert.equal(inbox.next()?.message, withResults);
+	inbox.accept({ message: peerMessage([letter("甲的事", "A1", "aaaaaaaa")]) }, "followUp", true);
+	inbox.accept({ message: peerMessage([letter("乙的事", "B1", "bbbbbbbb")]) }, "followUp", true);
+	inbox.accept({ message: peerMessage([letter("甲的第二件", "A2", "aaaaaaaa")]) }, "followUp", true);
+	assert.deepEqual(lettersOf(inbox.next()?.message), ["A1"]);
+	assert.deepEqual(lettersOf(inbox.next()?.message), ["B1"]);
+	assert.deepEqual(lettersOf(inbox.next()?.message), ["A2"], "not pulled ahead of the other session's request");
+	assert.equal(inbox.empty, true);
+});
+
+test("a notice is never merged with requests", () => {
+	const inbox = new SessionInbox();
+	const notice = peerMessage([letter("先别动 config.ts", "N1")], "notice");
+	const request = peerMessage([letter("改完告诉我", "R1")]);
+	inbox.accept({ message: notice }, "followUp", true);
+	inbox.accept({ message: request }, "followUp", true);
+	assert.equal(lettersOnly(notice), null);
+	assert.equal(inbox.next()?.message, notice);
+	assert.equal(inbox.next()?.message, request);
 });

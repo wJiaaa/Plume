@@ -383,8 +383,8 @@ export interface DeliveredReport {
 /**
  * 另一个会话发来的一条消息。
  *
- * 只有这一种：要等对方做完，发件方自己调 `wait_for_session`，结果作为那次调用的返回值回来，
- * 不由运行时另递回执（见 docs/adr/0040-session-messaging.md）。
+ * 请求的回答作为发件方那次 `ask_session` 的返回值回来，不由运行时另递回执；通知没有回答
+ * （见 docs/adr/0040-session-messaging.md）。
  */
 export interface PeerLetter {
 	/** 这一封的 id：发件方等的是收到它的那一次运行，见桌面端的 `peer-runs.ts`。旧记录里没有。 */
