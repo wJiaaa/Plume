@@ -2,6 +2,41 @@
 
 这个文件由 `pnpm release` 生成，条目来自提交信息。写得含糊的提交在这里也含糊，所以值得在提交时就写清楚。
 
+## [0.9.44](https://github.com/wJiaaa/Plume/releases/tag/v0.9.44) - 2026-10-20
+
+<!-- plume:notes en -->
+
+### New
+
+- **An approved plan can be carried out in a new session.** The plan approval card has a new option, Run in a new session. The plan is saved to a file, a new session under the same project starts on it, and the session where the plan was discussed stops there and stays around to answer questions from the new one. Earlier drafts, review comments and the code read while checking them no longer follow the work into implementation. In one real session, 60 of 124 messages were three rounds of plan review, all in the session that was about to implement it.
+- **A built-in plan-review subagent checks a plan against the code before it is carried out.** It sees only the plan, not the discussion that produced it, and reads the code to check that paths, APIs and versions are right, that nothing the goal needs is missing, that the steps can be done in order, and that the verification would really show the goal was met. Each blocker comes with evidence and the smallest change that fixes it. On a second pass it checks the earlier blockers first. Like review, it is worth giving a different model in Settings › Subagents: a model reviewing its own plan mostly agrees with it.
+- **Sessions that talk to each other no longer get their replies mixed up.** When two sessions asked a third one something at about the same time, both could get back the same reply, half of it answering the other. Now each request gets its own run and its own answer. Sessions can ask and wait for the answer (several at once), tell another session something without making it start a run (it reads the note before its next step, or at the start of its next turn if it is idle), or wait for a session to finish what it is doing.
+
+### Fixes
+
+- **The tooltip on a task sent from a side chat stays inside the window.** A side chat often hands the main conversation a plan dozens of lines long, and the tooltip grew past the bottom of the window, pushing the status line ("The main conversation is busy") out of sight. It now shows the first six lines, at most 160 characters, with the status line underneath. The full text is still in both transcripts.
+- **Only the model list scrolls in Models settings.** With many models, the whole right column used to scroll, and a few rows down Base URL and API Key were gone from view. The list now scrolls inside its own card.
+- **Editing a subagent shows its scope as text instead of a dropdown that does nothing.** An existing subagent's scope cannot be changed, and the disabled dropdown looked exactly like a working one. It now shows the current scope with "Duplicate it to change scope". New and duplicated subagents still get the dropdown.
+
+<!-- plume:notes zh-CN -->
+
+<details>
+<summary>中文（简体）</summary>
+
+### 新功能
+
+- **批准的计划可以交给新会话去实施。** 计划审批卡多了一项「在新会话里执行」：计划存成文件，同一个项目下开一个新会话照着做，讨论计划的这个会话停在这里，留着回答那边的提问。旧版计划、打回意见、为核实而读的代码，不再跟着一路带进实施。一个真实会话里，124 条消息有 60 条是三轮计划审核，而它正是接下来要去实施的那个会话。
+- **内置子智能体 plan-review，计划在动手前先对着代码核一遍。** 它只拿到计划，看不到讨论计划的那段对话；读代码核实路径、接口、版本对不对，目标需要的有没有漏，步骤能不能照顺序做，验收能不能真的证明做成了。每个阻塞项都带着证据和最小的修改办法；复审时先逐条看上一轮的阻塞项解决了没有。和 review 一样，值得在「设置 › 智能体」里给它换个模型：同一个模型审自己写的计划，多半是同意。
+- **会话之间互相传话，回答不再串。** 两个会话差不多同时问第三个会话，原来两边可能拿回同一段话，一半在回答另一边。现在每个请求各跑一轮、各拿各的回答。会话之间可以问了就等回答（可以同时问几个），可以只告诉对方一件事、不让它为此专门跑一轮（对方在下一步之前读到，闲着就在下一轮开头读到），也可以等对方把手上的事做完。
+
+### 修复
+
+- **侧边聊天派出去的任务，悬停提示不再长出窗口。** 侧边聊天交给主会话的常是几十行的计划，提示气泡一路长出窗口底部，最后那行状态（「主会话执行中」）被挤得看不见。现在只显示前六行、最多 160 字，状态行留在下面。完整内容在两边的对话记录里都有。
+- **模型设置里只滚模型列表。** 模型一多，原来整个右栏一起滚，往下翻几行 Base URL 和 API Key 就看不见了。现在列表在自己的卡片里滚。
+- **编辑智能体时，生效范围直接写成文字，不再是点了没反应的下拉框。** 已有智能体的范围本来就不能改，禁用的下拉框看上去和能用的一模一样。现在显示当前范围，旁边写着「要换范围请复制一份」；新建和复制时仍是下拉框。
+
+</details>
+
 ## [0.9.43](https://github.com/wJiaaa/Plume/releases/tag/v0.9.43) - 2026-10-20
 
 <!-- plume:notes en -->
