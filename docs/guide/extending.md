@@ -118,7 +118,7 @@ my-plugin/
 `task` 工具把一件事交给拥有**独立上下文窗口**的下属，只把结论带回主对话。适合「读二十个文件
 找出哪里定义了 X」这种——过程很长，结论很短。
 
-内置七个：`general` `explore` `review` `verify` `plan` `simple` `reason`。自定义放在 `.plume/agents/<名>.md`，格式与技能一样：
+内置八个：`general` `explore` `review` `verify` `plan` `plan-review` `simple` `reason`。自定义放在 `.plume/agents/<名>.md`，格式与技能一样：
 
 ```markdown
 ---

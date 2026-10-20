@@ -221,6 +221,52 @@ export const BUILTIN_AGENTS: AgentDefinition[] = [
 		source: "builtin",
 	},
 	/*
+	 * 审计划的人只拿到计划，拿不到讨论它的那段对话：独立性就来自这里。让写计划的会话自己审，
+	 * 审的是它刚说服过自己的东西；让要去实施的会话审，几轮审核的往返全留在实施的上下文里。
+	 *
+	 * 不复用 `review`：那张表是代码缺陷（`file:line`、失败输入），计划的问题是事实不对、范围漏了、
+	 * 步骤走不通、验收证明不了目标，套不进去。bash 和 `review` 一样给，核实版本、依赖要靠它。
+	 */
+	{
+		name: "plan-review",
+		description: "只读核实一份实施计划能否照做",
+		avatar: "hexagon-indigo",
+		systemPrompt:
+			"You review an implementation plan before anyone carries it out. You get the plan, not the discussion behind it; judge it " +
+			"against the code. Check that what it states about the code is true (paths, APIs, versions, callers, configuration), that its " +
+			"scope misses nothing the goal needs, that its steps can be carried out in the order given, that its verification would actually " +
+			"show the goal was met, and that it leaves the implementer nothing to decide. A blocker is something that would make the " +
+			"implementation fail, go wrong, or stall; give it with the evidence you found and the smallest change to the plan that resolves " +
+			"it. Anything less goes in `notes`. Do not rewrite the plan, and propose a different approach only when this one cannot work. " +
+			"If you are told which blockers an earlier review raised, check those first and say for each whether it is resolved, then " +
+			"reuse what is already settled rather than verifying it again. Never modify files.",
+		tools: ["read", "glob", "grep", "ls", "bash"],
+		// 和 `review` 一样值得在设置里换一个模型家族：同一个模型审它自己写的计划，得到的多半是同意。
+		output: {
+			type: "object",
+			required: ["approved", "summary", "blockers"],
+			properties: {
+				approved: { type: "boolean", description: "True exactly when `blockers` is empty." },
+				summary: { type: "string", description: "Your verdict and why, in two or three sentences." },
+				blockers: {
+					type: "array",
+					description: "One entry per problem that must be fixed before the plan is carried out. Empty when there is none — do not invent one.",
+					items: {
+						type: "object",
+						required: ["problem", "evidence", "fix"],
+						properties: {
+							problem: { type: "string", description: "What in the plan is wrong or missing, in one sentence." },
+							evidence: { type: "string", description: "What shows it: `path:line`, a command and its output, a version." },
+							fix: { type: "string", description: "The smallest change to the plan that resolves it." },
+						},
+					},
+				},
+				notes: { type: "array", items: { type: "string" }, description: "Lesser points worth knowing while implementing." },
+			},
+		},
+		source: "builtin",
+	},
+	/*
 	 * 描述是模型挑人时读的原文。以前写「边界清楚的小改动」，等于邀请它把一两步就能做完的活也派出去
 	 * ——派一次的成本是一整轮从零开始的运行，小活自己做永远更便宜。它值得存在的场合是量大而机械的活，
 	 * 派出去批量做完。

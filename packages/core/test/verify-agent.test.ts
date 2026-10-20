@@ -115,8 +115,16 @@ test("plan 没有任何写工具", () => {
 	assert.ok(Array.isArray(plan.tools) && !plan.tools.some((t) => ["edit", "write", "bash"].includes(t)), `不该有写工具：${JSON.stringify(plan.tools)}`);
 });
 
-test("两个都声明了 output schema，父代理拿到的是结构化的", () => {
-	for (const name of ["verify", "plan"]) {
+test("plan-review 改不了文件，交回的是过没过和阻塞项", () => {
+	// 审计划的人顺手改了代码，交回来的「通过」审的就不是那份计划了。
+	const review = BUILTIN_AGENTS.find((a) => a.name === "plan-review");
+	assert.ok(review, "plan-review 该是内置的");
+	assert.ok(Array.isArray(review.tools) && !review.tools.some((t) => ["edit", "write"].includes(t)), `不该有写工具：${JSON.stringify(review.tools)}`);
+	assert.deepEqual((review.output as { required?: string[] }).required, ["approved", "summary", "blockers"]);
+});
+
+test("都声明了 output schema，父代理拿到的是结构化的", () => {
+	for (const name of ["verify", "plan", "plan-review"]) {
 		const def = BUILTIN_AGENTS.find((a) => a.name === name);
 		assert.ok(def?.output, `${name} 该有 schema`);
 		assert.ok(Array.isArray((def.output as { required?: string[] }).required), `${name} 的 schema 该有 required`);
