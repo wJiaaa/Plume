@@ -25,7 +25,7 @@ import { assemblePartial, flushPendingPartials, type PartialPiece } from "./part
 import { MAY_HOLD_MEDIA, mediaNamesIn, parkRecordPayload, rehydrateMessages, sessionMediaPath, slimJsonlLine } from "./payload.ts";
 import { REPLAY_KINDS, replayRecords } from "./replay-records.ts";
 import { auxiliaryCall, spendOf, type SpendEntry, type SpendRow } from "./spend.ts";
-import type { ActiveDay, SessionStorage } from "./storage.ts";
+import type { ActiveDay, ReplyTiming, SessionStorage } from "./storage.ts";
 import type { Boundary, SessionMeta, SessionRecord, SessionRecordInput } from "./types.ts";
 
 export type { Boundary, SessionMeta, SessionRecord, SessionRecordInput } from "./types.ts";
@@ -664,6 +664,26 @@ export class SessionStore implements SessionStorage {
 			FROM records WHERE kind IN ('message', 'usage', 'subagent_message')
 			GROUP BY day ORDER BY day
 		`).all() as unknown as ActiveDay[];
+	}
+
+	/*
+	 * 只在用量缓存整张重建时读一次（见 desktop 的 `usage-scan.ts`）。在一份真实历史上量过（41k 条
+	 * 记录、79MB 正文、其中 4.2k 条回复）约 120ms，所以不做成增量的。
+	 */
+	async replyTimings(): Promise<ReplyTiming[]> {
+		return this.db.prepare(`
+			SELECT session_id AS sessionId,
+				json_extract(body, '$.message.timestamp') AS timestamp,
+				json_extract(body, '$.message.durationMs') AS durationMs,
+				json_extract(body, '$.message.sseDurationMs') AS sseDurationMs
+			FROM records WHERE kind = 'message' AND json_extract(body, '$.message.role') = 'assistant'
+			UNION ALL
+			SELECT session_id,
+				json_extract(body, '$.event.message.timestamp'),
+				json_extract(body, '$.event.message.durationMs'),
+				json_extract(body, '$.event.message.sseDurationMs')
+			FROM records WHERE kind = 'subagent_message' AND json_extract(body, '$.event.message.role') = 'assistant'
+		`).all() as unknown as ReplyTiming[];
 	}
 
 	/** Bytes of records per session: what deleting it gives back. */

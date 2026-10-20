@@ -14,8 +14,12 @@
 import type { AssistantMessage, Usage } from "../types.ts";
 import type { SessionRecordInput } from "./types.ts";
 
-/** The fields of a reply that `diagnoseRequest` and pricing read. Never the content. */
-export type SpendCall = Pick<AssistantMessage, "usage" | "provider" | "model" | "timestamp"> & Partial<Pick<AssistantMessage, "lastAttemptUsage" | "prefix">>;
+/**
+ * The fields of a reply that `diagnoseRequest`, pricing and the usage page's request view read.
+ * Never the content.
+ */
+export type SpendCall = Pick<AssistantMessage, "usage" | "provider" | "model" | "timestamp"> &
+	Partial<Pick<AssistantMessage, "lastAttemptUsage" | "prefix" | "durationMs" | "sseDurationMs">>;
 
 export interface SpendEntry {
 	/**
@@ -46,6 +50,8 @@ function callOf(message: AssistantMessage): SpendCall {
 		timestamp: message.timestamp,
 		...(message.lastAttemptUsage ? { lastAttemptUsage: message.lastAttemptUsage } : {}),
 		...(message.prefix ? { prefix: message.prefix } : {}),
+		...(message.durationMs !== undefined ? { durationMs: message.durationMs } : {}),
+		...(message.sseDurationMs !== undefined ? { sseDurationMs: message.sseDurationMs } : {}),
 	};
 }
 

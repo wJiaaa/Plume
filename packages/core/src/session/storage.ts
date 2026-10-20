@@ -16,6 +16,20 @@ import type { PartialSink } from "./partial.ts";
 import type { SpendRow } from "./spend.ts";
 import type { Boundary, SessionMeta, SessionRecord, SessionRecordInput } from "./types.ts";
 
+/**
+ * 一次回复的计时，从会话记录里读出来。
+ *
+ * spend 表从 0.9.45 起自己带着计时；在那之前写下的行只有用量，用量页的「速度」「首字」靠这一份
+ * 补齐。按 `(sessionId, timestamp)` 对回 spend 行——spend 行的 `call.timestamp` 就是
+ * 这条消息的 `timestamp`。
+ */
+export interface ReplyTiming {
+	sessionId: string;
+	timestamp: number;
+	durationMs?: number;
+	sseDurationMs?: number;
+}
+
 /** One local day of activity. */
 export interface ActiveDay {
 	/** `YYYY-MM-DD`, local. */
@@ -72,6 +86,8 @@ export interface SessionStorage extends PartialSink, CallSink {
 	/** Names this store. A `readSpend` cursor kept anywhere else means nothing against another one. */
 	storeId(): Promise<string>;
 	activeDays(): Promise<ActiveDay[]>;
+	/** 还留在会话记录里的每一条回复（含子智能体的）的计时。见 `ReplyTiming`。 */
+	replyTimings(): Promise<ReplyTiming[]>;
 	/** Bytes each session's records take. */
 	sizes(): Promise<Record<string, number>>;
 	/**
