@@ -83,7 +83,8 @@ test("written while the reply streams: a placeholder from the first `![`, then t
 	await withFiles(7, async () => {
 		const head = "也可以使用下面的二维码：\n\n";
 		const view = await mount(h(Markdown, { text: head, streaming: true, localImages: true }));
-		const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 600)));
+		// 字按上游最近的速度排进时间线、最多落后 700ms（stream-pace.ts），600ms 等不到地址写完。
+		const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 1500)));
 		try {
 			await view.rerender(h(Markdown, { text: `${head}![飞书授权二维码](${QR.slice(0, 30)}`, streaming: true, localImages: true }));
 			await settle();
