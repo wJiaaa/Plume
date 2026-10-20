@@ -2,7 +2,7 @@
 
 import { readFile } from "node:fs/promises";
 import type { CacheDiagnosisState } from "@plume/core";
-import type { UsageBucket } from "./usage-types.ts";
+import type { UsageBucket, UsageRequestBucket } from "./usage-types.ts";
 
 /** Everything folded in so far, and where the next pass picks up. */
 export interface UsageTally {
@@ -11,6 +11,7 @@ export interface UsageTally {
 	/** How many rows that was. */
 	rows: number;
 	buckets: UsageBucket[];
+	requests: UsageRequestBucket[];
 	/** Per request sequence (`<session>\0main`, `<session>\0sub:<id>`), where diagnosis left off. */
 	streams: Record<string, CacheDiagnosisState>;
 }
@@ -28,13 +29,19 @@ interface UsageCache extends UsageTally {
  * 这张缓存按「读过的行不再读」工作，快是快在这里，代价是它记的是**上一版扫描器的结论**。所以凡是
  * 改变了从一行里读出什么的改动，都必须在这里加一，否则数字永远停在旧口径上——读过的行不会再被重算。
  */
-export const USAGE_CACHE_VERSION = 10 as const;
+export const USAGE_CACHE_VERSION = 12 as const;
 
 const BUCKET_NUMBERS: (keyof UsageBucket)[] = [
 	"input", "output", "cacheRead", "cacheWrite", "reasoning", "cost", "inputCost", "outputCost",
 	"cacheReadCost", "cacheWriteCost", "rawCost", "cacheSavings", "providerPricedTokens",
 	"catalogPricedTokens", "manualPricedTokens", "recordedPricedTokens", "unpricedTokens", "replies",
 ];
+
+const REQUEST_NUMBERS: (keyof UsageRequestBucket)[] = [
+	"requests", "input", "output", "cacheRead", "cacheWrite", "cost", "unpriced", "timed", "timedOutput",
+	"streamMs", "firstTokens", "firstTokenMs",
+];
+const REQUEST_STRINGS: (keyof UsageRequestBucket)[] = ["hour", "provider", "model"];
 
 function asRecord(value: unknown): Record<string, unknown> | null {
 	return typeof value === "object" && value !== null ? Object.fromEntries(Object.entries(value)) : null;
@@ -49,6 +56,19 @@ function isUsageBucket(value: unknown): value is UsageBucket {
 			return typeof field === "number" && Number.isFinite(field);
 		}) &&
 		(bucket.cacheMiss === undefined || isCacheMiss(bucket.cacheMiss))
+	);
+}
+
+function isRequestBucket(value: unknown): value is UsageRequestBucket {
+	const bucket = asRecord(value);
+	return (
+		Boolean(bucket) &&
+		REQUEST_STRINGS.every((key) => typeof bucket?.[key] === "string") &&
+		REQUEST_NUMBERS.every((key) => {
+			const field = bucket?.[key];
+			return typeof field === "number" && Number.isFinite(field);
+		}) &&
+		(bucket?.cacheMiss === undefined || isCacheMiss(bucket.cacheMiss))
 	);
 }
 
@@ -70,6 +90,8 @@ function isUsageCache(value: unknown, expectedPricingKey: string, expectedSource
 		typeof cache.rows === "number" &&
 		Array.isArray(cache.buckets) &&
 		cache.buckets.every(isUsageBucket) &&
+		Array.isArray(cache.requests) &&
+		cache.requests.every(isRequestBucket) &&
 		Boolean(streams) &&
 		Object.values(streams ?? {}).every((state) => Array.isArray(asRecord(state)?.reported) && typeof asRecord(state)?.requests === "number")
 	);
@@ -79,9 +101,9 @@ function isUsageCache(value: unknown, expectedPricingKey: string, expectedSource
 export async function readUsageCache(path: string, expectedPricingKey: string, source: string): Promise<UsageTally> {
 	try {
 		const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
-		if (isUsageCache(parsed, expectedPricingKey, source)) return { afterId: parsed.afterId, rows: parsed.rows, buckets: parsed.buckets, streams: parsed.streams };
+		if (isUsageCache(parsed, expectedPricingKey, source)) return { afterId: parsed.afterId, rows: parsed.rows, buckets: parsed.buckets, requests: parsed.requests, streams: parsed.streams };
 	} catch {
 		// Missing or unreadable: start over.
 	}
-	return { afterId: 0, rows: 0, buckets: [], streams: {} };
+	return { afterId: 0, rows: 0, buckets: [], requests: [], streams: {} };
 }

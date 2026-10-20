@@ -75,6 +75,7 @@ export function observeSessionStorage(store: SessionStorage, changed: (change: S
 		readSpend: (...args) => store.readSpend(...args),
 		storeId: () => store.storeId(),
 		activeDays: () => store.activeDays(),
+		replyTimings: () => store.replyTimings(),
 		sizes: () => store.sizes(),
 		sessionsWithResultOf: (toolName) => store.sessionsWithResultOf(toolName),
 	};

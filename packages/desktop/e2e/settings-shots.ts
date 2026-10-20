@@ -127,17 +127,16 @@ try {
 	await shot("03-网页搜索-鼠标停在最后一条.png");
 
 	await openPane("使用统计");
-	await pause(1800);
-	await shot("04-使用统计-30天.png");
-	await app.evaluate(`(() => {
-		const seg = [...document.querySelectorAll("[data-segment]")].find((b) => b.dataset.segment === "90");
-		if (seg) seg.click();
-	})()`);
-	// 半途拍一张：动画正在走，数字停在两个端点之间——那正是「不是跳过去的」这句话的样子。
-	await pause(140);
-	await shot("05-使用统计-切到90天的半途.png");
+	await pause(1200);
+	await app.evaluate(`document.querySelector('[data-usage-requests] > div:first-child [data-segment="30"]')?.click()`);
 	await pause(900);
-	await shot("06-使用统计-90天.png");
+	await shot("04-使用统计-30天.png");
+	await app.evaluate(`document.querySelector("[data-usage-request-kpis]")?.nextElementSibling?.querySelector('[data-segment="requests"]')?.click()`);
+	// 半途拍一张：柱子正在长，停在两个高度之间——那正是「不是跳过去的」这句话的样子。
+	await pause(140);
+	await shot("05-使用统计-切到请求的半途.png");
+	await pause(900);
+	await shot("06-使用统计-请求.png");
 
 	console.log("");
 } finally {

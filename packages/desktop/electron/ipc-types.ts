@@ -337,7 +337,7 @@ export interface PlumeApi {
 		 * Everything spent, by day and by model, read from the session logs.
 		 *
 		 * Cached between calls against each log's size and mtime, so this is expensive once and
-		 * cheap afterwards. The page does its own slicing; see `usage-aggregate.ts`.
+		 * cheap afterwards. The page does its own slicing; see `usage-requests.ts`.
 		 */
 		scan(): Promise<UsageScan>;
 		/** 这些日志在磁盘上占了多少，有几条会话，最早和最晚那条是哪天。 */

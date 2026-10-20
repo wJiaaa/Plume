@@ -147,12 +147,13 @@ async function openUsage(): Promise<string> {
 	await app.evaluate(`document.querySelector(".ly-sidebar-foot button").click()`);
 	await pause(600);
 	await app.evaluate(`[...document.querySelectorAll("nav button")].find((b) => b.innerText.trim() === "使用统计")?.click()`);
-	await d.until(`document.querySelector('[data-usage-dashboard="true"]')`, 30000);
-	// 数字是走过去的，等它停下。
-	await pause(1500);
+	await d.until(`document.querySelector('[data-usage-requests="true"]')`, 30000);
+	// 默认区间是「今天」，种的会话离零点近时会落在昨天；看全部才和日期无关。
+	await d.click('[data-usage-requests] > div:first-child [data-segment="all"]');
+	await pause(600);
 	return app.evaluate<string>(`(() => {
-		const label = [...document.querySelectorAll("div")].find((el) => el.children.length === 0 && el.textContent.trim() === "估算费用");
-		return label?.nextElementSibling?.textContent.trim() ?? "";
+		const tile = [...document.querySelector("[data-usage-request-kpis]").children].find((el) => el.firstElementChild?.textContent.trim() === "费用");
+		return tile?.children[1]?.textContent.trim() ?? "";
 	})()`);
 }
 
@@ -217,7 +218,7 @@ async function main(): Promise<void> {
 		console.log("【一】删会话之前，用量页的估算费用");
 		const before = await openUsage();
 		await screenshot("删除前的估算费用");
-		check("删除前的估算费用是两条会话之和 $1.75", before === "$1.75", before);
+		check("删除前的估算费用是两条会话之和 ≈$1.75", before === "≈$1.75", before);
 		await closeSettings();
 
 		console.log("\n【二】从右键菜单删掉一条会话");

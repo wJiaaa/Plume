@@ -76,11 +76,11 @@ try {
 	const usage = await ui<{ hints: string[]; marks: number }>(`
 		await openSettings("使用统计");
 		for (let i = 0; i < 100; i++) {
-			if (document.querySelector('[data-usage-dashboard="true"]')) break;
+			if (document.querySelector('[data-usage-requests="true"]')) break;
 			await wait(100);
 		}
 		await wait(600);
-		const board = document.querySelector('[data-usage-dashboard="true"]');
+		const board = document.querySelector('[data-usage-requests="true"]');
 		if (!board) return { hints: ["(用量页没画出来)"], marks: 0 };
 		/*
 		 * 按 data-ly-empty 找，不按 class 找。

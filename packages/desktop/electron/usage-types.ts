@@ -47,8 +47,39 @@ export interface UsageBucket {
 	cacheMiss?: UsageCacheMiss;
 }
 
+/**
+ * 一小时里、同一个供应商的同一个模型的请求，合在一起。用量页的单位。
+ *
+ * 不逐条下发：一个月一万多次请求，每次刷新整张表过一遍 IPC，而页面上没有一处要读单独某一次。
+ * 按小时合起来，「今天」能按小时画、任意区间能按天画，筛选的每一个维度也都还在键上。子智能体和
+ * 标题、摘要这类后台调用也在里面，只是不再单分一维——页面上没有按它们看的地方。
+ */
+export interface UsageRequestBucket {
+	/** `YYYY-MM-DD HH`, local. */
+	hour: string;
+	provider: string;
+	model: string;
+	requests: number;
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+	cost: number;
+	/** 查不到价的请求数：页面上的费用因此只能写「≈」。 */
+	unpriced: number;
+	/** 量得出生成速度的请求数，以及它们的输出 token 与生成耗时之和。见 `usage-scan.ts` 的 `MIN_STREAM_MS`。 */
+	timed: number;
+	timedOutput: number;
+	streamMs: number;
+	/** 量得出首字时间的请求数与总毫秒。 */
+	firstTokens: number;
+	firstTokenMs: number;
+	/** 同 `UsageBucket.cacheMiss`，按小时记，好让它也跟着页面上的区间和筛选走。 */
+	cacheMiss?: UsageCacheMiss;
+}
+
 /** One day, across every model. */
-export interface UsageDay {
+interface UsageDay {
 	day: string;
 	/** Conversations that said or heard anything that day. */
 	sessions: number;
@@ -59,6 +90,7 @@ export interface UsageDay {
 export interface UsageScan {
 	days: UsageDay[];
 	buckets: UsageBucket[];
+	requests: UsageRequestBucket[];
 	/** How many spend rows were read this time: what the cache saved is what this leaves out. */
 	scanned: number;
 }

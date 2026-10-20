@@ -147,11 +147,13 @@ test("an unknown alias has no fake prices and can be filled from a searched entr
 	assert.equal(filled && "catalogRef" in filled, false, "filling in is a one-off, not a link");
 });
 
-test("historical relay usage produces a nonzero bill and catalogue coverage", async (t) => {
+test("historical relay usage is priced from the catalogue", async (t) => {
 	await click(app, "nav button", "使用统计");
-	await until(app, `document.querySelector('[data-usage-dashboard="true"]')`, 900);
-	const visible = await app.evaluate<string>(`document.querySelector('[data-usage-dashboard="true"]').innerText`);
-	assert.match(visible, /\$1\.93/); assert.match(visible, /模型目录\s*100\.0%/);
-	assert.doesNotMatch(visible, /暂无价格/);
-	t.diagnostic(visible); await shot("relay-history-cost");
+	await until(app, `document.querySelector('[data-usage-requests="true"]')`, 900);
+	await click(app, '[data-usage-requests] > div:first-child [data-segment="all"]');
+	// 费用那一格：标签、读数、一行说明。查得到价，说明就是「估算」那句，不是「查不到价格」。
+	const cost = await app.evaluate<string[]>(`[...[...document.querySelector("[data-usage-request-kpis]").children].find((tile) => tile.firstElementChild.textContent === "费用").children].map((part) => part.textContent.trim())`);
+	assert.match(cost[1], /^≈\$1\.93$/, JSON.stringify(cost));
+	assert.equal(cost[2], "按记录价与目录价估算", JSON.stringify(cost));
+	t.diagnostic(JSON.stringify(cost)); await shot("relay-history-cost");
 });

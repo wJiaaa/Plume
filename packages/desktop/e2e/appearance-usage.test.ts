@@ -172,7 +172,7 @@ test("the welcome composer is a 672px column", async () => {
 });
 
 test("the usage page reports what is in the logs", async () => {
-	const page = await ui<{ tiles: string[]; hasBars: boolean; models: string[]; heading: string | null }>(`
+	const page = await ui<{ tiles: string[]; bars: number; series: string[]; heading: string | null }>(`
 		// Settings → 使用统计, the way it is reached: the settings door in the sidebar's footer.
 		const gear = document.querySelector("[data-ly-open-settings]");
 		if (gear) { click(gear); await wait(500); }
@@ -180,24 +180,31 @@ test("the usage page reports what is in the logs", async () => {
 		if (!nav) throw new Error("使用统计 nav item not found");
 		click(nav);
 		// The first scan reads every log; give it room.
-		await wait(2500);
+		for (let i = 0; i < 100 && !document.querySelector('[data-usage-requests="true"]'); i++) await wait(100);
+		// One reply is yesterday's and the page opens on today; widen the range to 全部.
+		click(document.querySelector('[data-usage-requests] > div:first-child [data-segment="all"]'));
+		await wait(400);
 
 		// 指标格按它的无障碍名字找，不按圆角类名：d1a93db6 把 rounded-[12px] 收成 rounded-xl 时这里就断过。
-		const tiles = [...document.querySelectorAll("[aria-label='用量指标']")].map((d) => label(d));
-		const bars = document.querySelectorAll("[data-ly-tip*='token']").length;
-		const models = [...document.querySelectorAll("div")]
-			.filter((d) => label(d).includes("Relay") && label(d).includes("%"))
-			.map((d) => label(d));
+		const tiles = [...(document.querySelector("[aria-label='用量指标']")?.children ?? [])].map((d) => label(d));
+		const bars = [...document.querySelectorAll("[data-bar-slot] rect")].filter((r) => r.getBoundingClientRect().height > 0).length;
+		const series = [...document.querySelectorAll("[data-usage-series]")].map((d) => label(d));
 		const headings = [...document.querySelectorAll("h1")].filter(el => el.checkVisibility({ visibilityProperty: true })).map(label).filter(Boolean);
-		return { tiles, hasBars: bars > 0, models, heading: headings.join(" / ") || null };
+		return { tiles, bars, series, heading: headings.join(" / ") || null };
 	`);
 
 	assert.equal(page.heading, "使用统计");
+	const [tokens, requests, cost, hit, speed] = page.tiles;
 	const joined = page.tiles.join(" | ");
-	assert.match(joined, /已处理 Token/, "the token metric is there");
-	assert.match(joined, /缓存命中/, "and the cache metric");
-	// 3000 input + 300 output across the two seeded replies.
-	assert.match(joined, /3,300|3\.3k/, `the seeded 3,300 tokens are reported: ${joined}`);
-	assert.ok(page.hasBars, "the daily chart drew bars with numbers on them");
-	assert.ok(page.models.some((m) => m.includes("grok-4.6")), `the model ranking names the model: ${page.models.join(" / ")}`);
+	// 1000 + 2000 input, 100 + 200 output across the two seeded replies; nothing cached.
+	assert.match(tokens ?? "", /^Token 3,300 输入 3,000 · 输出 300 · 缓存写入 0$/, joined);
+	// 3,300 fresh tokens over two requests.
+	assert.match(requests ?? "", /^请求 2 平均每次 1,650 Token$/, joined);
+	// Each reply recorded $0.01.
+	assert.match(cost ?? "", /^费用 ≈\$0\.02 按记录价与目录价估算$/, joined);
+	assert.match(hit ?? "", /^缓存命中率 0\.0% 缓存读取 0$/, joined);
+	// The fixture has no stream timing, so there is no speed to report — a dash, not 0.
+	assert.match(speed ?? "", /^输出速度 — 暂无计时$/, joined);
+	assert.equal(page.bars, 2, `one bar for yesterday, one for today: ${joined}`);
+	assert.ok(page.series.some((m) => m.startsWith("grok-4.6 · Relay")), `the series list names the model: ${page.series.join(" / ")}`);
 });

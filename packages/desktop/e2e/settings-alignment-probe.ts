@@ -8,7 +8,7 @@
  *
  *   1. 网页搜索那五条的圈要落在整条的中线上，而且鼠标移上去之后圈还要看得见——原来的圈是
  *      #2e2e2e，hover 底色是 #2a2a2a，差四级灰，等于消失；
- *   2. 使用统计换区间时，数字是走过去的而不是跳过去的。
+ *   2. 使用统计换指标时，柱子是长过去的而不是跳过去的。
  *
  * 用法：node --experimental-strip-types e2e/settings-alignment-probe.ts
  */
@@ -206,47 +206,53 @@ try {
 		check(typed.value.length > 8, "输入框吃掉了输入——受控组件的本地草稿没接上");
 	}
 
-	// ---- 3. 使用统计换区间时数字是走过去的 --------------------------------
-	note("\n【3】使用统计换区间：数字走过去，不是跳过去");
+	// ---- 3. 使用统计换指标时柱子是长过去的 --------------------------------
+	note("\n【3】使用统计换指标：柱子长过去，不是跳过去");
 	check(await openPane("使用统计"), "导航里点不到「使用统计」");
 	await pause(1500);
 
-	const travel = await app.evaluate<{ samples: string[]; changed: number; before: string; after: string } | null>(`(async () => {
-		const readCost = () => {
-			const card = document.querySelector("[data-usage-dashboard]");
-			if (!card) return null;
-			const big = card.querySelector(".text-\\\\[32px\\\\]");
-			return big ? big.innerText.trim() : null;
-		};
-		const before = readCost();
-		if (before === null) return null;
-		const seg = [...document.querySelectorAll("[data-segment]")].find((b) => b.dataset.segment === "7");
-		if (!seg) return null;
+	const travel = await app.evaluate<{ samples: number[]; changed: number; before: number; after: number } | null>(`(async () => {
+		const page = document.querySelector("[data-usage-requests]");
+		if (!page) return null;
+		// 看 7 天：按天画，每格的键在换指标前后不变，柱子才是同一个元素、才有过渡可走。
+		page.querySelector(':scope > div:first-child [data-segment="7"]')?.click();
+		await new Promise((done) => setTimeout(done, 600));
+		const chart = page.querySelector("[data-usage-request-kpis]").nextElementSibling;
+		const slot = () => [...chart.querySelectorAll("[data-bar-slot]")].at(-1);
+		// 量屏幕上的盒子，不读 style：过渡走的是计算值。
+		const height = () => Math.round((slot()?.getBoundingClientRect().height ?? 0) * 10) / 10;
+		const before = height();
+		/*
+		 * 种的账越往前越多，按 Token 今天那根最矮；每天的请求数一样，换成「请求」以后七根一般高。
+		 * 量最后一格，它从最矮长到顶，一定要变。最老那格在两种口径下都顶格，量它说明不了什么；
+		 * Token 和费用成比例，在它俩之间换也一样。
+		 */
+		const seg = chart.querySelector('[data-segment="requests"]');
+		if (!seg || !slot()) return null;
 		seg.click();
 		/*
 		 * 按绘制帧采样，不是按定时器。
 		 *
-		 * 定时器会漏掉中间帧，而中间帧正是这里唯一要证明的东西——数字有没有经过两个端点之间的值。
+		 * 定时器会漏掉中间帧，而中间帧正是这里唯一要证明的东西——高度有没有经过两个端点之间的值。
 		 */
 		const samples = [];
 		await new Promise((done) => {
 			let frames = 0;
 			const tick = () => {
-				const now = readCost();
-				if (now !== null && samples[samples.length - 1] !== now) samples.push(now);
+				const now = height();
+				if (samples[samples.length - 1] !== now) samples.push(now);
 				if (++frames < 40) requestAnimationFrame(tick); else done();
 			};
 			requestAnimationFrame(tick);
 		});
-		return { samples, changed: samples.length, before, after: readCost() };
+		return { samples, changed: samples.length, before, after: height() };
 	})()`);
-	if (!travel) {
-		note("  这台机器上没有可读的用量数据，跳过——需要 ~/.plume 里有会话记录");
-	} else {
-		note(`  ${travel.before} → ${travel.after}，中间经过 ${travel.changed} 个不同的值`);
+	if (!travel) check(false, "用量页上没找到请求图的柱子");
+	else {
+		note(`  今天那格 ${travel.before}px → ${travel.after}px，中间经过 ${travel.changed} 个不同的值`);
 		note(`  取样：${travel.samples.slice(0, 8).join(" → ")}${travel.samples.length > 8 ? " → …" : ""}`);
-		if (travel.before === travel.after) note("  （两个区间的数一样，这一项说明不了什么）");
-		else check(travel.changed >= 4, `换区间时数字是跳过去的：只经过 ${travel.changed} 个值`);
+		check(travel.before !== travel.after, "换成「请求」以后今天那格的高度没变——种的账没让它变，这一项说明不了什么");
+		check(travel.changed >= 4, `换指标时柱子是跳过去的：只经过 ${travel.changed} 个值`);
 	}
 
 	note("");
