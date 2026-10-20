@@ -1880,6 +1880,8 @@ export const en = {
 	"plan.revise": "Revise…",
 	"plan.accept": "Accept",
 	"plan.acceptAuto": "Accept and turn on auto mode",
+	"plan.handoff": "Run in a new session",
+	"plan.handoffTip": "Save the plan to a file and hand it to a new session to carry out; this one stops here and stays around to answer its questions",
 	"plan.revisePlaceholder": "What should change?",
 	"plan.sendRevision": "Revise",
 	"composer.binaryFile": "{name} (binary)",

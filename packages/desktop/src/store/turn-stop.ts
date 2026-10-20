@@ -22,7 +22,14 @@ export function wasCutShort(transcript: readonly Message[]): boolean {
 	 * the tools all ran, nothing is unanswered, and the old rules below therefore called it
 	 * complete — while the one thing the turn was for, the answer, never arrived.
 	 */
-	if (messages[messages.length - 1]?.role === "toolResult") return true;
+	if (messages[messages.length - 1]?.role === "toolResult") {
+		/*
+		 * 除非是工具自己结束了这一轮（`terminate`）：计划交给新会话、不带话地拒绝计划、归档自己。循环有意
+		 * 不再要正文，没有回答不是没说完——这时给「继续」，交出计划的会话就会把交出去的活在原地再做一遍。
+		 */
+		const asked = messages.findLastIndex((message) => message.role === "assistant");
+		return !messages.slice(asked + 1).some((message) => message.role === "toolResult" && message.terminate === true);
+	}
 
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const message = messages[i];

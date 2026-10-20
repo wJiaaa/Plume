@@ -2067,6 +2067,8 @@ export const zhCN = {
 	"plan.revise": "修改…",
 	"plan.accept": "接受",
 	"plan.acceptAuto": "接受并开启自动模式",
+	"plan.handoff": "在新会话里执行",
+	"plan.handoffTip": "计划存成文件，交给一个新会话去实施；这个会话停在这里，留着回答那边的提问",
 	"plan.revisePlaceholder": "说说要怎么改",
 	"plan.sendRevision": "修订",
 	"composer.binaryFile": "{name}（二进制文件）",

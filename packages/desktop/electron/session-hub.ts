@@ -29,6 +29,7 @@ import { createPeerRouter, lastReply } from "./session-peers.ts";
 import { createPeerTools } from "./peer-tools.ts";
 import { archiveAfterTurn, createSessionOpsTools } from "./session-ops.ts";
 import { reportBackAfterFirstTurn } from "./session-report-back.ts";
+import { handOffApprovedPlans } from "./plan-handoff.ts";
 import { bringBackWorktree, reclaimWorktree } from "./worktree-lifecycle.ts";
 
 export interface HubDeps {
@@ -122,6 +123,17 @@ const reportsBack = reportBackAfterFirstTurn({
 export function setReportBack(sessionId: string, on: boolean): Promise<boolean> {
 	return reportsBack.set(sessionId, on);
 }
+/** 计划审批卡上的「在新会话里执行」：主会话交出计划后，在它的项目里开一个只带着计划的会话——见 `plan-handoff.ts`。 */
+const planHandoffs = handOffApprovedPlans({
+	meta: (id) => sessions.get(id)?.meta,
+	start: async (parent, toolCallId, title, prompt) => {
+		// 和建议卡片的「开始」同一条路（渲染进程的 `startSession`）：项目而不是 worktree 目录、默认模型、建完就开第一轮。
+		const content = [{ type: "text" as const, text: prompt }];
+		const saved = await createSession(parent.worktree?.project ?? parent.cwd, deps.settings().defaultModelId ?? "", { content, spawnedFrom: { sessionId: parent.id, toolCallId }, title }, parent.project);
+		await promptSession(saved.meta.id, content, { resumePending: true });
+	},
+	failed: (parentId, message) => broadcast(parentId, { type: "notice", level: "error", message }),
+});
 /** 和 `peerTools` 一样每个会话共用一份：工具本身不带状态，是谁调的看 `ctx.sessionId`。 */
 const sessionOps = createSessionOpsTools({ archiveAfterTurn: (id) => archives.request(id) });
 
@@ -302,6 +314,7 @@ export function broadcast(sessionId: string, event: AgentEvent): void {
 	// After the windows have the event: they hear the turn end before they hear it was archived.
 	archives.observe(sessionId, event);
 	reportsBack.observe(sessionId, event);
+	planHandoffs.observe(sessionId, event);
 }
 
 export async function getOrCreateSession(cwd: string, _modelId: string, project?: string): Promise<AgentSession> {

@@ -257,6 +257,10 @@ export interface ApprovedPlan {
 	plan: string;
 	/** 人批准时附上的注意事项（多是在计划上划线留的评论）：不改计划，执行时照着做。 */
 	notes?: string;
+	/** 批准时写出的计划文件，绝对路径，写完不再改：交给别的会话的就是这一份。宿主没有临时目录时没有。 */
+	file?: string;
+	/** 人选了「在新会话里执行」：实施在另一个会话里，这个会话不再执行它。 */
+	handoff?: true;
 	approvedAt: number;
 }
 

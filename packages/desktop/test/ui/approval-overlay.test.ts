@@ -305,9 +305,9 @@ test("a pending question replaces the thinking mutter with the dashed waiting li
  * 正文画成 `<pre>` 时，人读到的是一堆 `##` 和 `-`。
  */
 const PLAN_DETAIL = "# 登录换成 OAuth\n\n## 方案\n换成 OAuth\n\n## 改动\n- `src/login.ts`：读登录模块\n- `src/oauth.ts`：换成 OAuth\n- `test/oauth.test.ts`：补测试";
-const planApproval = (id = "plan") => ({ id, kind: "interactive" as const, subject: "submit_plan", title: "审批计划", detail: PLAN_DETAIL, options: ["批准，开始执行", "要改"], allowCustomInput: true, selectionMode: "single" as const, allowSkip: false });
+const planApproval = (id = "plan", options = ["批准，开始执行", "要改"]) => ({ id, kind: "interactive" as const, subject: "submit_plan", title: "审批计划", detail: PLAN_DETAIL, options, allowCustomInput: true, selectionMode: "single" as const, allowSkip: false });
 
-async function planCard(id: string, permissionMode: "ask" | "auto") {
+async function planCard(id: string, permissionMode: "ask" | "auto", options?: string[]) {
 	const { planMarkdown } = await import("../../src/features/conversation/rows.tsx");
 	const { providePlanOpener } = await import("../../src/app/plan-opener.ts");
 	const { DEFAULT_SETTINGS } = await import("@plume/core");
@@ -316,7 +316,7 @@ async function planCard(id: string, permissionMode: "ask" | "auto") {
 	const opened: (string | undefined)[] = [];
 	Object.defineProperty(window, "plume", { configurable: true, value: { agent: { approve: async (_session: string, _id: string, decision: unknown) => { answered.push(decision); } } } });
 	providePlanOpener((screen) => opened.push(screen));
-	useApp.setState({ activeSessionId: "owner", approvals: [planApproval(id)], settings: { ...DEFAULT_SETTINGS, permissionMode }, saveSettings: async (settings) => { saved.push(settings.permissionMode); } });
+	useApp.setState({ activeSessionId: "owner", approvals: [planApproval(id, options)], settings: { ...DEFAULT_SETTINGS, permissionMode }, saveSettings: async (settings) => { saved.push(settings.permissionMode); } });
 	const render = () => mount(h(LayoutProvider, { children: h(ApprovalOverlay, { renderPlan: planMarkdown }) }));
 	return { render, answered, saved, opened, release: () => providePlanOpener(null) };
 }
@@ -406,6 +406,23 @@ test("accepting a plan with comments sends them along as a note on the approval"
 		assert.equal(view.find('[data-plan-action="accept"]').getAttribute("data-ly-tip"), translate("plan.notesOnAccept", { n: 1 }));
 		await click(view.find('[data-plan-action="accept"]'));
 		assert.deepEqual(card.answered, [{ answer: "批准，开始执行", note: "> 补测试\n\n只补回调那一条" }]);
+	} finally { card.release(); await view.unmount(); useApp.setState(previous, true); }
+});
+
+test("在新会话里执行：core 给了这一项才画，点了交出这一项，评论一起带上", async () => {
+	const { usePlanReview } = await import("../../src/store/plan-review.ts");
+	const { PLAN_HANDOFF } = await import("@plume/core/plan-view");
+	const previous = useApp.getState();
+	const card = await planCard("plan-handoff", "auto", ["批准，开始执行", PLAN_HANDOFF, "要改"]);
+	const view = await card.render();
+	try {
+		assert.deepEqual(view.all("[data-plan-action]").map((button) => button.getAttribute("data-plan-action")), ["reject", "revise", "handoff", "accept"]);
+		assert.equal(view.find('[data-plan-action="handoff"]').getAttribute("data-ly-tip"), translate("plan.handoffTip"));
+		// 有评论时卡片换成修订那一排，这一项也还在：评论把「修订」顶成主按钮，别的路一条不少。
+		await act(async () => { usePlanReview.getState().add("owner", { quote: "补测试", start: 20, end: 23, text: "只补回调那一条" }); });
+		assert.deepEqual(view.all("[data-plan-action]").map((button) => button.getAttribute("data-plan-action")), ["reject", "handoff", "accept"]);
+		await click(view.find('[data-plan-action="handoff"]'));
+		assert.deepEqual(card.answered, [{ answer: PLAN_HANDOFF, note: "> 补测试\n\n只补回调那一条" }]);
 	} finally { card.release(); await view.unmount(); useApp.setState(previous, true); }
 });
 

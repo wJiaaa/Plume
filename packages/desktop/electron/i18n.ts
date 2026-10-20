@@ -28,6 +28,12 @@ const zhCN = {
 	// A side chat was asked for beside a conversation that is gone (deleted while it was being opened).
 	"sessions.sideParentGone": "这个侧边聊天挂着的会话已经没有了。",
 	"mcp.promptNotFound": "没有连着的 MCP 服务器提供 /{name}。",
+	// 计划审批卡上「在新会话里执行」开出来的会话，第一条消息就是这几行（`plan-handoff.ts`）。
+	"planHandoff.title": "按已批准的计划实施：{title}",
+	"planHandoff.file": "- 计划文件：{file}。以它为准，动手前完整读一遍。",
+	"planHandoff.scope": "- 授权范围：按计划修改代码并完成计划里的验证。计划没写到的提交、推送、发布或改动外部状态，先问人。",
+	"planHandoff.questions": "- 有疑问：能从代码查到的自己查；计划没定下的意图和取舍，用 ask_session 问「{address}」，它会等到回答——那里有这份计划的完整讨论。找不到这个会话就停下来问人，不要猜。",
+	"planHandoff.failed": "执行计划的新会话没能开出来：{reason}。计划保存在 {file}。",
 	"sessions.unavailableTitle": "Plume 打不开会话记录",
 	"sessions.unavailable": "会话库 {path} 打不开：{reason}\n\nPlume 没有动这个文件。它可能正被另一个 Plume 占用，或者是更新版本的 Plume 写的。先退出其他 Plume 再打开；仍然打不开，就把 sessions.db 连同旁边同名的 -wal、-shm 文件一起挪到别处，Plume 会新建一个。",
 	// System notifications. `detail` joins a status line to what the agent asked, so each language
@@ -175,6 +181,11 @@ export const NATIVE_CATALOGS: Record<NativeLocale, NativeCatalog> = {
 		"terminal.tab": "Terminal {n}",
 		"sessions.sideParentGone": "The conversation this side chat belongs to is gone.",
 		"mcp.promptNotFound": "No connected MCP server offers /{name}.",
+		"planHandoff.title": "Carry out the approved plan: {title}",
+		"planHandoff.file": "- Plan file: {file}. It is the authority; read all of it before you start.",
+		"planHandoff.scope": "- Scope: change the code as the plan says and run the checks it lists. Anything it does not cover — committing, pushing, releasing, changing anything outside this machine — ask the person first.",
+		"planHandoff.questions": "- Questions: look up what the code can tell you yourself. For intent or trade-offs the plan leaves open, ask “{address}” with ask_session, which waits for the answer — that session holds the whole discussion behind the plan. If it cannot be found, stop and ask the person; do not guess.",
+		"planHandoff.failed": "The session to carry out the plan could not be started: {reason}. The plan is saved at {file}.",
 		"sessions.unavailableTitle": "Plume can't open your conversations",
 		"sessions.unavailable": "The session database at {path} would not open: {reason}\n\nPlume has left the file as it is. Another copy of Plume may have it open, or a newer version of Plume may have written it. Quit any other copy and try again. If it still won't open, move sessions.db somewhere else together with the -wal and -shm files beside it, and Plume will start a new one.",
 		"notification.done": "“{title}” finished", "notification.doneUntitled": "Task finished",

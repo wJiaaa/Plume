@@ -7,15 +7,32 @@
  * 审批走 `ask_user` 同一条交互式通道：它在三档权限下都会问人，full 档也不例外。
  */
 
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { errorResult } from "../tools/result.ts";
 import type { ApprovedPlan } from "../types/message.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { inPlanMode, PLAN_MODE_KEY } from "./plan-mode.ts";
-import { normalizePlan, planTitle, renderPlan, SUBMIT_PLAN_TOOL_NAME } from "./plan-view.ts";
+import { normalizePlan, PLAN_HANDOFF, planTitle, renderPlan, SUBMIT_PLAN_TOOL_NAME, type PlanDraft } from "./plan-view.ts";
 
-/** 卡片上的两个选项。自由输入也接受：写了什么，什么就是打回的理由。 */
+/** 卡片上的选项，另有 `PLAN_HANDOFF`。自由输入也接受：写了什么，什么就是打回的理由。 */
 export const PLAN_APPROVE = "批准，开始执行";
 export const PLAN_REVISE = "要改";
+
+/**
+ * 批准的计划写成一个文件，放在会话临时目录里：不在仓库里，别的会话也读得到。
+ *
+ * ADR-0044 原本不写文件（历史里已经有一份，再写是两处真相），那时计划只在一个会话里用。交给新会话
+ * 执行时它要跨过会话的边界，文件就是那个载体。两处真相的问题按分工解决：会话里以历史为准，文件
+ * 只在批准时写一次、按批准时间命名、之后不改——它是交出去的那份定稿，后面再批一份是另一个文件。
+ */
+async function savePlan(scratchDir: string, plan: PlanDraft, approvedAt: number): Promise<string> {
+	const directory = join(scratchDir, "plans");
+	await mkdir(directory, { recursive: true });
+	const file = join(directory, `plan-${approvedAt}.md`);
+	await writeFile(file, `${renderPlan(plan)}\n`, "utf8");
+	return file;
+}
 
 interface SubmitPlanArgs {
 	plan: string;
@@ -45,19 +62,36 @@ export const submitPlanTool: Tool<SubmitPlanArgs> = {
 		if (typeof plan === "string") return errorResult(plan);
 
 		const rendered = renderPlan(plan);
+		// 交给新会话靠的是计划文件，写不出文件的宿主（没有临时目录）就不给这一项。
+		const handoffOffered = ctx.scratchDir !== undefined;
 		const decision = await ctx.requestApproval({
 			kind: "interactive", title: "审批计划", detail: rendered, subject: SUBMIT_PLAN_TOOL_NAME,
-			options: [PLAN_APPROVE, PLAN_REVISE], allowCustomInput: true, selectionMode: "single", allowSkip: false,
+			options: handoffOffered ? [PLAN_APPROVE, PLAN_HANDOFF, PLAN_REVISE] : [PLAN_APPROVE, PLAN_REVISE], allowCustomInput: true, selectionMode: "single", allowSkip: false,
 		});
 
-		if (typeof decision === "object" && "answer" in decision && decision.answer === PLAN_APPROVE) {
+		if (typeof decision === "object" && "answer" in decision && (decision.answer === PLAN_APPROVE || (handoffOffered && decision.answer === PLAN_HANDOFF))) {
+			const handoff = decision.answer === PLAN_HANDOFF;
 			// 批准时附上的评论是执行时的注意事项，不是打回：计划照批，评论随计划一起留下（压缩后也在）。
 			const notes = decision.note;
-			const approved: ApprovedPlan = { ...plan, ...(notes ? { notes } : {}), approvedAt: Date.now() };
+			const approvedAt = Date.now();
+			const draft: PlanDraft = { ...plan, ...(notes ? { notes } : {}) };
+			const file = ctx.scratchDir ? await savePlan(ctx.scratchDir, draft, approvedAt) : undefined;
+			const approved: ApprovedPlan = { ...draft, ...(file ? { file } : {}), ...(handoff ? { handoff: true } : {}), approvedAt };
 			// 开关就地关掉：这一轮剩下的调用走的是同一张工具表，包着的 `execute` 从此放行。
 			ctx.state.set(PLAN_MODE_KEY, false);
+			if (handoff) {
+				/*
+				 * 实施归新会话（宿主看到 `handoff` 去开），这里就此停下：接着跑的话两个会话在同一份计划上
+				 * 各改各的。之后这个会话的用处是回答那边关于「为什么这么定」的提问。
+				 */
+				return {
+					content: [{ type: "text", text: `The user approved the plan and handed it to a new session, which carries it out from ${file}. Do not carry it out here. That session may message you about intent or trade-offs the plan leaves open; answer from this conversation.` }],
+					details: { kind: "plan", plan: approved },
+					terminate: true,
+				};
+			}
 			return {
-				content: [{ type: "text", text: `The user approved the plan${notes ? " with notes" : ""}. Plan mode is off; every tool is available again.\n\n${notes ? renderPlan(approved) : rendered}\n\nCarry it out now. If it takes three or more steps, break it into a task list with \`todo_write\` alongside your first action.${notes ? " The notes are the user's comments on this plan: follow them as you carry it out." : ""}` }],
+				content: [{ type: "text", text: `The user approved the plan${notes ? " with notes" : ""}. Plan mode is off; every tool is available again.${file ? ` The plan is saved at ${file}.` : ""}\n\n${notes ? renderPlan(approved) : rendered}\n\nCarry it out now. If it takes three or more steps, break it into a task list with \`todo_write\` alongside your first action.${notes ? " The notes are the user's comments on this plan: follow them as you carry it out." : ""}` }],
 				details: { kind: "plan", plan: approved },
 			};
 		}

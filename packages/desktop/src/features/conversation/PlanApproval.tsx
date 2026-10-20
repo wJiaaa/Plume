@@ -6,12 +6,13 @@
  * 业务提问那套选项列表——四个动作各是一个按钮，键盘直达：Esc 修改，⌘↵ 主按钮，⇧⌘↵ 接受。窄窗口的右栏
  * 一次只摆一格，开面板会盖住这张卡，所以那时正文仍画在卡里。
  *
- * 回答还是 core `submit_plan` 认的那几种：接受是第一个选项（`PLAN_APPROVE`），修改是带内容的自由回答，
- * 拒绝是 `reject`——core 据此停下这一轮、计划模式留着，等人说下一步。
+ * 回答还是 core `submit_plan` 认的那几种：接受是第一个选项（`PLAN_APPROVE`），在新会话里执行是 `PLAN_HANDOFF`，
+ * 修改是带内容的自由回答，拒绝是 `reject`——core 据此停下这一轮、计划模式留着，等人说下一步。
  */
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ApprovalDecision } from "@plume/core";
+import { PLAN_HANDOFF } from "@plume/core/plan-view";
 import { useI18n } from "../../i18n/index.ts";
 import { useApp, type AppState } from "../../store/index.ts";
 import { planFeedback, usePlanReview } from "../../store/plan-review.ts";
@@ -63,6 +64,8 @@ export function PlanApproval({ request, sessionId, compact, renderPlan, openPlan
 	 * 降回自动——都不是人点它时想要的。权限档是全局设置，和输入框旁那颗芯片改的是同一处。
 	 */
 	const offerAuto = settings?.permissionMode === "ask";
+	// core 写不出计划文件时（宿主没有临时目录）不给这一项；按卡片上实际有的选项画。
+	const offerHandoff = request.options?.some((option) => (typeof option === "string" ? option : option.label) === PLAN_HANDOFF) ?? false;
 
 	// 和业务提问一样，卡片一出来焦点就在它身上，快捷键不用先点一下。
 	useEffect(() => { cardRef.current?.focus(); }, []);
@@ -91,6 +94,9 @@ export function PlanApproval({ request, sessionId, compact, renderPlan, openPlan
 	// 先换档再放行：批准那一刻 agent 就接着往下跑，第一步的工具调用该已经按自动档判。
 	const acceptAuto = () => void answer(approval, async () => { if (settings) await saveSettings({ ...settings, permissionMode: "auto" }); });
 	const reject = () => void answer("reject");
+	// 评论照样随着交出去：它们写进计划文件末尾的「执行时注意」，新会话读得到。
+	const handoff = () => void answer({ answer: PLAN_HANDOFF, ...(notes ? { note: notes } : {}) });
+	const handoffButton = offerHandoff && <Button variant="soft" disabled={pending} onClick={handoff} label={t("plan.handoffTip")} data-plan-action="handoff">{t("plan.handoff")}</Button>;
 	// 有评论就是在改：评论列在卡上，下面接着写，主按钮是「修订」。没有评论时按 Esc 也进这一态。
 	const editing = revising || comments.length > 0;
 	const feedback = planFeedback(comments, text);
@@ -176,6 +182,7 @@ export function PlanApproval({ request, sessionId, compact, renderPlan, openPlan
 							? <Button variant="soft" disabled={pending} onClick={reject} data-plan-action="reject">{t("plan.reject")}</Button>
 							: <Button variant="soft" disabled={pending} onClick={cancelRevise}>{t("common.cancel")}<Keys keys={["Esc"]} /></Button>}
 						<span className="flex-1" />
+						{handoffButton}
 						<Button variant="soft" disabled={pending} onClick={accept} label={notesTip} data-plan-action="accept">{t("plan.accept")}<Keys keys={["⌘", "↩"]} /></Button>
 						<Button type="submit" variant="primary" disabled={pending || !feedback} data-plan-send-revision="">{t("plan.sendRevision")}<Keys keys={["↩"]} /></Button>
 					</div>
@@ -185,6 +192,7 @@ export function PlanApproval({ request, sessionId, compact, renderPlan, openPlan
 					<Button variant="soft" disabled={pending} onClick={reject} data-plan-action="reject">{t("plan.reject")}</Button>
 					<Button variant="soft" disabled={pending} onClick={() => setRevising(true)} data-plan-action="revise">{t("plan.revise")}<Keys keys={["Esc"]} /></Button>
 					<span className="flex-1" />
+					{handoffButton}
 					<Button variant={offerAuto ? "soft" : "primary"} disabled={pending} onClick={accept} data-plan-action="accept">
 						{t("plan.accept")}<Keys keys={offerAuto ? ["⇧", "⌘", "↩"] : ["⌘", "↩"]} />
 					</Button>

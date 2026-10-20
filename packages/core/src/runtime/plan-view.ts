@@ -9,6 +9,12 @@ import type { ApprovedPlan, Message } from "../types/message.ts";
 
 export const SUBMIT_PLAN_TOOL_NAME = "submit_plan";
 
+/**
+ * 审批卡上的「在新会话里执行」。写在这里而不是和另外两个选项一起放在 `plan-tool.ts`：
+ * 卡片要按它认出这颗按钮该不该画、点了回答什么，而渲染进程只能从这个文件拿值。
+ */
+export const PLAN_HANDOFF = "批准，在新会话里执行";
+
 export type PlanDraft = Omit<ApprovedPlan, "approvedAt">;
 
 /** 计划在转录、审批卡片、计划面板和压缩快照里长的样子。 */
@@ -21,6 +27,27 @@ export function planTitle(plan: PlanDraft): string {
 	const lines = plan.plan.split("\n").map((line) => line.trim()).filter(Boolean);
 	const heading = lines.find((line) => line.startsWith("#"));
 	return (heading ?? lines[0] ?? "").replace(/^#+\s*/, "");
+}
+
+const SUMMARY_HEADINGS = new Set(["概要", "摘要", "概述", "summary", "overview", "tl;dr"]);
+const SUMMARY_MAX = 300;
+
+/**
+ * 计划的概要：叫「概要」「摘要」「Summary」的那一节的第一段，没有这一节就取标题下面的第一段。
+ *
+ * 交给新会话时放在计划文件路径前面，让它先知道要做的是什么。只取一段、截到三百字：全文在文件里，
+ * 这里再抄一份就是两处可能对不上的计划。
+ */
+export function planSummary(plan: PlanDraft): string {
+	const lines = plan.plan.split("\n").map((line) => line.trim());
+	const isHeading = (line: string) => line.startsWith("#");
+	const named = lines.findIndex((line) => isHeading(line) && SUMMARY_HEADINGS.has(line.replace(/^#+\s*/, "").replace(/[:：]\s*$/, "").toLowerCase()));
+	let at = named >= 0 ? named + 1 : lines.findIndex(isHeading) + 1;
+	while (at < lines.length && !lines[at]) at++;
+	const paragraph: string[] = [];
+	for (; at < lines.length && lines[at] && !isHeading(lines[at]); at++) paragraph.push(lines[at]);
+	const text = paragraph.join(" ");
+	return text.length > SUMMARY_MAX ? `${text.slice(0, SUMMARY_MAX)}…` : text;
 }
 
 /** 模型交上来的参数整理成计划；不成形时返回说给模型听的那句错误。 */

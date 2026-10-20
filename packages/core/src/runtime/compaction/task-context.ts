@@ -60,7 +60,10 @@ export function formatTaskContext(context: CompactionContext, requestBudget = 60
 		context.originalRequest && context.originalRequest !== context.latestRequest ? `Original user request (historical scope):\n${context.originalRequest}` : "",
 		shown.length ? `Intermediate user requests, oldest first:\n${shown.join("\n\n")}` : "",
 		omitted ? `${omitted} earlier user request excerpts omitted from this window. Their constraints may still apply; use recall to check the original wording before assuming permission or changing scope.` : "",
-		context.plan ? `User-approved plan (execute it; re-plan only if the user says so):\n${renderPlan(context.plan)}` : "",
+		// 交给新会话的那份不能在这里写成「执行它」：压缩以后这个会话会把已经交出去的活再做一遍。
+		context.plan ? `${context.plan.handoff
+			? `User-approved plan, handed to another session that carries it out${context.plan.file ? ` from ${context.plan.file}` : ""} (do not carry it out here; answer that session's questions about it):`
+			: `User-approved plan (execute it; re-plan only if the user says so)${context.plan.file ? `, saved at ${context.plan.file}` : ""}:`}\n${renderPlan(context.plan)}` : "",
 		context.todos !== undefined ? `Latest recorded task list:\n${context.todos.length ? context.todos.map((todo) => `[${todo.status}] ${todo.content}`).join("\n") : "No active task list; the previous list was cleared."}` : "",
 	].filter(Boolean);
 	if (!facts.length) return "";

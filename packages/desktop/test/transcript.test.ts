@@ -158,6 +158,23 @@ test("a turn stopped between a tool result and the reply counts as cut short", (
 	assert.equal(wasCutShort(complete), false);
 });
 
+test("a tool that ended the turn itself is not cut short, even beside a sibling call", () => {
+	// 计划交给新会话时停在这里：给「继续」的话，交出计划的会话会把交出去的活原地再做一遍。
+	const messages = [
+		{ role: "user", content: [{ type: "text", text: "出个计划" }], timestamp: 1 },
+		{
+			role: "assistant",
+			content: [{ type: "toolCall", id: "p1", name: "submit_plan", arguments: {} }, { type: "toolCall", id: "c1", name: "read", arguments: {} }],
+			stopReason: "toolUse",
+			timestamp: 2,
+		},
+		{ role: "toolResult", toolCallId: "p1", toolName: "submit_plan", content: [], terminate: true, timestamp: 3 },
+		{ role: "toolResult", toolCallId: "c1", toolName: "read", content: [], timestamp: 3 },
+	] as unknown as Message[];
+	assert.equal(wasCutShort(messages), false);
+	assert.equal(howItStopped(messages, "done"), null);
+});
+
 test("ticking the plan after the answer, when asked, is a finished turn; ticking it unasked and stopping is not", () => {
 	const tick = [
 		{ role: "assistant", content: [{ type: "toolCall", id: "t1", name: "todo_write", arguments: { todos: [] } }], stopReason: "toolUse", timestamp: 4 },
