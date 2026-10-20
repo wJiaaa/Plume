@@ -38,6 +38,7 @@ import { plumeHome } from "../session/store.ts";
 import { commandDialects, commandShell, dialectsOf, home } from "../platform.ts";
 import type { ToolContext } from "../types/tool.ts";
 import { displayPath, toAbsolute } from "./paths.ts";
+import { DECLINED } from "./result.ts";
 
 // 路径的各种写法（`~`、Git Bash 的 `/c/…`、PowerShell 的 `~\`）在 `paths.ts` 解析一次，读写两侧共用。
 export { toAbsolute, windowsSpelling } from "./paths.ts";
@@ -453,7 +454,7 @@ async function askForRead(
 		subject: readGrantSubject(grant),
 	});
 	if (decision === "once" || decision === "always") return { ok: true };
-	return { ok: false, message: `用户拒绝了这次读取：${shown}` };
+	return { ok: false, message: `用户拒绝了这次读取：${shown}。${DECLINED}` };
 }
 
 /** Whether to treat the path as a directory for grant purposes; a missing path is not one. */

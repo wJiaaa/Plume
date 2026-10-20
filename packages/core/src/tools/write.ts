@@ -1,5 +1,5 @@
 import { realpath, stat } from "node:fs/promises";
-import { errorResult } from "./result.ts";
+import { declinedResult, errorResult } from "./result.ts";
 import type { Tool, ToolResult } from "../types.ts";
 import { withTextFile } from "./file-write.ts";
 import { computeDiff, formatDiff } from "./diff.ts";
@@ -93,7 +93,7 @@ export const writeTool: Tool<WriteArgs> = {
 						detail: formatDiff(diff, shown),
 						subject: absolute,
 					});
-					if (decision !== "once" && decision !== "always") return errorResult("The user rejected this write.");
+					if (decision !== "once" && decision !== "always") return declinedResult("The user rejected this write.");
 				}
 
 				const { changeId, stamp: writtenStamp } = await write(written);

@@ -17,6 +17,7 @@
  */
 
 import type { SandboxMode } from "../sandbox/policy.ts";
+import { DECLINED } from "./result.ts";
 
 /**
  * What a mode may be widened to. Absent keys cannot escalate at all.
@@ -133,7 +134,7 @@ export async function approveEscalation(
 
 	const decision = await ask(justification, requested as SandboxMode);
 	if (decision !== "once" && decision !== "always") {
-		throw new EscalationError(`用户拒绝了把这条${subject}提权到「${MODE_LABEL[requested as SandboxMode]}」。`);
+		throw new EscalationError(`用户拒绝了把这条${subject}提权到「${MODE_LABEL[requested as SandboxMode]}」。${DECLINED}`);
 	}
 	return requested as SandboxMode;
 }

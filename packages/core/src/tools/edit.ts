@@ -16,7 +16,7 @@
  * read that names its window.
  */
 
-import { errorResult } from "./result.ts";
+import { declinedResult, errorResult } from "./result.ts";
 import type { Tool, ToolResult } from "../types.ts";
 import { withTextFile } from "./file-write.ts";
 import { computeDiff, formatDiff, type FileDiff } from "./diff.ts";
@@ -111,7 +111,7 @@ export const editTool: Tool<EditArgs> = {
 						detail: formatDiff(diff, shown),
 						subject: absolute,
 					});
-					if (decision !== "once" && decision !== "always") return errorResult("The user rejected this edit.");
+					if (decision !== "once" && decision !== "always") return declinedResult("The user rejected this edit.");
 				}
 
 				const written = await write(encodeText(after, layout));

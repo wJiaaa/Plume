@@ -11,7 +11,7 @@ import {
 	sandboxDenialMarker,
 	validateEscalationArgs,
 } from "./escalation.ts";
-import { errorResult } from "./result.ts";
+import { declinedResult, errorResult } from "./result.ts";
 import { OutputBuffer } from "./bash-output.ts";
 import { FRESH_RESULT_MAX_CHARS } from "../agent/prune.ts";
 import { authorizeCommandReads } from "./read-access.ts";
@@ -371,7 +371,7 @@ export const bashTool: Tool<BashArgs> = {
 				detail: args.command,
 				subject: args.command,
 			});
-			if (decision !== "once" && decision !== "always") return errorResult("The user rejected this command.");
+			if (decision !== "once" && decision !== "always") return declinedResult("The user rejected this command.");
 		}
 
 		/*

@@ -9,6 +9,7 @@
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { ErrorCode, McpError, type Progress } from "@modelcontextprotocol/sdk/types.js";
 import type { Tool, ToolResult } from "../types.ts";
+import { DECLINED } from "../tools/result.ts";
 import { toToolResult } from "./result.ts";
 import { normalizeInputSchema } from "./schema.ts";
 import type { McpServerConfig } from "./types.ts";
@@ -89,7 +90,7 @@ export function toAgentTool(handle: McpToolHandle, raw: RawMcpTool, qualifiedNam
 					...(destructive ? { destructive: true } : {}),
 					...(current.trustReadOnly === true ? { trusted: true } : {}),
 				});
-				if (decision !== "once" && decision !== "always") return failed("The user rejected this MCP call.");
+				if (decision !== "once" && decision !== "always") return failed(`The user rejected this MCP call. ${DECLINED}`);
 			}
 
 			let client: Client;

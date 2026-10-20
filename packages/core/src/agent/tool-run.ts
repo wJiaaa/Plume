@@ -13,7 +13,7 @@ import { coerceArguments, resolveTool, unknownToolMessage, withParameterHint } f
 import { runTool } from "./tool-pipeline.ts";
 import { skillRefusal } from "../skills/tool.ts";
 import { translatedShellCommand, TOOL_NAMES_KEY } from "../tools/reroute.ts";
-import { errorResult } from "../tools/result.ts";
+import { declinedResult, errorResult } from "../tools/result.ts";
 import { routeMcpCall, MCP_CALL, toolTable } from "../tools/mcp-search.ts";
 import { parseToolArguments } from "../utils/sse.ts";
 import type {
@@ -294,7 +294,7 @@ async function executeOne(
 			if (decision?.approval === "allow") preApproved = true;
 			if (decision?.approval === "ask" && requestApproval) {
 				const answer = await awaitingPerson(() => requestApproval(hookApprovalRequest(tool, call.arguments, decision.approvalReason)));
-				if (!approved(answer)) return errorResult(`The user declined "${call.name}".`);
+				if (!approved(answer)) return declinedResult(`The user declined "${call.name}".`);
 				preApproved = true;
 			}
 		} catch (error) {
