@@ -210,3 +210,28 @@ test("rewinding keeps the head the kept history was sent with, and refreshes it 
 		await f.cleanup();
 	}
 });
+
+test("turning plan mode on and off mid-session changes neither the tool table nor the head", async () => {
+	const f = await fixture();
+	try {
+		const session = await f.open();
+		await session.prompt([{ type: "text", text: "one" }]);
+		const head = f.last().systemPrompt;
+		const table = JSON.stringify(f.last().tools);
+		assert.ok(f.last().tools.some((tool) => tool.name === "submit_plan"), "the exit of plan mode is in the table before plan mode is ever on");
+
+		await session.setPlanMode(true);
+		await session.prompt([{ type: "text", text: "two" }]);
+		assert.equal(JSON.stringify(f.last().tools), table, "tools sit in front of the prompt: one changed byte and the whole prefix is rewritten");
+		assert.equal(f.last().systemPrompt, head);
+		assert.deepEqual(updates(f.last().messages).at(-1)?.promptUpdate?.map((change) => change.section), ["plan"]);
+
+		await session.setPlanMode(false);
+		await session.prompt([{ type: "text", text: "three" }]);
+		assert.equal(JSON.stringify(f.last().tools), table);
+		assert.equal(f.last().systemPrompt, head);
+		assert.deepEqual(updates(f.last().messages).at(-1)?.promptUpdate, [{ section: "plan", text: null }]);
+	} finally {
+		await f.cleanup();
+	}
+});

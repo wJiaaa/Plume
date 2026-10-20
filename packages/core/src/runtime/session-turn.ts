@@ -298,16 +298,21 @@ async function assembleTurn(input: TurnInputs, hooks: TurnHooks): Promise<{ conf
 	await can.mcpReady(undefined, input.signal);
 	// 名单外的工具不止是不提：不在这一轮的工具表里，模型叫也叫不到。
 	const profile = input.profile;
-	const allowed = profile ? can.tools.filter((tool) => profile.tools.has(tool.name)) : can.tools;
+	/*
+	 * `submit_plan` 常驻，不在计划模式时它自己拒绝。工具定义排在请求最前面，以前它只在计划模式的轮里
+	 * 出现，于是中途开、关计划模式各让整段前缀缓存重写一次——提示词那边已经只追加一段增量了。
+	 * qwen-code 的 `exit_plan_mode` 也是这样常驻的。
+	 */
+	const offered = [...can.tools, submitPlanTool as unknown as Tool];
+	const allowed = profile ? offered.filter((tool) => profile.tools.has(tool.name)) : offered;
 	const { tools: bare, dispatchLimits } = promptCapabilities({ settings, tools: allowed });
 	/*
 	 * 计划模式按每轮开始时的会话元数据定，开关写进状态图：这一轮里批准计划就是把它关掉，包着的
-	 * 工具从此放行，不用换表。`submit_plan` 只在计划模式的轮里出现——不在计划模式时它没有意义，
-	 * 而工具表在模式切换那一轮本来就会变。
+	 * 工具从此放行，不用换表。
 	 */
 	const planMode = input.planMode === true;
 	can.state.set(PLAN_MODE_KEY, planMode);
-	const tools = planMode ? planModeTools([...bare, submitPlanTool as unknown as Tool], can.state) : bare;
+	const tools = planMode ? planModeTools(bare, can.state) : bare;
 
 	/*
 	 * Where `agent://` finds the sub-agents this session dispatched.

@@ -35,6 +35,9 @@ parameters 原样留着，只在 `execute` 外面包一层：开关开着时，�
   拒绝运行、不退回无约束。要提权的一律拒绝。
 - `task` 放行：子代理拿到的是同一张包过的表（`turn-config.ts` 从这一轮的 `tools` 派生），管事的
   开关是主会话的那一个。`submit_plan` 是 `sessionOnly`，子代理交不了计划。
+- `submit_plan` 自己也常驻在表里，不在计划模式时调用返回「Plan mode is off」。它曾经只在计划模式的轮里
+  出现，于是会话中途开、关计划模式各让整段前缀重写一次，而提示词那边早已只追加一段 `plan` 增量。
+  qwen-code 的 `exit_plan_mode` 同样常驻。
 - 其余一概放行：MCP、浏览器、联网、给别的会话发消息。计划模式只管「不改文件」这一件事。
 
 **计划经审批通道交给人**（`runtime/plan-tool.ts`）。`submit_plan` 只收一个参数 `plan`：
