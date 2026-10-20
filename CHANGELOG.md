@@ -2,6 +2,39 @@
 
 这个文件由 `pnpm release` 生成，条目来自提交信息。写得含糊的提交在这里也含糊，所以值得在提交时就写清楚。
 
+## [0.9.43](https://github.com/wJiaaa/Plume/releases/tag/v0.9.43) - 2026-10-20
+
+<!-- plume:notes en -->
+
+### New
+
+- **You can fork from a reply, not only from a question.** Under a finished reply, click Fork from here next to the other message actions. The new conversation keeps that reply and everything before it, with an empty message box, so you can take it in another direction. The fork button in the Trace panel is gone: most entries there were not a point you could carry on from, and forking at a tool call left the model with calls that never got a result.
+
+### Changes
+
+- **Replies stream in steadily even when the provider sends them in bursts.** Some providers deliver text in spurts — DeepSeek through a relay pauses for 200–400 ms about every half second — and the reply used to stop, dump a whole sentence, and stop again. Text is now spread out over time at the provider's recent speed, holding back at most 700 ms. English is shown a word at a time, so you never see half a word.
+- **The conversation scrolls smoothly as a reply reaches the bottom.** It used to jump one line, stop, then jump again. Measured in a real window, the share of frames where nothing moved during output dropped from 41–47% to 4–14%, and the largest jump in one frame went from up to 107 px to about 20 px.
+- **The agent goes ahead with changes that can be undone.** When you ask it to change something, it no longer stops to ask before reversible steps. When you only describe a problem or ask a question, it tells you what it found and does not fix anything on its own. On long tasks it now says what it has learned about once a minute, and the final answer says what changed, how it was checked and what risk is left.
+- **Turning Plan mode on or off partway through a conversation no longer throws away the prompt cache.** The tool list sent with each request used to gain or lose one tool when Plan mode changed, and the whole cached prefix had to be written again. It now stays the same either way.
+
+<!-- plume:notes zh-CN -->
+
+<details>
+<summary>中文（简体）</summary>
+
+### 新功能
+
+- **回复上也能分叉了，不只是提问。** 在说完了的回复底下那排操作里，点「从这里分叉」。新对话带着这条回复和之前的全部内容，输入框是空的，可以从这里换个方向接着聊。轨迹面板里的分叉按钮撤掉了：那里的大多数条目不是能接着说下去的位置，在某次工具调用上分叉，模型拿到的是一串没有结果的调用。
+
+### 变化
+
+- **服务商一阵一阵地给字，回复也连成一条地出。** 有的服务商出字是一阵一阵的，DeepSeek 走中转时大约每半秒停 200–400ms，原来屏幕跟着停住、整句蹦出来、再停住。现在按上游最近的速度把字铺开，最多落后 700ms。英文按词出，不会出现半个词。
+- **回复写到窗口底部时，对话连续地往上移。** 原来是移一行、停一下、再移一行。真窗口里量：输出过程中画面原地不动的帧从 41–47% 降到 4–14%，单帧最大位移从最多 107px 降到 20px 上下。
+- **能撤回的改动，agent 直接做，不再停下来问。** 你让它改东西时，可逆的步骤不再逐一确认；你只是描述问题或提问时，它交代发现，不自己动手修。长时间干活时大约每分钟说一句学到了什么，最后的回答会讲清楚改了什么、怎么验的、还剩什么风险。
+- **对话中途开关计划模式，不再让提示词缓存整段作废。** 原来切换计划模式时，每次请求带的工具表会多一个或少一个工具，前面缓存过的整段都要重写。现在开关前后工具表一样。
+
+</details>
+
 ## [0.9.42](https://github.com/wJiaaa/Plume/releases/tag/v0.9.42) - 2026-10-19
 
 <!-- plume:notes en -->
