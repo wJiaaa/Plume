@@ -49,32 +49,39 @@ const HOLD_MS = 900;
  */
 const CHASE_MAX = 200;
 /**
- * 追的时候最多落后底部多少，约一行半。
+ * 追的时候最多落后底部多少；超出的部分在长高的同一帧写掉。
  *
- * 追是先让内容长出来、下一帧起才挪，落后的那一截里是转录最底下的东西——运行行、刚长出来的那块。
- * 正文一帧几像素，落后在 `CHASE_LAG` 上下，看不出来；界面块的一个元素、一张工具卡是整块到的，
- * 从前这一截照样追（更大的按 240ms 缓出滑），量到运行行被压到视口下沿以下 129px、21 帧，
- * 人看到的是「思考那一行一直跳」。所以超出这一截的部分在长高的同一帧就写掉，只留一行半给弹簧追：
- * 上面的旧内容一帧挪上去一截，眼睛盯着的最底下那一行最多下沉一行半。
+ * 不能没有：整块到的工具卡整段慢慢追时，量到运行行被压到视口下沿以下 129px、21 帧。也不能小：正文
+ * 换段、起标题一次就长 35–70px，截在 40px 时每次都是单帧 20–30px 的跳。落后的那一截里是刚放出来、
+ * 还在淡入的字。
  */
-const LAG_MAX = 40;
+const LAG_MAX = 120;
 /**
- * 追的快慢：一个临界阻尼的弹簧，这是它的角频率（每毫秒）。
+ * 追的方式：两个临界阻尼的弹簧串起来，前一个把台阶状的目标抹成斜坡，后一个跟着斜坡走。
  *
- * 不用「每帧缩掉剩下距离的一截」那种缓动：那样每起一行，速度从零一下跳到最大再慢慢降下来，一行
- * 一涌，量出来是每行开头一帧 7px、随后 3、2、1。弹簧带着速度走，上一行还没停稳下一行就来了，
- * 速度接着用，连起来是一条匀速的上移。
+ * 版面是一行一行、一段一段长的：每次 24–70px，间隔 20–560ms。只用一个弹簧，刚度够让落后小，两行
+ * 之间就追平停住，下一行再从零起步，一行一顿，量到过四成的帧原地不动。串起来以后速度跨着台阶接着
+ * 用，原地不动的帧剩一成上下，多在上游停顿里。
  *
- * 稳定输出时落后底部约 `2 × 速度 / ω`。慢的时候这点落后正好让每一行滑得软；快的时候固定的 ω 会
- * 越落越远——每秒上千字时量到最后一行被输入框压住近 30px。所以 ω 随最近的输出速度抬高，让落后
- * 保持在 `CHASE_LAG` 上下。速度取的是内容长高的速度，不是弹簧自己的速度：拿自己的速度定刚度会
- * 互相推高，一块大的长高第一帧就冲出去几百像素。
+ * 刚度随输出速度变（`stiffness`），稳定输出时落后约 `CHASE_LAG`：慢的时候软，快的时候硬，落后不随
+ * 速度变长。参数是拿真窗口录下的逐帧版面离线比出来的，见 `e2e/stream-follow-probe.ts`。
  */
-const CHASE_OMEGA = 1 / 45;
-/** 输出快时允许落后底部多少像素。转录底下本来留着十几像素的空白，落后在这以内，字不会被挡。 */
-const CHASE_LAG = 12;
-/** 输出速度按多长的时间窗来估。 */
-const FLOW_TAU = 400;
+const CHASE_LAG = 36;
+/** 刚度的上下限，按时间常数（毫秒）记。上限管写完以后最后一行多久追平：一行约 0.4s。 */
+const TAU_MIN = 12;
+const TAU_MAX = 60;
+/** 落后超出 `CHASE_LAG` 越多弹簧越硬，多出 70px 时时间常数 20ms：整块到的一截靠它很快追完。 */
+const BOOST = 1400;
+/** 输出速度按多长的时间窗来估。要比一行的间隔长得多，估出来的速度才不随每一行忽高忽低。 */
+const FLOW_TAU = 800;
+/**
+ * `live` 落下以后还算输出的时长。上游写完时屏幕上的字还没放完：出字最多落后上游 700ms，最后一个
+ * 字再淡 180ms（`stream-pace.ts`）。这段里长出来的行当成静止时的长高、当帧写到底，收尾那几行就
+ * 一行一跳，量到过单帧 49px。
+ */
+const TAIL_MS = 1000;
+/** 转录里会做过渡的高度属性：界面块的 `height`，折叠区（`.ly-reveal`）的 `grid-template-rows`。见 `growing`。 */
+const SIZES = new Set(["height", "grid-template-rows"]);
 
 export interface FollowBottom {
 	/** Hand to `Scroller`'s `scrollRef`. */
@@ -154,9 +161,10 @@ export function useFollowBottom({
 	/** A restored offset is meaningful only after this surface's content has arrived. */
 	ready?: boolean;
 	/**
-	 * Whether this transcript is being written right now. Only then is growth output, and only
-	 * output is chased: at rest it is a card or an image landing late — the delivery card fetches
-	 * its files after mount — and sliding for that drags the whole history up from below.
+	 * Whether this transcript is being written right now. Only then — and for `TAIL_MS` after, while
+	 * the last words are still being let out — is growth output, and only output is chased: at rest
+	 * it is a card or an image landing late — the delivery card fetches its files after mount — and
+	 * sliding for that drags the whole history up from below.
 	 */
 	live: boolean;
 }): FollowBottom {
@@ -203,15 +211,23 @@ export function useFollowBottom({
 	/** 贴底追赶的那一帧，和上一次送到底时内容与视口的高度——分辨「内容长高了一小截」要用。 */
 	const chase = useRef(0);
 	const size = useRef({ content: 0, view: 0 });
-	/** 最近小幅长高的总量，按 `FLOW_TAU` 衰减；除以 `FLOW_TAU` 就是输出速度（像素/毫秒）。 */
-	const flow = useRef({ amount: 0, at: 0 });
+	const flow = useRef<Flow>({ amount: 0, at: 0, since: 0 });
+	/**
+	 * 滚动区里正在做高度过渡的元素。
+	 *
+	 * 界面块边写边长（`InterfaceBlock` 的 `Growing`）、折叠区开合，这种长高本身已经是一帧一小截、平滑的，
+	 * 再交给弹簧抹一遍只会落后：量到过界面块的下沿被压到视口外 116px。所以它在 `pin` 里当帧跟着挪。
+	 * 过渡事件会冒泡，在滚动区上听就够。
+	 */
+	const growing = useRef(new Set<EventTarget>());
 	const restoredSurface = useRef<string | null | undefined>(undefined);
 	const selectedSurface = useRef<string | null | undefined>(undefined);
 	const restore = useRef<FollowSnapshot | undefined>(undefined);
 	const clearWritten = useRef(0);
-	/** Read by `pin`, which is memoised and must not be rebuilt on every token. */
-	const writing = useRef(live);
-	writing.current = live;
+	/** Read by `pin`, which is memoised and must not be rebuilt on every token. `ended`: when `live` last fell. */
+	const writing = useRef({ live, ended: Number.NEGATIVE_INFINITY });
+	if (writing.current.live && !live) writing.current.ended = performance.now();
+	writing.current.live = live;
 
 	/**
 	 * 手指上一次的位置，给 touchmove 定方向用。
@@ -352,30 +368,33 @@ export function useFollowBottom({
 			const sameView = reading.clientHeight === size.current.view;
 			size.current = { content: reading.scrollHeight, view: reading.clientHeight };
 			const now = performance.now();
-			flow.current = {
-				amount: flow.current.amount * Math.exp(-(now - flow.current.at) / FLOW_TAU) + (grew > 0 && grew <= CHASE_MAX ? grew : 0),
-				at: now,
-			};
+			const kept = flow.current.amount * Math.exp(-(now - flow.current.at) / FLOW_TAU);
+			const added = grew > 0 && grew <= CHASE_MAX ? grew : 0;
+			flow.current = { amount: kept + added, at: now, since: added > 0 && kept < 1 ? now : flow.current.since };
 			const target = targetScrollTop("following", reading);
 			if (target === null) return;
 
 			const moving = chase.current !== 0;
+			const output = writing.current.live || now - writing.current.ended < TAIL_MS;
 			const slide =
-				writing.current && known && sameView && grew >= 0 && grew <= reading.clientHeight && target > reading.scrollTop && (moving || grew > 0) && !motionReduced();
+				output && known && sameView && grew >= 0 && grew <= reading.clientHeight && target > reading.scrollTop && (moving || grew > 0) && !motionReduced();
 			if (!slide) {
 				cancelAnimationFrame(chase.current);
 				chase.current = 0;
 				write(el, target);
 				return;
 			}
-			// 这里跑在布局之后、绘制之前（布局 effect 或 `ResizeObserver` 回调），写掉的这一截当帧生效。
-			if (target - reading.scrollTop > LAG_MAX) write(el, target - LAG_MAX);
+			// 这里跑在布局之后、绘制之前（布局 effect 或 `ResizeObserver` 回调），下面两次写都当帧生效。
+			// 高度过渡里长出来的这一截跟着挪，见 `growing`。
+			if (grew > 0 && transitioning(growing.current)) write(el, reading.scrollTop + grew);
+			if (target - el.scrollTop > LAG_MAX) write(el, target - LAG_MAX);
 			if (moving) return;
 
 			// 位置自己记一份小数：浏览器会把 `scrollTop` 取整到物理像素，每帧挪不到半个像素的那几帧
 			// 读回来原地不动，拿读回来的值接着算就永远差那一点。
-			let position = el.scrollTop;
-			let velocity = 0;
+			const view: Spring = { at: el.scrollTop, speed: 0 };
+			// 前一级：抹平了的目标。
+			const ramp: Spring = { at: el.scrollTop, speed: 0 };
 			let last = 0;
 			const step = (now: number) => {
 				chase.current = 0;
@@ -383,28 +402,24 @@ export function useFollowBottom({
 				if (state.current !== "following" || anchor.current || !el.isConnected) return;
 				const here = read(el);
 				if (isDegenerate(here)) return;
-				// 别人挪过（浏览器夹住、原生锚定），以实际位置为准。
-				if (Math.abs(here.scrollTop - position) > 1) position = here.scrollTop;
+				// 别人挪过（浏览器夹住、原生锚定、`LAG_MAX` 那一刀），以实际位置为准；前一级不能落在视口
+				// 后面，否则会把视口往回拽。
+				if (Math.abs(here.scrollTop - view.at) > 1) view.at = here.scrollTop;
+				if (ramp.at < view.at) ramp.at = view.at;
 				// 第一帧没有上一帧可比，按一帧算；切到后台回来的那一帧夹住，不一步跳完。
 				const dt = last ? Math.min(50, Math.max(0, now - last)) : 16;
 				last = now;
 				const end = visualBottom(here);
-				const rate = (flow.current.amount * Math.exp(-(now - flow.current.at) / FLOW_TAU)) / FLOW_TAU;
-				const omega = Math.max(CHASE_OMEGA, (2 * rate) / CHASE_LAG);
-				// 临界阻尼弹簧的精确解，步长再大也不会冲过头或者发散。
-				const offset = position - end;
-				const decay = Math.exp(-omega * dt);
-				const pull = velocity + omega * offset;
-				const next = (offset + pull * dt) * decay;
-				velocity = (velocity - omega * pull * dt) * decay;
-				if (next >= -0.5) {
+				const omega = stiffness(outputRate(flow.current, now), end - view.at);
+				advance(ramp, end, omega, dt);
+				advance(view, ramp.at, 2 * omega, dt);
+				if (end - view.at < 0.5 && end - ramp.at < 0.5) {
 					// 多写一个像素让浏览器夹到真正的底，理由见 `targetScrollTop`。
 					write(el, end + 1);
 					publish(read(el));
 					return;
 				}
-				position = end + next;
-				write(el, position);
+				write(el, view.at);
 				chase.current = requestAnimationFrame(step);
 			};
 			chase.current = requestAnimationFrame(step);
@@ -514,6 +529,26 @@ export function useFollowBottom({
 			el.removeEventListener("keydown", onKey);
 		};
 	}, [intend]);
+
+	// 哪些元素正在做高度过渡，见 `growing`。
+	useEffect(() => {
+		const el = scrollRef.current;
+		if (!el) return;
+		const onRun = (event: TransitionEvent) => {
+			if (event.target && SIZES.has(event.propertyName)) growing.current.add(event.target);
+		};
+		const onEnd = (event: TransitionEvent) => {
+			if (event.target && SIZES.has(event.propertyName)) growing.current.delete(event.target);
+		};
+		el.addEventListener("transitionrun", onRun);
+		el.addEventListener("transitionend", onEnd);
+		el.addEventListener("transitioncancel", onEnd);
+		return () => {
+			el.removeEventListener("transitionrun", onRun);
+			el.removeEventListener("transitionend", onEnd);
+			el.removeEventListener("transitioncancel", onEnd);
+		};
+	}, []);
 
 	// ---------------------------------------------------------------------------
 	// What the scroller reports
@@ -831,4 +866,53 @@ function firstInView(parent: Element, edge: number): Element | null {
 		if (inner) return inner;
 	}
 	return null;
+}
+
+interface Spring {
+	at: number;
+	speed: number;
+}
+
+/** 临界阻尼弹簧朝 `target` 走 `dt` 毫秒的精确解，步长再大也不会冲过头或者发散。 */
+function advance(spring: Spring, target: number, omega: number, dt: number): void {
+	const offset = spring.at - target;
+	const decay = Math.exp(-omega * dt);
+	const pull = spring.speed + omega * offset;
+	spring.at = target + (offset + pull * dt) * decay;
+	spring.speed = (spring.speed - omega * pull * dt) * decay;
+}
+
+/**
+ * 前一级弹簧的角频率（每毫秒），后一级取它的两倍：稳定输出时两级的落后合起来是 3 × 速度 / ω，
+ * 也就是 `CHASE_LAG`。落后超出 `CHASE_LAG` 越多越硬（`BOOST`），夹在 `TAU_MIN`–`TAU_MAX` 之间。
+ *
+ * 速度取内容长高的速度，不取弹簧自己的速度：拿自己的速度定刚度会互相推高，一块大的长高第一帧就
+ * 冲出去几百像素。
+ */
+function stiffness(rate: number, lag: number): number {
+	return Math.min(1 / TAU_MIN, Math.max(1 / TAU_MAX, (3 * rate) / CHASE_LAG, (lag - CHASE_LAG) / BOOST));
+}
+
+/** 最近小幅长高的总量（按 `FLOW_TAU` 衰减）、记下它的时刻，和这一阵输出从什么时候开始。 */
+interface Flow {
+	amount: number;
+	at: number;
+	since: number;
+}
+
+/**
+ * 输出速度（像素/毫秒）。一阵输出刚开始时衰减的总量还没攒满，按它实际跑了多久归一，不然头几行
+ * 估得极慢、落后一大截；最少按 150ms 算，不然头一行会被当成一瞬间到的。
+ */
+function outputRate(flow: Flow, now: number): number {
+	const window = FLOW_TAU * (1 - Math.exp(-Math.max(150, now - flow.since) / FLOW_TAU));
+	return (flow.amount * Math.exp(-(now - flow.at) / FLOW_TAU)) / window;
+}
+
+/** 还有高度过渡在跑吗。顺手清掉被卸掉的：卸掉的元素收不到结束事件。 */
+function transitioning(inFlight: Set<EventTarget>): boolean {
+	for (const target of inFlight) {
+		if (target instanceof Node && !target.isConnected) inFlight.delete(target);
+	}
+	return inFlight.size > 0;
 }

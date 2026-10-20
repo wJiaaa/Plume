@@ -104,11 +104,14 @@ async function arrives(view: Mounted, id: string, n: number, pixels = 300) {
 	await view.rerender(h(Harness, { id, count: 40 + n, tail: `tail-${n}` }));
 }
 
+/** 让时间走 `ms` 毫秒，期间的帧照常跑。 */
+const elapse = (ms: number) => act(() => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+
 /**
  * 等跟随底部的滑动走完。比一帧大、不超过一屏的长高是滑到底的（见 `useFollowBottom` 的 `CHASE_MAX`），
  * 只关心「还跟不跟」的测试在断言位置之前等它一下。
  */
-const slid = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 400)));
+const slid = () => elapse(400);
 
 /**
  * A scroll this hook did not write: anchoring, clamping, the tail of a fling.
@@ -250,12 +253,12 @@ test("a viewport shrinking under a composer that grew keeps following", async ()
 	await view.unmount();
 });
 
-test("整块到的一大截当帧追到只差一行半，剩下的滑过去；超过一屏的一步到位", async () => {
+test("整块到的一大截当帧写到只差 120px，剩下的滑过去；超过一屏的一步到位", async () => {
 	const { view, el } = await open("sweep");
 	await arrives(view, "sweep", 1, 300);
 	await act(async () => controls.onResize(el));
 	// 量过：从前整块到的长高整段慢慢追，转录最底下那一行被压到视口下沿以下 129px。
-	assert.ok(el.scrollTop >= bottom() - 40, `长高的同一帧就最多落后 40px，实际差 ${bottom() - el.scrollTop}`);
+	assert.ok(el.scrollTop >= bottom() - 120, `长高的同一帧就最多落后 120px，实际差 ${bottom() - el.scrollTop}`);
 	assert.ok(el.scrollTop < bottom(), "最后一截仍然是追，不是跳");
 	await slid();
 	assert.equal(el.scrollTop, bottom(), "滑到底");
@@ -272,16 +275,66 @@ test("一行一行长出来的回复是滑到底的，不是一行一顿地顶�
 	await act(async () => controls.onResize(el));
 	assert.ok(el.scrollTop < bottom(), "长高一行不当场跳到底");
 
-	await act(() => new Promise<void>((resolve) => setTimeout(resolve, 60)));
+	await elapse(60);
 	assert.ok(el.scrollTop > before && el.scrollTop < bottom(), `正在往下追，实际 ${el.scrollTop}/${bottom()}`);
-	await act(() => new Promise<void>((resolve) => setTimeout(resolve, 400)));
+	await elapse(400);
 	assert.equal(el.scrollTop, bottom(), "追到底");
 
-	await arrives(view, "line-by-line", 2, 26);
+	// 一行接一行地来，两行之间不追平停住：从前一个弹簧 270ms 就追平，停下、再从零起步，一行一顿。
+	for (let line = 2; line <= 6; line++) {
+		await arrives(view, "line-by-line", line, 26);
+		await act(async () => controls.onResize(el));
+		const from = el.scrollTop;
+		await elapse(280);
+		assert.ok(el.scrollTop > from && el.scrollTop < bottom(), `第 ${line} 行来之前一直在动、也没追平：${from} → ${el.scrollTop}/${bottom()}`);
+	}
+
+	await arrives(view, "line-by-line", 7, 26);
 	await wheel(el, -40);
 	const left = el.scrollTop;
-	await act(() => new Promise<void>((resolve) => setTimeout(resolve, 200)));
+	await elapse(200);
 	assert.equal(el.scrollTop, left, "读者往上滚了，追赶就停在那里");
+	await view.unmount();
+});
+
+test("自己在做高度过渡的长高当帧跟着挪：界面块边写边长时，下沿不被压出视口", async () => {
+	const { view, el } = await open("transition");
+	const block = el.firstElementChild as Element;
+	const transition = (type: string) => {
+		const event = new Event(type, { bubbles: true });
+		Object.defineProperty(event, "propertyName", { value: "height" });
+		block.dispatchEvent(event);
+	};
+	transition("transitionrun");
+	// 量过：过渡本身已经是一帧一小截，再交给弹簧抹一遍，界面块的下沿被压到视口外 116px。
+	for (let frame = 1; frame <= 5; frame++) {
+		geometry.content += 30;
+		await act(async () => controls.onResize(el));
+		assert.equal(el.scrollTop, bottom(), `过渡的第 ${frame} 帧就跟到了底`);
+	}
+	transition("transitionend");
+	geometry.content += 30;
+	await act(async () => controls.onResize(el));
+	assert.ok(el.scrollTop < bottom(), "过渡结束以后，一行一行的长高照旧交给弹簧抹平");
+	await view.unmount();
+});
+
+test("写完那一刻剩下的字还在放：一秒内长出来的行照样滑，过了这一阵才一步到位", async () => {
+	const { view, el } = await open("tail");
+	await view.rerender(h(Harness, { id: "tail", live: false }));
+	geometry.content += 26;
+	await view.rerender(h(Harness, { id: "tail", count: 41, tail: "tail-1", live: false }));
+	await act(async () => controls.onResize(el));
+	// 量过：收尾那几行当帧写到底，单帧 49px。
+	assert.ok(el.scrollTop < bottom(), "收尾时放出来的一行是滑上去的，不是当帧跳到底");
+	// 过了 `TAIL_MS`（1s）。
+	await elapse(1100);
+	assert.equal(el.scrollTop, bottom(), "追到底");
+
+	geometry.content += 150;
+	await view.rerender(h(Harness, { id: "tail", count: 42, tail: "tail-2", live: false }));
+	await act(async () => controls.onResize(el));
+	assert.equal(el.scrollTop, bottom(), "写完一阵以后晚到的卡片不是输出，不追");
 	await view.unmount();
 });
 
