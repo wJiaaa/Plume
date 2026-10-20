@@ -2,7 +2,7 @@
  * 每个智能体一张不一样的脸：谁拿到哪张、换个名单顺序还是不是同一张、新来的会不会撞脸。
  *
  * 用户的要求就一句——「每个智能体的 logo 都不一样」——所以这里守的都是「不一样」的各种说法：
- * 名单里互不相同、新建的不和任何人相同、内置的七个连形状和颜色都各不相同。
+ * 名单里互不相同、新建的不和任何人相同、内置的八个连形状和颜色都各不相同。
  */
 
 import assert from "node:assert/strict";
@@ -34,14 +34,14 @@ test("a face is written as `shape-colour`, read back the same, and anything else
 	}
 });
 
-test("the seven built-in agents differ in shape and in colour, not only in the pair", () => {
+test("the eight built-in agents differ in shape and in colour, not only in the pair", () => {
 	const faces = BUILTIN_AGENTS.map((agent) => parseAvatar(agent.avatar));
 	assert.ok(faces.every(Boolean), `every built-in names a face the renderer knows: ${BUILTIN_AGENTS.map((a) => a.avatar)}`);
 	const known = faces as Avatar[];
 	assert.equal(new Set(known.map((face) => face.shape)).size, known.length, "no two share a shape");
 	assert.equal(new Set(known.map((face) => face.color)).size, known.length, "no two share a colour");
-	// 截图 2 的那一排：圆、水滴、方块、团子、云、胶囊、三角。
-	assert.deepEqual(known.map((face) => face.shape), ["circle", "drop", "squircle", "blob", "cloud", "pill", "triangle"]);
+	// 截图 2 的那一排：圆、水滴、方块、团子、云、胶囊、三角，后来 plan-review 带着六边形排进 plan 后面。
+	assert.deepEqual(known.map((face) => face.shape), ["circle", "drop", "squircle", "blob", "cloud", "hexagon", "pill", "triangle"]);
 });
 
 test("a name without a face always works out to the same one, and steers clear of faces already taken", () => {
@@ -50,7 +50,7 @@ test("a name without a face always works out to the same one, and steers clear o
 	for (const name of ["boss", "docs-writer", "qa", "a", "reviewer-2", "翻译"]) {
 		const face = hashedAvatar(name, taken);
 		assert.ok(!taken.some((other) => formatAvatar(other) === formatAvatar(face)), `${name} does not wear a built-in's face`);
-		// 七个内置只占了七种形状、七种颜色，形状颜色都新的组合还多得是，所以必须挑到那种。
+		// 八个内置只占了八种形状、八种颜色，形状颜色都新的组合还多得是，所以必须挑到那种。
 		assert.ok(!taken.some((other) => other.shape === face.shape || other.color === face.color), `${name} looks like nobody: ${formatAvatar(face)}`);
 	}
 });
