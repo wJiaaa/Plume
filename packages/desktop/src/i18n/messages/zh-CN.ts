@@ -1033,6 +1033,7 @@ export const zhCN = {
 	"agentEditor.nameLabel": "调用名",
 	"agentEditor.purposeLabel": "用途",
 	"agentEditor.scopeLabel": "生效范围",
+	"agentEditor.scopeFixed": "要换范围请复制一份",
 	"agentEditor.instructionsLabel": "指令",
 	"agentEditor.allowedTools": "允许的工具",
 	"agentEditor.allTools": "允许使用主会话的全部工具",

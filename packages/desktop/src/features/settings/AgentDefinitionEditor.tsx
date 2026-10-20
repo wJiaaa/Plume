@@ -94,7 +94,10 @@ export function AgentDefinitionEditor({ record, copy, projectId, projectName, de
 				<div className="flex justify-end">
 					<div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
 						<span className="shrink-0 text-label text-ink-muted">{t("agentEditor.scopeLabel")}</span>
-						<fieldset disabled={editing} className="m-0 border-0 p-0"><InlineSelect ariaLabel={t("agentEditor.scope")} value={scope} options={[{ value: "user", label: t("common.allProjects") }, ...(projectId ? [{ value: "project", label: projectName ?? t("common.currentProject") }] : [])]} onChange={value => { if (value === "project" || value === "user") setScope(value); }} /></fieldset>
+						{/* 已有的智能体换不了范围（core 只认复制），所以编辑时写成文字：一个点不动的下拉看上去就是坏了。 */}
+						{editing
+							? <span className="text-label text-ink">{scope === "project" ? projectName ?? t("common.currentProject") : t("common.allProjects")}<span className="ml-2 text-caption text-ink-muted">{t("agentEditor.scopeFixed")}</span></span>
+							: <InlineSelect ariaLabel={t("agentEditor.scope")} value={scope} options={[{ value: "user", label: t("common.allProjects") }, ...(projectId ? [{ value: "project", label: projectName ?? t("common.currentProject") }] : [])]} onChange={value => { if (value === "project" || value === "user") setScope(value); }} />}
 					</div>
 				</div>
 				<div className="flex items-end gap-3">

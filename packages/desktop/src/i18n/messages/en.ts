@@ -846,6 +846,7 @@ export const en = {
 	"agentEditor.nameLabel": "Name",
 	"agentEditor.purposeLabel": "Purpose",
 	"agentEditor.scopeLabel": "Scope",
+	"agentEditor.scopeFixed": "Duplicate it to change scope",
 	"agentEditor.instructionsLabel": "Instructions",
 	"agentEditor.allowedTools": "Tools it may use",
 	"agentEditor.allTools": "May use every tool the main session has",
