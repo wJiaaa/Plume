@@ -199,6 +199,12 @@
   width: max-content;
   max-width: min(360px, calc(100vw - 12px));
   /*
+   * 高度也封顶：气泡不接指针、滚不动，长出窗口的部分谁也读不到。长文本该在调用处截短
+   * （`features/sidechat/task-tip.ts`），这里只是兜底，不让它越过窗口。
+   */
+  max-height: calc(100vh - 12px);
+  overflow: hidden;
+  /*
    * The last resort, for a run with no break opportunity at all. Long paths and filenames get breaks
    * after `/`, `_`, `.` and the like in `tooltip.ts`, which also narrows a wrapped label to its
    * balanced width (an inline `width`) — so a line is never left holding a single character.

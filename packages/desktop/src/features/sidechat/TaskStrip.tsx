@@ -19,6 +19,7 @@ import { StatusSpinner } from "../../ui/motion/loaders.tsx";
 import { useSide, sideTasksOf } from "../dock/index.ts";
 import { useSideSessionId } from "./scope.ts";
 import { useSideTarget } from "./target.ts";
+import { taskTip } from "./task-tip.ts";
 import { useApp } from "../../store/index.ts";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 
@@ -112,8 +113,8 @@ function TaskRow({ task }: { task: QueuedTask }) {
 	return (
 		<div
 			className="group/task flex items-center gap-2 rounded-md px-1.5 py-1 text-detail transition-colors hover:bg-card-hover"
-			// The whole instruction, for a row that can only show a line of it.
-			data-ly-tip={`${task.text}\n\n${statusOf(task)}`}
+			// More of the instruction than the row's one line, capped so the status stays on screen — see `task-tip.ts`.
+			data-ly-tip={taskTip(task.text, statusOf(task))}
 		>
 			{task.status === "running" ? (
 				// 这一列里它和任务面板里的同一条是同一件事，所以用状态那个记号，不是按钮那个。
