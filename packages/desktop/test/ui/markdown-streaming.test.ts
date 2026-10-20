@@ -1,13 +1,15 @@
 /**
- * 正在输出的回复怎么画——见 `useSmoothText` 和 `stream-tail.ts`。
+ * 正在输出的回复怎么画——见 `useSmoothText`、`FadeText.tsx` 和 `stream-tail.ts`。
  *
- * 钉住这几件事：一次倒进来一大段时是一点点放出来的，不是整段蹦出来；新字淡入；写完之后剩下的字
- * 照常放完、淡完，再换回原文——不在结束那一刻整段实着蹦出来；写到一半的加粗画成加粗，不露出星号。
+ * 钉住这几件事：一次倒进来一大段时是一点点放出来的，不是整段蹦出来；新字淡入，同一帧放出来的合用
+ * 一个 span；写完之后剩下的字照常放完、淡完，再换回原文——不在结束那一刻整段实着蹦出来；演到一半
+ * 被重挂接着演；新起的一段淡入、早就在屏幕上的字不重放；半个拉丁词不放出来；写到一半的加粗画成加粗，
+ * 不露出星号。
  */
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { act, createElement as h } from "react";
+import { act, createElement as h, StrictMode } from "react";
 import type { AssistantMessage } from "@plume/core";
 import { Markdown } from "../../src/features/conversation/Markdown.tsx";
 import { MessageRow } from "../../src/features/conversation/rows.tsx";
@@ -15,18 +17,23 @@ import { I18nProvider } from "../../src/i18n/index.ts";
 import { mount } from "../helpers/mount.ts";
 
 const frames = (ms: number) => act(() => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+/** 还在淡入的字一共几个（同一帧放出来的合用一个 span）。 */
+const fadingChars = (elements: Element[]) => elements.reduce((sum, element) => sum + Array.from(element.textContent ?? "").length, 0);
 
-test("一次进来的一大段按节奏放出来，写完之后剩下的字照常放完", async () => {
+test("一次进来的一大段按节奏放出来，同一帧的合用一个 span，写完之后剩下的字照常放完", async () => {
 	const first = "第一段。";
 	const burst = `${first}${"后面一口气进来的字。".repeat(20)}`;
 	const view = await mount(h(Markdown, { text: first, streaming: true }));
 	try {
-		assert.equal(view.text(), first, "挂上时已有的字不重放");
+		await frames(120);
+		assert.equal(view.text(), first, "头一批字几帧内出完");
 
 		await view.rerender(h(Markdown, { text: burst, streaming: true }));
 		await frames(50);
 		const partial = view.text().length;
 		assert.ok(partial > first.length && partial < burst.length, `应该只放出一部分，实际 ${partial}/${burst.length}`);
+		const spans = view.all(".ly-fade-char");
+		assert.ok(spans.length > 0 && fadingChars(spans) >= spans.length * 2, `同一帧放出来的字合用一个 span：${spans.length} 个 span、${fadingChars(spans)} 个字`);
 
 		await frames(1200);
 		assert.equal(view.text(), burst, "积压的字在约定时间内放完");
@@ -43,9 +50,89 @@ test("一次进来的一大段按节奏放出来，写完之后剩下的字照�
 	}
 });
 
+test("演到一半被重挂（一轮跑完换了父元素），新挂上的接着演，不重放、也不把剩下的一次画出来", async () => {
+	const first = "第一段。";
+	const burst = `${first}${"后面一口气进来的字。".repeat(30)}`;
+	const before = await mount(h(Markdown, { text: first, streaming: true }));
+	await before.rerender(h(Markdown, { text: burst, streaming: true }));
+	await frames(100);
+	const shown = before.text().length;
+	assert.ok(shown > first.length && shown < burst.length, `重挂前只放出了一部分：${shown}/${burst.length}`);
+	const after = await mount(h(Markdown, { text: burst, streaming: false }));
+	await before.unmount();
+	try {
+		const resumed = after.text().length;
+		assert.ok(resumed >= shown && resumed < burst.length, `接着上一段放：${shown} → ${resumed}/${burst.length}`);
+		assert.ok(after.all(".ly-fade-char").length > 0, "新放出来的字照旧淡入");
+		await frames(1500);
+		assert.equal(after.text(), burst, "剩下的字放完");
+		assert.equal(after.all(".ly-fade-char").length, 0, "淡完之后换回纯文本");
+	} finally {
+		await after.unmount();
+	}
+});
+
+test("打开历史里的回复不淡入，也不会接上别处刚演完的那一段", async () => {
+	const view = await mount(h(Markdown, { text: "另一段已经写完的回复。", streaming: false }));
+	try {
+		assert.equal(view.text(), "另一段已经写完的回复。");
+		assert.equal(view.all(".ly-fade-char").length, 0);
+	} finally {
+		await view.unmount();
+	}
+});
+
+test("新起的一段淡入；早就在屏幕上的那段字不重放", async () => {
+	const first = "第一段早就在了。";
+	const view = await mount(h(Markdown, { text: first, streaming: true }));
+	try {
+		// 两段等待：第一段里字放完、提交（`act` 把这期间的更新攒到结尾才提交），第二段让它们老过淡入的时长。
+		await frames(120);
+		await frames(250);
+		await view.rerender(h(Markdown, { text: `${first}\n\n新起的一段。`, streaming: true }));
+		await frames(60);
+		const [old, fresh] = view.all("p");
+		assert.equal(old.querySelectorAll(".ly-fade-char").length, 0, "老的那段一个字也不重放");
+		assert.ok(fresh.querySelectorAll(".ly-fade-char").length > 0, "新起的一段在淡入");
+	} finally {
+		await view.unmount();
+	}
+});
+
+test("正在打的半个拉丁词不放出来，上游停下了才放", async () => {
+	const view = await mount(h(Markdown, { text: "", streaming: true }));
+	try {
+		await view.rerender(h(Markdown, { text: "Hello wor", streaming: true }));
+		await frames(120);
+		assert.equal(view.text(), "Hello", "wor 还扣着");
+		await frames(300);
+		assert.equal(view.text(), "Hello wor", "上游停了一阵，那就不是半个词");
+		await view.rerender(h(Markdown, { text: "Hello world.", streaming: true }));
+		await frames(120);
+		assert.equal(view.text(), "Hello world.");
+	} finally {
+		await view.unmount();
+	}
+});
+
+test("开发模式把组件挂上、卸下、再挂上一遍，出字不会卡在第一个字上", async () => {
+	const text = "第一句话有十几个字，要分好几帧才放完。";
+	const view = await mount(h(StrictMode, { children: h(Markdown, { text, streaming: true }) }));
+	try {
+		await frames(400);
+		assert.equal(view.text(), text, "头一批字照常放完");
+		await view.rerender(h(StrictMode, { children: h(Markdown, { text: `${text}后面接着来的字。`, streaming: true }) }));
+		await frames(400);
+		assert.equal(view.text(), `${text}后面接着来的字。`, "后面来的字也照常放");
+	} finally {
+		await view.unmount();
+	}
+});
+
 test("写到一半的加粗画成加粗；写完之后画的是原文", async () => {
 	const view = await mount(h(Markdown, { text: "这是 **加粗", streaming: true }));
 	try {
+		await frames(120);
 		assert.equal(view.find("strong").textContent, "加粗");
 		assert.ok(!view.text().includes("*"), "星号是标记，不该露出来");
 
@@ -74,6 +161,7 @@ test("主会话里正在输出的那段正文按流式来画", async () => {
 	};
 	const view = await mount(h(I18nProvider, { locale: "zh-CN", children: h(MessageRow, { message, index: 0, upTo: 1 }) }));
 	try {
+		await frames(120);
 		assert.equal(view.find("strong").textContent, "加粗");
 		assert.ok(!view.text().includes("**"), "星号是标记，不该露出来");
 	} finally {
@@ -142,7 +230,7 @@ test("输出中的代码块，新来的字也淡入；写完之后是原样的�
 	const view = await mount(h(Markdown, { text: head, streaming: true }));
 	try {
 		await view.rerender(h(Markdown, { text: code, streaming: true }));
-		await frames(60);
+		await frames(200);
 		assert.ok(view.all(".ly-code-block .ly-fade-char").length > 0, "代码块里新出现的字应该是淡入的");
 		const shown = view.find(".ly-code-block pre").textContent ?? "";
 		assert.ok(code.includes(shown), "淡入和分段不改变代码本身");

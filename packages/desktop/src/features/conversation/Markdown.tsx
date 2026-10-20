@@ -36,7 +36,7 @@ import { useRevealLabel, withFileThere } from "../../store/open-targets.ts";
 import { iconColour, lookFor } from "../../ui/fileIcon.tsx";
 import { SessionScope, useDockScope, useScopedProjectPath } from "../../app/session-scope.tsx";
 import { useSmoothText } from "./useSmoothText.ts";
-import { FadeText } from "./FadeText.tsx";
+import { BlockScan, FadeScope, FadeText } from "./FadeText.tsx";
 import { usePathMenu } from "./PathMenu.tsx";
 import { useLocatedPaths } from "./located-path.ts";
 import { FileChoices } from "./FileChoices.tsx";
@@ -146,7 +146,7 @@ export const Markdown = memo(function Markdown({
 	 * 上限和下面的块数上限管。
 	 */
 	// 写完之后还要演完：没放出来的字放完、最后一个字淡完，`active` 才落下。见 `useSmoothText`。
-	const { text: shown, active } = useSmoothText(text, streaming);
+	const { text: shown, active, recent } = useSmoothText(text, streaming);
 	/*
 	 * 回复末尾的下一步建议（`@plume/core/followups`）是给输入框的，不画：写完的整行拿掉，写到一半的
 	 * 由 `completeTailHeld` 先藏着，所以先补尾巴再去标记。
@@ -171,17 +171,28 @@ export const Markdown = memo(function Markdown({
 	const doc = useMemo(() => ({ baseDir, remoteImages, localImages, preview }), [baseDir, remoteImages, localImages, preview]);
 	// 减弱动效时 `active` 不会亮起：淡入的时长会被压成零，可还没轮到的字仍要等 `animation-delay`。
 	const fade = active;
-	const blocks = useMemo(
-		() =>
-			parseMarkdownChunks(clean).map(({ block, raw }, index) => (
-				<BlockView key={index} block={block} raw={raw} preview={preview} fade={fade} />
-			)),
-		[clean, preview, fade],
-	);
+	/*
+	 * 新挂上的一段字按位置分辨哪些字是刚放出来的（见 `FadeText`）：`clean` 从 `from` 起是最近淡入时长内
+	 * 放出来的。改同一个对象，不换引用，否则每个 `FadeText` 每帧都跟着重画。补尾巴、去表情让 `clean`
+	 * 和放出来的原文差几个字，边界也就差几个字——肉眼看不出。
+	 */
+	const scope = useRef({ from: Number.POSITIVE_INFINITY }).current;
+	scope.from = fade ? Math.max(0, clean.length - recent) : Number.POSITIVE_INFINITY;
+	const blocks = useMemo(() => {
+		// 每一块的原文在 `clean` 里从哪开始：块的原文就是源文的一段，依次找过去。
+		let cursor = 0;
+		return parseMarkdownChunks(clean).map(({ block, raw }, index) => {
+			const found = clean.indexOf(raw, cursor);
+			const start = found < 0 ? cursor : found;
+			cursor = start + raw.length;
+			return <BlockView key={index} block={block} raw={raw} start={start} preview={preview} fade={fade} />;
+		});
+	}, [clean, preview, fade]);
 
 	return (
 		<Doc.Provider value={doc}>
 			<Writing.Provider value={active || streaming}>
+				<FadeScope.Provider value={scope}>
 				<div className={`prose-dw min-w-0 ${className}`}>
 					{blocks}
 					{/*
@@ -194,6 +205,7 @@ export const Markdown = memo(function Markdown({
 						</p>
 					)}
 				</div>
+				</FadeScope.Provider>
 			</Writing.Provider>
 		</Doc.Provider>
 	);
@@ -220,10 +232,13 @@ function WrittenInterface({ code, open, fallback }: { code: string; open: boolea
  * `fade` 在整条回复写完时一起关掉，所有块各重画一次，淡入用的 span 换回纯文本。
  */
 const BlockView = memo(
-	function BlockView({ block, preview, fade }: { block: Block; raw: string; preview: boolean; fade: boolean }) {
-		return renderBlock(block, preview, fade);
+	function BlockView({ block, raw, start, preview, fade }: { block: Block; raw: string; start: number; preview: boolean; fade: boolean }) {
+		// 每画一次从头找：块里的每段字按文档顺序在原文里找自己的位置，见 `FadeText`。
+		const scan = { raw, start, cursor: 0 };
+		// oxlint-disable-next-line react/jsx-no-constructed-context-values -- 游标就是要每画一次归零；块已经按原文 memo，不会多画
+		return <BlockScan.Provider value={scan}>{renderBlock(block, preview, fade)}</BlockScan.Provider>;
 	},
-	(before, after) => before.raw === after.raw && before.preview === after.preview && before.fade === after.fade,
+	(before, after) => before.raw === after.raw && before.start === after.start && before.preview === after.preview && before.fade === after.fade,
 );
 
 function renderBlocks(source: string, preview = false, fade = false): ReactNode {

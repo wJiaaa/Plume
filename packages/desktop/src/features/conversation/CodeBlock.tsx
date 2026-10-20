@@ -1,7 +1,7 @@
 import { translate } from "../../i18n/translate.ts";
 import type { Language } from "@codemirror/language";
 import { Check, Copy, Play, WrapText } from "../../ui/icons/index.ts";
-import { type CSSProperties, memo, type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { memo, type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { highlightGeneration, loadFenceLanguage, onHighlightChange, sharedHighlightStyle, tokenize, tokenizeGrowing, type Grown, type Token } from "../../lib/code/highlight.ts";
 import { iconColour, lookFor } from "../../ui/fileIcon.tsx";
@@ -129,7 +129,7 @@ export function CodeBlock({ lang, code, fade = false }: { lang: string; code: st
 	}, [code, language, generation, fade]);
 
 	// 正在输出的代码块，新来的字和正文一样淡入，见 `FadeText`。不在输出的块不记出现时刻。
-	const { settled, style } = useFade(fade ? Array.from(code).length : 0);
+	const { settled, group } = useFade(code, fade ? Array.from(code).length : 0);
 	/*
 	 * The block's own sideways thumb. Native bars are hidden everywhere, so a long line simply ran
 	 * off the right edge: a trackpad could swipe to it, a Windows mouse could only Shift+wheel, and
@@ -171,7 +171,7 @@ export function CodeBlock({ lang, code, fade = false }: { lang: string; code: st
 			</div>
 			<pre ref={viewport}>
 				{fade ? (
-					fading(tokens ?? [{ text: code, className: "" }], settled, style)
+					fading(tokens ?? [{ text: code, className: "" }], { settled, group })
 				) : (
 					<code>
 						{tokens
@@ -212,7 +212,7 @@ function CodeAction({ tip, active, onClick, children }: { tip: string; active?: 
 const CHUNK_LINES = 24;
 
 /**
- * 正在输出的代码：淡完的字按 token 配色成段画，还在淡的字一个一个画成带配色的 span。
+ * 正在输出的代码：淡完的字按 token 配色成段画，还在淡的字按 `FadeText` 的分组，一组一个 span。
  *
  * 按行切成段，每段是一个块级元素，整段都淡完了就交给 `SettledChunk`，内容不变它就不重画。不切的话
  * 整块代码是同一个行内排版：每帧长一个字，几百行、几千个 span 全部重排一遍。量过：300 行的块按
@@ -222,11 +222,14 @@ const CHUNK_LINES = 24;
  * 行高由 `pre` 的字号撑着。段放进 `code` 里面的话，每行矮 3px，写完换回整块那一刻，三百行的块
  * 一下子长高近一千像素。
  *
- * 还在淡的字按字的序号作 key，挂在 token 外面而不是里面。配色是整块重算的，`cons` 长成 `const`
- * 时 token 的边界和类名都会变；字挂在 token 里的话会跟着 token 被重建，淡入从头再来。挂在外面，
- * 变的只是它的类名，动画不受影响。
+ * 淡入的 span 按组头的序号作 key，套在 token 外面而不是里面。配色是整块重算的，`cons` 长成 `const`
+ * 时 token 的边界和类名都会变；淡入挂在 token 上的话会跟着 token 被重建，从头再来。套在外面，
+ * 被重建的只是里面上色的那几层，动画不受影响。
  */
-function fading(tokens: Token[], settled: number, style: (index: number) => CSSProperties): ReactNode[] {
+type Fade = ReturnType<typeof useFade>;
+
+function fading(tokens: Token[], fade: Fade): ReactNode[] {
+	const { settled } = fade;
 	const out: ReactNode[] = [];
 	let chunk: Token[] = [];
 	let start = 0;
@@ -240,7 +243,7 @@ function fading(tokens: Token[], settled: number, style: (index: number) => CSSP
 				<SettledChunk key={`s${start}`} tokens={chunk} />
 			) : (
 				<span key={`f${start}`} className="ly-code-chunk">
-					<code>{live(chunk, start, settled, style)}</code>
+					<code>{live(chunk, start, fade)}</code>
 				</span>
 			),
 		);
@@ -263,9 +266,20 @@ function fading(tokens: Token[], settled: number, style: (index: number) => CSSP
 	return out;
 }
 
-/** 一段里还有字在淡：淡完的部分成段，其余一个字一个 span。 */
-function live(tokens: Token[], start: number, settled: number, style: (index: number) => CSSProperties): ReactNode[] {
+/** 一段里还有字在淡：淡完的部分成段，其余一组一个 span，里面再按 token 上色。 */
+function live(tokens: Token[], start: number, { settled, group }: Fade): ReactNode[] {
 	const out: ReactNode[] = [];
+	let open: { head: number; pieces: ReactNode[] } | null = null;
+	const close = () => {
+		if (open) {
+			out.push(
+				<span key={open.head} className="ly-fade-char">
+					{open.pieces}
+				</span>,
+			);
+		}
+		open = null;
+	};
 	let at = start;
 	tokens.forEach((token, index) => {
 		const chars = Array.from(token.text);
@@ -274,16 +288,21 @@ function live(tokens: Token[], start: number, settled: number, style: (index: nu
 			const text = chars.slice(0, done).join("");
 			out.push(token.className ? <span key={`t${index}`} className={token.className}>{text}</span> : text);
 		}
-		for (let offset = done; offset < chars.length; offset++) {
-			const char = at + offset;
-			out.push(
-				<span key={char} className={token.className ? `${token.className} ly-fade-char` : "ly-fade-char"} style={style(char)}>
-					{chars[offset]}
-				</span>,
-			);
+		for (let offset = done; offset < chars.length; ) {
+			const head = group(at + offset);
+			let end = offset + 1;
+			while (end < chars.length && group(at + end) === head) end++;
+			if (open?.head !== head) {
+				close();
+				open = { head, pieces: [] };
+			}
+			const text = chars.slice(offset, end).join("");
+			open.pieces.push(token.className ? <span key={index} className={token.className}>{text}</span> : text);
+			offset = end;
 		}
 		at += chars.length;
 	});
+	close();
 	return out;
 }
 

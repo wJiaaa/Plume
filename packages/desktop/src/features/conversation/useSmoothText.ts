@@ -1,46 +1,77 @@
 /**
- * 正在输出的回复，按匀速把字放出来，而不是来多少画多少。
+ * 正在输出的回复，按 `Pace` 排的时间线逐帧切原文，而不是来多少画多少。节奏为什么这样排，见
+ * `stream-pace.ts`。
  *
- * 字到达的节奏是服务商的：有的每个 token 一帧，有的攒几百毫秒一次倒出一两百字。后一种画出来是
- * 一顿一顿的——停住，整句蹦出来，再停住。`ThinkingBlock` 的流水行为同一件事写过 `useTyped`，
- * 这里是正文版，差别在速度的上限：正文要跟得上一个每秒上千字的模型，所以没有封顶，落后多少由
- * `CATCH_UP` 管。
+ * **放到哪画到哪。** 屏幕上只有已经放出来的字，版面和看得见的字是同一回事。也试过先把到了的字全排进
+ * 版面、透明着等时刻淡入：跟随滚动能提前知道前沿在哪，代价是透明的字进了版面——滚动条能滚进一片
+ * 空白、能选中看不见的字、每帧要量 DOM 找前沿、每一种块都得记得领一个时刻。那些不是实现的毛病，
+ * 是方案带来的。版面台阶式地长这件事交给跟随滚动（`useFollowBottom`），那里有一段跑道接着。
  *
- * 速度取两者中较大的：
- *
- * - 最近的到达速率（平滑过的），让一批批进来的字匀成一条线，而不是每批先快后慢；
- * - 积压量 / `CATCH_UP`，保证无论上游多快，屏幕上最多落后约这么久。
- *
- * **写完不等于演完。** `live` 变成 false 时，还没放出来的字照常放完，最后一个字淡完之后才交出
+ * **写完不等于演完。** `live` 落下时，还没放出来的字照常放完，最后一个字淡完之后才交出
  * `active: false`，调用方这时才换回原文。短回复尤其要这样：一句话往往整句到达、紧接着就结束，
  * 从前在结束那一刻直接给全文、掐掉淡入，字是实着蹦出来的。
+ *
+ * **重挂之后接着演。** 一轮既没想也没调工具时，跑完那一刻它从「过程」退回一句回答（见 `turnBlocks`），
+ * 换了父元素，整段重挂。新挂上的原文以正在演的那段为开头，就接过同一条时间线：已经放出来的照旧在，
+ * 还没放的照旧等着，不会把剩下的一次画出来，也不从头重放。
  */
 
 import { useEffect, useRef, useState } from "react";
 import { motionReduced } from "../../ui/motion/reduced.ts";
+import { FADE, holdsWord, Pace, wordCut } from "./stream-pace.ts";
 
-/** 积压的字要在大约这么多秒内放完；也就是稳定输出时屏幕落后模型的时间。 */
-const CATCH_UP = 0.15;
-/** 积压很少时的最低速度（字/秒），免得最后几个字拖着出来。 */
-const FLOOR = 60;
-/** 到达速率的上限（字/秒）。一次倒进来一大段时，瞬时速率高得没有意义，别让它把平滑冲掉。 */
-const RATE_CAP = 1000;
-/** 一次进来这么多字就不是在「输出」了（重连、补发），直接给全文。 */
-const JUMP = 2000;
+/** 挂上时就有这么多字以上，当作打开了一个写到一半的会话：直接画出来，不重放。再少的按刚到的放。 */
+const REPLAY = 2000;
+
 /**
- * 最后一个字放出来之后，还要等多久才算演完：它的出现时刻最多排在放出来之后 160ms，再淡 180ms
- * （见 `FadeText`），留一点余量。
+ * 正在演的那一段：重挂上来的同一段（原文以它为开头、还没演完）接过同一条时间线。
+ * 只记一份，同时在演的另一段对不上开头。
  */
-const LINGER = 400;
+let playing: { text: string; pace: Pace } | null = null;
 
-export function useSmoothText(text: string, live: boolean): { text: string; active: boolean } {
+function resumable(text: string, live: boolean): Pace | null {
+	if (!playing || !text.startsWith(playing.text)) return null;
+	if (!live && playing.pace.done + FADE <= performance.now()) return null;
+	return playing.pace;
+}
+
+interface State {
+	pace: Pace;
+	target: string;
+	cut: number;
+	live: boolean;
+	active: boolean;
+	frame: number;
+	linger: number;
+}
+
+export function useSmoothText(
+	text: string,
+	live: boolean,
+): {
+	text: string;
+	active: boolean;
+	/** 最近 `FADE` 毫秒内放出来的字数（UTF-16 单元）：新挂上的 `FadeText` 据此分辨哪些字是刚到的。 */
+	recent: number;
+} {
 	const motion = !motionReduced();
-	const [shown, setShown] = useState(text);
-	const [active, setActive] = useState(live && motion);
-	const state = useRef({ target: text, position: text.length, rate: 0, arrived: 0, frame: 0, last: 0, live, active: live && motion, linger: 0 });
+	const state = useRef<State | null>(null);
+	if (!state.current) {
+		const now = performance.now();
+		const adopted = motion ? resumable(text, live) : null;
+		const pace = adopted ?? new Pace();
+		if (!adopted) {
+			if (live && motion && text.length <= REPLAY) pace.plan(now, text.length);
+			else pace.present(text.length, now);
+		}
+		const active = motion && (live || pace.cut(now) < text.length || pace.done + FADE > now);
+		state.current = { pace, target: text, cut: active ? pace.cut(now) : text.length, live, active, frame: 0, linger: 0 };
+	}
+	const here = state.current;
+	const [shown, setShown] = useState(() => here.target.slice(0, here.cut));
+	const [active, setActive] = useState(here.active);
 
 	useEffect(() => {
-		const here = state.current;
 		const now = performance.now();
 		here.live = live;
 		clearTimeout(here.linger);
@@ -49,74 +80,69 @@ export function useSmoothText(text: string, live: boolean): { text: string; acti
 			here.linger = window.setTimeout(() => {
 				here.active = false;
 				setActive(false);
-			}, LINGER);
+			}, Math.max(0, here.pace.done - performance.now()) + FADE + 40);
 		};
 
-		// 没在演、不是往后接着写、或者一次来得太多：直接给全文。
-		if (!motion || !text.startsWith(here.target) || text.length - here.target.length > JUMP || (!live && !here.active)) {
-			cancelAnimationFrame(here.frame);
-			here.frame = 0;
+		// 没在演、或者不是往后接着写（换了一段原文）：直接给全文。
+		if (!motion || !text.startsWith(here.target)) {
+			here.pace = new Pace();
+			here.pace.present(text.length, now);
 			here.target = text;
-			here.position = text.length;
-			here.rate = 0;
-			here.arrived = now;
+			here.cut = text.length;
 			setShown(text);
 			here.active = live && motion;
 			setActive(here.active);
+			if (here.active) playing = { text, pace: here.pace };
 			return;
-		}
-
-		if (live && !here.active) {
-			here.active = true;
-			setActive(true);
 		}
 
 		if (text !== here.target) {
-			const added = text.length - here.target.length;
-			// 第一批没有「上一批」可比，只能靠积压量那一项。
-			if (here.arrived) {
-				const instant = Math.min(RATE_CAP, added / Math.max(0.016, (now - here.arrived) / 1000));
-				here.rate = here.rate * 0.7 + instant * 0.3;
-			}
-			here.arrived = now;
+			here.pace.plan(now, text.length);
 			here.target = text;
 		}
+		if (live) {
+			playing = { text, pace: here.pace };
+			if (!here.active) {
+				here.active = true;
+				setActive(true);
+			}
+		}
+		if (!here.active) return;
 
-		if (here.frame) return;
-		if (here.position >= here.target.length) {
+		const step = (time: number) => {
+			here.frame = 0;
+			const cut = wordCut(here.target, here.pace.cut(time), holdsWord(time, here.pace.arrivedAt, here.live));
+			if (cut !== here.cut) {
+				here.cut = cut;
+				setShown(here.target.slice(0, cut));
+			}
+			if (cut >= here.target.length) {
+				if (!here.live) settle();
+				return;
+			}
+			here.frame = requestAnimationFrame(step);
+		};
+		if (here.cut >= text.length) {
 			if (!live) settle();
 			return;
 		}
-		here.last = now;
-		const step = (time: number) => {
-			const current = state.current;
-			// 夹住，免得切到后台的窗口回来时把缺席的那段时间一帧花完。
-			const delta = Math.min(0.1, Math.max(0, (time - current.last) / 1000));
-			current.last = time;
-			const backlog = current.target.length - current.position;
-			if (backlog <= 0) {
-				current.frame = 0;
-				if (!current.live) settle();
-				return;
-			}
-			current.position = Math.min(current.target.length, current.position + Math.max(FLOOR, current.rate, backlog / CATCH_UP) * delta);
-			let cut = Math.floor(current.position);
-			// 不切在一个代理对中间，否则 emoji 会先露出半个乱码。
-			const code = current.target.charCodeAt(cut);
-			if (code >= 0xdc00 && code <= 0xdfff) cut++;
-			setShown(current.target.slice(0, cut));
-			current.frame = requestAnimationFrame(step);
-		};
 		here.frame = requestAnimationFrame(step);
-	}, [text, live, motion]);
+	}, [text, live, motion, here]);
 
+	/*
+	 * 清理归自己的 effect 管，每次原文变了先停掉上一趟再起新的一趟。从前靠「`frame` 不为 0 就是还在跑」
+	 * 跳过重复启动，而开发模式会把组件挂上、卸下、再挂上一遍：卸下那次取消了帧，`frame` 还留着旧的
+	 * 编号，再挂上时以为循环还在，于是停在第一个字上再也不动。
+	 */
 	useEffect(
 		() => () => {
-			cancelAnimationFrame(state.current.frame);
-			clearTimeout(state.current.linger);
+			cancelAnimationFrame(here.frame);
+			here.frame = 0;
+			clearTimeout(here.linger);
 		},
-		[],
+		[text, live, motion, here],
 	);
 
-	return active ? { text: shown, active } : { text, active };
+	if (!active) return { text, active, recent: 0 };
+	return { text: shown, active, recent: here.pace.recentCount(performance.now(), FADE) };
 }
