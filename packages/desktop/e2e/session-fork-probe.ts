@@ -1,13 +1,23 @@
 /* oxlint-disable no-console -- real-window verification prints measured evidence */
 /**
- * 「从这里分叉」 on a message, in the real window with the real pointer.
+ * 「从这里分叉」 in the real window with the real pointer, on a question and on a reply.
  *
- * A two-question conversation; the second question is forked. Measured from what is on screen and
- * on disk: the new conversation in the sidebar (hung under the original), what its transcript holds, what waits in its
- * composer, and that the conversation it came from still has every message — then the fork's own
- * turn is sent, and the original still has every message.
+ * A three-question conversation whose third answer went through a tool call. Measured from what is on
+ * screen and on disk:
  *
- *   node --experimental-strip-types e2e/session-fork-probe.ts [--before]
+ * - which messages offer it: every question, every reply that ended — not the sentence that handed over
+ *   to the tool;
+ * - forking the second question: the new conversation in the sidebar, hung under the original, holds
+ *   what came before it, with the question in its composer; it is sent, and the original keeps every message;
+ * - forking the second answer: the new conversation holds it and nothing after, with an empty composer;
+ *   a new question is sent from there, and the original keeps every message;
+ * - the trajectory inspector's menu no longer offers a fork.
+ *
+ * `--before` only takes the two pictures that change — a reply's row, the inspector's menu — from the
+ * renderer last built into `out/`. The default run loads the renderer from a dev server of its own, so
+ * it measures the source as it is, beside a `pnpm dev` that may hold `out/` and port 5173.
+ *
+ *   pnpm --filter @plume/desktop exec node --experimental-strip-types e2e/session-fork-probe.ts [--before]
  */
 
 import { createHash } from "node:crypto";
@@ -17,19 +27,26 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { closeListeningServer, startApp, type RunningApp } from "./app.ts";
+import { startDevRenderer } from "./dev-renderer.ts";
+import { click, focus, hover, openPane, openSession, press, shot, type, until } from "./drive.ts";
 import { seedSessions } from "./session-fixture.ts";
 import { encode, pause, startRecording, type Frame } from "./record.ts";
 
-const OUT = join(homedir(), "Desktop", "Plume会话分叉测试");
+const OUT = join(homedir(), "Desktop", "Plume消息分叉测试");
 const stamp = new Date().toLocaleString("sv-SE", { timeZone: "Asia/Shanghai" }).replace(/[: ]/g, "-").slice(0, 16);
 const phase = process.argv.includes("--before") ? "before" : "after";
+process.env.PLUME_E2E_ARTIFACTS = OUT;
 const PORT = 9437;
 
 const Q1 = "帮我起草一份 0.9 版发布说明的提纲";
 const A1 = "提纲：一、这一版解决了什么；二、改动明细；三、升级须知。";
 const Q2 = "把第二节展开写成三段";
 const A2 = "第二节展开如下：先说输入框，再说分屏，最后说同步。";
+const Q3 = "对照 notes.md 补上遗漏的改动";
+const H3 = "先读一下 notes.md。";
+const A3 = "补了两条：设置页的搜索、导出轨迹。";
 const FORKED_REPLY = "（分叉里的回答）第二节换个写法：按用户会碰到的场景来组织。";
+const AFTER_REPLY = "换个方向：第二节改成按版本号倒序列";
 
 const results: { name: string; ok: boolean; detail: string }[] = [];
 function check(name: string, ok: boolean, detail: string) {
@@ -39,47 +56,38 @@ function check(name: string, ok: boolean, detail: string) {
 
 let app: RunningApp | undefined;
 let server: Server | undefined;
+let renderer: Awaited<ReturnType<typeof startDevRenderer>> | undefined;
 const frames: Frame[] = [];
 let stopRecording: (() => Promise<void>) | undefined;
 
-async function until(expression: string, ms = 20_000) {
-	const end = Date.now() + ms;
-	while (Date.now() < end) {
-		if (await app!.evaluate<boolean>(`Boolean(${expression})`)) return;
-		await pause(100);
-	}
-	throw new Error(`UI condition not reached: ${expression}`);
-}
-
-async function centre(selector: string) {
-	await until(`document.querySelector(${JSON.stringify(selector)})`);
-	await app!.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center',behavior:'instant'})`);
-	await pause(200);
-	return app!.evaluate<{ x: number; y: number }>(
-		`(()=>{const r=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`,
-	);
-}
-
-async function move(selector: string) {
-	await app!.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...(await centre(selector)) });
-}
-
-async function click(selector: string) {
-	const at = await centre(selector);
-	await app!.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...at });
-	await app!.send("Input.dispatchMouseEvent", { type: "mousePressed", ...at, button: "left", clickCount: 1 });
-	await app!.send("Input.dispatchMouseEvent", { type: "mouseReleased", ...at, button: "left", clickCount: 1 });
-}
-
-async function shot(name: string) {
+async function picture(name: string) {
 	await pause(500);
-	const { data } = await app!.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
-	const file = join(OUT, `${stamp}_${phase}_${name}.png`);
-	await writeFile(file, Buffer.from(data, "base64"));
-	console.log(`   📸 ${file}`);
+	await shot(app!, `${stamp}_${phase}_${name}`);
+	console.log(`   📸 ${join(OUT, `${stamp}_${phase}_${name}.png`)}`);
 }
 
 const mainText = () => app!.evaluate<string>(`document.querySelector("main")?.innerText ?? ""`);
+const stored = (id: string) => app!.evaluate<number>(`window.plume.sessions.transcript(${JSON.stringify(id)}).then((t) => (t.messages ?? t).length)`);
+const rows = () => app!.evaluate<{ id: string; title: string; nested: boolean; current: boolean }[]>(`[...document.querySelectorAll('[data-ly-row]')].map((row) => ({ id: row.getAttribute('data-ly-row'), title: row.innerText.trim().split(String.fromCharCode(10))[0], nested: row.hasAttribute('data-ly-row-nested'), current: Boolean(row.querySelector(':scope > button[aria-current]')) }))`);
+
+/** The reply holding `text`, marked so the pointer can be sent to it: replies carry no index of their own. */
+async function markReply(text: string, key: string) {
+	await until(app!, `[...document.querySelectorAll('main [data-ly-quote="assistant"]')].some((e) => e.innerText.includes(${JSON.stringify(text)}))`);
+	await app!.evaluate(`[...document.querySelectorAll('main [data-ly-quote="assistant"]')].find((e) => e.innerText.includes(${JSON.stringify(text)})).setAttribute('data-probe-reply', ${JSON.stringify(key)})`);
+	return `[data-probe-reply="${key}"]`;
+}
+
+/** The trajectory pane, a record picked, its 「记录操作」 menu open; what the menu offers. */
+async function traceMenu(): Promise<string[]> {
+	await openPane(app!, "轨迹");
+	await until(app!, `document.querySelector('[data-dock-pane="trajectory"] [data-trace-entry]')`);
+	await click(app!, '[data-dock-pane="trajectory"] [data-trace-entry]');
+	await until(app!, `document.querySelector('.ly-trace-inspector')`);
+	await click(app!, '[data-trace-inspector-header] button[aria-label="记录操作"]');
+	await until(app!, `document.querySelector('[role="menuitem"]')`);
+	await pause(400);
+	return app!.evaluate<string[]>(`[...document.querySelectorAll('[role="menuitem"]')].map((e) => e.textContent.trim())`);
+}
 
 try {
 	await mkdir(OUT, { recursive: true });
@@ -105,13 +113,14 @@ try {
 	const address = server.address();
 	if (!address || typeof address === "string") throw new Error("No fixture port");
 
-	let projectId = "";
+	if (phase === "after") renderer = await startDevRenderer();
 	app = await startApp({
 		port: PORT,
+		...(renderer ? { rendererUrl: renderer.url } : {}),
 		seed: async (home) => {
 			const cwd = join(home, "project");
 			await mkdir(cwd, { recursive: true });
-			projectId = createHash("sha256").update(cwd).digest("hex").slice(0, 16);
+			const projectId = createHash("sha256").update(cwd).digest("hex").slice(0, 16);
 			await writeFile(join(home, "window.json"), JSON.stringify({ width: 1400, height: 880, x: 40, y: 40 }));
 			await writeFile(join(home, "settings.json"), JSON.stringify({
 				uiLocale: "zh-CN", permissionMode: "full", projectMemory: false, thinking: "off", autoSummarizeTitle: false,
@@ -123,65 +132,114 @@ try {
 			}));
 			const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
 			const now = Date.now();
-			const meta = { id: "release-notes", title: "发布说明", projectId, projectName: "发布", cwd, createdAt: now - 60_000, updatedAt: now, modelId: "fake/model", messageCount: 4, usage, seq: 5 };
+			const meta = { id: "release-notes", title: "发布说明", projectId, projectName: "发布", cwd, createdAt: now - 90_000, updatedAt: now, modelId: "fake/model", messageCount: 8, usage, seq: 9 };
 			const say = (text: string, at: number) => ({ role: "user", content: [{ type: "text", text }], timestamp: at });
-			const reply = (text: string, at: number) => ({ role: "assistant", content: [{ type: "text", text }], api: "anthropic-messages", provider: "fake", model: "model", usage, stopReason: "stop", timestamp: at });
+			const reply = (content: object[], at: number, stopReason = "stop") => ({ role: "assistant", content, api: "anthropic-messages", provider: "fake", model: "model", usage, stopReason, timestamp: at });
+			const text = (value: string) => ({ type: "text", text: value });
+			const at = (ago: number) => ({ ts: now - ago });
 			seedSessions(home, [{ meta, records: [
-				{ ts: now - 60_000, type: "meta", meta: { ...meta, seq: 1 } },
-				{ ts: now - 50_000, type: "message", message: say(Q1, now - 50_000) },
-				{ ts: now - 45_000, type: "message", message: reply(A1, now - 45_000) },
-				{ ts: now - 20_000, type: "message", message: say(Q2, now - 20_000) },
-				{ ts: now - 15_000, type: "message", message: reply(A2, now - 15_000) },
+				{ ...at(90_000), type: "meta", meta: { ...meta, seq: 1 } },
+				{ ...at(80_000), type: "message", message: say(Q1, now - 80_000) },
+				{ ...at(75_000), type: "message", message: reply([text(A1)], now - 75_000) },
+				{ ...at(60_000), type: "message", message: say(Q2, now - 60_000) },
+				{ ...at(55_000), type: "message", message: reply([text(A2)], now - 55_000) },
+				{ ...at(40_000), type: "message", message: say(Q3, now - 40_000) },
+				{ ...at(35_000), type: "message", message: reply([text(H3), { type: "toolCall", id: "call-1", name: "read", arguments: { path: "notes.md" } }], now - 35_000, "toolUse") },
+				{ ...at(34_000), type: "message", message: { role: "toolResult", toolCallId: "call-1", toolName: "read", content: [text("设置页搜索；导出轨迹")], isError: false, timestamp: now - 34_000 } },
+				{ ...at(30_000), type: "message", message: reply([text(A3)], now - 30_000) },
 			] }]);
 		},
 	});
 	await app.evaluate("document.fonts.ready");
 	if (phase === "after") stopRecording = await startRecording(PORT, frames);
 
-	await click('[data-ly-row="release-notes"] > button');
-	await until(`document.querySelector('main')?.innerText.includes(${JSON.stringify(A2)})`);
+	await openSession(app, "release-notes");
+	await until(app, `document.querySelector('main')?.innerText.includes(${JSON.stringify(A3)})`);
 	await pause(900);
 
-	console.log("① 悬停第二个问题，那一排按钮里有「从这里分叉」");
-	await move('[data-question-index="2"]');
-	await pause(600);
-	const button = await app.evaluate<{ tip: string | null; visible: boolean }>(`(() => {
-		const b = document.querySelector('[data-question-index="2"] [data-message-fork]');
-		return { tip: b?.getAttribute('data-ly-tip') ?? null, visible: Boolean(b) && getComputedStyle(b.closest('[data-ly-hover-reveal]') ?? b).opacity !== '0' };
-	})()`);
-	check("第二个问题的按钮里有「从这里分叉」", button.tip === "从这里分叉" && button.visible, JSON.stringify(button));
-	await shot("00_悬停第二个问题的那一排按钮");
-	await move('[data-question-index="2"] [data-message-fork]');
-	await pause(900);
-	await shot("01_悬停从这里分叉");
+	if (phase === "before") {
+		await hover(app, await markReply(A2, "a2"));
+		await pause(600);
+		await picture("00_悬停第二个回答");
+		console.log(`   轨迹菜单：${JSON.stringify(await traceMenu())}`);
+		await picture("01_轨迹记录操作菜单");
+	} else {
+		console.log("① 哪些消息上有「从这里分叉」");
+		const offered = await app.evaluate<{ total: number; handover: number; replies: number }>(`(() => {
+			const replies = [...document.querySelectorAll('main [data-ly-quote="assistant"]')];
+			const handover = replies.find((e) => e.innerText.includes(${JSON.stringify(H3)}));
+			return {
+				total: document.querySelectorAll('main [data-message-fork]').length,
+				handover: handover ? handover.querySelectorAll('[data-message-fork]').length : -1,
+				replies: replies.filter((e) => e.querySelector('[data-message-fork]')).length,
+			};
+		})()`);
+		check("三个问题、三条说完的回答各一个，交给工具的那一句没有", offered.total === 6 && offered.replies === 3 && offered.handover === 0, JSON.stringify(offered));
 
-	console.log("② 点下去：新会话从第二个问题之前开始，问题回到输入框");
-	await click('[data-question-index="2"] [data-message-fork]');
-	await until(`[...document.querySelectorAll('[data-ly-row]')].some((row) => row.innerText.includes('（分叉）'))`);
-	await until(`!document.querySelector('main')?.innerText.includes(${JSON.stringify(A2)})`);
-	await pause(900);
-	const sidebar = await app.evaluate<string[]>(`[...document.querySelectorAll('[data-ly-row]')].map((row) => row.innerText.trim().split(String.fromCharCode(10))[0])`);
-	check("侧栏里多了一个「发布说明（分叉）」，原来那个还在", sidebar.some((title) => title.includes("发布说明（分叉）")) && sidebar.some((title) => title === "发布说明"), JSON.stringify(sidebar));
-	const rows = await app.evaluate<{ id: string; title: string; nested: boolean }[]>(`[...document.querySelectorAll('[data-ly-row]')].map((row) => ({ id: row.getAttribute('data-ly-row'), title: row.innerText.trim().split(String.fromCharCode(10))[0], nested: row.hasAttribute('data-ly-row-nested') }))`);
-	const parentAt = rows.findIndex((row) => row.id === "release-notes");
-	const forkRow = rows[parentAt + 1];
-	check("分叉挂在原会话下面：紧跟在它后面、缩进一格", Boolean(forkRow?.title.includes("（分叉）") && forkRow.nested && !rows[parentAt].nested), JSON.stringify(rows));
-	const text = await mainText();
-	check("分叉里只有第二个问题之前的那一问一答", text.includes(Q1) && text.includes(A1) && !text.includes(A2), `含第一问：${text.includes(Q1)}，含第一答：${text.includes(A1)}，含第二答：${text.includes(A2)}`);
-	const draft = await app.evaluate<string>(`document.querySelector('main textarea')?.value ?? ''`);
-	check("第二个问题回到了分叉的输入框里", draft === Q2, JSON.stringify(draft));
-	const original = await app.evaluate<number>(`window.plume.sessions.transcript('release-notes').then((t) => (t.messages ?? t).length)`);
-	check("原会话一条都没少", original === 4, `原会话 ${original} 条消息`);
-	await shot("02_分叉出来的会话");
+		await hover(app, await markReply(A2, "a2"));
+		await pause(600);
+		const tip = await app.evaluate<string | null>(`document.querySelector('[data-probe-reply="a2"] [data-message-fork]')?.getAttribute('data-ly-tip') ?? null`);
+		check("第二个回答的操作排里有「从这里分叉」", tip === "从这里分叉", JSON.stringify(tip));
+		await picture("00_悬停第二个回答");
+		await hover(app, '[data-probe-reply="a2"] [data-message-fork]');
+		await pause(900);
+		await picture("01_悬停回答上的从这里分叉");
 
-	console.log("③ 在分叉里发出去，分叉自己往下走，原会话不受影响");
-	await app.evaluate(`(() => { const field = document.querySelector('main textarea'); field.focus(); field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); })()`);
-	await until(`document.querySelector('main')?.innerText.includes(${JSON.stringify(FORKED_REPLY)})`, 30_000);
-	await pause(1200);
-	const afterSend = await app.evaluate<number>(`window.plume.sessions.transcript('release-notes').then((t) => (t.messages ?? t).length)`);
-	check("分叉里回答了，原会话还是 4 条", afterSend === 4, `原会话 ${afterSend} 条消息`);
-	await shot("03_分叉独立往下走");
-	await pause(1200);
+		console.log("② 在第二个问题上分叉：新会话停在它之前，问题回到输入框");
+		await click(app, '[data-question-index="2"] [data-message-fork]');
+		await until(app, `!document.querySelector('main')?.innerText.includes(${JSON.stringify(A2)})`);
+		await pause(900);
+		let list = await rows();
+		const beforeFork = list.find((row) => row.current);
+		const parentAt = list.findIndex((row) => row.id === "release-notes");
+		check("问题分叉挂在原会话下面、是当前会话", Boolean(beforeFork?.title === "发布说明（分叉）" && beforeFork.nested && list.indexOf(beforeFork) > parentAt), JSON.stringify(list));
+		let text = await mainText();
+		check("问题分叉里只有第二个问题之前的一问一答", text.includes(Q1) && text.includes(A1) && !text.includes(A2), `含第一答：${text.includes(A1)}，含第二答：${text.includes(A2)}`);
+		const draft = await app.evaluate<string>(`document.querySelector('main textarea')?.value ?? ''`);
+		check("第二个问题回到了分叉的输入框里", draft === Q2, JSON.stringify(draft));
+		await picture("02_问题分叉");
+		await focus(app, "main textarea");
+		await press(app, "Enter", 13);
+		await until(app, `document.querySelector('main')?.innerText.includes(${JSON.stringify(FORKED_REPLY)})`, 1800);
+		await pause(1200);
+		check("问题分叉发出去有了回答，原会话还是 8 条", (await stored("release-notes")) === 8, `原会话 ${await stored("release-notes")} 条消息`);
+
+		console.log("③ 回到原会话，在第二个回答上分叉：新会话带着这条回答，输入框是空的");
+		await openSession(app, "release-notes");
+		await until(app, `document.querySelector('main')?.innerText.includes(${JSON.stringify(A3)})`);
+		await pause(700);
+		await click(app, `${await markReply(A2, "a2")} [data-message-fork]`);
+		await until(app, `[...document.querySelectorAll('[data-ly-row]')].filter((row) => row.innerText.includes('（分叉）')).length === 2`);
+		await until(app, `!document.querySelector('main')?.innerText.includes(${JSON.stringify(Q3)})`);
+		await pause(900);
+		list = await rows();
+		const afterFork = list.find((row) => row.current);
+		check("回答分叉也挂在原会话下面、是当前会话", Boolean(afterFork && afterFork.id !== beforeFork?.id && afterFork.title === "发布说明（分叉）" && afterFork.nested), JSON.stringify(list));
+		text = await mainText();
+		check("回答分叉里到第二个回答为止，后面的问题和工具都没有", text.includes(Q2) && text.includes(A2) && !text.includes(Q3) && !text.includes(H3), `含第二答：${text.includes(A2)}，含第三问：${text.includes(Q3)}，含工具那句：${text.includes(H3)}`);
+		const onDisk = afterFork ? await app.evaluate<{ count: number; last: string }>(`window.plume.sessions.transcript(${JSON.stringify(afterFork.id)}).then((t) => { const m = t.messages ?? t; return { count: m.length, last: m.at(-1)?.role }; })`) : null;
+		check("回答分叉存下来的是 4 条，最后一条是那条回答", onDisk?.count === 4 && onDisk.last === "assistant", JSON.stringify(onDisk));
+		const empty = await app.evaluate<string>(`document.querySelector('main textarea')?.value ?? ''`);
+		check("回答分叉的输入框是空的", empty === "", JSON.stringify(empty));
+		check("原会话一条都没少", (await stored("release-notes")) === 8, `原会话 ${await stored("release-notes")} 条消息`);
+		await picture("03_回答分叉");
+		await type(app, "main textarea", AFTER_REPLY);
+		await pause(600);
+		await press(app, "Enter", 13);
+		await until(app, `document.querySelector('main')?.innerText.includes(${JSON.stringify(FORKED_REPLY)})`, 1800);
+		await pause(1200);
+		const grown = afterFork ? await stored(afterFork.id) : 0;
+		check("回答分叉接着问下去有了回答（6 条），原会话还是 8 条", grown === 6 && (await stored("release-notes")) === 8, `分叉 ${grown} 条，原会话 ${await stored("release-notes")} 条`);
+		await picture("04_回答分叉接着往下说");
+
+		console.log("④ 轨迹里的记录操作不再有「从这里分叉」");
+		await openSession(app, "release-notes");
+		await until(app, `document.querySelector('main')?.innerText.includes(${JSON.stringify(A3)})`);
+		const menu = await traceMenu();
+		check("记录操作菜单里没有「从这里分叉」", menu.length > 0 && !menu.includes("从这里分叉"), JSON.stringify(menu));
+		await picture("05_轨迹记录操作菜单");
+		await pause(1200);
+	}
 } catch (error) {
 	check("探针跑完", false, String(error));
 } finally {
@@ -189,9 +247,10 @@ try {
 	const passed = results.filter((r) => r.ok).length;
 	console.log(`\n${passed}/${results.length} 通过　（${phase}）`);
 	await app?.stop();
+	await renderer?.close();
 	if (server) await closeListeningServer(server);
 	if (frames.length) {
-		const video = join(OUT, `${stamp}_会话分叉_${passed}of${results.length}.mp4`);
+		const video = join(OUT, `${stamp}_消息分叉_${passed}of${results.length}.mp4`);
 		await encode(frames, video);
 		console.log(`   🎬 ${video}`);
 	}

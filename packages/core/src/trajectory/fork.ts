@@ -72,11 +72,6 @@ export async function forkSession(
  * The same thing 撤回 does to a conversation, done to a copy: the fork holds everything before the
  * message, and the message itself goes back to the composer (the caller's job) to be sent as it was
  * or rewritten. The original is not touched.
- *
- * The window names the message by its position in the transcript it shows, which is not a sequence
- * number, and positions drift — a message the window drew before the log had it. So the position is
- * checked against the message's timestamp and, when they disagree, the message is looked up by its
- * timestamp; a message that cannot be found is not forked, rather than forking from the wrong place.
  */
 export async function forkBeforeMessage(
 	store: SessionStorage,
@@ -85,14 +80,48 @@ export async function forkBeforeMessage(
 	timestamp: number,
 	title?: string,
 ): Promise<ForkResult | null> {
+	const target = await locate(store, sessionId, "user", messageIndex, timestamp);
+	return target ? forkSession(store, sessionId, target.seq - 1, title) : null;
+}
+
+/**
+ * Fork from just after a reply: the fork holds the reply and everything before it, and is taken on
+ * from there with an empty composer. The original is not touched.
+ *
+ * Only a reply that ended. One that handed over to a tool (`toolUse`) is the middle of a turn — its
+ * calls have no results yet, and a fork there would start from work that was never finished.
+ */
+export async function forkAfterMessage(
+	store: SessionStorage,
+	sessionId: string,
+	messageIndex: number,
+	timestamp: number,
+	title?: string,
+): Promise<ForkResult | null> {
+	const target = await locate(store, sessionId, "assistant", messageIndex, timestamp);
+	if (!target || (target.message.role === "assistant" && target.message.stopReason === "toolUse")) return null;
+	return forkSession(store, sessionId, target.seq, title);
+}
+
+/**
+ * The window names a message by its position in the transcript it shows, which is not a sequence
+ * number, and positions drift — a message the window drew before the log had it. So the position is
+ * checked against the message's timestamp and, when they disagree, the message is looked up by its
+ * timestamp; a message that cannot be found is not forked, rather than forking from the wrong place.
+ */
+async function locate(
+	store: SessionStorage,
+	sessionId: string,
+	role: "user" | "assistant",
+	messageIndex: number,
+	timestamp: number,
+): Promise<{ seq: number; message: Message } | undefined> {
 	const loaded = await store.load(sessionId);
-	if (!loaded) return null;
-	const isIt = (message: Message | undefined) => message?.role === "user" && message.timestamp === timestamp;
-	const target = isIt(loaded.entries[messageIndex]?.message)
+	if (!loaded) return undefined;
+	const isIt = (message: Message | undefined) => message?.role === role && message.timestamp === timestamp;
+	return isIt(loaded.entries[messageIndex]?.message)
 		? loaded.entries[messageIndex]
 		: loaded.entries.find((entry) => isIt(entry.message));
-	if (!target) return null;
-	return forkSession(store, sessionId, target.seq - 1, title);
 }
 
 async function appendBoundary(store: SessionStorage, meta: SessionMeta, boundary: BoundaryAt): Promise<SessionMeta> {

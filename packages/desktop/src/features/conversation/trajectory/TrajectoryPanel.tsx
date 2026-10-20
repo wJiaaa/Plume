@@ -8,7 +8,7 @@ import { SearchField } from "../../../ui/inputs/SearchField.tsx";
 import { formatTokens } from "../../../lib/format-tokens.ts";
 import { TraceActions } from "./TraceActions.tsx";
 import { useApp } from "../../../store/index.ts";
-import { focusScreenOf, useDockScope, useScopedMeta } from "../../../app/session-scope.tsx";
+import { useDockScope, useScopedMeta } from "../../../app/session-scope.tsx";
 import { openFilePane } from "../../dock/index.ts";
 import { SourceFilter } from "./SourceFilter.tsx";
 import { useTrajectory } from "./useTrajectory.ts";
@@ -79,21 +79,6 @@ function SessionTrajectory() {
 			setSelected(null);
 		} catch (error) { useApp.getState().notify(String(error), "error"); }
 	};
-	const fork = async () => {
-		if (!meta || !picked) return;
-		try {
-			const result = await bridge.sessions.fork(meta.id, picked.seq);
-			if (!result) throw new Error(t("trajectory.forkFailed"));
-			/*
-			 * In this panel's screen, where it was asked for. A press there focuses the screen first, so
-			 * the fork took its place; from the keyboard it replaced the screen with focus instead. This
-			 * screen takes the live slot the way the press does — the capsule in `UserMessage` is the same.
-			 */
-			if (meta.id !== useApp.getState().activeSessionId) focusScreenOf(meta.id);
-			await useApp.getState().openSession(result.meta);
-		}
-		catch (error) { useApp.getState().notify(String(error), "error"); }
-	};
 	const selectedIndex = entries.findIndex(entry => entryKey(entry) === selected);
 	const closeDetails = () => {
 		setSelected(null); setTarget(null);
@@ -122,7 +107,7 @@ function SessionTrajectory() {
 			<div className="ly-trace-ledger">
 				<TraceList entries={entries} selected={selected} onSelect={select} resetKey={JSON.stringify([sources, deferredQuery, status])} collapsed={collapsed} onCollapse={collapse} target={target} focused={focused} paused={Boolean(picked || time)} onFollowing={setFollowing} />
 			</div>
-			{picked && <TraceInspector anchor={controls.current} entry={picked} all={all} query={deferredQuery} onSelect={navigate} onClose={closeDetails} onExport={() => void exportFile("json", picked)} onOutput={() => void exportFile("output", picked)} onFork={() => void fork()} previous={selectedIndex > 0 ? () => navigate(entries[selectedIndex - 1]) : undefined} next={selectedIndex >= 0 && selectedIndex < entries.length - 1 ? () => navigate(entries[selectedIndex + 1]) : undefined} />}
+			{picked && <TraceInspector anchor={controls.current} entry={picked} all={all} query={deferredQuery} onSelect={navigate} onClose={closeDetails} onExport={() => void exportFile("json", picked)} onOutput={() => void exportFile("output", picked)} previous={selectedIndex > 0 ? () => navigate(entries[selectedIndex - 1]) : undefined} next={selectedIndex >= 0 && selectedIndex < entries.length - 1 ? () => navigate(entries[selectedIndex + 1]) : undefined} />}
 		</div>
 	</div>;
 }

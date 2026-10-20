@@ -9,8 +9,8 @@
 
 import type { MessageAttachment } from "@plume/core";
 import {
+	forkAfterMessage,
 	forkBeforeMessage,
-	forkSession,
 	readTrajectory,
 	type ApprovalDecision,
 	type ContextBreakdown,
@@ -109,7 +109,7 @@ export function registerSessionsIpc({
 	 * the agent is started later, by `ensureSession`, when there is actually something to run.
 	 */
 	/*
-	 * The trajectory, and forking from a point in it.
+	 * The trajectory, and forking from a message in it.
 	 *
 	 * Both read the same file the turn was written to — there is no second record of what happened
 	 * and no chance of the two disagreeing.
@@ -123,14 +123,14 @@ export function registerSessionsIpc({
 		readTrajectoryChanges(store, sessionId, cursor, sessions.get(sessionId)?.running ?? false));
 
 	ipcMain.handle(
-		"sessions:fork",
-		async (_event, sessionId: string, seq: number) =>
-			forkSession(store, sessionId, seq),
-	);
-	ipcMain.handle(
 		"sessions:forkBefore",
 		async (_event, sessionId: string, messageIndex: number, timestamp: number, title?: string) =>
 			forkBeforeMessage(store, sessionId, messageIndex, timestamp, title),
+	);
+	ipcMain.handle(
+		"sessions:forkAfter",
+		async (_event, sessionId: string, messageIndex: number, timestamp: number, title?: string) =>
+			forkAfterMessage(store, sessionId, messageIndex, timestamp, title),
 	);
 
 	ipcMain.handle(

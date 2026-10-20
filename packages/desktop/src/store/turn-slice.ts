@@ -7,7 +7,7 @@
  */
 
 import { translate } from "../i18n/translate.ts";
-import type { ApprovalDecision, Message, MessageAttachment, SessionMeta, SpawnedFrom, ThinkingLevel, UserContent, UserMessage } from "@plume/core";
+import type { ApprovalDecision, AssistantMessage, Message, MessageAttachment, SessionMeta, SpawnedFrom, ThinkingLevel, UserContent, UserMessage } from "@plume/core";
 import type { SessionSnapshot } from "../../electron/ipc-types.ts";
 import { prune, rebuildToolRuns, todosFrom, without } from "./derive.ts";
 import { howItStopped } from "./turn-stop.ts";
@@ -496,31 +496,35 @@ export function turnSlice(set: Set, get: Get) {
     }
   },
 
-  async forkFrom(index: number, message: UserMessage, target?: string) {
+  async forkFrom(index: number, message: UserMessage | AssistantMessage, target?: string) {
     const sessionId = target ?? get().activeSessionId;
     const source = sessionId ? get().sessions.find((session) => session.id === sessionId) : undefined;
-    if (!source || message.role !== "user" || message.synthetic) return;
+    if (!source || (message.role === "user" && message.synthetic)) return;
     /*
      * Not refused while a turn runs, unlike 撤回: nothing here touches this conversation, and branching
      * off while it works is exactly when a second line of thought is wanted. The log is only read up
      * to this message, which a running turn does not rewrite.
      */
+    const title = translate("messageActions.forkTitle", { title: source.title });
     let forked: Awaited<ReturnType<typeof bridge.sessions.forkBefore>>;
     try {
-      forked = await bridge.sessions.forkBefore(source.id, index, message.timestamp, translate("userMessage.forkTitle", { title: source.title }));
+      forked = message.role === "user"
+        ? await bridge.sessions.forkBefore(source.id, index, message.timestamp, title)
+        : await bridge.sessions.forkAfter(source.id, index, message.timestamp, title);
     } catch (cause) {
-      get().notify(`${translate("userMessage.forkFailed")}: ${cause instanceof Error ? cause.message : String(cause)}`, "error");
+      get().notify(`${translate("messageActions.forkFailed")}: ${cause instanceof Error ? cause.message : String(cause)}`, "error");
       return;
     }
     if (!forked) {
-      get().notify(translate("userMessage.forkFailed"), "error");
+      get().notify(translate("messageActions.forkFailed"), "error");
       return;
     }
     // It opens where the button was pressed: that screen's conversation takes the live slot first (ADR-0023).
     if (source.id !== get().activeSessionId && !(await onStage(source.id))) return;
     await get().openSession(forked.meta);
+    // Forked after a reply: the fork goes on from it, with nothing to put back.
     // Another conversation was opened meanwhile: that is the newer choice, and the draft is not its.
-    if (get().activeSessionId !== forked.meta.id) return;
+    if (message.role !== "user" || get().activeSessionId !== forked.meta.id) return;
     const draft = draftFromUserMessage(message);
     const attachments = await withParkedPixels(draft.attachments);
     if (get().activeSessionId !== forked.meta.id) return;

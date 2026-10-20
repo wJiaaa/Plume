@@ -3,7 +3,7 @@ import type {
   UserContent,
   UserMessage as UserMessageType,
 } from "@plume/core";
-import { MessageSquarePlus, Pencil, Boxes, MessagesSquare, Split, Undo2 } from "../../ui/icons/index.ts";
+import { MessageSquarePlus, Pencil, Boxes, MessagesSquare, Undo2 } from "../../ui/icons/index.ts";
 import { attachToComposer, openFromEvent, openViewer } from "../image/index.ts";
 import { AttachmentMenu, AttachmentStrip, displayName, KIND_LABEL, previewableInPanel, sentKind, type FileKind, type StripFile } from "../composer/index.ts";
 import { useAttachmentActions } from "../composer/index.ts";
@@ -15,6 +15,7 @@ import { BubbleText } from "./BubbleText.tsx";
 import { jumpToSession } from "./jump-to-session.ts";
 import { Markdown } from "./Markdown.tsx";
 import { MessageActions } from "./MessageActions.tsx";
+import { ForkAction } from "./ForkAction.tsx";
 import { MessageEditor } from "./message/MessageEditor.tsx";
 import { useApp } from "../../store/index.ts";
 import { useDockScope, useScopedFromMessages, useScopedMeta, useScopedRunning, useScopedSessionId } from "../../app/session-scope.tsx";
@@ -185,9 +186,6 @@ export function UserMessage({
 	const aside = useScopedMeta()?.parentId !== undefined;
 	const editMessage = useApp((s) => s.editMessage);
 	const revertMessage = useApp((s) => s.revertMessage);
-	const forkFrom = useApp((s) => s.forkFrom);
-	/** Pressed and not yet opened: a second press would fork the same point twice. */
-	const [forking, setForking] = useState(false);
 	const lastUser = useScopedFromMessages(lastUserMessageIndex);
 	const confirm = useConfirmer();
   const attachmentActions = useAttachmentActions();
@@ -618,19 +616,7 @@ export function UserMessage({
           * puts its "Fork from here". Offered while a turn runs, unlike the two beside it: it changes
           * nothing here.
           */}
-        {sessionId && !aside && (
-          <IconButton
-            data-message-fork=""
-            label={t("userMessage.fork")}
-            disabled={forking}
-            onClick={() => {
-              if (forking) return;
-              setForking(true);
-              void forkFrom(index, message, sessionId).finally(() => setForking(false));
-            }}
-            icon={<Split size={12.5} strokeWidth={1.8} className="rotate-90" />}
-          />
-        )}
+        {sessionId && !aside && <ForkAction index={index} message={message} sessionId={sessionId} />}
       </MessageActions>
       {confirm.element}
     </div>

@@ -1,11 +1,11 @@
 /**
  * A conversation opened from inside a screen opens in that screen.
  *
- * Two controls open another conversation from inside one: the capsule of a conversation a message
- * referenced with @, and the trajectory panel's fork. Both called `openSession`, which puts the
- * conversation in the live slot, and the split then shows it in place of the screen with focus. A
- * press focuses its screen first, so the mouse replaced the screen it pressed in; the keyboard
- * reaches a control in another screen without that press, and replaced the focused one instead.
+ * The capsule of a conversation a message referenced with @ opens it from inside a screen. It called
+ * `openSession`, which puts the conversation in the live slot, and the split then shows it in place
+ * of the screen with focus. A press focuses its screen first, so the mouse replaced the screen it
+ * pressed in; the keyboard reaches a control in another screen without that press, and replaced the
+ * focused one instead. 「从这里分叉」 on a message goes through the store, see `message-fork.test.ts`.
  *
  * The rule, decided 2026-09-27: it opens where it was pressed, as it always did with the mouse. The
  * split takes it from there — in place of that screen, or by moving the focus to the screen that
@@ -21,7 +21,6 @@ import { act, createElement as h } from "react";
 import type { Message, SessionMeta, UserMessage as UserMessageType } from "@plume/core";
 import { DockScope, provideScreenFocus, SessionScope } from "../../src/app/session-scope.tsx";
 import { UserMessage } from "../../src/features/conversation/UserMessage.tsx";
-import { TrajectoryPanel } from "../../src/features/conversation/trajectory/TrajectoryPanel.tsx";
 import { I18nProvider } from "../../src/i18n/index.ts";
 import { useApp, type AppState } from "../../src/store/index.ts";
 import type { Cache } from "../../src/store/derive.ts";
@@ -109,38 +108,4 @@ test("a conversation capsule on the screen with focus opens there, as it always 
 	await click(view.find('button[data-ly-tip="点击切换至该会话"]'));
 	await settle();
 	assert.deepEqual(opened, [{ id: "c", replacing: "a" }]);
-});
-
-/** A turn for what a press started to come back, and for React to draw it. */
-async function tick(): Promise<void> {
-	await act(async () => {
-		await new Promise((resolve) => setTimeout(resolve, 20));
-	});
-}
-
-/** A row of a menu, which draws into a portal outside the mounted tree. */
-function menuItem(label: string): HTMLElement {
-	const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((element) => element.textContent?.trim() === label);
-	assert.ok(item, `no menu row 「${label}」`);
-	return item;
-}
-
-test("a conversation forked from the trajectory panel of the screen without focus opens in place of that screen", async () => {
-	Object.defineProperty(window, "plume", {
-		configurable: true,
-		value: {
-			sessions: {
-				trajectoryChanges: async () => ({ cursor: "b:1", reset: true, upserts: [{ id: "one", seq: 1, ts: 1, source: "request", summary: "请求" }], removals: [] }),
-				fork: async () => ({ meta: meta("f") }),
-			},
-			agent: { onEvent: () => () => {} },
-		},
-	});
-	view = await inScreen("b", h(TrajectoryPanel));
-	await tick();
-	await click(view.find("button[data-trace-entry]"));
-	await click(view.find('[data-trace-inspector-header] button[aria-label="记录操作"]'));
-	await click(menuItem("从这里分叉"));
-	await settle();
-	assert.deepEqual(opened, [{ id: "f", replacing: "b" }], "the fork replaced the screen with focus");
 });

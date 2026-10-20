@@ -1,7 +1,7 @@
 import { translate } from "../../../i18n/translate.ts";
 import { useEffect, useRef, useState } from "react";
 import { SourceIcon } from "./SourceIcon.tsx";
-import { ArrowUpRight, ArrowLeft, ChevronLeft, ChevronRight, Ellipsis, FileText, GitBranch, ScrollText as OutputIcon } from "../../../ui/icons/index.ts";
+import { ArrowUpRight, ArrowLeft, ChevronLeft, ChevronRight, Ellipsis, FileText, ScrollText as OutputIcon } from "../../../ui/icons/index.ts";
 import { openViewer } from "../../image/index.ts";
 import { SOURCE_LABEL, STATUS_LABEL, entryKey, type Entry } from "@plume/core/trajectory-view";
 import { IconButton } from "../../../ui/primitives/IconButton.tsx";
@@ -10,9 +10,9 @@ import { Popover, MenuBody, MenuItem, usePopover, type Anchor } from "../../../u
 import { TraceText } from "../detail/TraceText.tsx";
 import { useI18n } from "../../../i18n/index.ts";
 
-export function TraceInspector({ anchor, entry, all, query, onSelect, onClose, onExport, onOutput, onFork, previous, next }: {
+export function TraceInspector({ anchor, entry, all, query, onSelect, onClose, onExport, onOutput, previous, next }: {
 	anchor: Anchor; previous?: () => void; next?: () => void;
-	entry: Entry; all: Entry[]; query: string; onSelect: (entry: Entry) => void; onClose: () => void; onExport: () => void; onOutput: () => void; onFork: () => void;
+	entry: Entry; all: Entry[]; query: string; onSelect: (entry: Entry) => void; onClose: () => void; onExport: () => void; onOutput: () => void;
 }) {
 	const { t } = useI18n();
 	const [tab, setTab] = useState<"content" | "info" | "raw">("content");
@@ -59,7 +59,6 @@ export function TraceInspector({ anchor, entry, all, query, onSelect, onClose, o
 		{menu.open && <Popover anchor={menu.anchor} onClose={menu.close} label={t("trace.actions")}><MenuBody>
 			<MenuItem icon={<FileText size={14} />} onClick={() => { menu.close(); onExport(); }}>{t("trace.openFile")}</MenuItem>
 			{entry.metadata && typeof entry.metadata === "object" && "outputPath" in entry.metadata && typeof entry.metadata.outputPath === "string" ? <MenuItem icon={<OutputIcon size={14} />} onClick={() => { menu.close(); onOutput(); }}>{t("trace.viewRaw")}</MenuItem> : null}
-			<MenuItem icon={<GitBranch size={14} />} onClick={() => { menu.close(); onFork(); }}>{t("trace.forkHere")}</MenuItem>
 		</MenuBody></Popover>}
 		<div role="tablist" aria-label={t("trace.content")} className="flex shrink-0 gap-1 border-b border-line-soft px-2 pb-1">
 			{(["content", "info", "raw"] as const).map(value => <button key={value} type="button" role="tab" aria-selected={tab === value} className={`rounded-lg px-3 py-1 text-caption ${tab === value ? "bg-card-hover text-ink" : "text-ink-muted hover:bg-hover"}`} onClick={() => setTab(value)}>{value === "content" ? t("common.content") : value === "info" ? t("common.info") : t("common.raw")}</button>)}

@@ -1,8 +1,8 @@
 # ADR-0035：从一条消息分叉——撤回，做在一份副本上
 
-- 状态：已采纳
+- 状态：已采纳；2026-10-20 修订：回复上也能分叉，轨迹检查器里的分叉撤掉，见文末
 - 日期：2026-09-28
-- 相关：`packages/core/src/trajectory/fork.ts`（`forkSession`、`forkBeforeMessage`）、`trajectory/replay.ts`（`historyUpTo`）；契约 `sessions.forkBefore`；desktop `electron/ipc/sessions.ts`、`src/store/turn-slice.ts`（`forkFrom`）、`src/features/conversation/UserMessage.tsx`；测试 `core/test/session-fork.test.ts`、`desktop/test/ui/message-fork.test.ts`；探针 `desktop/e2e/session-fork-probe.ts`
+- 相关：`packages/core/src/trajectory/fork.ts`（`forkSession`、`forkBeforeMessage`、`forkAfterMessage`）、`trajectory/replay.ts`（`historyUpTo`）；契约 `sessions.forkBefore`、`sessions.forkAfter`；desktop `electron/ipc/sessions.ts`、`src/store/turn-slice.ts`（`forkFrom`）、`src/features/conversation/ForkAction.tsx`（`UserMessage.tsx` 与 `rows.tsx` 共用）；测试 `core/test/session-fork.test.ts`、`desktop/test/ui/message-fork.test.ts`；探针 `desktop/e2e/session-fork-probe.ts`
 
 ## 背景
 
@@ -39,3 +39,27 @@
 - **分叉进一个新的 worktree**（Claude Code 的 issue #49954 在要这个）。现在分叉和原会话共用同一个工作
   目录，两边都去改文件时会互相踩。
 - 轨迹检查器那个分叉的标题仍是 core 默认的中文后缀——它的 `sessions.fork` 没有标题参数，这次没改它的签名。
+
+## 修订（2026-10-20）：回复上也能分叉，轨迹检查器里的分叉撤掉
+
+轨迹检查器的分叉按日志 `seq` 切，任何一条记录都能点，而大多数记录不是一个能接着往下说的位置：
+
+- 工具调用是从助手消息里拆出来的，它的 `seq` 就是那条消息的，点一个调用带走的是整条回复连同并行的其他调用，
+  它们一个结果都没有；
+- 在并行调用的某一个结果上点，排在后面的调用同样没有结果。这些悬空的调用发出去之前由
+  `ai/sanitize-history.ts` 补一条「可能生效也可能没生效」的报错，模型拿到的是一段从没发生过的中断；
+- 子代理里的条目记在主会话日志的事件里，`historyUpTo` 只抄消息，点下去截的是主会话，子代理的上下文
+  一条都不带。
+
+对用的人有意义的分叉点只有两个：「我说这句话之前」和「它说完这一句之后」。第一个就是上面的问题分叉；
+第二个补在回复上：
+
+1. **在回复上分叉，新会话带着这条回复和它之前的全部，输入框是空的**——从这里换个方向接着说。和问题分叉
+   一样，原会话不动、跑着的时候也能点、开在按下的那一屏、标题跟着界面语言。
+2. **只在说完了的回复上。** 按钮挂在回复的操作排里，那一排只出现在 `settled` 的消息底下，停在 `toolUse`
+   的那几句没有；core 的 `forkAfterMessage` 也拒绝 `toolUse` 的消息。分叉出去的会话因此不会以一个还没有
+   结果的工具调用结尾。
+3. **同一颗按钮。** 问题和回复底下是同一个 `ForkAction`，词条从 `userMessage.fork*` 挪到两边共用的
+   `messageActions.fork*`。
+4. **轨迹检查器里的「从这里分叉」撤掉**，契约 `sessions.fork`（按 `seq`）一起删掉。`forkSession` 留在
+   core 里，两种消息分叉都经它复制历史。上面「没做的」第二条随之作废。

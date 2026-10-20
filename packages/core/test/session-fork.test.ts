@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { SessionStore } from "../src/session/store.ts";
-import { forkBeforeMessage, forkSession } from "../src/trajectory/index.ts";
+import { forkAfterMessage, forkBeforeMessage, forkSession } from "../src/trajectory/index.ts";
 import type { AgentEvent } from "../src/agent/events.ts";
 import type { AssistantMessage, Message } from "../src/types.ts";
 import { emptyUsage } from "../src/types.ts";
@@ -110,6 +110,34 @@ test("a position that drifted is corrected by the timestamp; a message that is n
 	}
 });
 
+test("forking after a reply holds the reply and everything before it; a reply that handed over to a tool is not forked from", async () => {
+	const c = await conversation();
+	try {
+		const handover: AssistantMessage = { ...reply("", 21), content: [{ type: "toolCall", id: "call-1", name: "read", arguments: { path: "a.ts" } }], stopReason: "toolUse" };
+		const result: Message = { role: "toolResult", toolCallId: "call-1", toolName: "read", content: [{ type: "text", text: "a.ts 的内容" }], isError: false, timestamp: 22 };
+		await c.say(user("q1", 10), reply("a1", 11), user("q2", 20), handover, result, reply("a2", 23), user("q3", 30), reply("a3", 31));
+
+		const fork = await forkAfterMessage(c.store, c.meta.id, 5, 23, "长对话（分叉）");
+		assert.ok(fork);
+		const forked = await c.load(fork.meta);
+		assert.deepEqual(forked!.messages.map((message) => message.role), ["user", "assistant", "user", "assistant", "toolResult", "assistant"], "the whole turn, its tool work included");
+		assert.equal(texts(forked!.messages).at(-1), "a2");
+		assert.equal(forked!.meta.title, "长对话（分叉）");
+		assert.deepEqual(forked!.meta.forkedFrom, { sessionId: c.meta.id });
+		assert.equal((await c.load(c.meta))!.messages.length, 8, "the original is untouched");
+
+		// Pointing at q3 with a2's timestamp: the reply is found by its timestamp.
+		assert.equal((await forkAfterMessage(c.store, c.meta.id, 6, 23))?.messages, 6);
+
+		const before = (await c.store.listSessions()).length;
+		assert.equal(await forkAfterMessage(c.store, c.meta.id, 3, 21), null, "the middle of a turn, its call still unanswered");
+		assert.equal(await forkAfterMessage(c.store, c.meta.id, 2, 20), null, "a question is not a reply, even with a matching timestamp");
+		assert.equal((await c.store.listSessions()).length, before, "no empty conversation is left behind");
+	} finally {
+		await c.cleanup();
+	}
+});
+
 test("a fork of a compacted conversation starts from the same boundary, not the full history", async () => {
 	const c = await conversation();
 	try {
@@ -168,7 +196,7 @@ test("a fork keeps where the model changed, so one provider's handles are not re
 		// Forked from before the change: everything it inherits came from the model before, and it
 		// continues on the one after — so all of it is stripped.
 		const early = await forkBeforeMessage(c.store, c.meta.id, 1, 11);
-		assert.equal(early, null, "an assistant message is not a fork point");
+		assert.equal(early, null, "an assistant message is not a point to fork from before");
 		const beforeQ2 = await forkBeforeMessage(c.store, c.meta.id, 2, 20);
 		assert.equal((await c.load(beforeQ2!.meta))!.meta.modelSwitchedAt, 2);
 		const beforeA1 = await forkSession(c.store, c.meta.id, 2);

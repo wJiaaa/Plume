@@ -13,7 +13,7 @@ function fixture() {
 	const fallback = document.createElement("button"); fallback.textContent = "时间概览";
 	toolbar.append(fallback); document.body.append(toolbar);
 	const opener = document.createElement("button"); opener.textContent = "轨迹记录"; document.body.append(opener); opener.focus();
-	const props = { anchor: toolbar, all: [first, second], query: "", onSelect: () => {}, onClose: () => {}, onExport: () => {}, onOutput: () => {}, onFork: () => {} };
+	const props = { anchor: toolbar, all: [first, second], query: "", onSelect: () => {}, onClose: () => {}, onExport: () => {}, onOutput: () => {} };
 	return { toolbar, fallback, opener, props, remove: () => { toolbar.remove(); opener.remove(); } };
 }
 

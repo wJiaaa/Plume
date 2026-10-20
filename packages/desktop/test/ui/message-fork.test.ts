@@ -1,7 +1,8 @@
 /**
  * 「从这里分叉」 on a message the person wrote: a new conversation with everything before it, opened
- * where the button was pressed, with the message back in its composer. The conversation it came from
- * is not touched — nothing is taken back, nothing is sent.
+ * where the button was pressed, with the message back in its composer. On a reply that ended: a new
+ * conversation holding the reply, composer untouched. The conversation it came from is not touched —
+ * nothing is taken back, nothing is sent.
  */
 
 import assert from "node:assert/strict";
@@ -10,6 +11,7 @@ import { createElement as h } from "react";
 import type { Message, SessionMeta, UserMessage as UserMessageType } from "@plume/core";
 import { SessionScope } from "../../src/app/session-scope.tsx";
 import { UserMessage } from "../../src/features/conversation/UserMessage.tsx";
+import { MessageRow } from "../../src/features/conversation/rows.tsx";
 import { I18nProvider } from "../../src/i18n/index.ts";
 import { useApp, type AppState } from "../../src/store/index.ts";
 import type { Cache } from "../../src/store/derive.ts";
@@ -29,6 +31,7 @@ function parked(id: string, running = false): Cache[string] {
 
 const FORK = meta("fork", "b（分叉）");
 let forks: Array<[string, number, number, string | undefined]>;
+let forksAfter: Array<[string, number, number, string | undefined]>;
 let answerWith: SessionMeta | null | Error;
 let reverted: number;
 let notices: string[];
@@ -37,6 +40,7 @@ let view: Mounted | undefined;
 
 beforeEach(() => {
 	forks = [];
+	forksAfter = [];
 	answerWith = FORK;
 	reverted = 0;
 	notices = [];
@@ -45,11 +49,17 @@ beforeEach(() => {
 		configurable: true,
 		value: {
 			agent: { revertMessage: async () => void reverted++ },
+			// A reply that ended draws its delivery card, which asks for what the turn changed: nothing.
+			delivery: { get: async () => null },
 			sessions: {
 				forkBefore: async (sessionId: string, index: number, timestamp: number, title?: string) => {
 					forks.push([sessionId, index, timestamp, title]);
 					if (answerWith instanceof Error) throw answerWith;
 					return answerWith ? { meta: answerWith, messages: index } : null;
+				},
+				forkAfter: async (sessionId: string, index: number, timestamp: number, title?: string) => {
+					forksAfter.push([sessionId, index, timestamp, title]);
+					return answerWith instanceof Error || !answerWith ? null : { meta: answerWith, messages: index + 1 };
 				},
 			},
 		},
@@ -80,6 +90,10 @@ afterEach(async () => {
 function onScreen(id: string, index: number): Promise<Mounted> {
 	const message = said(id)[index] as UserMessageType;
 	return mount(h(I18nProvider, { locale: "zh-CN", children: h(SessionScope.Provider, { value: id }, h(UserMessage, { message, index })) }));
+}
+
+function replyOnScreen(id: string, message: Message, index: number): Promise<Mounted> {
+	return mount(h(I18nProvider, { locale: "zh-CN", children: h(SessionScope.Provider, { value: id }, h(MessageRow, { message, index, upTo: message.content.length })) }));
 }
 
 async function settled(done: () => boolean) {
@@ -126,4 +140,26 @@ test("a fork that could not be made says so, and opens nothing", async () => {
 	await click(view.find("[data-message-fork]"));
 	await settled(() => notices.length > 1);
 	assert.equal(notices[1], "分叉失败: 磁盘满了");
+});
+
+test("a reply that ended forks into a conversation that holds it, with nothing put in the composer", async () => {
+	useApp.setState({ composerDraft: null });
+	view = await replyOnScreen("b", said("b")[3], 3);
+	const button = view.find<HTMLButtonElement>("[data-message-fork]");
+	assert.equal(button.getAttribute("data-ly-tip"), "从这里分叉");
+	assert.equal(button.parentElement!.lastElementChild, button, "last in the row, as under a question");
+
+	await click(button);
+	await settled(() => useApp.getState().activeSessionId === "fork");
+	assert.deepEqual(forksAfter, [["b", 3, 21, "b（分叉）"]], "forked after this reply, named in the window's language");
+	assert.deepEqual(forks, [], "not the fork that stops before a message");
+	assert.equal(useApp.getState().activeSessionId, "fork");
+	assert.equal(useApp.getState().composerDraft, null, "nothing to put back: the fork goes on from the reply");
+});
+
+test("a reply that handed over to a tool offers no fork — the turn is not over there", async () => {
+	const handover: Message = { ...(said("b")[3] as Extract<Message, { role: "assistant" }>), stopReason: "toolUse" };
+	view = await replyOnScreen("b", handover, 3);
+	assert.ok(view.text().includes("第二个回答"), "the reply is drawn");
+	assert.equal(view.all("[data-message-fork]").length, 0);
 });

@@ -16,12 +16,13 @@ import { Markdown } from "./Markdown.tsx";
 import { MessageActions } from "./MessageActions.tsx";
 import { copyableReply } from "./interface/interface-text.ts";
 import { HookRunsAction } from "./HookRunsAction.tsx";
+import { ForkAction } from "./ForkAction.tsx";
 import { ThinkingBlock } from "./ThinkingBlock.tsx";
 import { DeliveryRow } from "./DeliveryRow.tsx";
 import { PeerLetterRow } from "./PeerLetterRow.tsx";
 import { conversationTime } from "./question-navigation.ts";
 import { UserMessage } from "./UserMessage.tsx";
-import { useScopedSessionId } from "../../app/session-scope.tsx";
+import { useScopedMeta, useScopedSessionId } from "../../app/session-scope.tsx";
 import { useI18n } from "../../i18n/index.ts";
 import { useApp } from "../../store/index.ts";
 import { isNudge, type TurnStats } from "./grouping.ts";
@@ -178,6 +179,7 @@ function AssistantRow({
   viewKey?: string;
 }) {
   const sessionId = useScopedSessionId();
+  const aside = useScopedMeta()?.parentId !== undefined;
   const showThinking = useApp((s) => s.settings?.showThinking === true);
   /*
    * 这条回复是不是看着它写完的：挂上的时候还在写。只有这种，底下那行操作在写完时展开出来——
@@ -284,6 +286,11 @@ function AssistantRow({
           requests={stats?.requestCount}
         >
           <HookRunsAction from={stats?.startIndex ?? index} to={index + 1} />
+          {/*
+            * 这一排只挂在 `settled` 的回复底下，停在 `toolUse` 的那几句走不到这里，分叉出去的会话
+            * 不会以一个还没有结果的工具调用结尾。侧边聊天不给，理由和问题那边一样，见 `UserMessage`。
+            */}
+          {sessionId && !aside && <ForkAction index={index} message={message} sessionId={sessionId} />}
         </MessageActions>
       )}
     </div>

@@ -3,7 +3,7 @@ import type { ApprovalOrigin, ApprovalRequest, ApprovalRisk, QuestionFields } fr
 import { translate } from "../i18n/translate.ts";
 import { applySessionChange } from "./session-changes.ts";
 import type { PluginUpdateState, SessionChange } from "../../electron/ipc-types.ts";
-import type { AgentEvent, ApprovalDecision, CommandRun, HookRun, Message, MessageAttachment, SessionMeta, Settings, SpawnedFrom, ThinkingLevel, UserContent, UserMessage } from "@plume/core";
+import type { AgentEvent, ApprovalDecision, AssistantMessage, CommandRun, HookRun, Message, MessageAttachment, SessionMeta, Settings, SpawnedFrom, ThinkingLevel, UserContent, UserMessage } from "@plume/core";
 import { type SessionActivity } from "@plume/core/activity";
 import { applyAgentEvent } from "./apply-event.ts";
 import type { Cache, TurnStop } from "./derive.ts";
@@ -560,11 +560,12 @@ export interface AppState extends QueueSlice {
    */
   revertMessage(index: number, sessionId?: string): Promise<void>;
   /**
-   * 撤回, done to a copy: a new conversation holding everything before the user message at `index`,
-   * opened in this one's screen with the message's wording back in its composer. This conversation is
-   * left exactly as it is. Given `sessionId`, that conversation is the one forked.
+   * A new conversation from a message, opened in this one's screen; this conversation is left exactly
+   * as it is. From a user message it is 撤回 done to a copy: everything before it, with its wording back
+   * in the composer. From a reply that ended: everything up to and including it, composer empty.
+   * Given `sessionId`, that conversation is the one forked.
    */
-  forkFrom(index: number, message: UserMessage, sessionId?: string): Promise<void>;
+  forkFrom(index: number, message: UserMessage | AssistantMessage, sessionId?: string): Promise<void>;
   /**
    * Re-send the user message that produced the reply at `index`. Given `sessionId`, in that
    * conversation, which is made the live one first if it is not already.

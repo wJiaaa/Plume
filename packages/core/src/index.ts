@@ -54,8 +54,8 @@ export type { SpendCall, SpendRow } from "./session/spend.ts";
 export {
 	countBySource,
 	filterTrajectory,
+	forkAfterMessage,
 	forkBeforeMessage,
-	forkSession,
 	matchRanges,
 	messagesUpTo,
 	readTrajectory,
