@@ -78,20 +78,19 @@ export function ProviderEditor({
 
 	return (
 		/*
-		 * Not `h-full`, which quietly took the bottom padding away from the panel it sits in.
+		 * Fills the pane so the model list, not the pane, is what scrolls: the name and the connection
+		 * stay in sight while scrolling through a long list of models.
 		 *
-		 * A scroll container's `padding-bottom` is part of what can be scrolled to — but only for
-		 * content that is laid out inside it. `h-full` pinned this column to the *visible* height,
-		 * so once there were more models than fitted, the rows ran past the bottom of a box that
-		 * had already ended, and out through the padding with it.
-		 *
-		 * Nothing needed the height: this column is a stack of fields whose height is its contents.
+		 * `flex-1` in the pane's flex column, not `h-full`, which quietly took the bottom padding away:
+		 * pinned to the *visible* height, a column taller than the pane ran past the bottom of a box that
+		 * had already ended, and out through the padding with it. As a flex item it can never go below
+		 * its contents' minimum, so a pane too short for even that scrolls the whole editor instead.
 		 */
-		<div className="@container flex flex-col">
+		<div className="@container flex flex-1 flex-col">
 			<ProviderHeading provider={provider} onChange={onChange} onRemove={onRemove} />
 
 			{/* A switched-off provider stays editable, only quieter: it is not the one in use. */}
-			<div className={`transition-opacity ${provider.enabled ? "" : "opacity-60"}`}>
+			<div className={`flex flex-1 flex-col transition-opacity ${provider.enabled ? "" : "opacity-60"}`}>
 				<section className="pt-7">
 					<SectionTitle>{t("provider.connection")}</SectionTitle>
 					<Card data-ly-provider-connection="">

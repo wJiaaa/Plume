@@ -18,6 +18,7 @@ import { useConfirmer } from "../../ui/overlay/Confirm.tsx";
 import { MenuBody, MenuItem, MenuSeparator, Popover, usePopover } from "../../ui/overlay/Popover.tsx";
 import { ModelIcon } from "../models/index.ts";
 import { formatWindow } from "../models/index.ts";
+import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { ScrollText } from "../../ui/scroll/ScrollText.tsx";
 import { Badge } from "./controls.tsx";
 import { Card } from "./layout.tsx";
@@ -107,9 +108,15 @@ export function ProviderModels({
 		});
 	};
 	return (
-		<section className="pt-7">
+		/*
+		 * The rest of the editor's height, and never less than about three rows of it.
+		 *
+		 * `h-0` with `grow`, not `flex-1`: the height it asks for has to be its floor rather than every
+		 * model it holds, or the column grows to the whole list and the pane scrolls instead of the list.
+		 */
+		<section className="flex h-0 min-h-[240px] grow flex-col pt-7">
 			{/* `SectionTitle`'s size and spacing, with room on the line for its actions. */}
-			<div className="mb-3 flex h-7 items-center gap-1">
+			<div className="mb-3 flex h-7 shrink-0 items-center gap-1">
 				<Text as="h2" size="title" weight="semibold">{t("providerModels.list")}</Text>
 				{models.length > 0 && <span className="ml-1 text-caption text-ink-faint tabular-nums">{models.length}</span>}
 				<span className="flex-1" />
@@ -158,31 +165,34 @@ export function ProviderModels({
 			</div>
 
 			{fetchModelsError && (
-				<div className="mb-2 flex items-center gap-1.5 rounded-lg bg-danger/10 px-2.5 py-1.5 text-caption text-danger">
+				<div className="mb-2 flex shrink-0 items-center gap-1.5 rounded-lg bg-danger/10 px-2.5 py-1.5 text-caption text-danger">
 					<CircleAlert size={13} className="shrink-0" />
 					<span className="truncate">{fetchModelsError}</span>
 				</div>
 			)}
 
-			<Card data-ly-model-list="">
-				{models.length > 0 ? (
-					models.map((model) => (
-						<ModelRow
-							key={model.id}
-							model={model}
-							isDefault={isImageModel(model) ? imageModelId === model.id : defaultModelId === model.id}
-							testing={testingModelId === model.id}
-							testResult={modelTestResults?.[model.id]}
-							onTest={() => onTestModel?.(model.id)}
-							onEdit={() => onEdit(model)}
-							onRemove={() => onRemove(model.id)}
-							onSetDefault={() => (isImageModel(model) ? setDefaultImage(model.id) : onSetDefault(model.id))}
-							selection={selecting ? { checked: chosen.has(model.id), onToggle: () => toggle(model.id) } : undefined}
-						/>
-					))
-				) : (
-					<p className="px-4 py-6 text-center text-label text-ink-muted">{t("providerModels.empty")}</p>
-				)}
+			{/* Content height when it fits, so a short list has no empty card under it; shrinks and scrolls when it does not. */}
+			<Card data-ly-model-list="" className="flex min-h-0 flex-col">
+				<Scroller>
+					{models.length > 0 ? (
+						models.map((model) => (
+							<ModelRow
+								key={model.id}
+								model={model}
+								isDefault={isImageModel(model) ? imageModelId === model.id : defaultModelId === model.id}
+								testing={testingModelId === model.id}
+								testResult={modelTestResults?.[model.id]}
+								onTest={() => onTestModel?.(model.id)}
+								onEdit={() => onEdit(model)}
+								onRemove={() => onRemove(model.id)}
+								onSetDefault={() => (isImageModel(model) ? setDefaultImage(model.id) : onSetDefault(model.id))}
+								selection={selecting ? { checked: chosen.has(model.id), onToggle: () => toggle(model.id) } : undefined}
+							/>
+						))
+					) : (
+						<p className="px-4 py-6 text-center text-label text-ink-muted">{t("providerModels.empty")}</p>
+					)}
+				</Scroller>
 			</Card>
 			{confirm.element}
 		</section>

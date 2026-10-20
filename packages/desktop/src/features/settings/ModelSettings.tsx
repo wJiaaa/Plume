@@ -193,7 +193,8 @@ export function ModelSettings() {
 						))}
 					</Scroller>
 
-					<Scroller className="min-w-0 flex-1" contentClassName="p-4 @xl:px-6 @xl:py-5">
+					{/* A flex column so the editor can fill it and leave the scrolling to its model list; this pane only scrolls when even that cannot fit. */}
+					<Scroller className="min-w-0 flex-1" contentClassName="flex flex-col p-4 @xl:px-6 @xl:py-5">
 						{!p.selected ? (
 							<div className="flex h-full flex-col items-center justify-center gap-3 text-center">
 								<p className="text-label text-ink-muted">
