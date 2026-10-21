@@ -64,7 +64,8 @@ export function WorkStep({ step, live, draw, drawCall }: {
 	 * 「+N -M」时这里不重绘，记下的会是行尾还在从 0 起步那一刻的宽度。
 	 */
 	const box = useRef<HTMLDivElement>(null);
-	const single = step.calls.length === 1 && thought === 0;
+	// 一次调用、前后什么都没挂：推理、回来的后台命令结果都要竖线来挂。
+	const single = step.members.length === 1;
 	const wasSingle = useRef(single);
 	const from = useRef<{ words: number; trail: number } | null>(null);
 	if (wasSingle.current && !single) {
@@ -106,7 +107,9 @@ function StepGroup({ step, thought, live, thinking, from, draw, drawCall }: {
 	// 数和字，不是记录表本身：选出对象的选择器每次都是新的，别的卡片冒一行输出就会把这一行重画一遍。
 	const added = useScopedFromToolRuns((runs) => calls.reduce((n, { block }) => n + diffOf(runs[block.id], "added"), 0));
 	const removed = useScopedFromToolRuns((runs) => calls.reduce((n, { block }) => n + diffOf(runs[block.id], "removed"), 0));
-	const failed = useScopedFromToolRuns((runs) => calls.some(({ block }) => runs[block.id]?.status === "error"));
+	const errored = useScopedFromToolRuns((runs) => calls.some(({ block }) => runs[block.id]?.status === "error"));
+	// 后台命令回来时失败了也算：启动它的那次 bash 早就以「已放到后台」跑完了，记录上不会是错。
+	const failed = errored || step.members.some((member) => member.kind === "job" && member.run.message.role === "user" && member.run.message.delivery?.some((report) => report.status === "failed"));
 
 	/*
 	 * 跑着时说的那一次：第一个还在跑的调用，不是最后发出的那个。一次发出几个调用时它们各跑各的，最后那个
@@ -127,11 +130,12 @@ function StepGroup({ step, thought, live, thinking, from, draw, drawCall }: {
 	});
 
 	/*
-	 * 跑完的探索、终端、改文件说前两次调用各自的说明（`nameCalls`）；跑着时说的是正在跑的那一次，用不上它。
-	 * 浏览器这类照旧报数：「打开网页 todo.html、操作网页 2 次」本来就说清了，换成逐条反而丢了次数。
+	 * 跑完的一段只要有探索、终端、改文件，就说前两次调用各自的说明（`nameCalls`）；跑着时说的是正在跑的那一次，
+	 * 用不上它。全是浏览器这类的照旧报数：「打开网页 todo.html、操作网页 2 次」本来就说清了，换成逐条反而丢了次数。
 	 * 选出字符串，理由同上。
 	 */
-	const named = useScopedFromToolRuns((runs) => (said || !workbench(step.category) ? "" : nameCalls(calls, runs, root)));
+	const naming = workbench(step);
+	const named = useScopedFromToolRuns((runs) => (said || !naming ? "" : nameCalls(calls, runs, root)));
 	// 哪样先来哪样在前：先有的那半句不能被后来的「思考 N 次」从前面挤开。
 	const parts = [named || describeCalls(calls)];
 	if (thought > 0) parts[step.members[0].kind === "thinking" ? "unshift" : "push"](translate("step.thinking", { n: thought }));

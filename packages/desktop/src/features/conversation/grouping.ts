@@ -835,8 +835,8 @@ type TurnItem = { kind: "run"; key: string; run: Run } | { kind: "step"; key: st
 /**
  * 一段连着做的活，连同夹在中间、跟在后面的推理——画出来是一行。
  *
- * 同一类连着做（打开页面、点、输入、截图）合成一行；探索、终端、文件更改这几类开关开着的，挨在一起也合
- * （见 `joins`）。接不上的另起一行；说了话也另起一行。
+ * 两句话之间的活是一段，不论哪一类（见 `joins`）；说了话另起一行。插在中间回来的后台命令结果挂在
+ * 它回来时所在的那一段上（`job`），不另起一行：它说的那条命令就在这一段或前面某一段里。
  *
  * 推理落在哪一段就算哪一段，放下就不再挪：「想 → 点 → 想 → 输入」是一段浏览器的活，读作「思考 2 次 ·
  * 打开网页、操作网页」。挂在一段活后面的推理就是那一段的，下一次调用换了一类也不跟过去——跟过去的话，
@@ -852,7 +852,7 @@ export interface Step {
 	members: StepMember[];
 }
 
-export type StepMember = { kind: "call"; call: Call } | { kind: "thinking"; run: Extract<Run, { kind: "message" }> };
+export type StepMember = { kind: "call"; call: Call } | { kind: "thinking" | "job"; run: Extract<Run, { kind: "message" }> };
 
 /** 这一条 run 是不是「过程」——相对于说出口的话。 */
 function isProcess(run: Run): boolean {
@@ -938,23 +938,36 @@ export function thinkingLive(run: Extract<Run, { kind: "message" }>): boolean {
 	return run.message.role === "assistant" && run.message.stopReason === "pending" && run.upTo === run.message.content.length;
 }
 
-/** 挨在一起也合成一段的三类：探索、终端、文件更改。 */
+/** 探索、终端、文件更改：它们的调用各有一句说明（命令的说明、读的文件），跑完的那一行说得出来。 */
 const WORKBENCH = new Set(["explore", "terminal", "files"]);
 
-/** 这一段是不是这三类的：它们的调用各有一句说明（命令的说明、读的文件），跑完的那一行说得出来，见 `nameCalls`。 */
-export function workbench(category: string): boolean {
-	return WORKBENCH.has(category);
+/** 这一段里有没有这三类的调用：有就点名前两次调用（`nameCalls`），全是浏览器这类才报数。 */
+export function workbench(step: Step): boolean {
+	return step.calls.some(({ block }) => WORKBENCH.has(toolCategory(block.name, block.arguments)));
 }
 
 /**
  * 这次调用接不接在这一段后面。
  *
- * 探索、终端、文件更改挨在一起也是一段：改失败了读一下再改，是「编辑 → 探索 → 编辑」，按同一类才合，一次调用
- * 一行，一段修修补补的活摊成六七行。其余几类（浏览器、派发、预览……）各说各的事，只和同一类合。
- * `step.category` 是第一次调用的类别：它是这三类之一，后面接上来的也都是，所以只看它就够。
+ * 除了派发，什么类都接。从前只有探索、终端、文件更改互相接，其余几类（浏览器、技能、清单……）理由是「各说
+ * 各的事」——可那是点开以后的事，点开每次调用照旧各是一行；收起的那一行只代表这一段。按类别切，边改边在
+ * 页面上验的一段就是「读文件 → 操作网页 → 改文件 → 操作网页 → Skill → Update task list」来回跳的十几行，
+ * 每一行比点开以后说得还少。派发不接：子代理一跑几分钟，那一行带着它们的脸，人是盯着它看的。
  */
 function joins(step: Step, category: string): boolean {
-	return step.category === category || (WORKBENCH.has(step.category) && WORKBENCH.has(category));
+	return (step.category === "task") === (category === "task");
+}
+
+/**
+ * 插在一轮中间、只带着后台命令结果的送达。
+ *
+ * 它说的那条命令早在某一段里画过了，单独一行等于把同一条命令说两遍，还把这一段切成两截。子代理的结果和
+ * 另一个会话的来信不在此列：主智能体接下来那段话是就着它们说的，见 `DeliveryRow`。
+ */
+function jobReturn(run: Run): run is Extract<Run, { kind: "message" }> {
+	if (run.kind !== "message" || run.message.role !== "user" || !isProcess(run)) return false;
+	const reports = run.message.delivery ?? [];
+	return reports.length > 0 && reports.every((report) => report.kind === "job");
 }
 
 /**
@@ -1016,11 +1029,11 @@ function itemsOf(body: Run[]): TurnItem[] {
 	const items: TurnItem[] = [];
 	// 断言而不是标注：循环里 TS 把它收窄成初值 `null`，看不见循环后半段的赋值。
 	let step = null as Step | null;
-	// 前面还没有活时想过的推理：等下一次调用来开一段。
-	let thoughts: Extract<Run, { kind: "message" }>[] = [];
+	// 前面还没有活时想过的推理、回来的后台命令结果：等下一次调用来开一段。
+	let waiting: Extract<StepMember, { run: unknown }>[] = [];
 	const settle = () => {
-		for (const run of thoughts) items.push({ kind: "run", key: runKey(run), run });
-		thoughts = [];
+		for (const { run } of waiting) items.push({ kind: "run", key: runKey(run), run });
+		waiting = [];
 	};
 	for (const run of body) {
 		// 压缩标记画在运行指示上（见 `Conversation` 的 `draw`），在这里占一行只会多出一截空白。
@@ -1029,8 +1042,8 @@ function itemsOf(body: Run[]): TurnItem[] {
 			for (const call of run.calls) {
 				if (unclassified(call)) continue;
 				const category = toolCategory(call.block.name, call.block.arguments);
-				const before = thoughts.map((thought) => ({ kind: "thinking" as const, run: thought }));
-				thoughts = [];
+				const before = waiting;
+				waiting = [];
 				if (step && joins(step, category)) {
 					step.calls.push(call);
 					step.members.push(...before, { kind: "call", call });
@@ -1041,9 +1054,10 @@ function itemsOf(body: Run[]): TurnItem[] {
 			}
 			continue;
 		}
-		if (reasoning(run)) {
-			if (step) step.members.push({ kind: "thinking", run });
-			else thoughts.push(run);
+		const member = reasoning(run) ? { kind: "thinking" as const, run } : jobReturn(run) ? { kind: "job" as const, run } : null;
+		if (member) {
+			if (step) step.members.push(member);
+			else waiting.push(member);
 			continue;
 		}
 		settle();

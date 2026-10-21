@@ -58,7 +58,7 @@ const shape = (list: Run[]) => turnBlocks(list).map((b) => b.kind);
 /** 有过程的一轮里的每一行：`step(n)` 是合成一行的 n 次调用。 */
 const items = (block: TurnBlock) =>
 	block.items.map((item) =>
-		item.kind === "step" ? `step(${item.step.members.map((m) => (m.kind === "call" ? m.call.block.name : "think")).join(",")})` : `${item.run.kind === "message" ? item.run.message.role : item.run.kind}`,
+		item.kind === "step" ? `step(${item.step.members.map((m) => (m.kind === "call" ? m.call.block.name : m.kind === "job" ? "job" : "think")).join(",")})` : `${item.run.kind === "message" ? item.run.message.role : item.run.kind}`,
 	);
 
 test("一轮有过程：一块，过程在前，最后那句话是回答", () => {
@@ -68,9 +68,9 @@ test("一轮有过程：一块，过程在前，最后那句话是回答", () =>
 	assert.equal(blocks[1].runs.length, 5, "开口那句话之外的全在这一块");
 });
 
-test("同一类连着做的合成一行，换了一类另起一行", () => {
-	const blocks = turnBlocks([ask("改一下", 0), work(["browser_open", "browser_act"]), work(["web_fetch"]), think(3), work(["web_search", "read"]), say("好了。", 5)]);
-	assert.deepEqual(items(blocks[1]), ["step(browser_open,browser_act)", "step(web_fetch,think,web_search)", "step(read)", "assistant"]);
+test("两句话之间不论哪一类都合成一行，只有派发另起一行", () => {
+	const blocks = turnBlocks([ask("改一下", 0), work(["browser_open", "browser_act"]), work(["web_fetch", "skill", "todo_write"]), think(3), work(["web_search", "read"]), work(["task", "task"]), work(["read"]), say("好了。", 5)]);
+	assert.deepEqual(items(blocks[1]), ["step(browser_open,browser_act,web_fetch,skill,todo_write,think,web_search,read)", "step(task,task)", "step(read)", "assistant"]);
 	const keys = blocks[1].items.filter((item) => item.kind === "step").map((item) => item.key);
 	assert.equal(new Set(keys).size, keys.length, "每一段一个 key");
 });
@@ -126,16 +126,16 @@ test("没有过程的一轮不产生空壳", () => {
 	assert.deepEqual(shape([ask("你好", 0), say("你好。", 1)]), ["plain", "plain"]);
 });
 
-test("挂在一段活后面的推理就是那一段的，换了一类也不跟过去", () => {
+test("挂在一段活后面的推理就是那一段的，下一段另起时也不跟过去", () => {
 	// 跟过去的话，上一行的「思考 N 次」会少一次，数往回跳。
-	const blocks = turnBlocks([ask("跑一下", 0), work(["read"]), think(2), work(["browser_open"])]);
-	assert.deepEqual(items(blocks[1]), ["step(read,think)", "step(browser_open)"]);
+	const blocks = turnBlocks([ask("跑一下", 0), work(["read"]), think(2), work(["task"])]);
+	assert.deepEqual(items(blocks[1]), ["step(read,think)", "step(task)"]);
 });
 
 test("探索、终端、文件更改挨在一起合成一行：改失败了读一下再改，不摊成一次一行", () => {
 	// b784f76e 那一段：edit 失败 → sed -n 看一眼 → python 改 → edit 失败 → read → edit。
 	const list = [ask("改一下", 0), work(["edit"]), shell("sed -n 168,172p help.ts"), shell("python3 - <<'EOF'\nopen('help.ts','w')\nEOF"), work(["edit", "read", "edit"]), work(["browser_open"]), work(["grep"])];
-	assert.deepEqual(items(turnBlocks(list)[1]), ["step(edit,bash,bash,edit,read,edit)", "step(browser_open)", "step(grep)"], "其余几类照旧另起一行");
+	assert.deepEqual(items(turnBlocks(list)[1]), ["step(edit,bash,bash,edit,read,edit,browser_open,grep)"], "接着去页面上看一眼，也还是这一段");
 	const blocks = turnBlocks([ask("改一下", 0), work(["edit"]), say("再看看。", 2), work(["read"])]);
 	assert.deepEqual(items(blocks[1]), ["step(edit)", "assistant", "step(read)"], "说了话照旧另起一行");
 });
@@ -311,4 +311,33 @@ test("the transcript window pages by block, not by run", async () => {
 	assert.match(source, /allBlocks\.slice\(range\.start, range\.end\)/, "切的要是块");
 	assert.ok(!/allRuns\.slice\(range/.test(source), "切 Run 就是那个「点了没反应」的写法");
 	assert.match(source, /turnBlocks\(allRuns[,)]/, "要先分块再开窗，顺序反过来等于没改");
+});
+
+/** 一轮跑着时回来的后台命令结果（`steered`）。`agent` 时是子代理的结果。 */
+const returned = (index: number, agent = false): Run => ({
+	kind: "message",
+	message: {
+		role: "user",
+		content: [{ type: "text", text: "<report>" }],
+		synthetic: true,
+		steered: true,
+		delivery: [agent ? { id: `d${index}`, agent: "general", description: "长任务", status: "done" } : { id: `j${index}`, kind: "job", agent: "", description: "跑测试", status: "failed", exitCode: 1 }],
+		timestamp: 1,
+	} as Message,
+	index,
+	upTo: 1,
+});
+
+test("一轮中间回来的后台命令结果挂在它回来时那一段上，不把这一段切开", () => {
+	const blocks = turnBlocks([ask("跑一下", 0), work(["bash"]), returned(2), think(3), work(["read"]), say("好了。", 5)]);
+	assert.deepEqual(items(blocks[1]), ["step(bash,job,think,read)", "assistant"]);
+});
+
+test("说完一句话之后才回来的后台命令结果，跟着下一次调用开一段；等不到调用就自己一行", () => {
+	assert.deepEqual(items(turnBlocks([ask("跑一下", 0), work(1), say("等测试。", 2), returned(3), work(1)])[1]), ["step(read)", "assistant", "step(job,read)"]);
+	assert.deepEqual(items(turnBlocks([ask("跑一下", 0), work(1), say("等测试。", 2), returned(3), say("测试挂了。", 4)])[1]), ["step(read)", "assistant", "user", "assistant"]);
+});
+
+test("子代理的结果照旧单独一行：后面那段话是就着它说的", () => {
+	assert.deepEqual(items(turnBlocks([ask("派出去", 0), work(1), returned(2, true), work(1)])[1]), ["step(read)", "user", "step(read)"]);
 });
