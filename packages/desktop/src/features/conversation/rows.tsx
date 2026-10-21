@@ -63,6 +63,7 @@ export const MessageRow = memo(function MessageRow({
   lead,
   continued,
   pauses,
+  trailer,
   turnStats,
   viewKey,
   showTime,
@@ -96,6 +97,8 @@ export const MessageRow = memo(function MessageRow({
   continued?: boolean;
   /** 一轮中间说完了的一句，见 `Run.pauses`：有时间和复制，没有交付卡片。 */
   pauses?: boolean;
+  /** 只是收尾那句的页脚，接在这一轮最后一行后面，见 `Run.trailer`。 */
+  trailer?: boolean;
   /** Accumulated statistics for the turn this message concludes. */
   turnStats?: TurnStats;
   viewKey?: string;
@@ -138,7 +141,7 @@ export const MessageRow = memo(function MessageRow({
   if (message.role === "toolResult") return null;
 
   return (
-    <AssistantRow message={message} index={index} upTo={upTo} from={from} lead={lead} continued={continued} pauses={pauses} turnStats={turnStats} viewKey={viewKey} />
+    <AssistantRow message={message} index={index} upTo={upTo} from={from} lead={lead} continued={continued} pauses={pauses} trailer={trailer} turnStats={turnStats} viewKey={viewKey} />
   );
 });
 
@@ -166,6 +169,7 @@ function AssistantRow({
   lead,
   continued,
   pauses,
+  trailer,
   turnStats,
   viewKey,
 }: {
@@ -176,6 +180,7 @@ function AssistantRow({
   lead?: boolean;
   continued?: boolean;
   pauses?: boolean;
+  trailer?: boolean;
   turnStats?: TurnStats;
   viewKey?: string;
 }) {
@@ -213,7 +218,8 @@ function AssistantRow({
        * away is a fact about the call, so it has to be decided here rather than by looking at
        * rendered output that no longer knows what it came from.
        */}
-      {segments(own).map((segment, position) => {
+      {/* 页脚那一行：话已经在上面画过了，这里只要它的字给复制用。 */}
+      {!trailer && segments(own).map((segment, position) => {
         if (segment.kind === "block") {
           const { block, index } = segment;
           // `segments` numbers what it was handed; `from` puts that back on the message's own scale.
@@ -277,7 +283,8 @@ function AssistantRow({
        */}
       {!lead && settled(message.stopReason) && (!continued || pauses) && text.trim() && (
         <MessageActions
-          className={watched && continued ? "-mt-1.5 ly-actions-in" : "-mt-1.5"}
+          // 页脚单独成行时，悬停这一轮的哪一行都显出来：它说的是整轮，不是正下方那几个调用。
+          className={watched && continued ? "-mt-1.5 ly-actions-in" : trailer ? "-mt-1.5 group-hover/turn:opacity-100" : "-mt-1.5"}
           timestamp={message.timestamp}
           text={() => withoutFollowups(copyableReply(text, sessionId))}
           durationMs={stats?.durationMs ?? message.durationMs}

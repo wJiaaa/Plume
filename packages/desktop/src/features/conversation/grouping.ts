@@ -71,8 +71,12 @@ export type Run =
 	 * `pauses` 标在一轮中间说完了的一句上：它说完时一条子代理的结果正好到了、被插进这一轮（`steered`），
 	 * 这一轮于是没在它这里收尾。对读的人它和收尾那句一样是说完了的一段，所以也有时间和复制，只是没有
 	 * 整轮的统计和交付卡片。
+	 *
+	 * `trailer` 是收尾那句的页脚单独成的一行，接在这一轮最后一行后面：收尾那句后面还跟着这一轮的活时
+	 * （被停下的回复末尾那几个没执行的调用），页脚留在话底下，那几行就落到了「这一轮已经结束」的下面。
+	 * 它和那句话是同一条消息、同一段（`from`..`upTo`），只画页脚和交付卡片，不画正文。
 	 */
-	| { kind: "message"; message: Message; index: number; upTo: number; from?: number; lead?: boolean; turnStats?: TurnStats; closes?: true; pauses?: true; key?: string }
+	| { kind: "message"; message: Message; index: number; upTo: number; from?: number; lead?: boolean; turnStats?: TurnStats; closes?: true; pauses?: true; trailer?: true; key?: string }
 	/**
 	 * A stretch of tool work, and whether it is the stretch being worked on right now.
 	 *
@@ -608,8 +612,18 @@ export function runs(rawMessages: Message[], compactions: { at: number }[] = [],
 	 */
 	// 断言而不是标注：它只在闭包里被赋值，标注的话 TS 在循环里把它收窄成初值 `null`。
 	let closer = null as Extract<Run, { kind: "message" }> | null;
-	const closeTurn = () => {
-		if (closer) closer.closes = true;
+	/*
+	 * `ended`：这一轮确实收了尾。还在跑的那一轮（最新的回复还在写、或者刚交出调用）谁是最后一行还没定，
+	 * 页脚留在原处——它跑着时本来就不画（`currentTurnStart`），先拆出一行只会是一行空的。
+	 */
+	const closeTurn = (ended = true) => {
+		if (closer && ended && spoke(closer) && out.slice(out.lastIndexOf(closer) + 1).some((run) => run.kind === "tools")) {
+			const { message, index, upTo, from } = closer;
+			// 页脚整个搬下去，话底下不留：一句中途的 `pauses` 也是页脚，留着就是同一轮两个。
+			delete closer.pauses;
+			// 账也记到这一轮最后，和页脚站的位置说同一件事：话后面那段活的时间在里面。
+			out.push({ kind: "message", message, index, upTo, from, turnStats: snapshot(clock), closes: true, trailer: true, key: `trailer-${drawnAt(message)}-${index}` });
+		} else if (closer) closer.closes = true;
 		closer = null;
 	};
 	// 还在写的（pending）、说完要接着调工具的（toolUse）都不是一轮的最后一句，和 `rows.tsx` 的 `settled` 同一条线。
@@ -622,6 +636,16 @@ export function runs(rawMessages: Message[], compactions: { at: number }[] = [],
 	let clock = newClock();
 	let currentTodos: ReturnType<typeof todosFrom> = [];
 	for (const [index, message] of messages.entries()) {
+		/*
+		 * A person speaking starts a new turn; the runtime's own messages continue the one running.
+		 *
+		 * 先于下面那几种标记换轮：上一轮的页脚可能要单独接在它最后一行后面（`closeTurn`），排到标记后面，
+		 * 一条命令标记（`opensBlock`）就把它分进了下一块。
+		 */
+		if (opensTurn(message) && !resumesTurn(messages, index)) {
+			closeTurn();
+			clock = newClock(index);
+		}
 		while (nextMark < marks.length && marks[nextMark] === index) {
 			out.push({ kind: "compaction", at: index });
 			nextMark++;
@@ -634,11 +658,6 @@ export function runs(rawMessages: Message[], compactions: { at: number }[] = [],
 			out.push({ kind: "hiccup", hiccup: hiccupMarks[nextHiccup++] });
 		}
 
-		// A person speaking starts a new turn; the runtime's own messages continue the one running.
-		if (opensTurn(message) && !resumesTurn(messages, index)) {
-			closeTurn();
-			clock = newClock(index);
-		}
 		if (message.role === "toolResult" && message.toolName === "todo_write" && !message.isError) {
 			const details = message.details as { kind?: string; todos?: ReturnType<typeof todosFrom> } | undefined;
 			if (details?.kind === "todo" && Array.isArray(details.todos)) currentTodos = details.todos;
@@ -778,7 +797,8 @@ export function runs(rawMessages: Message[], compactions: { at: number }[] = [],
 		work(calls, index);
 	}
 
-	closeTurn();
+	const latest = messages[live];
+	closeTurn(!(latest?.role === "assistant" && (latest.stopReason === "pending" || latest.stopReason === "toolUse")));
 
 	// A compaction recorded after the last message still belongs at the end.
 	while (nextMark < marks.length) {

@@ -127,3 +127,48 @@ test("干活时插进来的送达：上面是工具，没有哪句被当成一�
 	assert.deepEqual(pausing(rows), []);
 	assert.deepEqual(closing(rows), [4]);
 });
+
+/** 每一行是什么，按画出来的顺序：话写成 `话:下标`，页脚那一行写成 `页脚:下标`。 */
+function shape(rows: Run[]): string[] {
+	return rows.map((row) => {
+		if (row.kind === "tools") return `活:${row.calls.map((c) => c.block.id).join(",")}`;
+		if (row.kind !== "message") return row.kind;
+		if (row.trailer) return `页脚:${row.index}`;
+		return `${row.message.role === "user" ? "人" : "话"}:${row.index}${row.closes ? "+页脚" : ""}`;
+	});
+}
+
+/*
+ * 会话 ecd15848：说完「整合检查时发现……」接着发了三个调用，人按「现在就发」插了一句，这条回复成了
+ * aborted、三个调用没执行。页脚贴在那句话底下，三行红叉落在页脚下面，看上去不属于上一轮。
+ */
+test("被停下的回复末尾挂着调用：页脚接在那几行后面，不夹在话和它的调用中间", () => {
+	const messages = [
+		user("发版"),
+		assistant([text("整合检查时发现另一处会话在改"), call("a", "list_sessions"), call("b")], "aborted"),
+		{ ...result("a", "list_sessions"), isError: true },
+		{ ...result("b"), isError: true },
+		{ ...user("先不要发布"), interrupting: true as const },
+		assistant([text("已暂停")], "stop"),
+	];
+	const rows = runs(messages, [{ at: 4 }]);
+	// 压缩标记站在两轮之间：页脚在它前面，不然就被分到了下一轮。
+	assert.deepEqual(shape(rows), ["人:0", "话:1", "活:a,b", "页脚:1", "compaction", "人:4", "话:5+页脚"]);
+	assert.deepEqual(closing(rows), [1, 5]);
+});
+
+test("收尾那句后面没有活：页脚照旧挂在话底下，不另起一行", () => {
+	const rows = runs([user("一"), assistant([text("先看看"), call("a")], "toolUse"), result("a"), assistant([text("看完了")], "aborted"), user("二")]);
+	assert.deepEqual(shape(rows), ["人:0", "话:1", "活:a", "话:3+页脚", "人:4"]);
+});
+
+test("继续之后还在跑：页脚不先拆出来，等这一轮收了尾再说", () => {
+	const messages = [
+		user("发版"),
+		assistant([text("先检查一下"), call("a")], "aborted"),
+		{ ...result("a"), isError: true },
+		user("继续，从暂停的地方接着做。"),
+		assistant([call("b")], "toolUse"),
+	];
+	assert.deepEqual(shape(runs(messages)), ["人:0", "话:1+页脚", "活:a", "人:3", "活:b"]);
+});

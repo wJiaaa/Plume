@@ -15,7 +15,8 @@ export function TurnWork({ entries }: {
 	entries: { key: string; node: ReactNode }[];
 }) {
 	return (
-		<div data-ly-turn-process>
+		// `group/turn`：收尾那句的页脚单独成行时（`Run.trailer`）跟着整轮悬停显出来。
+		<div data-ly-turn-process className="group/turn">
 			{entries.map((entry, index) => (
 				// 第一行贴着上面那行，和一句回答离它同一个距离。里面那行什么也没画出来（一条空正文的回复），
 				// 这层行距跟着不要，否则看不见的一行在两行之间多空出 10px。

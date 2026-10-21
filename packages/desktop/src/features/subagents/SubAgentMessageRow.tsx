@@ -80,6 +80,8 @@ export const SubAgentTranscript = memo(function SubAgentTranscript({
 					return <ToolRun key={runKey(run)} calls={run.calls} live={Boolean(isLive && run.live)} runs={toolRuns} shown={run.shown} />;
 				}
 
+				// 收尾那句的页脚另成的一行（见 `Run.trailer`）：这里不画一轮的页脚，画了就是同一段话两遍。
+				if (run.trailer) return null;
 				const { message, upTo } = run;
 				// Set only on the reply whose reasoning `grouping.ts` drew above the work; see `Run.from`.
 				const from = run.from ?? 0;
