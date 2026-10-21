@@ -54,6 +54,23 @@ test("读不到的文件不开出空标签，说一声读的是哪儿；开着�
 	assert.match(useApp.getState().notices.at(-1)?.message ?? "", /\/repo\/missing\.mjs/);
 });
 
+test("点到的是文件夹：交给系统打开，不开标签、不说读不到", async () => {
+	const opened: string[] = [];
+	Reflect.set(window, "plume", {
+		files: { read: async () => null },
+		system: { isDirectory: async (path: string) => path === "/repo/素材原图", openPath: async (path: string) => void opened.push(path) },
+	});
+	useApp.setState({ notices: [] });
+	await openFilePane("/repo/素材原图");
+	assert.deepEqual(opened, ["/repo/素材原图"]);
+	assert.deepEqual(fileTabs(), []);
+	assert.deepEqual(useApp.getState().notices, []);
+
+	await openFilePane("/repo/gone.png");
+	assert.deepEqual(opened, ["/repo/素材原图"], "不是文件夹的照旧说读不到，不交给系统");
+	assert.match(useApp.getState().notices.at(-1)?.message ?? "", /\/repo\/gone\.png/);
+});
+
 test("读文件的调用本身失败了，也是一句读不到，不往外抛", async () => {
 	Reflect.set(window, "plume", { files: { read: async () => { throw new Error("ipc gone"); } } });
 	useApp.setState({ notices: [] });

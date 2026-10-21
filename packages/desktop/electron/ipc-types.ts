@@ -965,6 +965,11 @@ export interface PlumeApi {
 		 */
 		pathExists(path: string): Promise<boolean>;
 		/**
+		 * Whether this path is a folder. A link in a reply can name one (`[目录](素材原图/)`), and a
+		 * folder is not something the file panel can read — `openFilePane` asks this after a read fails.
+		 */
+		isDirectory(path: string): Promise<boolean>;
+		/**
 		 * An https image as a data URL, or null.
 		 *
 		 * For pictures a rendered document names. Fetched in the main process because the page's

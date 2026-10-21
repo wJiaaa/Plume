@@ -236,6 +236,7 @@ export const METHODS = {
 		platform: { channel: "system:platform" },
 		remoteImage: { channel: "system:remoteImage" },
 		pathExists: { channel: "system:pathExists" },
+		isDirectory: { channel: "system:isDirectory" },
 	},
 	screenshot: {
 		start: { channel: "screenshot:start" },

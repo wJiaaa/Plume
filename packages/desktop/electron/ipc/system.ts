@@ -5,7 +5,7 @@
  * a renderer-supplied string to the OS, so the guard matters more than the call.
  */
 
-import { access, mkdir } from "node:fs/promises";
+import { access, mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { plumeHome } from "@plume/core";
 import { app, clipboard, ipcMain, nativeImage, shell } from "electron";
@@ -56,6 +56,11 @@ export function registerSystemIpc(): void {
 	 */
 	ipcMain.handle("system:pathExists", async (_event, path: string): Promise<boolean> =>
 		typeof path === "string" && path.length > 0 ? access(path).then(() => true).catch(() => false) : false,
+	);
+
+	// Unguarded for the same reason as `system:pathExists` above.
+	ipcMain.handle("system:isDirectory", async (_event, path: string): Promise<boolean> =>
+		typeof path === "string" && path.length > 0 ? stat(path).then((info) => info.isDirectory()).catch(() => false) : false,
 	);
 
 	/*

@@ -348,8 +348,19 @@ export function openFilePane(given: string, target?: string): Promise<void> {
 	 * Read first, then show. A file that cannot be read does not leave an empty tab behind, and a
 	 * pane already showing something keeps showing it.
 	 */
-	return files.open(fileSlot(scope, kind), file).then((shown) => {
-		if (shown) openScopedPanel(kind as PanelKind, scope);
+	return files.open(fileSlot(scope, kind), file).then(async (shown) => {
+		if (shown) {
+			openScopedPanel(kind as PanelKind, scope);
+			return;
+		}
+		/*
+		 * A folder — `[素材原图目录](素材原图/)` in a reply — reads as nothing, and used to say 读不到 over a
+		 * folder sitting right there. Asked only after the read fails, so a file costs no extra round trip.
+		 */
+		const folder = await Promise.resolve()
+			.then(() => bridge.system.isDirectory(file.path))
+			.catch(() => false);
+		if (folder) await bridge.system.openPath(file.path).catch((error: unknown) => useApp.getState().notify(String(error), "error"));
 		else useApp.getState().notify(translate("filePanel.unreadableAt", { path: file.path }), "warn");
 	});
 }

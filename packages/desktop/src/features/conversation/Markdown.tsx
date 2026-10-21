@@ -558,7 +558,8 @@ function actionsOffset(chip: HTMLElement, pointerX: number): number {
 function FileLink({ href, path, choices, children }: { href: string; path: string; choices?: readonly string[]; children: ReactNode }) {
 	const revealLabel = useRevealLabel();
 	const caption = fileLinkCaption(textOf(children), path);
-	const look = lookFor(path.split(/[/\\]/).pop() || path, false);
+	// Only a trailing slash says folder without asking the disk; one written without it still opens right, see `openFilePane`.
+	const look = lookFor(path.split(/[/\\]/).pop() || path, /[/\\]$/.test(href));
 	// The file pane opens in the screen this link is drawn in: the keyboard reaches a link in a screen
 	// without the press that would have given that screen the focus.
 	const screen = useDockScope();

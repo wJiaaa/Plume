@@ -56,6 +56,17 @@ test("plain file links use the same chip as backticked ones", async () => {
 	}
 });
 
+test("a link ending in a slash names a folder and wears the folder icon", async () => {
+	const view = await mount(h(Markdown, { text: "[素材原图目录](素材原图/) [README.md](README.md)", baseDir: "/project" }));
+	try {
+		const [folder, file] = view.all("[data-ly-file-link] a svg");
+		assert.match(folder?.getAttribute("class") ?? "", /lucide-folder\b/);
+		assert.doesNotMatch(file?.getAttribute("class") ?? "", /lucide-folder\b/);
+	} finally {
+		await view.unmount();
+	}
+});
+
 test("unsafe schemes and malformed encoded paths never become clickable file links", async () => {
 	const view = await mount(h(Markdown, { text: "[unsafe](javascript:alert) [broken](/project/%E0%A4.md)", baseDir: "/project" }));
 	try { assert.equal(view.host.querySelector("a"), null); assert.match(view.text(), /unsafe.*broken/); }
