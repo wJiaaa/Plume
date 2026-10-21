@@ -4,7 +4,7 @@
  *
  * 起因是一个 agent 为了看自己写的页面起了 `python -m http.server 8791`，看完关掉，标签从此只会报
  * `ERR_CONNECTION_REFUSED`。这里走一遍现在的四条路：对话里文件链接旁的按钮、地址栏输入路径、
- * agent 的 `browser_open` 传路径、`preview` 传 `path`；再把应用整个关掉重开，点 agent 留下的卡片。
+ * agent 的 `browser_open` 传路径、`preview` 传 `path`；再把应用整个关掉重开，按地址重开 agent 开过的那一页。
  * 另外量一次连不上的地址：面板里那行字之外，不该再弹一条 `Error invoking remote method`。
  *
  * 模型是本地一台假服务器，按用户消息里的暗号回固定的工具调用，不花真钱也不看运气。
@@ -51,9 +51,7 @@ function fakeModel() {
 			if (reopened) {
 				const n = Number(reopened[1]);
 				if (n === 3) return reply(res, { text: "第三版好了。" });
-				void writeFile(pageFile, version(n + 1)).then(() =>
-					// 第二次之前先说一句话：后面那张卡就落在这一轮的另一段过程里。
-					reply(res, { ...(n === 1 ? { text: "腿的动画不对，改一下再看。" } : {}), tool: { id: `reopen-${n + 1}`, name: "browser_open", input: { url: "pelican.html", newTab: true } } }));
+				void writeFile(pageFile, version(n + 1)).then(() => reply(res, { tool: { id: `reopen-${n + 1}`, name: "browser_open", input: { url: "pelican.html", newTab: true } } }));
 				return;
 			}
 			if (last.includes("tool_result")) { results.push(last); return reply(res, { text: "好了。" }); }
@@ -206,9 +204,9 @@ try {
 
 	console.log("\n三、连不上的地址：只在面板里说，不再弹 IPC 报错");
 	await typeAddress(app, `http://127.0.0.1:${deadPort}/pelican-plane.html?v=6`);
-	await until(app, `document.querySelector('[data-browser-panel] p[role="status"]')`, 900);
+	await until(app, `document.querySelector('[data-browser-panel] [data-browser-failure]')`, 900);
 	await pause(1200);
-	const line = await app.evaluate<string>(`document.querySelector('[data-browser-panel] p[role="status"]').textContent`);
+	const line = await app.evaluate<string>(`document.querySelector('[data-browser-panel] [data-browser-failure]').textContent`);
 	check("面板里写着连接被拒", line.includes("ERR_CONNECTION_REFUSED"), line);
 	const afterRefused = await toasts(app);
 	check("没有弹出 Error invoking remote method", afterRefused.length === 0, afterRefused);
@@ -221,9 +219,7 @@ try {
 	check("工具结果里没有报错", results.length === 1 && !/只允许|is_error":true/.test(results[0]!), results[0]?.slice(0, 160));
 	check("agent 的标签从连接被拒换到了副本上", agentTab?.url.startsWith(`ly-preview://${SESSION}/`) === true && !agentTab.error, agentTab);
 	check("网页画出来了", (await heading(app, agentTab!.id)) === "鹈鹕骑车", await heading(app, agentTab!.id));
-	await until(app, "document.querySelector('[data-browser-card]')", 600);
 	check("agent 打开的网页就在侧栏里，没等人去点", await app.evaluate<boolean>(`!!document.querySelector('[data-dock-pane="browser:${agentTab!.id}"]:not([inert])')`), "");
-	check("对话里那张卡只有一行，没有缩略图", await app.evaluate<boolean>(`(() => { const card = document.querySelector('main [data-browser-card]'); return !!card && !card.querySelector('img') && card.getBoundingClientRect().height < 60; })()`), await app.evaluate<number>(`document.querySelector('main [data-browser-card]')?.getBoundingClientRect().height ?? 0`));
 	await shot(app, "05_agent打开");
 
 	console.log("\n五、agent：preview 传 path");
@@ -255,20 +251,15 @@ try {
 	check("隔一会儿再点，仍是那一个标签", (await state(app)).tabs.filter((tab) => tab.url.startsWith(previewUrl)).length === 1, (await state(app)).tabs.length);
 	await shot(app, "06b_预览只开一个标签");
 
-	console.log("\n六、同一轮里改三次、开三个新标签：只留一张卡，画最后一版");
-	const cardsBefore = await app.evaluate<number>(`document.querySelectorAll('[data-browser-card]').length`);
+	console.log("\n六、同一轮里改三次、开三个新标签：落在同一个标签里，画最后一版");
 	await send(app, "REOPEN_LOCAL 腿再改改");
 	// 文件的副本地址固定，三次 `newTab: true` 都落回人早先从链接打开的那一个标签。
 	const agentTabs = (await state(app)).tabs.filter((tab) => tab.url === fromLink?.url);
 	const newest = agentTabs.at(-1)!;
 	check("三次带 newTab 的打开都落在同一个标签里，和人从链接打开的是同一个", agentTabs.length === 1, { tabs: (await state(app)).tabs.map((tab) => tab.url), link: fromLink?.url });
 	check("地址没变，网页却是最新那一版（没有被缓存住）", (await heading(app, newest.id)) === "第3版", await heading(app, newest.id));
-	const cards = await app.evaluate<string[]>(`[...document.querySelectorAll('[data-browser-card]')].map((card) => card.getAttribute('aria-label'))`);
-	check("这一轮只多了一张卡", cards.length === cardsBefore + 1, { cardsBefore, cards });
-	check("留下的是最后一版", cards.at(-1) === "第3版", cards);
-	await app.evaluate(`[...document.querySelectorAll('main [data-browser-card]')].at(-1)?.scrollIntoView({ block: "center" })`);
 	await pause(1200);
-	await shot(app, "07_同一轮只留一张卡");
+	await shot(app, "07_同一轮三次打开");
 
 	console.log("\n七、整个应用关掉重开");
 	await stopRecording();
@@ -279,10 +270,11 @@ try {
 	await app.evaluate("document.fonts.ready");
 	await openSession(app, SESSION);
 	await pause(1500);
-	await click(app, "[data-browser-card] button", "在浏览器面板中查看");
+	// 标签不跨进程保留：重开就是拿重启前那个地址再开一次。
+	await app.evaluate(`window.plume.browser.command({ type: "open", url: ${JSON.stringify(agentTab?.url ?? "")}, sessionId: ${JSON.stringify(SESSION)}, newTab: true })`);
 	const reopened = await settledOnPage(app);
-	check("重启后点卡片，副本照样打开", reopened?.url === agentTab?.url, { reopened: reopened?.url, before: agentTab?.url });
-	// 同一个文件只有一份副本：前一轮那张卡打开的也是它，所以是第三版。
+	check("重启后按原地址重开，副本照样打开", reopened?.url === agentTab?.url, { reopened: reopened?.url, before: agentTab?.url });
+	// 同一个文件只有一份副本：第四步打开的也是它，所以是第三版。
 	check("网页画出来了，是这个文件最新的那一版，没有连接被拒", (await heading(app, reopened!.id)) === "第3版" && !reopened?.error, await heading(app, reopened!.id));
 	await shot(app, "08_重启后打开");
 } catch (error) {

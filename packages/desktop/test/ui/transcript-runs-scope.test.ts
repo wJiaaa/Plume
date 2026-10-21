@@ -4,8 +4,7 @@
  * The cards asked the live slot's `toolRuns` — the focused conversation's — by call id. A call in the
  * conversation beside it is never in there, so under a screen without focus every card drew without
  * its record: a finished call fell back to 「出错」 once its turn had ended, a preview was drawn as a
- * plain tool card (the page itself never appeared), a folded run counted no changed lines, and a
- * browser card could not tell two visits to one tab apart. Measured in a real window: a preview in
+ * plain tool card (the page itself never appeared), and a folded run counted no changed lines. Measured in a real window: a preview in
  * the screen without focus drew no page at all (`e2e/split-scope-more-probe.ts cards`).
  */
 
@@ -14,7 +13,6 @@ import { afterEach, beforeEach, test } from "node:test";
 import { createElement as h } from "react";
 import type { AssistantMessage, Message, SessionMeta } from "@plume/core";
 import { SessionScope } from "../../src/app/session-scope.tsx";
-import { BrowserCards } from "../../src/features/conversation/BrowserCard.tsx";
 import { LiveToolCard, ToolRun } from "../../src/features/conversation/runs.tsx";
 import { I18nProvider } from "../../src/i18n/index.ts";
 import { useApp, type AppState } from "../../src/store/index.ts";
@@ -37,12 +35,10 @@ const record = (block: ToolCallBlock, result: ToolRunState["result"]): ToolRunSt
 const ls = call("b-ls", "bash", { command: "ls" });
 const edit = call("b-edit", "edit", { path: "/work/b/lib.ts" });
 const shown = call("b-preview", "preview", { entry: "index.html" });
-const visit = call("b-open", "browser_open", { url: "http://127.0.0.1:5173/" });
 const RUNS: Record<string, ToolRunState> = {
 	[ls.id]: record(ls, { content: [{ type: "text", text: "README.md" }], details: undefined }),
 	[edit.id]: record(edit, { content: [{ type: "text", text: "已修改" }], details: { added: 5, removed: 2 } }),
 	[shown.id]: record(shown, { content: [{ type: "text", text: "预览已生成" }], details: { preview: { id: "p1", sessionId: "b", title: "乙的页面", entry: "index.html" } } }),
-	[visit.id]: record(visit, { content: [], details: { kind: "browser", tabId: "t1", url: "http://127.0.0.1:5173/", title: "乙打开的页面", opened: true } }),
 };
 
 function beside(): Cache[string] {
@@ -94,10 +90,4 @@ test("a folded run under a screen without focus counts that screen's changed lin
 	view = await under("b", h(ToolRun, { calls: [{ block: ls, stopReason: "toolUse" }, { block: edit, stopReason: "toolUse" }], live: false }));
 	assert.match(view.text(), /\+5/, `the run lost its added lines: ${view.text().slice(0, 160)}`);
 	assert.match(view.text(), /-2|−2/, "the run lost its removed lines");
-});
-
-test("a page visited under a screen without focus has its card there", async () => {
-	view = await under("b", h(BrowserCards, { calls: [visit.id] }));
-	assert.equal(view.all("[data-browser-card-row]").length, 1, "the visit left no card under its own screen");
-	assert.match(view.text(), /乙打开的页面/);
 });

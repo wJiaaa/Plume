@@ -442,9 +442,8 @@ export function browserScale(id: string): number { return tabs.get(id)?.scale ??
  *
  * A guest paints nothing where its page sets no background; on screen the `<webview>`'s white shows
  * through, but a capture is of the guest alone. On a page with no background of its own, 98% of what
- * `capturePage` returned was transparent: black once a thumbnail was made a JPEG, and a backdrop the
- * model could only guess at behind a screenshot's text — whose antialiased edges are themselves
- * half-transparent. Done on the pixels rather than by giving the page a background, so what an agent
+ * `capturePage` returned was transparent: a backdrop the model could only guess at behind a
+ * screenshot's text — whose antialiased edges are themselves half-transparent. Done on the pixels rather than by giving the page a background, so what an agent
  * reads from the page, its computed styles included, stays the page's own.
  *
  * `toBitmap` is premultiplied, so the white that shows through is added to each channel as it is;

@@ -158,7 +158,6 @@ const LAYOUT = `(() => {
 		frames: frames.length,
 		frame: rect(frame), card: rect(card), answer: rect(answer),
 		kind: card?.dataset.lyPreview ?? null,
-		browserCards: document.querySelectorAll("main [data-browser-card]").length,
 		border: card ? getComputedStyle(card).borderTopWidth : null,
 		ink: getComputedStyle(document.documentElement).getPropertyValue("--color-ink").trim(),
 		scheme: document.documentElement.classList.contains("light") ? "light" : "dark",
@@ -171,7 +170,6 @@ interface Layout {
 	card: { x: number; y: number; w: number; h: number; bottom: number } | null;
 	answer: { x: number; y: number; w: number; h: number; bottom: number } | null;
 	kind: string | null;
-	browserCards: number;
 	border: string | null;
 	ink: string;
 	scheme: string;
@@ -262,7 +260,7 @@ async function main() {
 		const shot = screenshotSent(bodies[3] ?? "");
 		check("检查把截图交给了模型", shot !== null, lastToolResult(bodies[3] ?? ""));
 		check("发布只传了 id，没有重发整页 HTML", /"id":"[0-9a-f]{8}"/.test(bodies[4] ?? "") && !(bodies[4] ?? "").slice((bodies[4] ?? "").lastIndexOf('"tool_use"')).includes("shuffle"), (bodies[4] ?? "").slice(-300));
-		check("对话里只有发布的那一张页面（检查不画卡片，也没有浏览器卡片）", done.frames === 1 && done.browserCards === 0, `${done.frames} 个预览 iframe，${done.browserCards} 张浏览器卡片`);
+		check("对话里只有发布的那一张页面（检查不画卡片）", done.frames === 1, `${done.frames} 个预览 iframe`);
 		check("回合结束后页面仍然看得见", done.frame !== null && done.frame.h > 150, JSON.stringify(done.frame));
 		check(
 			"页面在回答之前",

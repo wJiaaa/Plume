@@ -82,9 +82,8 @@ export function useBrowserWorkspace(): void {
 			/*
 			 * A page becomes a tab when it is opened, and only in a screen showing its conversation.
 			 *
-			 * `reveal` is set by the main process for a new page, a bookmark, a preview link, a card's
-			 * 「打开」 or an agent's `browser_open` — never for what an agent then does in the page (see
-			 * `openBrowser`). It used to mean any change of tab, which dropped the panel over your work
+			 * `reveal` is set by the main process for a new page, a bookmark, a preview link or an agent's
+			 * `browser_open` — never for what an agent then does in the page (see `openBrowser`). It used to mean any change of tab, which dropped the panel over your work
 			 * each time an agent clicked something.
 			 *
 			 * Into the screen of the conversation that owns the page, and nowhere if none shows it: a

@@ -1,30 +1,13 @@
 import { readLocalPageFor, type Tool, type ToolResult } from "@plume/core";
-import { browserLocalPage, type BrowserResultDetails } from "../shared/browser.ts";
+import { browserLocalPage } from "../shared/browser.ts";
 import { localPagePath, localPageUrl } from "./local-page.ts";
 import { actBrowser, captureBrowser, readBrowser, type BrowserAction } from "./browser-actions.ts";
 import { answeringDialogs, describeDialogs } from "./browser-dialogs.ts";
 import { nativeText } from "./i18n.ts";
 import { browserContents, browserCommand, browserState, closeSessionBrowser, loadedBrowser, onWhite, openBrowser, selectBrowser } from "./browser-workspace.ts";
 
-function result(value: unknown, details: BrowserResultDetails = { kind: "browser" }): ToolResult {
-	return { content: [{ type: "text", text: `<browser-data untrusted="true">\n${JSON.stringify(value, null, 2)}\n</browser-data>` }], details };
-}
-
-/**
- * What the conversation's card for this tab should say after a call — see `BrowserResultDetails`.
- *
- * Best effort: nothing here may turn an action that worked into a tool call that failed.
- */
-function view(id: string, opened = false): BrowserResultDetails {
-	const details: BrowserResultDetails = { kind: "browser", tabId: id, ...(opened ? { opened } : {}) };
-	try {
-		const contents = browserContents(id);
-		details.url = contents.getURL();
-		details.title = contents.getTitle();
-	} catch {
-		// The tab closed under us: the card says what is known.
-	}
-	return details;
+function result(value: unknown): ToolResult {
+	return { content: [{ type: "text", text: `<browser-data untrusted="true">\n${JSON.stringify(value, null, 2)}\n</browser-data>` }] };
 }
 function fail(error: unknown): ToolResult {
 	return { isError: true, content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }] };
@@ -81,7 +64,7 @@ export function createBrowserTools(): { tools: Tool[]; dispose: () => void } {
 					if (failure?.kind === "load") throw new Error(nativeText("browser.notOpened", { detail: failure.detail, url: url.href }));
 					if (failure?.kind === "blocked") throw new Error(nativeText("browser.blockedScheme", { target: failure.detail, url: url.href }));
 					const page = await readBrowser(id);
-					return result({ tabId: id, page }, view(id, true));
+					return result({ tabId: id, page });
 				} catch (error) { return fail(error); }
 			},
 		},
@@ -99,7 +82,7 @@ export function createBrowserTools(): { tools: Tool[]; dispose: () => void } {
 					for (const name of ["x", "y", "timeout"] as const) { const value = args[name]; if (value !== undefined) { if (typeof value !== "number") throw new Error(`${name} 必须是数字`); action[name] = value; } }
 					const id = await current(args.tabId, ctx.sessionId);
 					const outcome = await actBrowser(id, action, ctx.sessionId);
-					return result(outcome, view(id));
+					return result(outcome);
 				} catch (error) { return fail(error); }
 			},
 		},
@@ -129,7 +112,7 @@ export function createBrowserTools(): { tools: Tool[]; dispose: () => void } {
 						if (typeof args.width !== "number" || typeof args.height !== "number") throw new Error("width 和 height 必须一起提供");
 						await browserCommand({ type: "viewport", id, viewport: { width: args.width, height: args.height } });
 					}
-					return result(await actBrowser(id, { action: "eval", expression: "({width:innerWidth,height:innerHeight,devicePixelRatio})" }, ctx.sessionId), view(id));
+					return result(await actBrowser(id, { action: "eval", expression: "({width:innerWidth,height:innerHeight,devicePixelRatio})" }, ctx.sessionId));
 				} catch (error) { return fail(error); }
 			},
 		},
@@ -142,7 +125,7 @@ export function createBrowserTools(): { tools: Tool[]; dispose: () => void } {
 					const id = await current(args.tabId, ctx.sessionId);
 					const contents = browserContents(id, ctx.sessionId);
 					// On white, as the page appears in any browser — see `onWhite` for what came back without it.
-					return { content: [{ type: "image", data: onWhite(await captureBrowser(contents)).toPNG().toString("base64"), mimeType: "image/png" }], details: view(id) };
+					return { content: [{ type: "image", data: onWhite(await captureBrowser(contents)).toPNG().toString("base64"), mimeType: "image/png" }] };
 				} catch (error) { return fail(error); }
 			},
 		},

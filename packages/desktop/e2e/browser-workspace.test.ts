@@ -103,16 +103,9 @@ test("agent drives the user's actual browser: native input, click, viewport and 
 	assert.ok(shot, "browser_screenshot returned an image");
 	const pageWidth = await app.evaluate<number>("document.querySelector('webview').getBoundingClientRect().width");
 	assert.ok(Math.abs(Buffer.from(shot, "base64").readUInt32BE(16) - pageWidth) <= 1, `screenshot ${Buffer.from(shot, "base64").readUInt32BE(16)}px wide for a ${pageWidth}px page`);
-	/*
-	 * `browser_open` brought the page up in the panel, where the person watched the rest happen (see
-	 * `openBrowser`); the conversation keeps a one-line card for it, without a picture (`BrowserCard`).
-	 */
+	// `browser_open` brought the page up in the panel, where the person watched the rest happen (see `openBrowser`).
 	const pane = `document.querySelector('[data-dock-pane="browser:${state.tabs[0].id}"]')`;
 	assert.equal(await app.evaluate(`${pane}.hasAttribute('inert')`), false, "the page opened in the panel");
-	assert.match(await app.evaluate<string>(`document.querySelector('[data-browser-card]')?.innerText ?? ''`), /Browser QA/);
-	assert.equal(await app.evaluate(`document.querySelectorAll('[data-browser-card] img').length`), 0);
-	await click(app, '[data-browser-card] [data-browser-card-row] button');
-	await until(app, `!${pane}.hasAttribute('inert')`, 1800);
 	const artifact = process.env.PLUME_E2E_ARTIFACTS;
 	if (artifact) { await mkdir(artifact, { recursive: true }); const screenshot = await app.send<{ data: string }>("Page.captureScreenshot", { format: "png" }); await writeFile(join(artifact, "browser-agent.png"), Buffer.from(screenshot.data, "base64")); }
 });

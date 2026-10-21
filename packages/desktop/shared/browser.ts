@@ -34,20 +34,6 @@ export interface BrowserTab {
 	wanted?: boolean;
 }
 export interface BrowserState { tabs: BrowserTab[]; activeId: string | null }
-/**
- * What a browser tool leaves in its result's `details`, for the card the conversation draws.
- *
- * Never shown to the model — `details` stays in this process — so it can say what the card needs
- * without costing a token.
- */
-export interface BrowserResultDetails {
-	kind: "browser";
-	tabId?: string;
-	url?: string;
-	title?: string;
-	/** Set by `browser_open`: where a card starts. Later calls on the same tab only update it. */
-	opened?: boolean;
-}
 export interface BrowserSelection {
 	url: string;
 	title: string;

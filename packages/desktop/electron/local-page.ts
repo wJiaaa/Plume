@@ -30,9 +30,8 @@ export function localPagePath(raw: string): string {
  * Copy an already-read page and return the address that shows it.
  *
  * One copy per file, written over each time it is opened: the address stays the same, so opening the
- * file again after changing it is a reload of the same page, and the conversation knows the two opens
- * for one page (`pageOf` in `BrowserCard`). A fresh id each time left an agent that checked its page
- * after every edit with six addresses for one file, and six cards.
+ * file again after changing it is a reload of the same page. A fresh id each time left an agent that
+ * checked its page after every edit with six addresses for one file.
  */
 /**
  * Which file each copy came from, by its address: opening the page in another browser opens the file,

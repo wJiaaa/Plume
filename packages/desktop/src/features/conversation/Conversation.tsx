@@ -11,7 +11,6 @@ import { RunningRow } from "./RunningRow.tsx";
 import { TaskList } from "../task/index.ts";
 import { environmentCard, useEnvironmentCard } from "../../store/environment-card.ts";
 import { clearTranscriptJump, useTranscriptJump } from "../../store/transcript-jump.ts";
-import { BrowserCards, laterPageOpens, pageOpens } from "./BrowserCard.tsx";
 import { GeneratedImages } from "./ImageCanvas.tsx";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { ActionSpinner } from "../../ui/motion/loaders.tsx";
@@ -294,8 +293,6 @@ export const Conversation = memo(function Conversation({ sessionId: _sessionId, 
    * 而这条转录在一轮里每个 token 都会重渲染。
    */
   const blocks = useMemo(() => allBlocks.slice(range.start, range.end), [allBlocks, range.start, range.end]);
-  // 按整条转录算，不按窗口：同一轮后面那几块可能还没进窗口，卡片照样要知道自己不是最后一张。
-  const laterPages = useMemo(() => laterPageOpens(allBlocks), [allBlocks]);
   const { scrollTo, detach } = follow;
   const jumpToQuestion = (index: number) => {
     // 窗口按块走，所以要的是「那条消息在哪个块里」，不是它在 Run 序列里的位置。
@@ -578,8 +575,6 @@ export const Conversation = memo(function Conversation({ sessionId: _sessionId, 
              */
             const opener = allBlocks[range.start + at - 1];
             const key = `${activeSessionId}:process:${runKey((opener?.turn === block.turn ? opener : block).runs[0])}`;
-            // 同一轮里后面还会打开的页面，卡片据此知道自己是不是这一页的最后一张（见 `BrowserCards`）。
-            const pages = pageOpens(block);
             /*
              * 按**回合**算，不是按块的位置算：正文一开始流式输出，过程就不再排在末尾。
              */
@@ -596,18 +591,13 @@ export const Conversation = memo(function Conversation({ sessionId: _sessionId, 
                   };
                   if (item.kind !== "step") return [entry];
                   /*
-                   * 图和网页卡片紧跟在产出它的那段活后面，不排到整轮末尾：末尾是收尾那句话和它的结算行，排在那后面，
-                   * 时间、耗时就压在了这一轮产出的东西上面。挂在段外面而不是段里面，见 `GeneratedImages`；卡片
-                   * 是 agent 在后台开了网页这件事在对话里仅有的痕迹，段折着也得看得见。
+                   * 图紧跟在产出它的那段活后面，不排到整轮末尾：末尾是收尾那句话和它的结算行，排在那后面，
+                   * 时间、耗时就压在了这一轮产出的东西上面。挂在段外面而不是段里面，见 `GeneratedImages`。
                    */
-                  const ids = (name: string) => item.step.calls.filter(({ block: call }) => call.name === name).map(({ block: call }) => call.id);
-                  const drawn = ids("image_generate");
-                  const opened = ids("browser_open");
-                  const after = opened.length > 0 ? [...pages.slice(pages.indexOf(opened[opened.length - 1]!) + 1), ...laterPages[range.start + at]!] : [];
+                  const drawn = item.step.calls.filter(({ block: call }) => call.name === "image_generate").map(({ block: call }) => call.id);
                   return [
                     entry,
                     ...(drawn.length > 0 ? [{ key: `${entry.key}:images`, node: <GeneratedImages calls={drawn} /> }] : []),
-                    ...(opened.length > 0 ? [{ key: `${entry.key}:pages`, node: <BrowserCards calls={opened} later={after} /> }] : []),
                   ];
                 })}
               />
