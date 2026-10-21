@@ -1,6 +1,7 @@
 /* oxlint-disable no-console -- probe CLI that prints what the real window did */
 /**
- * 探索、终端、改文件、浏览器挨在一起合成一行，Skill、清单、后台命令结果各自一行——拿一段真实会话在真窗口里看，边验边录。
+ * 探索、终端、改文件、浏览器挨在一起合成一行，其余只和同一种合；后台命令结果挂进它回来时的那一段，挨着自己一行的并成一行
+ * ——拿一段真实会话在真窗口里看，边验边录。
  *
  * 会话从本机 `~/.plume/sessions/sessions.db` 复制出来（只留这一条），放进一次性的 profile，结束时删掉。
  * 那一段是边改边在页面上验：读文件、加载 skill、切标签页、建文件、勾清单、跑后台命令、打开和操作网页、
@@ -14,7 +15,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { startApp, type RunningApp } from "./app.ts";
-import { openSession } from "./drive.ts";
+import { click, openSession } from "./drive.ts";
 import { driver, encode, pause, startRecording, type Frame } from "./record.ts";
 import { sessionsDbPath } from "./session-fixture.ts";
 
@@ -69,7 +70,7 @@ const between = `(() => {
 	return [...document.querySelectorAll('main [data-ly-step], main [data-delivery-kind="job"]')]
 		.filter((row) => a.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING && row.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
 		.filter((row) => !row.parentElement.closest("[data-ly-step]"))
-		.map((row, i) => (i === 0 && row.setAttribute("data-probe-first", ""), row))
+		.map((row, i, all) => (i === 0 && row.setAttribute("data-probe-first", ""), i === all.length - 1 && row.setAttribute("data-probe-last", ""), row))
 		.map((row) => ({
 			kind: row.getAttribute("data-ly-step") ?? "job",
 			text: (row.querySelector(".ly-flow-row") ?? row).textContent.replace(/\\s+/g, " ").trim(),
@@ -113,15 +114,27 @@ try {
 		const kinds = rows?.map((row) => row.kind) ?? [];
 		const merges = new Set(["explore", "terminal", "files", "browser"]);
 		check("读、跑、改、操作网页挨着的已合成一段：没有相邻的两行都是这四类", kinds.every((kind, i) => i === 0 || !(merges.has(kind) && merges.has(kinds[i - 1]))), kinds);
-		check("Skill 单独一行", kinds.includes("skill"), kinds);
-		check("清单单独一行", kinds.includes("todo_write"), kinds);
+		check("没有相邻的两行是同一种", kinds.every((kind, i) => i === 0 || kind !== kinds[i - 1]), kinds);
+		check("Skill、清单各自一行", kinds.includes("skill") && kinds.includes("todo_write"), kinds);
 		const jobs = rows?.filter((row) => row.kind === "job") ?? [];
-		check("四次后台命令的结果各自一行", jobs.length === 4, jobs);
-		check("失败的那一次照旧说退出码", jobs.some((job) => /失败/.test(job.text) && /退出码 1/.test(job.text)), jobs);
-		const todos = rows?.filter((row) => row.kind === "todo_write").map((row) => row.text) ?? [];
-		check("清单那一行说进度，不是英文的 Update task list", todos.length > 0 && todos.every((text) => /更新清单 \d+\/\d+/.test(text)), todos);
-		const weights = await app.evaluate<string[]>(`[...document.querySelectorAll('main [data-delivery-kind="job"] .ly-flow-title')].map((el) => getComputedStyle(el.firstElementChild ?? el).fontWeight)`);
-		check("后台命令结果的标题和另外两种送达一样不加粗", weights.length > 0 && weights.every((w) => w === "400"), weights);
+		check("挨着的两条后台命令结果并成一行", jobs.length === 1 && /2 个后台命令/.test(jobs[0].text), jobs);
+		const last = rows?.at(-1);
+		check("在那一段中间回来的失败结果给这一段挂上失败记号", last?.failed === true, last);
+
+		// 点开最后那一段：挂在里面的两条后台命令结果排在各自回来的位置。
+		await app.evaluate(`document.querySelector("main [data-probe-last]")?.scrollIntoView({ block: "center" })`);
+		await pause(800);
+		await click(app, "main [data-probe-last] .ly-flow-row");
+		await pause(1400);
+		const rail = await app.evaluate<string[] | null>(`(() => {
+			const rail = [...document.querySelectorAll("main [data-probe-last] [data-ly-step-rail]")].find((el) => el.getBoundingClientRect().height > 0);
+			return rail ? [...rail.querySelectorAll('[data-delivery-kind="job"]')].map((row) => row.textContent.replace(/\\s+/g, " ").trim()) : null;
+		})()`);
+		console.log("点开后：", rail);
+		const { data } = await app.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
+		await writeFile(join(OUT_DIR, `${STAMP}_${LABEL}_02_点开最后那一段.png`), Buffer.from(data, "base64"));
+		check("点开后两条后台命令结果都在竖线上", rail?.length === 2, rail);
+		check("失败的那一次照旧说退出码", rail?.some((job) => /失败/.test(job) && /退出码 1/.test(job)) === true, rail);
 		await pause(1000);
 	}
 	await stop();

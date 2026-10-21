@@ -13,7 +13,7 @@
 
 import { isNudge } from "../../lib/spoken.ts";
 import { routedBlock } from "../../lib/tool-summary.ts";
-import type { AssistantContent, AssistantMessage, CommandRun, Message, UserContent } from "@plume/core";
+import type { AssistantContent, AssistantMessage, CommandRun, DeliveredReport, Message, UserContent } from "@plume/core";
 import { freshTokens } from "@plume/core/tokens";
 import { CARRY_ON_PROMPTS, todosFrom } from "../../store/derive.ts";
 import { isPlanTick } from "../../store/turn-stop.ts";
@@ -855,7 +855,8 @@ type TurnItem = { kind: "run"; key: string; run: Run } | { kind: "step"; key: st
 /**
  * 一段连着做的活，连同夹在中间、跟在后面的推理——画出来是一行。
  *
- * 读、跑、改、操作网页挨在一起是一段，其余工具一次一行（见 `joins`）；说了话另起一行。
+ * 读、跑、改、操作网页挨在一起是一段，其余的同一种挨在一起是一段（见 `joins`）；说了话另起一行。插在这样一段中间
+ * 回来的后台命令结果挂在这一段上（`job`，见 `jobReturn`），不另起一行。
  *
  * 推理落在哪一段就算哪一段，放下就不再挪：「想 → 点 → 想 → 输入」是一段浏览器的活，读作「思考 2 次 ·
  * 打开网页、操作网页」。挂在一段活后面的推理就是那一段的，下一次调用换了一类也不跟过去——跟过去的话，
@@ -871,7 +872,7 @@ export interface Step {
 	members: StepMember[];
 }
 
-export type StepMember = { kind: "call"; call: Call } | { kind: "thinking"; run: Extract<Run, { kind: "message" }> };
+export type StepMember = { kind: "call"; call: Call } | { kind: "thinking" | "job"; run: Extract<Run, { kind: "message" }> };
 
 /** 这一条 run 是不是「过程」——相对于说出口的话。 */
 function isProcess(run: Run): boolean {
@@ -969,12 +970,6 @@ export function workbench(step: Step): boolean {
 const MERGES = new Set(["explore", "terminal", "files", "browser"]);
 
 /**
- * 只和同一类接的：连着查几次网、检查一页再发布（发布失败时两次都收进过程）、连着加载几个 Skill、连着调几次
- * MCP、连着派几个子代理。子代理那一行带着它们的脸，人是盯着它看的。
- */
-const OWN_KIND = new Set(["web", "preview", "skill", "mcp", "task"]);
-
-/**
  * MCP 的工具不论哪个服务器都算一类。名字是 `mcp__<服务器>__<工具>`，可超长的会换成哈希（core 的
  * `mcp/names.ts`），从名字里拆不出可靠的服务器。
  */
@@ -985,14 +980,39 @@ function kindOf(category: string): string {
 /**
  * 这次调用接不接在这一段后面。
  *
- * 浏览器从前只和浏览器合，边改边在页面上验的一段就是「读文件 → 操作网页 → 改文件 → 操作网页」来回跳的
- * 几行，所以它也进了 `MERGES`。其余的一次一行，连着两次也不合：清单、问人、和别的会话说话、记下和翻出
- * 记忆、出图……各是一件要单独看见的事，并进一段活里，回头就找不到它了。以后新加的工具默认也在这一边。
+ * `MERGES` 里的几类互相接；浏览器从前只和浏览器合，边改边在页面上验的一段就是「读文件 → 操作网页 → 改文件 →
+ * 操作网页」来回跳的几行，所以它也进了这里。其余的只和同一种接：连着两次清单、连着通知几个会话是一件事，
+ * 清单夹在两段活中间、Skill 跟着一次问人，各是一件要单独看见的事，并进一段活里回头就找不到了。
+ * 派发也是这样：子代理那一行带着它们的脸，人是盯着它看的。
  */
 function joins(step: Step, category: string): boolean {
 	if (MERGES.has(step.category) && MERGES.has(category)) return true;
-	const kind = kindOf(category);
-	return kindOf(step.category) === kind && OWN_KIND.has(kind);
+	return kindOf(step.category) === kindOf(category);
+}
+
+/**
+ * 插在一轮中间、只带着后台命令结果的送达。
+ *
+ * 回来时正在做的是 `MERGES` 那一段，就挂在它上面：放到后台的那次 `bash` 当场就以「已放到后台」跑完了，
+ * 结果单独一行等于把同一条命令说两遍，还把这一段切成两截。别的时候（刚说完话、在清单这类调用后面）
+ * 照旧自己一行：挂到 Skill、清单那一行上就成了不相干的两件事，等下一次调用再挂又会先冒一行再收走。
+ * 子代理的结果和另一个会话的来信不在此列：主智能体接下来那段话是就着它们说的，见 `DeliveryRow`。
+ */
+function jobReturn(run: Run): run is Extract<Run, { kind: "message" }> {
+	if (run.kind !== "message" || run.message.role !== "user" || !isProcess(run)) return false;
+	const reports = run.message.delivery ?? [];
+	return reports.length > 0 && reports.every((report) => report.kind === "job");
+}
+
+/** 只带后台命令结果的那条送达里的几条结果；别的 run 是 `null`。 */
+function jobsOf(run: Run): DeliveredReport[] | null {
+	return jobReturn(run) && run.message.role === "user" ? (run.message.delivery ?? []) : null;
+}
+
+/** 这条送达再添上几条结果。是一份新的 run：原来那条还是转录里的那条。 */
+function withJobs(run: Run, more: DeliveredReport[]): Run {
+	if (run.kind !== "message" || run.message.role !== "user") return run;
+	return { ...run, message: { ...run.message, delivery: [...(run.message.delivery ?? []), ...more] } };
 }
 
 /**
@@ -1084,8 +1104,19 @@ function itemsOf(body: Run[]): TurnItem[] {
 			else thoughts.push(run);
 			continue;
 		}
+		if (step && MERGES.has(step.category) && jobReturn(run)) {
+			step.members.push({ kind: "job", run });
+			continue;
+		}
 		settle();
 		step = null;
+		const last = items[items.length - 1];
+		// 挨着自己一行的后台命令结果并成一行（`JobDelivery` 本来就会说「N 个后台命令结束」），key 跟第一条走。
+		const jobs = jobsOf(run);
+		if (jobs && last?.kind === "run" && jobsOf(last.run)) {
+			last.run = withJobs(last.run, jobs);
+			continue;
+		}
 		items.push({ kind: "run", key: runKey(run), run });
 	}
 	settle();

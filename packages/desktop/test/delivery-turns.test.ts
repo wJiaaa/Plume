@@ -34,9 +34,11 @@ test("插在一轮中间的送达收进这段工作里，不切开它，也不�
 	const blocks = shape(messages);
 	assert.deepEqual(blocks.map((b) => b.kind), ["plain", "work"], "问题、一整轮");
 	assert.equal(new Set(blocks.map((b) => b.turn)).size, 1, "只有一轮");
+	const steps = blocks[1].items.filter((item) => item.kind === "step");
+	assert.equal(steps.length, 1, "送达前后的活是同一段");
 	assert.ok(
-		blocks[1].items.some((item) => item.kind === "run" && item.run.kind === "message" && item.run.message.role === "user"),
-		"送达那一行还在，跟着过程收",
+		steps[0].step.members.some((member) => member.kind === "job" && member.run.message.role === "user"),
+		"送达那一行还在，挂在它回来时那一段上，跟着过程收",
 	);
 	assert.equal(computeTurnStats(messages, messages.length - 1).startIndex, 0, "这一轮从人开口算起");
 });

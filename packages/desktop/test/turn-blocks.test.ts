@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Message } from "@plume/core";
 
-import { turnBlocks, withoutThinking, type Run, type TurnBlock } from "../src/features/conversation/grouping.ts";
+import { runKey, turnBlocks, withoutThinking, type Run, type TurnBlock } from "../src/features/conversation/grouping.ts";
 
 const ask = (text: string, index: number): Run => ({
 	kind: "message",
@@ -58,7 +58,7 @@ const shape = (list: Run[]) => turnBlocks(list).map((b) => b.kind);
 /** 有过程的一轮里的每一行：`step(n)` 是合成一行的 n 次调用。 */
 const items = (block: TurnBlock) =>
 	block.items.map((item) =>
-		item.kind === "step" ? `step(${item.step.members.map((m) => (m.kind === "call" ? m.call.block.name : "think")).join(",")})` : `${item.run.kind === "message" ? item.run.message.role : item.run.kind}`,
+		item.kind === "step" ? `step(${item.step.members.map((m) => (m.kind === "call" ? m.call.block.name : m.kind === "job" ? "job" : "think")).join(",")})` : `${item.run.kind === "message" ? item.run.message.role : item.run.kind}`,
 	);
 
 test("一轮有过程：一块，过程在前，最后那句话是回答", () => {
@@ -68,7 +68,7 @@ test("一轮有过程：一块，过程在前，最后那句话是回答", () =>
 	assert.equal(blocks[1].runs.length, 5, "开口那句话之外的全在这一块");
 });
 
-test("读、跑、改、操作网页挨在一起合成一行；网络、派发只和同一类合；其余一次一行", () => {
+test("读、跑、改、操作网页挨在一起合成一行；其余只和同一种合", () => {
 	const blocks = turnBlocks([ask("改一下", 0), work(["read", "browser_open", "browser_act", "edit"]), work(["web_fetch"]), think(3), work(["web_search", "read"]), work(["task", "task"]), work(["read"]), say("好了。", 5)]);
 	assert.deepEqual(items(blocks[1]), ["step(read,browser_open,browser_act,edit)", "step(web_fetch,think,web_search)", "step(read)", "step(task,task)", "step(read)", "assistant"]);
 	const keys = blocks[1].items.filter((item) => item.kind === "step").map((item) => item.key);
@@ -136,11 +136,11 @@ test("探索、终端、文件更改挨在一起合成一行：改失败了读�
 	// b784f76e 那一段：edit 失败 → sed -n 看一眼 → python 改 → edit 失败 → read → edit。
 	const list = [ask("改一下", 0), work(["edit"]), shell("sed -n 168,172p help.ts"), shell("python3 - <<'EOF'\nopen('help.ts','w')\nEOF"), work(["edit", "read", "edit"]), work(["browser_open"]), work(["grep"])];
 	assert.deepEqual(items(turnBlocks(list)[1]), ["step(edit,bash,bash,edit,read,edit,browser_open,grep)"], "接着去页面上看一眼，也还是这一段");
-	const solo = [ask("改一下", 0), work(["read", "skill", "skill", "edit", "todo_write", "todo_write", "ask_user", "notify_session", "recall", "image_generate", "list_sessions", "read"])];
+	const solo = [ask("改一下", 0), work(["read", "skill", "skill", "edit", "todo_write", "todo_write", "ask_user", "notify_session", "notify_session", "ask_session", "recall", "image_generate", "list_sessions", "read"])];
 	assert.deepEqual(
 		items(turnBlocks(solo)[1]),
-		["step(read)", "step(skill,skill)", "step(edit)", "step(todo_write)", "step(todo_write)", "step(ask_user)", "step(notify_session)", "step(recall)", "step(image_generate)", "step(list_sessions)", "step(read)"],
-		"Skill 只和 Skill 合；其余工具一次一行，连着两次也不合",
+		["step(read)", "step(skill,skill)", "step(edit)", "step(todo_write,todo_write)", "step(ask_user)", "step(notify_session,notify_session)", "step(ask_session)", "step(recall)", "step(image_generate)", "step(list_sessions)", "step(read)"],
+		"其余工具只和同一种合",
 	);
 	const mcp = [ask("查一下", 0), work(["mcp__a__x", "mcp__b__y", "read", "mcp__a__x"])];
 	assert.deepEqual(items(turnBlocks(mcp)[1]), ["step(mcp__a__x,mcp__b__y)", "step(read)", "step(mcp__a__x)"], "MCP 不论哪个服务器都是一类，只和 MCP 合");
@@ -321,22 +321,41 @@ test("the transcript window pages by block, not by run", async () => {
 	assert.match(source, /turnBlocks\(allRuns[,)]/, "要先分块再开窗，顺序反过来等于没改");
 });
 
-/** 一轮跑着时回来的后台命令结果（`steered`）。 */
-const returned = (index: number): Run => ({
+/** 一轮跑着时回来的后台命令结果（`steered`）。`agent` 时是子代理的结果。 */
+const returned = (index: number, agent = false): Run => ({
 	kind: "message",
 	message: {
 		role: "user",
 		content: [{ type: "text", text: "<report>" }],
 		synthetic: true,
 		steered: true,
-		delivery: [{ id: `j${index}`, kind: "job", agent: "", description: "跑测试", status: "failed", exitCode: 1 }],
+		delivery: [agent ? { id: `d${index}`, agent: "general", description: "长任务", status: "done" } : { id: `j${index}`, kind: "job", agent: "", description: "跑测试", status: "failed", exitCode: 1 }],
 		timestamp: 1,
 	} as Message,
 	index,
 	upTo: 1,
 });
 
-test("一轮中间回来的后台命令结果单独一行，不并进前后那一段", () => {
-	const blocks = turnBlocks([ask("跑一下", 0), work(["bash"]), returned(2), work(["read"]), say("好了。", 5)]);
-	assert.deepEqual(items(blocks[1]), ["step(bash)", "user", "step(read)", "assistant"]);
+test("在读、跑、改、操作网页那一段中间回来的后台命令结果挂在这一段上，不把它切开", () => {
+	const blocks = turnBlocks([ask("跑一下", 0), work(["bash"]), returned(2), think(3), work(["read", "browser_act"]), say("好了。", 5)]);
+	assert.deepEqual(items(blocks[1]), ["step(bash,job,think,read,browser_act)", "assistant"]);
+});
+
+test("回来时不在那样一段里的后台命令结果自己一行：清单这类调用后面、说完话之后", () => {
+	assert.deepEqual(items(turnBlocks([ask("跑一下", 0), work(["bash", "todo_write"]), returned(2), work(1)])[1]), ["step(bash)", "step(todo_write)", "user", "step(read)"]);
+	assert.deepEqual(items(turnBlocks([ask("跑一下", 0), work(1), say("等测试。", 2), returned(3), work(1)])[1]), ["step(read)", "assistant", "user", "step(read)"]);
+});
+
+test("挨着自己一行的后台命令结果并成一行，key 跟第一条走", () => {
+	const blocks = turnBlocks([ask("跑一下", 0), work(["skill"]), returned(2), returned(3), returned(4), work(1)]);
+	assert.deepEqual(items(blocks[1]), ["step(skill)", "user", "step(read)"]);
+	const row = blocks[1].items[1];
+	assert.ok(row.kind === "run" && row.run.kind === "message" && row.run.message.role === "user");
+	assert.deepEqual(row.run.message.delivery?.map((report) => report.id), ["j2", "j3", "j4"], "三条都在这一行里");
+	assert.equal(row.key, runKey(returned(2)), "再回来一条，这一行不卸掉重挂");
+	assert.deepEqual(items(turnBlocks([ask("派出去", 0), work(["skill"]), returned(2), returned(3, true)])[1]), ["step(skill)", "user", "user"], "子代理的结果不并进来");
+});
+
+test("子代理的结果照旧单独一行：后面那段话是就着它说的", () => {
+	assert.deepEqual(items(turnBlocks([ask("派出去", 0), work(1), returned(2, true), work(1)])[1]), ["step(read)", "user", "step(read)"]);
 });
