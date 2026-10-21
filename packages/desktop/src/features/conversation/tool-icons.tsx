@@ -8,11 +8,15 @@ import {
 	FileText,
 	FolderTree,
 	Globe,
+	Hourglass,
 	Image,
 	ListTodo,
+	MessageCircleQuestionMark,
+	MessagesSquare,
 	Monitor,
 	MousePointer2,
 	Search,
+	Send,
 	Sparkles,
 	SquarePen,
 	Terminal,
@@ -52,6 +56,11 @@ const ICONS: Record<string, typeof FileText> = {
 	browser_tabs: AppWindow,
 	browser_viewport: Monitor,
 	browser_screenshot: Camera,
+	// 会话之间那四个。列会话和收到别的会话来信那一行（`PeerLetterRow`）是同一枚。
+	list_sessions: MessagesSquare,
+	ask_session: MessageCircleQuestionMark,
+	notify_session: Send,
+	wait_for_session: Hourglass,
 };
 
 /**

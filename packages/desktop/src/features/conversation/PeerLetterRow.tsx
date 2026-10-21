@@ -18,11 +18,7 @@ import { useApp } from "../../store/index.ts";
 import { useScopedSessionId } from "../../app/session-scope.tsx";
 import { FlowRow } from "./FlowRow.tsx";
 import { jumpToSession } from "./jump-to-session.ts";
-
-/** 地址里的名字：`修登录 [a1b2c3]` 画成「修登录」，ref 是给模型认人的。 */
-function nameOf(address: string): string {
-	return address.replace(/\s*\[[0-9a-f]{6,12}\]$/i, "") || address;
-}
+import { peerName } from "./call-words.ts";
 
 /** 正文怎么排版由行那一层给：`Markdown` 在这里直接引会连成一个环（见 `.dependency-cruiser.cjs`）。 */
 export function PeerLetterRow({ letters, renderText }: { letters: PeerLetter[]; renderText: (text: string) => ReactNode }) {
@@ -47,7 +43,7 @@ function Letter({ letter, renderText }: { letter: PeerLetter; renderText: (text:
 				<FlowRow
 					icon={<MessagesSquare size={13} strokeWidth={1.8} />}
 					/* 别的过程行标题是「思考」这种两三个字的词，加粗读作标签；这里装的是会话名，整段加粗就成了一行粗字。 */
-					title={<span className="font-normal">{t("peers.from", { name: nameOf(letter.from) })}</span>}
+					title={<span className="font-normal">{t("peers.from", { name: peerName(letter.from) })}</span>}
 					summary={text.split("\n").find((line) => line.trim()) ?? ""}
 					open={open}
 					onToggle={() => setOpen((value) => !value)}

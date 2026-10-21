@@ -10,7 +10,7 @@ import type { ToolRun as ToolRunState } from "../../store/index.ts";
 import { baseName, relativeTo, tildeHome } from "../../lib/paths.ts";
 import { formatList } from "../../i18n/list.ts";
 import { translate } from "../../i18n/translate.ts";
-import { describeCall, describeRun } from "../../lib/tool-kinds.ts";
+import { describeCall, describeRun, PEER_TOOLS } from "../../lib/tool-kinds.ts";
 import type { Call, StepMember } from "./grouping.ts";
 
 type ToolCallBlock = Extract<AssistantContent, { type: "toolCall" }>;
@@ -168,9 +168,11 @@ export function describeOne(block: ToolCallBlock, summary?: string, context: { j
 
 /** The file a call is about, when it is about one — the part worth naming in a summary. */
 function subjectOf(block: ToolCallBlock): string | undefined {
-  const { path, url } = (block.arguments ?? {}) as { path?: unknown; url?: unknown };
+  const { path, url, to } = (block.arguments ?? {}) as { path?: unknown; url?: unknown; to?: unknown };
   // Either separator: a Windows path split on "/" alone came back whole, drive letter and all.
   if (typeof path === "string") return baseName(path);
+  // 只认会话之间那几个：MCP 工具也常有 `to`（收件人），单独一次调用时会被说成「使用工具 alice@…」。
+  if (PEER_TOOLS.has(block.name)) return typeof to === "string" && to.trim() ? peerName(to.trim()) : undefined;
   // 打开的网页：本地文件报文件名，网站报主机名——整串地址放在一行摘要里只会被截掉。
   if (typeof url !== "string") return undefined;
   try {
@@ -180,6 +182,11 @@ function subjectOf(block: ToolCallBlock): string | undefined {
   } catch {
     return baseName(url) || undefined;
   }
+}
+
+/** 地址里的名字：`修登录 [a1b2c3]` 画成「修登录」，ref 是给模型认人的；只写了 ref 的照原样。 */
+export function peerName(address: string): string {
+  return address.replace(/\s*\[[0-9a-f]{6,12}\]$/i, "") || address;
 }
 
 export function diffOf(run: ToolRunState | undefined, key: "added" | "removed"): number {
