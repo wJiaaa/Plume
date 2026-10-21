@@ -71,7 +71,7 @@ export function isHourly(bounds: { from: string | null; to: string | null }): bo
 }
 
 /** `describe` 给出这一行可以被搜到的文字（模型、供应商名），由界面决定怎么称呼它们。 */
-export function filterRequests(rows: UsageRequestBucket[], filter: RequestFilter, describe: (row: UsageRequestBucket) => string): UsageRequestBucket[] {
+export function filterRequests<T extends Pick<UsageRequestBucket, "hour" | "provider" | "model">>(rows: T[], filter: RequestFilter, describe: (row: T) => string): T[] {
 	const query = filter.query.trim().toLowerCase();
 	return rows.filter((row) => {
 		const day = row.hour.slice(0, 10);

@@ -129,6 +129,8 @@ module.exports = {
 				"命令行打印答复都要据此跳过——各判一遍，就是这一处不重复了、那一处照样说两遍。" +
 				"`followups` 一个 import 都没有：回复末尾下一步建议的写法，提示词教给模型的、输入框取来当灰字的、回复里拿掉的，" +
 				"必须是同一份——各写一遍，就是模型照着写了、界面上却露出一串语法。" +
+				"`session/usage-parts` 一个 import 都没有：用量页 Token 构成分哪几类，回放按它记、环图按它画，" +
+				"两处各列一遍，就是回放多记了一类、环图上那一段不见了。" +
 				"这一条是在真窗口里撞出来又验回去的——先看到过一整屏空白。",
 			severity: "error",
 			from: { path: "^packages/desktop/src" },
@@ -136,7 +138,7 @@ module.exports = {
 				path: "^packages/core/src",
 				pathNot:
 					"^packages/core/src/(types|tokens|activity|trajectory-view|commands-view|model-catalog|agents-builtin|platform|reply-text|followups)\\.ts$" +
-					"|^packages/core/src/(config/schedule|config/model-choice|config/models|config/image-models|config/project-folders|config/retry-policy|commands/builtin|plugins/install-record|mcp/placeholders|mcp/form|ai/thinking-options|runtime/delegation|runtime/plan-view|tools/shell-split)\\.ts$" +
+					"|^packages/core/src/(config/schedule|config/model-choice|config/models|config/image-models|config/project-folders|config/retry-policy|session/usage-parts|commands/builtin|plugins/install-record|mcp/placeholders|mcp/form|ai/thinking-options|runtime/delegation|runtime/plan-view|tools/shell-split)\\.ts$" +
 					"|^packages/core/src/ui-language/(index|catalog|chart|check|expression|parse)\\.ts$",
 				dependencyTypesNot: ["type-only"],
 			},

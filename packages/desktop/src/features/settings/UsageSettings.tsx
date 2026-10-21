@@ -6,6 +6,7 @@ import { useApp } from "../../store/index.ts";
 import { SkeletonBar, useSlowLoad } from "../../ui/primitives/Skeleton.tsx";
 import { Card, EmptyHint } from "./controls.tsx";
 import type { ProviderNaming } from "./usage-providers.ts";
+import { UsageBreakdownSkeleton } from "./UsageBreakdown.tsx";
 import { UsageRequests } from "./UsageRequests.tsx";
 
 export function UsageSettings() {
@@ -59,5 +60,13 @@ export function UsageSettings() {
 function UsageSkeleton({ failed }: { failed: boolean }) {
 	const { t } = useI18n();
 	if (failed) return <Card><EmptyHint>{t("usage.readFailed")}</EmptyHint></Card>;
-	return <div aria-busy="true" aria-live="polite"><span className="sr-only">{t("usage.reading")}</span><Card className="grid grid-cols-5 gap-4 p-4">{[0, 1, 2, 3, 4].map((index) => <div key={index}><SkeletonBar width="40%" height={10} /><SkeletonBar width="70%" height={24} className="mt-3" /></div>)}</Card><Card className="mt-3 p-4"><div className="flex h-[200px] items-end gap-2">{[24, 38, 30, 62, 44, 78, 55, 70, 48, 66, 36, 58].map((height, index) => <span key={index} className="ly-skeleton flex-1 rounded-t" style={{ height: `${height}%` }} />)}</div></Card></div>;
+	// `@container`：环图卡片按容器宽度决定并排还是上下排，和真页面（`UsageRequests` 的根）同一个参照。
+	return (
+		<div aria-busy="true" aria-live="polite" className="@container">
+			<span className="sr-only">{t("usage.reading")}</span>
+			<Card className="grid grid-cols-5 gap-4 p-4">{[0, 1, 2, 3, 4].map((index) => <div key={index}><SkeletonBar width="40%" height={10} /><SkeletonBar width="70%" height={24} className="mt-3" /></div>)}</Card>
+			<Card className="mt-3 p-4"><div className="flex h-[200px] items-end gap-2">{[24, 38, 30, 62, 44, 78, 55, 70, 48, 66, 36, 58].map((height, index) => <span key={index} className="ly-skeleton flex-1 rounded-t" style={{ height: `${height}%` }} />)}</div></Card>
+			<UsageBreakdownSkeleton />
+		</div>
+	);
 }

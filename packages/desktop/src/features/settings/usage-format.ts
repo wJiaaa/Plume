@@ -57,3 +57,18 @@ export function formatBytes(value: number): string {
 	const gb = mb / 1024;
 	return gb >= 1 ? `${gb.toFixed(1)} GB` : `${Math.round(mb)} MB`;
 }
+
+/**
+ * `850ms`、`12.3s`、`15m31s`、`2h05m`。用量页的耗时是几百次调用累计的，量级从毫秒跨到小时，单位跟着走。
+ */
+export function formatDuration(ms: number): string {
+	if (!Number.isFinite(ms) || ms <= 0) return "0s";
+	if (ms < 1000) return `${Math.round(ms)}ms`;
+	if (ms < 9_950) return `${(ms / 1000).toFixed(1)}s`;
+	const total = Math.round(ms / 1000);
+	if (total < 60) return `${total}s`;
+	const hours = Math.floor(total / 3600);
+	const minutes = Math.floor((total % 3600) / 60);
+	if (hours > 0) return `${hours}h${`${minutes}`.padStart(2, "0")}m`;
+	return `${minutes}m${`${total % 60}`.padStart(2, "0")}s`;
+}

@@ -11,6 +11,8 @@ import { formatCompact } from "./usage-format.ts";
 import { dayKey, heatmapWeeks } from "./usage-heatmap.ts";
 import { costText, Kpi, seconds, seriesLabel, SeriesList } from "./UsageRequestParts.tsx";
 import { CacheMissCard } from "./UsageCacheMiss.tsx";
+import { UsageBreakdown } from "./UsageBreakdown.tsx";
+import { activityTotals } from "./usage-activity.ts";
 import { barsFor, dailyTotals, emptyTotals, filterRequests, firstTokenOf, hitRateOf, isHourly, metricOf, rangeBounds, requestsCsv, requestTotals, slotsFor, speedOf, type BarMetric, type RequestRange, type Split } from "./usage-requests.ts";
 import { Heatmap } from "./UsageHeatmap.tsx";
 
@@ -85,11 +87,12 @@ export function UsageRequests({ scan, now, naming, reload, refreshing }: { scan:
 
 	const bounds = useMemo(() => rangeBounds(range, now, custom), [range, now, custom]);
 	const hourly = isHourly(bounds);
-	const describe = useCallback((row: UsageRequestBucket) => [row.model, providerLabel(naming, row.provider), row.provider].join(" "), [naming]);
+	const describe = useCallback((row: Pick<UsageRequestBucket, "model" | "provider">) => [row.model, providerLabel(naming, row.provider), row.provider].join(" "), [naming]);
 	// 热力图只吃筛选、不吃区间：它看的是一整年里这一类请求的节奏。
 	const filtered = useMemo(() => filterRequests(scan.requests, { from: null, to: null, provider, query }, describe), [scan.requests, provider, query, describe]);
 	const rows = useMemo(() => filterRequests(filtered, { ...bounds, provider: null, query: "" }, describe), [filtered, bounds, describe]);
 	const totals = useMemo(() => requestTotals(rows), [rows]);
+	const activity = useMemo(() => activityTotals(scan.activity, { ...bounds, provider, query }, describe), [scan.activity, bounds, provider, query, describe]);
 	const slots = useMemo(() => slotsFor(bounds, rows, now), [bounds, rows, now]);
 	const bars = useMemo(() => barsFor(rows, split, metric, slots, hourly), [rows, split, metric, slots, hourly]);
 	const byDay = useMemo(() => dailyTotals(filtered), [filtered]);
@@ -171,6 +174,8 @@ export function UsageRequests({ scan, now, naming, reload, refreshing }: { scan:
 					</div>
 				)}
 			</Card>
+
+			<UsageBreakdown tokens={totals} activity={activity} />
 
 			<CacheMissCard totals={totals} />
 

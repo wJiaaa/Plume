@@ -30,7 +30,10 @@ export interface UsageIpcDeps {
 export function registerUsageIpc({ store: readStore }: UsageIpcDeps): void {
 	ipcMain.handle("usage:scan", async () => {
 		if (!inFlight) {
-			inFlight = scanUsage(readStore(), undefined, settings().providers).finally(() => {
+			// 只给 e2e 用：本地固件扫得太快，骨架来不及露出来，拍不到也量不到它和真卡片对不对得上。
+			const delay = Number(process.env.PLUME_E2E_SLOW_USAGE ?? 0);
+			const slow = delay > 0 ? new Promise((resolve) => setTimeout(resolve, delay)) : Promise.resolve();
+			inFlight = slow.then(() => scanUsage(readStore(), undefined, settings().providers)).finally(() => {
 				inFlight = null;
 			});
 		}

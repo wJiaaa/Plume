@@ -1,6 +1,6 @@
 /** Data returned by the main-process usage scanner. */
 
-import type { CacheCause } from "@plume/core";
+import type { CacheCause, UsageReplayRow } from "@plume/core";
 
 /**
  * 本该从缓存读到、却按全价重算的那部分，见 core 的 `runtime/cache-diagnostics.ts`。
@@ -87,10 +87,17 @@ interface UsageDay {
 	messages: number;
 }
 
+/** 一个会话一天里在一个模型上做的事，见 core 的 `UsageReplayRow`；归档与否是扫描那一刻的。 */
+export interface UsageActivity extends UsageReplayRow {
+	archived: boolean;
+}
+
 export interface UsageScan {
 	days: UsageDay[];
 	buckets: UsageBucket[];
 	requests: UsageRequestBucket[];
+	/** 来自会话记录，删掉的会话不在里面；上面三项来自 spend，删了也在。 */
+	activity: UsageActivity[];
 	/** How many spend rows were read this time: what the cache saved is what this leaves out. */
 	scanned: number;
 }

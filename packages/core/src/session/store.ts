@@ -27,6 +27,7 @@ import { REPLAY_KINDS, replayRecords } from "./replay-records.ts";
 import { auxiliaryCall, spendOf, type SpendEntry, type SpendRow } from "./spend.ts";
 import type { ActiveDay, ReplyTiming, SessionStorage } from "./storage.ts";
 import type { Boundary, SessionMeta, SessionRecord, SessionRecordInput } from "./types.ts";
+import { USAGE_RECORD_KINDS } from "./usage-replay.ts";
 
 export type { Boundary, SessionMeta, SessionRecord, SessionRecordInput } from "./types.ts";
 
@@ -194,7 +195,8 @@ export class SessionStore implements SessionStorage {
 			}
 			const next = applyRecord(base, payload, now);
 			if (next === base) return base;
-			const record = { seq: next.seq, ts: now, ...persistedPayload(base, payload, next) };
+			// `copy` 留在记录上：用量页回放记录时（`usage-replay.ts`），分叉抄来的历史算进上下文、不再算作这里做的事。
+			const record = { seq: next.seq, ts: now, ...persistedPayload(base, payload, next), ...(copy ? { copy: true } : {}) };
 			db.prepare("INSERT INTO records (session_id, seq, ts, kind, body) VALUES (?, ?, ?, ?, ?)")
 				.run(sessionId, next.seq, now, recordKind(payload), JSON.stringify(record));
 			db.prepare("UPDATE sessions SET project_id = ?, seq = ?, updated_at = ?, archived = ?, message_count = ?, meta = ? WHERE id = ?")
@@ -684,6 +686,24 @@ export class SessionStore implements SessionStorage {
 				json_extract(body, '$.event.message.sseDurationMs')
 			FROM records WHERE kind = 'subagent_message' AND json_extract(body, '$.event.message.role') = 'assistant'
 		`).all() as unknown as ReplyTiming[];
+	}
+
+	async usageCursors(): Promise<{ id: string; seq: number; archived: boolean }[]> {
+		const rows = this.db.prepare("SELECT id, seq, archived FROM sessions").all() as { id: string; seq: number; archived: number }[];
+		return rows.map((row) => ({ id: row.id, seq: row.seq, archived: row.archived === 1 }));
+	}
+
+	async *usageRecords(sessionId: string, afterSeq: number): AsyncGenerator<SessionRecord & { copy?: boolean }> {
+		const page = this.db.prepare(`SELECT seq, body FROM records WHERE session_id = ? AND seq > ? AND kind IN (${USAGE_RECORD_KINDS.map(() => "?").join(", ")}) ORDER BY seq LIMIT ?`);
+		let after = afterSeq;
+		while (true) {
+			const rows = page.all(sessionId, after, ...USAGE_RECORD_KINDS, READ_PAGE) as { seq: number; body: string }[];
+			for (const row of rows) {
+				after = row.seq;
+				yield JSON.parse(row.body) as SessionRecord & { copy?: boolean };
+			}
+			if (rows.length < READ_PAGE) return;
+		}
 	}
 
 	/** Bytes of records per session: what deleting it gives back. */

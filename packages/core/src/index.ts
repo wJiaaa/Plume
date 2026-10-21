@@ -49,6 +49,8 @@ export { instantAnswerProvider, INSTANT_PROVIDER_ID } from "./search/instant.ts"
 export { keyedSearchProvider, BRAVE_PROVIDER_ID, EXA_PROVIDER_ID, TAVILY_PROVIDER_ID } from "./search/keyed.ts";
 export { approvalPolicy, useApprovalPolicy } from "./runtime/approval-policy.ts";
 export type { ActiveDay, ReplyTiming, SessionStorage } from "./session/storage.ts";
+export { emptyReplayRow, foldUsageRecord, newUsageReplayState, REPLAY_NUMBERS, type RowSink, type UsageReplayRow, type UsageReplayState } from "./session/usage-replay.ts";
+export { INPUT_PARTS, OUTPUT_PARTS, type InputPart, type OutputPart } from "./session/usage-parts.ts";
 export { SessionDbUnavailable } from "./session/db.ts";
 export type { SpendCall, SpendRow } from "./session/spend.ts";
 export {

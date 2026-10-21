@@ -88,6 +88,15 @@ export interface SessionStorage extends PartialSink, CallSink {
 	activeDays(): Promise<ActiveDay[]>;
 	/** 还留在会话记录里的每一条回复（含子智能体的）的计时。见 `ReplyTiming`。 */
 	replyTimings(): Promise<ReplyTiming[]>;
+	/** 现存的每个会话写到了哪个 `seq`、归没归档：用量页按它决定哪些会话要接着回放，见 `usage-replay.ts`。 */
+	usageCursors(): Promise<{ id: string; seq: number; archived: boolean }[]>;
+	/**
+	 * 一个会话 `afterSeq` 之后、和用量回放有关的记录原文（`USAGE_RECORD_KINDS`）。
+	 *
+	 * 不是 `read`：那个会先替死掉的写入者收尾，统计扫描不该改动任何东西。会话只追加，按 `seq` 续读
+	 * 不会漏；不按 `records.id`，那个在删掉最新的会话以后会被重用。
+	 */
+	usageRecords(sessionId: string, afterSeq: number): AsyncGenerator<SessionRecord & { copy?: boolean }>;
 	/** Bytes each session's records take. */
 	sizes(): Promise<Record<string, number>>;
 	/**

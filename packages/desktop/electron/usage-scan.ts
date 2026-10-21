@@ -30,11 +30,12 @@ import {
 	type SpendRow,
 } from "@plume/core";
 import { freshTokens } from "@plume/core/tokens";
+import { scanActivity } from "./usage-activity.ts";
 import { readUsageCache, USAGE_CACHE_VERSION, type UsageTally } from "./usage-cache.ts";
 import { priceUsage, usagePricingKey, type TokenUsage } from "./usage-pricing.ts";
 import type { UsageBucket, UsageRequestBucket, UsageScan } from "./usage-types.ts";
 
-export type { UsageCacheMiss, UsageRequestBucket, UsageScan } from "./usage-types.ts";
+export type { UsageActivity, UsageCacheMiss, UsageRequestBucket, UsageScan } from "./usage-types.ts";
 
 /** Local date key, deliberately not ISO/UTC. Mirrors `dayKey` in the settings page. */
 function dayKey(ms: number): string {
@@ -267,6 +268,7 @@ export async function scanUsage(store: SessionStorage, home = plumeHome(), provi
 		days: await store.activeDays(),
 		buckets: [...tally.buckets].sort((a, b) => a.day.localeCompare(b.day)),
 		requests: tally.requests,
+		activity: await scanActivity(store, home),
 		scanned,
 	};
 }

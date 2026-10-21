@@ -12,6 +12,7 @@
 		"./thinking-options": "./src/ai/thinking-options.ts",
 		"./tokens": "./src/tokens.ts",
 		"./activity": "./src/activity.ts",
+		"./usage-parts": "./src/session/usage-parts.ts",
 		"./trajectory-view": "./src/trajectory-view.ts",
 		"./plan-view": "./src/runtime/plan-view.ts",
 		"./commands-view": "./src/commands-view.ts",
