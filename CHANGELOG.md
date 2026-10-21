@@ -2,6 +2,43 @@
 
 这个文件由 `pnpm release` 生成，条目来自提交信息。写得含糊的提交在这里也含糊，所以值得在提交时就写清楚。
 
+## [0.9.46](https://github.com/wJiaaa/Plume/releases/tag/v0.9.46) - 2026-10-21
+
+<!-- plume:notes en -->
+
+### New
+
+- **The chat background has separate switches for new chats and ongoing chats.** Until now there was one switch, so you couldn't keep the image on the new chat page and have a plain transcript once the conversation starts, or the other way round. Appearance settings now has Show on new chats and Show in ongoing chats. If you had turned the background off, both stay off after the update. With only the ongoing chat switch on, the preview shows the faded version you will actually see.
+- **A file that is still being written shows its path and how far it has got.** Generating a few hundred lines can take a dozen seconds, and until now that time showed only a shimmering "Created files", so you couldn't tell progress from a stall. The row now shows the path and the line it has reached, and so does the collapsed process row above it.
+
+### Changes
+
+- **A finished process row counts what it did again.** It reads "Thought 4 times · Read files ×4, Ran commands ×2" with a stack icon, instead of quoting the first two command descriptions followed by "39 total". While the work is running, the row still shows the description of the current command.
+
+### Fixes
+
+- **A command queued behind a long file write no longer looks stuck.** Tools run only after the whole reply is written, so a command could wait ten seconds or more. During that wait its title fell back to "Ran commands", a timer counted from the moment the row appeared, and the output area said it was waiting. A command that took 32ms could look like it had hung for 12 seconds. A queued command now shows its own description and has no timer, and it can be expanded only once it starts.
+
+<!-- plume:notes zh-CN -->
+
+<details>
+<summary>中文（简体）</summary>
+
+### 新功能
+
+- **会话背景图在新对话和对话中分开开关。** 原来只有一个开关，没法只在新对话页留着图、进了会话就干净，反过来也不行。外观设置里换成了「新对话里显示」和「对话中显示」两项。之前关掉过背景图的，升级后两项都是关的。只开「对话中显示」时，预览按压淡后的样子画，和实际看到的一致。
+- **正在写的文件显示路径和已写行数。** 几百行的文件要生成十几秒，这段时间以前只有「创建文件」几个字在扫光，看不出是在往前走还是卡住了。现在这一行带上路径，行尾写「已写 N 行」，收起的那一行过程上也这样显示。
+
+### 变化
+
+- **跑完收起的一行过程重新按数量说。** 写成「思考 4 次 · 读取文件 4 个、执行命令 2 个」，行首是叠层图标，不再写前两条命令的说明再接「等 39 项」。还在跑的时候，这一行照旧显示当前那条命令的说明。
+
+### 修复
+
+- **排在长文件后面的命令不再像是卡住了。** 工具要等整条回复写完才执行，一条命令可能要排十几秒。这段时间里标题退回「执行命令」，秒数从这一行出现时就开始数，展开还写着在等输出，实际只跑了 32ms 的命令看上去像卡了 12 秒。现在排队的命令直接显示自己的说明、不计时，开跑之后才能展开。
+
+</details>
+
 ## [0.9.45](https://github.com/wJiaaa/Plume/releases/tag/v0.9.45) - 2026-10-21
 
 <!-- plume:notes en -->
