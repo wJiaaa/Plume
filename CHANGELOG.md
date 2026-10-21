@@ -2,6 +2,57 @@
 
 这个文件由 `pnpm release` 生成，条目来自提交信息。写得含糊的提交在这里也含糊，所以值得在提交时就写清楚。
 
+## [0.9.45](https://github.com/wJiaaa/Plume/releases/tag/v0.9.45) - 2026-10-21
+
+<!-- plume:notes en -->
+
+### New
+
+- **Usage shows when requests happened and how fast each provider and model responded.** Filter by date, provider or model, search the results, and export the selection as CSV. The charts can show tokens, cost, requests or output speed, with cache hit rate and time to first token alongside the totals. Today is shown by hour; longer ranges are shown by day. Small costs stay distinguishable on the chart, and the CSV keeps a count of requests whose price is unknown.
+- **Two new rings show what uses the tokens and where the time goes.** Token breakdown separates system instructions, tool definitions, conversation history and other context, estimating their shares of the billed input. Time breakdown separates waiting for the first token, thinking, writing the reply and running tools.
+- **Chat backgrounds stay visible after the first message.** A layer of the page colour covers half the image once the conversation has messages, keeping the text readable. Appearance settings now has a Show background image switch; turning it off keeps your image, effect and intensity settings for later.
+
+### Changes
+
+- **Tool calls between two passages of text collapse into one process row.** Browser actions, skills, commands and file changes no longer split into separate rows just because their kinds differ. Subagent dispatches keep their own rows. Background command results join the process, with failures marked there; replies from subagents and other sessions still appear separately.
+- **Opening a page no longer adds a browser card to the transcript.** The page still opens in the browser sidebar, and links in a reply can still be opened in the built-in browser. Links to that session's local previews can reopen them there too.
+
+### Fixes
+
+- **Returning to a session that is still writing shows the text produced while you were away straight away.** It no longer pauses on the old text and then catches up in a burst; newly arriving text keeps streaming at its usual pace.
+- **Messages between sessions are easier to follow.** Notify, ask and wait actions now say what they did and name the other session, rather than showing a bare tool name. Reports delivered together also have space between them instead of touching.
+
+### Known limitation
+
+- Forks created in 0.9.44 or earlier did not record where inherited history ends. Their activity rings, turn and tool counts, and durations may include that history again. Cost totals and request counts remain deduplicated. New forks record the boundary; the missing boundary in old forks cannot be reconstructed reliably.
+
+<!-- plume:notes zh-CN -->
+
+<details>
+<summary>中文（简体）</summary>
+
+### 新功能
+
+- **用量页能看什么时候发了请求、哪个供应商和模型回得快。** 可以按时间、供应商、模型筛选，搜索后把选中的范围导出成 CSV。柱状图可以切换 Token、费用、请求数和输出速度，汇总栏也能看缓存命中率和首字时间。今天按小时看，更长的区间按天看。小额费用在图上也能分清，CSV 会保留查不到价格的请求数。
+- **两张环图分别看 Token 花在哪、时间花在哪。** Token 构成把系统指令、工具定义、对话历史等内容分开，估算它们各占实际计费输入的多少。耗时构成分成等首字、思考、写回复和跑工具。
+- **会话背景图发出第一条消息后也留着。** 有消息时在图上盖一层 50% 的页面底色，让正文读得清。外观设置里多了「显示背景图」开关，关掉后图、效果和浓度都保留，以后可以再打开。
+
+### 变化
+
+- **两段话之间的工具调用收成一行过程。** 操作网页、调用技能、跑命令、改文件，不再因为类别不同就各起一行，派发子智能体仍单独显示。后台命令的结果合进过程，失败也在那里标出来，子智能体回复和其他会话的来信照旧单独显示。
+- **打开网页不再往对话里加浏览器卡片。** 页面照旧在浏览器侧栏展开，回复里的链接也仍能用内置浏览器打开，同一会话的本地预览链接也能从这里重开。
+
+### 修复
+
+- **切回仍在写的会话，离开期间写下的字直接显示。** 不再先停在旧内容上，再一下子追上来，之后新到的字照常逐步显示。
+- **会话之间的传话更容易看懂。** 通知、询问、等待会写清做了什么、对哪个会话做，不再只露出工具名。同一批送达的几份报告也留出了间距，不再贴在一起。
+
+### 已知限制
+
+- 0.9.44 及更早版本创建的分叉没有记录继承历史的截止位置，活动环图、轮次、工具次数和耗时可能把这段历史重复算入。费用总账和请求数不重复计入。新版分叉会保存标记，旧分叉缺失的边界无法可靠恢复。
+
+</details>
+
 ## [0.9.44](https://github.com/wJiaaa/Plume/releases/tag/v0.9.44) - 2026-10-20
 
 <!-- plume:notes en -->
