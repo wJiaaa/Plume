@@ -20,6 +20,16 @@ import { dirname, join, relative, sep } from "node:path";
 import { openRepo, withRepoView } from "./host-git.ts";
 
 /**
+ * 不在 git 仓库里、只能自己走目录时跳过的目录：依赖、构建产物、缓存。仓库里认 `.gitignore`，用不到它。
+ * `glob`、`grep` 的兜底和桌面端回复链接的查找（`electron/file-locate.ts`）共用这一张，免得同一个项目
+ * 里模型搜得到的文件，点链接却找不到。
+ */
+export const SKIP_DIRS: ReadonlySet<string> = new Set([
+	"node_modules", ".git", "dist", "build", "out", ".next", ".nuxt", "target",
+	"__pycache__", ".venv", "venv", ".turbo", ".cache", "Pods", ".gradle", ".expo",
+]);
+
+/**
  * `root` 之下 git 认为该看的文件（已跟踪且还在磁盘上的，加上未跟踪且没被忽略的），绝对路径，
  * 以调用方给的 `root` 开头。
  */

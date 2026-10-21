@@ -4,7 +4,7 @@ import { join, relative, sep } from "node:path";
 import { errorResult } from "./result.ts";
 import type { Tool, ToolResult } from "../types.ts";
 import { displayPath } from "./paths.ts";
-import { gitListedFiles } from "./project-files.ts";
+import { gitListedFiles, SKIP_DIRS } from "./project-files.ts";
 import { authorizeRead } from "./read-access.ts";
 
 const MAX_RESULTS = 500;
@@ -14,11 +14,6 @@ const MAX_RESULTS = 500;
  * 都只基于这一部分，而结果里看不出来。
  */
 const SORT_CAP = 10_000;
-/** 不在 git 仓库里时才用这张名单；仓库里认 `.gitignore`，见 `project-files.ts`。 */
-const SKIP_DIRS = new Set([
-	"node_modules", ".git", "dist", "build", "out", ".next", ".nuxt", "target",
-	"__pycache__", ".venv", "venv", ".turbo", ".cache", "Pods", ".gradle", ".expo",
-]);
 
 interface GlobArgs {
 	pattern: string;

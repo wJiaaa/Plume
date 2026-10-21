@@ -53,3 +53,34 @@ test("走出项目的、带通配符的、不存在的，都是空", async () =>
 	assert.deepEqual(await locateInProject(repo, "*.ts"), []);
 	assert.deepEqual(await locateInProject(repo, "nowhere.ts"), []);
 });
+
+/*
+ * 不是 git 仓库的项目：834c1105 的「水墨塔防」。回复里写 `ink_splat_06.png`，以前拼到项目根上读不到；
+ * 现在自己走目录，跳过的目录和 core 的 `glob` 兜底是同一张名单。
+ */
+test("不是 git 仓库的项目，只写文件名也找得到；依赖和隐藏目录里的同名文件不算", async () => {
+	const plain = mkdtempSync(join(tmpdir(), "plume-locate-plain-"));
+	try {
+		const file = (path: string) => {
+			mkdirSync(join(plain, path, ".."), { recursive: true });
+			writeFileSync(join(plain, path), "");
+		};
+		file("素材原图/ink_splat_06.png");
+		file("ink-defense/Assets/Art/ink_splat_06.png");
+		file("ink-defense/Assets/Art/ink_splat_06.png.meta");
+		file("node_modules/pkg/ink_splat_06.png");
+		file(".cache/ink_splat_06.png");
+		file("tools/approvals.ts");
+
+		assert.deepEqual(await locateInProject(plain, "ink_splat_06.png"), [
+			"ink-defense/Assets/Art/ink_splat_06.png",
+			"素材原图/ink_splat_06.png",
+		]);
+		assert.deepEqual(await locateInProject(plain, "Art/ink_splat_06.png"), ["ink-defense/Assets/Art/ink_splat_06.png"]);
+		// 按整段路径对结尾，`approvals.ts` 不会认成 `xapprovals.ts`，反过来也一样。
+		assert.deepEqual(await locateInProject(plain, "provals.ts"), []);
+		assert.deepEqual(await locateInProject(plain, "nowhere.png"), []);
+	} finally {
+		rmSync(plain, { recursive: true, force: true });
+	}
+});

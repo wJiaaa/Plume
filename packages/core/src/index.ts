@@ -348,6 +348,8 @@ export {
 	type DiffLine,
 	type FileDiff,
 } from "./tools/index.ts";
+// 不在 git 仓库里走目录时跳过哪些目录：桌面端找回复里的文件也照这张走。
+export { SKIP_DIRS } from "./tools/project-files.ts";
 // Every risk rule's code with its own wording — what a host's translations of `risk.<code>` cover.
 export { RISK_REASONS } from "./tools/risk-reasons.ts";
 export { home, systemShell, within, withinOrIs } from "./platform.ts";

@@ -6,7 +6,7 @@ import type { Readable } from "node:stream";
 import { errorResult } from "./result.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { globToRegExp } from "./glob.ts";
-import { gitListedFiles, insideGitWorkTree } from "./project-files.ts";
+import { gitListedFiles, insideGitWorkTree, SKIP_DIRS } from "./project-files.ts";
 import { formatMatchWindow, formatMatchWindowAt, utf8ByteOffsetToIndex, type MatchOptions } from "./long-line.ts";
 import { displayPath, looksBinary } from "./paths.ts";
 import { authorizeRead } from "./read-access.ts";
@@ -51,10 +51,6 @@ function boundCollectedLines(lines: string[]): string[] {
 	}
 	return shown;
 }
-const SKIP_DIRS = new Set([
-	"node_modules", ".git", "dist", "build", "out", ".next", "target",
-	"__pycache__", ".venv", "venv", ".turbo", ".cache", ".expo",
-]);
 
 interface GrepArgs {
 	pattern: string;
