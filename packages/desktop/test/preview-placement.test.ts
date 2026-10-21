@@ -223,5 +223,5 @@ test("建议新会话的卡片自成一行，不并进前后的过程；参数�
 	const refused = calls("spawn_session");
 	const after = calls("read");
 	const failing = [user("修侧栏"), refused, result(refused, 0, true), after, result(after, 0), answer("好了。")];
-	assert.deepEqual(describe(turnBlocks(runs(failing))), ["user", "work(spawn_session,read)", "assistant"], "过程里的一次调用，和后面的活是一段，不是卡片");
+	assert.deepEqual(describe(turnBlocks(runs(failing))), ["user", "work(spawn_session)", "work(read)", "assistant"], "过程里的一行，不是卡片");
 });

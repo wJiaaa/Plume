@@ -1,10 +1,10 @@
 /* oxlint-disable no-console -- probe CLI that prints what the real window did */
 /**
- * 两句话之间的活不分类别合成一行，后台命令的完成、失败挂进那一行——拿一段真实会话在真窗口里看，边验边录。
+ * 探索、终端、改文件、浏览器挨在一起合成一行，Skill、清单、后台命令结果各自一行——拿一段真实会话在真窗口里看，边验边录。
  *
  * 会话从本机 `~/.plume/sessions/sessions.db` 复制出来（只留这一条），放进一次性的 profile，结束时删掉。
  * 那一段是边改边在页面上验：读文件、加载 skill、切标签页、建文件、勾清单、跑后台命令、打开和操作网页、
- * 改文件，中间回来四次后台命令的结果，其中一次失败。按类别切时是十几行。
+ * 改文件，中间回来四次后台命令的结果，其中一次失败。
  *
  * 用法：node --experimental-strip-types e2e/grouping-all-kinds-demo.ts [before|after] [会话 id] [输出目录]
  */
@@ -14,7 +14,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { startApp, type RunningApp } from "./app.ts";
-import { click, openSession } from "./drive.ts";
+import { openSession } from "./drive.ts";
 import { driver, encode, pause, startRecording, type Frame } from "./record.ts";
 import { sessionsDbPath } from "./session-fixture.ts";
 
@@ -71,6 +71,7 @@ const between = `(() => {
 		.filter((row) => !row.parentElement.closest("[data-ly-step]"))
 		.map((row, i) => (i === 0 && row.setAttribute("data-probe-first", ""), row))
 		.map((row) => ({
+			kind: row.getAttribute("data-ly-step") ?? "job",
 			text: (row.querySelector(".ly-flow-row") ?? row).textContent.replace(/\\s+/g, " ").trim(),
 			failed: Boolean(row.querySelector(":scope > .ly-flow-row .text-danger\\\\/85, :scope > div > .ly-flow-row .text-danger\\\\/85")),
 		}));
@@ -103,34 +104,20 @@ try {
 
 	await scrollTo(FROM);
 	await pause(1200);
-	const rows = await app.evaluate<{ text: string; failed: boolean }[] | null>(between);
+	const rows = await app.evaluate<{ kind: string; text: string; failed: boolean }[] | null>(between);
 	console.log(`「${FROM}」到「${TO}」之间 ${rows?.length} 行：`);
-	for (const row of rows ?? []) console.log(`   ${row.failed ? "⊗ " : ""}${row.text}`);
+	for (const row of rows ?? []) console.log(`   [${row.kind}] ${row.failed ? "⊗ " : ""}${row.text}`);
 	await capture("两句话之间那一段");
 
 	if (LABEL === "after") {
-		check("两句话之间的活合成一行", rows?.length === 1, rows);
-		check("后台命令的结果不再单独成行", !rows?.some((row) => /后台命令/.test(row.text)), rows);
-		check("那一次失败的后台命令标在这一行上", rows?.[0]?.failed === true, rows);
-
-		// 点开那一行：四次后台命令的结果挂在竖线上，排在各自回来的位置。
-		await click(app, "main [data-probe-first] .ly-flow-row");
-		await pause(1400);
-		const rail = await app.evaluate<{ jobs: string[]; lines: number } | null>(`(() => {
-			const rail = [...document.querySelectorAll("main [data-probe-first] [data-ly-step-rail]")].find((el) => el.getBoundingClientRect().height > 0);
-			if (!rail) return null;
-			return {
-				jobs: [...rail.querySelectorAll('[data-delivery-kind="job"]')].map((row) => row.textContent.replace(/\\s+/g, " ").trim()),
-				lines: rail.children.length,
-			};
-		})()`);
-		console.log("点开后：", rail);
-		await capture("点开那一行");
-		check("点开后四次后台命令的结果都在", rail?.jobs.length === 4, rail);
-		check("失败的那一次照旧说退出码", rail?.jobs.some((job) => /失败/.test(job) && /退出码 1/.test(job)) === true, rail);
-		await scrollTo(FROM);
-		await pause(600);
-		await click(app, "main [data-probe-first] > .ly-flow-row, main [data-probe-first] > div > .ly-flow-row");
+		const kinds = rows?.map((row) => row.kind) ?? [];
+		const merges = new Set(["explore", "terminal", "files", "browser"]);
+		check("读、跑、改、操作网页挨着的已合成一段：没有相邻的两行都是这四类", kinds.every((kind, i) => i === 0 || !(merges.has(kind) && merges.has(kinds[i - 1]))), kinds);
+		check("Skill 单独一行", kinds.includes("skill"), kinds);
+		check("清单单独一行", kinds.includes("todo_write"), kinds);
+		const jobs = rows?.filter((row) => row.kind === "job") ?? [];
+		check("四次后台命令的结果各自一行", jobs.length === 4, jobs);
+		check("失败的那一次照旧说退出码", jobs.some((job) => /失败/.test(job.text) && /退出码 1/.test(job.text)), jobs);
 		await pause(1000);
 	}
 	await stop();

@@ -253,29 +253,6 @@ test("one call is the call's own row", async () => {
 	}
 });
 
-test("a background command that came back failed marks its stretch, and hangs on the rail where it came back", async () => {
-	const calls = [browse("g1", "bash", { command: "pnpm test", description: "跑测试", run_in_background: true })];
-	const back = {
-		kind: "message",
-		message: { role: "user", content: [{ type: "text", text: "<report>" }], synthetic: true, steered: true, delivery: [{ id: "j1", kind: "job", agent: "", description: "跑测试", status: "failed", exitCode: 1 }], timestamp: 1 } as Message,
-		index: 2,
-		upTo: 1,
-	} as Extract<Run, { kind: "message" }>;
-	const restore = withRuns(calls);
-	const draw = (run: Run) => (run === back ? h("div", { "data-probe": "job" }, "后台命令失败") : null);
-	const view = await mount(h(WorkStep, { step: step(calls, [{ kind: "job", run: back }]), live: false, draw, drawCall }));
-	try {
-		const row = view.find<HTMLButtonElement>("button[aria-expanded]");
-		assert.ok(row.querySelector(".text-danger\\/85"), "启动它的那次 bash 是跑完了的，失败只在回来的结果上");
-		assert.equal(view.all('[data-probe="job"]').length, 0, "一次调用也要竖线来挂它，不画成那次调用自己的一行");
-		await click(row);
-		assert.equal(view.all('[data-ly-step-rail] [data-probe="job"]').length, 1, "点开时排在它回来的位置");
-	} finally {
-		await view.unmount();
-		restore();
-	}
-});
-
 test("panels without an anchor still draw each call as a row of its own when asked to", async () => {
 	const previous = useApp.getState();
 	const calls = [read("r1", "src/a.ts"), read("r2", "src/b.ts")];
