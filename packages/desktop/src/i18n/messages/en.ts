@@ -1033,6 +1033,8 @@ export const en = {
 	"tools.grep": "Searched contents",
 	"tools.ls": "Listed folders",
 	"tools.todo": "Updated the plan",
+	"tools.todoOf": "Updated the plan {done}/{total}",
+	"tools.todoAt": "Updated the plan {done}/{total} · {task}",
 	"tools.fetch": "Fetched pages",
 	"tools.webSearch": "Searched the web",
 	"tools.delegate": "Delegated subtasks",

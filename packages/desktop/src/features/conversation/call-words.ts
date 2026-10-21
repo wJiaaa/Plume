@@ -157,6 +157,7 @@ export function pollOutput(runs: (ToolRunState | undefined)[]): string {
  */
 export function describeOne(block: ToolCallBlock, summary?: string, context: { job?: string; root?: string } = {}): string {
   if (polledJob(block)) return describePolls(context.job, 1);
+  if (block.name === "todo_write") return describeTodos(block.arguments);
   const location = locationOf(block, context.root);
   if (location) return describeRun([{ toolName: block.name, subject: location }]);
   const { description, pattern } = (block.arguments ?? {}) as { description?: unknown; pattern?: unknown };
@@ -164,6 +165,23 @@ export function describeOne(block: ToolCallBlock, summary?: string, context: { j
   const asPattern = (block.name === "grep" || block.name === "glob") && typeof pattern !== "string";
   if (said && DESCRIBED.has(block.name) && !asPattern) return said;
   return describeCall(block.name, summary, subjectOf(block));
+}
+
+/**
+ * 更新清单那一行：进度，加上接下来在做的那一项。
+ *
+ * core 的摘要只在有进行中的一项时说它，否则是一句写给日志的「Update task list」；重开的会话里摘要又是
+ * `summarizeToolCall` 的固定句。两条路都从参数里取，直播和重开说的是同一句。参数还在流进来时清单不全，
+ * 退回只说「更新清单」。
+ */
+function describeTodos(args: unknown): string {
+  const todos = (args as { todos?: unknown } | undefined)?.todos;
+  if (!Array.isArray(todos) || todos.length === 0) return translate("tools.todo");
+  const items = todos.filter((t): t is { content?: unknown; status?: unknown } => !!t && typeof t === "object");
+  const done = items.filter((t) => t.status === "completed").length;
+  const task = items.find((t) => t.status === "in_progress")?.content;
+  const progress = { done, total: todos.length };
+  return typeof task === "string" && task.trim() ? translate("tools.todoAt", { ...progress, task: task.trim() }) : translate("tools.todoOf", progress);
 }
 
 /** The file a call is about, when it is about one — the part worth naming in a summary. */

@@ -8,7 +8,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { setActiveLocale } from "../src/i18n/translate.ts";
-import { nameCalls } from "../src/features/conversation/call-words.ts";
+import { describeOne, nameCalls } from "../src/features/conversation/call-words.ts";
 import type { Call } from "../src/features/conversation/grouping.ts";
 
 function bash(id: string, command = "true"): Call {
@@ -48,4 +48,20 @@ test("命令都没写说明：退回计数，不说成「执行命令、执行�
 test("有命令时，查它输出的那几次不算进去", () => {
 	const calls = [bash("a"), poll("p1", "job"), poll("p2", "job"), bash("b")];
 	assert.equal(nameCalls(calls, runs({ a: "构建 API 镜像", b: "构建 Web 镜像" })), "构建 API 镜像、构建 Web 镜像");
+});
+
+function todos(list: unknown): Call["block"] {
+	return { type: "toolCall", id: "t", name: "todo_write", arguments: { todos: list } } as Call["block"];
+}
+
+test("更新清单：说进度和正在做的那一项，不用 core 那句英文摘要", () => {
+	const list = [
+		{ content: "读现有实现", status: "completed" },
+		{ content: "加同步接口", status: "in_progress", activeForm: "正在加同步接口" },
+		{ content: "补测试", status: "pending" },
+	];
+	assert.equal(describeOne(todos(list), "正在加同步接口"), "更新清单 1/3 · 加同步接口");
+	assert.equal(describeOne(todos(list.map((t) => ({ ...t, status: "completed" }))), "Update task list"), "更新清单 3/3");
+	// 参数还在流进来，清单还没到
+	assert.equal(describeOne(todos(undefined), "Update task list"), "更新清单");
 });

@@ -1220,6 +1220,8 @@ export const zhCN = {
 	"tools.grep": "搜索内容",
 	"tools.ls": "列出目录",
 	"tools.todo": "更新清单",
+	"tools.todoOf": "更新清单 {done}/{total}",
+	"tools.todoAt": "更新清单 {done}/{total} · {task}",
 	"tools.fetch": "抓取网页",
 	"tools.webSearch": "搜索网络",
 	"tools.delegate": "派发子任务",

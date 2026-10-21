@@ -118,6 +118,10 @@ try {
 		const jobs = rows?.filter((row) => row.kind === "job") ?? [];
 		check("四次后台命令的结果各自一行", jobs.length === 4, jobs);
 		check("失败的那一次照旧说退出码", jobs.some((job) => /失败/.test(job.text) && /退出码 1/.test(job.text)), jobs);
+		const todos = rows?.filter((row) => row.kind === "todo_write").map((row) => row.text) ?? [];
+		check("清单那一行说进度，不是英文的 Update task list", todos.length > 0 && todos.every((text) => /更新清单 \d+\/\d+/.test(text)), todos);
+		const weights = await app.evaluate<string[]>(`[...document.querySelectorAll('main [data-delivery-kind="job"] .ly-flow-title')].map((el) => getComputedStyle(el.firstElementChild ?? el).fontWeight)`);
+		check("后台命令结果的标题和另外两种送达一样不加粗", weights.length > 0 && weights.every((w) => w === "400"), weights);
 		await pause(1000);
 	}
 	await stop();

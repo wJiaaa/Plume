@@ -109,7 +109,8 @@ function JobDelivery({ jobs }: { jobs: DeliveredReport[] }) {
 			<FlowRow
 				/* 只染图标：标题和摘要有自己的墨色，整行标红盖不过它们，也会让一行说明喊得比回答还响。 */
 				icon={failed > 0 ? <CircleAlert size={13} strokeWidth={1.8} className="text-danger" /> : <Terminal size={13} strokeWidth={1.8} />}
-				title={title}
+				/* 和另外两种送达一样不加粗：一行说明，不是标题。 */
+				title={<span className="font-normal">{title}</span>}
 				summary={jobs.map((job) => job.description).join(" · ")}
 				trailing={trailing}
 				onToggle={show}
