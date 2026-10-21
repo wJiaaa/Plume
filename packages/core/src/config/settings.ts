@@ -147,14 +147,20 @@ export interface AppearanceSettings {
 	 */
 	vibrancy: boolean;
 	/**
-	 * 新对话的背景图：`~/.plume/backgrounds/` 下的文件名，没有为 null。
+	 * 会话的背景图：`~/.plume/backgrounds/` 下的文件名，没有为 null。
 	 *
-	 * 只铺在还没有消息的会话里——它是开场的样子，不是阅读时的底纹；发出第一条消息就淡出。
+	 * 新对话里按原样铺；有了消息以后压淡一半，给正文让位。
 	 *
 	 * 存文件名而不是图本身：图可以是几 MB，而设置每存一次都要整份经过 IPC。文件名里带着时间戳，
 	 * 换一张图名字就变，各个窗口据此知道要重新读，不用另记版本号。
 	 */
 	chatBackground: string | null;
+	/**
+	 * 背景图的总开关。关掉时哪里都不画，图、效果、浓度都留着，打开就回来，不用重新选图。
+	 *
+	 * 默认开着：这个字段是后加的，之前设过图的人读进来没有它，得照旧看见自己的图。
+	 */
+	chatBackgroundEnabled: boolean;
 	/** 背景图怎么画：原图，或在渲染进程里重绘成网点、字符、扫描线，`haze` 是往下模糊淡出。 */
 	chatBackgroundEffect: ChatBackgroundEffect;
 	/** 0.05–0.65。背景的不透明度。 */
@@ -222,6 +228,7 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
 	fontSmoothing: false,
 	vibrancy: true,
 	chatBackground: null,
+	chatBackgroundEnabled: true,
 	chatBackgroundEffect: "none",
 	chatBackgroundOpacity: 0.24,
 };

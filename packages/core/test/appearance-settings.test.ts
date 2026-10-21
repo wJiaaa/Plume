@@ -28,3 +28,14 @@ test("没表过态的人跟着系统走，表过态的人不动", () => {
 		assert.equal({ ...DEFAULT_APPEARANCE, theme: chosen }.theme, chosen);
 	}
 });
+
+test("背景图总开关：之前设过图的人读进来照旧开着，关过的人还是关着", () => {
+	// 这个字段是后加的，旧的设置文件里没有它。
+	const before = normalizeSettings({ appearance: { chatBackground: "chat-1.jpg" } }).appearance;
+	assert.equal(before.chatBackground, "chat-1.jpg");
+	assert.equal(before.chatBackgroundEnabled, true);
+
+	const off = normalizeSettings({ appearance: { chatBackground: "chat-1.jpg", chatBackgroundEnabled: false } }).appearance;
+	assert.equal(off.chatBackgroundEnabled, false);
+	assert.equal(off.chatBackground, "chat-1.jpg", "关掉不丢图");
+});

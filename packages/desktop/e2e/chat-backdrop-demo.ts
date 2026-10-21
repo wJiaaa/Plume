@@ -1,6 +1,6 @@
 /* oxlint-disable no-console -- probe CLI that prints what the real window did */
 /**
- * 会话背景图，在真窗口里从头走一遍：选图 → 换六种效果 → 空会话 → 有消息的会话 → 仅空会话 → 浅色 → 移除。
+ * 会话背景图，在真窗口里从头走一遍：选图 → 换六种效果 → 空会话 → 有消息的会话（压淡）→ 回到新对话 → 总开关 → 浅色 → 移除。
  *
  * `node --experimental-strip-types e2e/chat-backdrop-demo.ts [图片] [目录]`
  *
@@ -13,7 +13,7 @@ import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { startApp, type RunningApp } from "./app.ts";
-import { click, closeSettings, frames, openSession, openSettings, still, until } from "./drive.ts";
+import { click, closeSettings, frames, openSession, openSettings, still, toggleSetting, until } from "./drive.ts";
 import { encode, pause, startRecording, type Frame } from "./record.ts";
 import { seedSessions } from "./session-fixture.ts";
 
@@ -78,13 +78,13 @@ async function seed(home: string): Promise<void> {
 		message: { role, content: [{ type: "text", text }], timestamp: at + seq * 1000 },
 	});
 	const reply = [
-		"背景图铺在整个窗格底下，往输入框那头淡出。",
+		"背景图铺在整个窗格底下。",
 		"",
-		"- 只铺在还没有消息的新对话里",
-		"- 发出第一条消息就淡出",
+		"- 新对话里是原样",
+		"- 有了消息以后压淡一半",
 		"",
 		"```ts",
-		"const opacity = empty ? chatBackgroundOpacity : 0;",
+		"const blurred = !empty;",
 		"```",
 	].join("\n");
 	seedSessions(home, [
@@ -219,29 +219,24 @@ async function main() {
 		check("背景不挡输入框：点输入框落在输入框上", textarea);
 		await shot("空会话_抖动");
 
-		console.log("\n【五】进一个有消息的会话：背景淡出");
+		console.log("\n【五】进一个有消息的会话：背景压淡一半");
 		await openSession(app, SESSION_ID);
-		await until(app, `document.body.innerText.includes("往输入框那头淡出")`);
-		const fading = await app.evaluate<number[]>(`new Promise((resolve) => {
-			const el = document.querySelector(${JSON.stringify(PANE)});
-			const seen = [];
-			const f = () => { seen.push(Number(getComputedStyle(el).opacity)); seen.length < 12 ? requestAnimationFrame(f) : resolve(seen); };
-			f();
-		})`);
-		check("切过去是淡出，中途有介于 0 和 24% 之间的值", fading.some((v) => v > 0 && v < 0.24), JSON.stringify(fading));
-		await still(app, PANE);
+		await until(app, `document.body.innerText.includes("有了消息以后压淡")`);
+		await until(app, `Boolean(document.querySelector(${JSON.stringify(`${PANE} > .ly-chat-veil`)}))`);
 		await pause(900);
 		const session = await style(PANE);
-		check("有消息的会话里背景退到 0", session?.opacity === "0", session?.opacity);
-		await shot("有消息的会话_没有背景");
+		check("有消息的会话里背景还在，浓度不变", session?.opacity === "0.24", session?.opacity);
+		const veil = await app.evaluate<string>(`getComputedStyle(document.querySelector(${JSON.stringify(`${PANE} > .ly-chat-veil`)})).backgroundColor`);
+		check("盖着一层半透明的底色，图本身不糊", /^(rgba|color)\(.*0\.5\)$/.test(veil), veil);
+		await shot("有消息的会话_压淡");
 
 		console.log("\n【六】回到新对话：背景回来");
 		await click(app, "button", "新对话");
-		await until(app, `getComputedStyle(document.querySelector(${JSON.stringify(PANE)})).opacity !== "0"`);
+		await until(app, `document.querySelector(${JSON.stringify(PANE)}) && !document.querySelector(".ly-chat-veil")`);
 		await still(app, PANE);
 		await pause(900);
 		const back = await style(PANE);
-		check("新对话里背景回到 24%", back?.opacity === "0.24", back?.opacity);
+		check("新对话里背景还是 24%", back?.opacity === "0.24", back?.opacity);
 		await shot("新对话_抖动");
 
 		await patchAppearance({ chatBackgroundEffect: "haze", chatBackgroundOpacity: 0.5 });
@@ -251,7 +246,49 @@ async function main() {
 		check("调浓度直接作用到新对话", (await style(PANE))?.opacity === "0.5");
 		await shot("新对话_雾化_50%");
 
-		console.log("\n【七】浅色主题");
+		console.log("\n【七】总开关：关掉哪里都不画，图留着；打开就回来");
+		await openSettings(app, "外观");
+		await app.evaluate(`document.querySelector(${JSON.stringify(CARD)}).scrollIntoView({ block: "start" })`);
+		await frames(app, 20);
+		await pause(800);
+		await shot("设置页_开关开着", await rect(CARD));
+		await toggleSetting(app, "显示背景图");
+		await until(app, `!document.querySelector(${JSON.stringify(PREVIEW)})`);
+		await pause(900);
+		check("关掉以后设置里记成关", (await settings()).appearance.chatBackgroundEnabled === false);
+		check("图还记着", (await settings()).appearance.chatBackground === saved);
+		check("backgrounds 目录里的图还在", (await readdir(join(app.home, "backgrounds"))).includes(String(saved)));
+		const left = await app.evaluate<{ switches: number; buttons: string[] }>(`(() => {
+			const card = document.querySelector(${JSON.stringify(CARD)});
+			return { switches: card.querySelectorAll('[role="switch"]').length, buttons: [...card.querySelectorAll("button:not([role=switch])")].map((b) => b.innerText.trim()) };
+		})()`);
+		check("卡片里只剩开关那一行", left.switches === 1 && left.buttons.length === 0, JSON.stringify(left));
+		await shot("设置页_开关关了", await rect(CARD));
+		await closeSettings(app);
+		await pause(600);
+		check("工作区里不画背景", (await style(PANE)) === null);
+		await shot("开关关了_新对话没有背景");
+		await openSession(app, SESSION_ID);
+		await until(app, `document.body.innerText.includes("有了消息以后压淡")`);
+		await pause(600);
+		check("有消息的会话里也不画", (await style(PANE)) === null);
+		await click(app, "button", "新对话");
+		await openSettings(app, "外观");
+		await app.evaluate(`document.querySelector(${JSON.stringify(CARD)}).scrollIntoView({ block: "start" })`);
+		await frames(app, 20);
+		await toggleSetting(app, "显示背景图");
+		await until(app, `document.querySelector(${JSON.stringify(PREVIEW)})`);
+		await still(app, PREVIEW);
+		await pause(900);
+		check("打开以后预览回来，还是原来的效果和浓度", (await style(PREVIEW))?.effect === "haze" && (await style(PREVIEW))?.opacity === "0.5", JSON.stringify(await style(PREVIEW)));
+		await shot("设置页_重新打开", await rect(CARD));
+		await closeSettings(app);
+		await until(app, `document.querySelector(${JSON.stringify(PANE)})`);
+		await still(app, PANE);
+		await pause(900);
+		check("工作区里背景回来，不用重新选图", (await style(PANE))?.opacity === "0.5");
+
+		console.log("\n【八】浅色主题");
 		await patchAppearance({ theme: "light", chatBackgroundEffect: "ascii", chatBackgroundOpacity: 0.4 });
 		await until(app, `document.querySelector(${JSON.stringify(PANE)})?.dataset.lyChatBackdrop === "ascii"`);
 		await still(app, PANE);
@@ -260,7 +297,7 @@ async function main() {
 		check("浅色主题下照样画出来", light?.opacity === "0.4" && Boolean(light.image), JSON.stringify(light));
 		await shot("浅色_新对话_ASCII");
 
-		console.log("\n【八】移除");
+		console.log("\n【九】移除");
 		await patchAppearance({ theme: "dark" });
 		await openSettings(app, "外观");
 		await app.evaluate(`document.querySelector(${JSON.stringify(CARD)}).scrollIntoView({ block: "start" })`);
@@ -270,8 +307,8 @@ async function main() {
 		await until(app, `!document.querySelector(${JSON.stringify(PREVIEW)})`);
 		await pause(600);
 		check("设置里背景清空", (await settings()).appearance.chatBackground === null);
-		const left = await readdir(join(app.home, "backgrounds"));
-		check("backgrounds 目录里的图删掉了", left.length === 0, left.join(", "));
+		const remaining = await readdir(join(app.home, "backgrounds"));
+		check("backgrounds 目录里的图删掉了", remaining.length === 0, remaining.join(", "));
 		await shot("设置页_移除之后", await rect(CARD));
 		await closeSettings(app);
 		await pause(600);

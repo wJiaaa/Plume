@@ -1,10 +1,11 @@
 /* oxlint-disable no-console -- probe CLI that prints what the real window did */
 /**
- * 新对话铺着背景图，点进一个会话：图当场退掉，不在已经出来的正文底下再淡出一段；回到新对话时照旧淡入。
+ * 新对话铺着背景图，点进一个会话：图当场压淡，不在已经出来的正文底下按原样多留一段；回到新对话时当场变回原样，
+ * 浓度一直不动，不闪。
  *
  * `node --experimental-strip-types e2e/backdrop-switch-demo.ts <before|after>`
  *
- * 每一帧读背景层的 `opacity` 和转录行数。渲染进程从开发服务器加载源码，理由见 `cold-switch-demo.ts`。
+ * 每一帧读背景层的 `opacity`、压淡那一层在不在和转录行数。渲染进程从开发服务器加载源码，理由见 `cold-switch-demo.ts`。
  */
 
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -31,7 +32,7 @@ function check(what: string, ok: boolean, saw: string) {
 
 let app: RunningApp | undefined;
 
-type Sample = { t: number; rows: number; opacity: number | null };
+type Sample = { t: number; rows: number; opacity: number | null; dimmed: boolean };
 const arm = `(() => {
 	const out = [];
 	window.__backdrop = out;
@@ -42,6 +43,7 @@ const arm = `(() => {
 			t: Math.round(performance.now() - t0),
 			rows: document.querySelector('${PANE} [data-ly-transcript-rows]')?.childElementCount ?? 0,
 			opacity: layer ? Number(getComputedStyle(layer).opacity) : null,
+			dimmed: Boolean(layer?.querySelector('.ly-chat-veil')),
 		});
 		if (out.length < 45) requestAnimationFrame(f);
 	};
@@ -84,16 +86,20 @@ async function main() {
 		const leaving = await sampled();
 		if (process.env.DUMP) console.log(leaving.map((one) => `${one.t}:${one.rows}:${one.opacity?.toFixed(2)}`).join(" "));
 		const shown = leaving.filter((one) => one.rows > 0);
-		const lingering = shown.filter((one) => (one.opacity ?? 0) > 0);
-		check("正文出来的那一帧起，图已经不在", shown.length > 0 && lingering.length === 0, lingering.length ? `正文底下还有 ${lingering.length} 帧带图，最浓 ${Math.max(...lingering.map((one) => one.opacity ?? 0)).toFixed(2)}` : `${shown[0]?.t}ms 起 opacity ${shown[0]?.opacity}`);
+		const sharp = shown.filter((one) => !one.dimmed);
+		check("正文出来的那一帧起，图已经压淡", shown.length > 0 && sharp.length === 0, sharp.length ? `正文底下还有 ${sharp.length} 帧是原样的图` : `${shown[0]?.t}ms 起压淡`);
+		const steady = leaving.filter((one) => one.opacity !== OPACITY);
+		check("切过去浓度不动", steady.length === 0, steady.length ? `${steady.length} 帧不是 ${OPACITY}：${steady.slice(0, 4).map((one) => one.opacity).join(" ")}` : `每帧都是 ${OPACITY}`);
 		await pause(1000);
 		await shoot("02_切进会话");
 
 		await app.evaluate(arm);
 		await click(app, "button", "新对话");
 		const back = await sampled();
-		const between = back.filter((one) => one.opacity !== null && one.opacity > 0 && one.opacity < OPACITY);
-		check("回到新对话时图是淡入的，不是硬切", between.length >= 3, `中间值 ${between.length} 帧：${between.slice(0, 4).map((one) => one.opacity?.toFixed(2)).join(" → ")}`);
+		const settled = back.filter((one) => one.rows === 0);
+		check("回到新对话，正文一退图就变回原样", settled.length > 0 && settled.every((one) => !one.dimmed), `${settled.filter((one) => one.dimmed).length} 帧没有正文却还压着`);
+		const flicker = back.filter((one) => one.opacity !== OPACITY);
+		check("回来时浓度也不动", flicker.length === 0, flicker.length ? `${flicker.length} 帧不是 ${OPACITY}` : `每帧都是 ${OPACITY}`);
 		await pause(1000);
 		await shoot("03_回到新对话");
 	} finally {
