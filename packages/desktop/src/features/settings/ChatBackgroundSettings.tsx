@@ -21,9 +21,10 @@ const EFFECT_KEYS: Record<ChatBackgroundEffect, { label: MessageKey; detail: Mes
 const percent = (opacity: number) => Math.round(opacity * 100);
 
 /**
- * 外观页里「会话背景」那一节：开关、选图、换效果、调浓淡，上面一块按新对话的样子实时预览。
+ * 外观页里「会话背景」那一节：新对话、会话中两个开关，选图、换效果、调浓淡，上面一块实时预览。
+ * 新对话里开着就按新对话的样子预览，只在会话中显示时按压淡后的样子预览。
  *
- * 关掉时只剩开关那一行：图还在，其余几项都是在调一个看不见的东西。
+ * 两个都关掉时只剩开关那两行：图还在，其余几项都是在调一个看不见的东西。
  */
 export function ChatBackgroundSettings({ appearance, patch }: { appearance: Appearance; patch: (next: Partial<Appearance>) => void }) {
 	const { t } = useI18n();
@@ -31,15 +32,16 @@ export function ChatBackgroundSettings({ appearance, patch }: { appearance: Appe
 	const [busy, setBusy] = useState(false);
 	const [tooLarge, setTooLarge] = useState(false);
 	const hasImage = Boolean(appearance.chatBackground);
-	const shown = hasImage && appearance.chatBackgroundEnabled;
+	const shown = hasImage && (appearance.chatBackgroundOnNewChat || appearance.chatBackgroundInChat);
+	const previewReading = !appearance.chatBackgroundOnNewChat;
 
 	const choose = async () => {
 		setBusy(true);
 		try {
 			const picked = await bridge.chatBackground.pick();
 			setTooLarge(picked !== null && "error" in picked);
-			// 一并打开：关着的时候选了图却看不见，像是没选上。
-			if (picked && "name" in picked) patch({ chatBackground: picked.name, chatBackgroundEnabled: true });
+			// 两处都关着时一并打开：选了图却哪里都看不见，像是没选上。只关了一处的，照旧只开那一处。
+			if (picked && "name" in picked) patch({ chatBackground: picked.name, ...(shown ? {} : { chatBackgroundOnNewChat: true, chatBackgroundInChat: true }) });
 		} finally {
 			setBusy(false);
 		}
@@ -60,19 +62,25 @@ export function ChatBackgroundSettings({ appearance, patch }: { appearance: Appe
 			<p className="-mt-1.5 mb-3 text-caption text-ink-muted">{t("appearance.chatBackgroundDetail")}</p>
 			<Card className="mb-8" data-ly-chat-background-settings="">
 				{hasImage && (
-					<Row
-						title={t("appearance.chatBackgroundEnabled")}
-						control={<Toggle checked={appearance.chatBackgroundEnabled} onChange={(chatBackgroundEnabled) => patch({ chatBackgroundEnabled })} />}
-					/>
+					<>
+						<Row
+							title={t("appearance.chatBackgroundOnNewChat")}
+							control={<Toggle checked={appearance.chatBackgroundOnNewChat} onChange={(chatBackgroundOnNewChat) => patch({ chatBackgroundOnNewChat })} />}
+						/>
+						<Row
+							title={t("appearance.chatBackgroundInChat")}
+							control={<Toggle checked={appearance.chatBackgroundInChat} onChange={(chatBackgroundInChat) => patch({ chatBackgroundInChat })} />}
+						/>
+					</>
 				)}
 				{(!hasImage || shown) && (
 					<div className={hasImage ? "border-t border-line-soft p-4" : "p-4"}>
 						{hasImage ? (
 							<>
 								<div data-ly-chat-background-preview="" className="relative isolate h-36 overflow-hidden rounded-lg border border-line-float bg-shell">
-									{url && <BackdropLayer url={url} effect={appearance.chatBackgroundEffect} opacity={appearance.chatBackgroundOpacity} />}
+									{url && <BackdropLayer url={url} effect={appearance.chatBackgroundEffect} opacity={appearance.chatBackgroundOpacity} reading={previewReading} />}
 									<span className="pointer-events-none absolute bottom-2 left-2.5 text-caption text-ink-faint">
-										{t("appearance.chatBackgroundPreview", { percent: percent(appearance.chatBackgroundOpacity) })}
+										{t(previewReading ? "appearance.chatBackgroundPreviewInChat" : "appearance.chatBackgroundPreview", { percent: percent(appearance.chatBackgroundOpacity) })}
 									</span>
 								</div>
 								<div className="mt-3 flex items-center justify-end gap-2">

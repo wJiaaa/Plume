@@ -29,13 +29,20 @@ test("没表过态的人跟着系统走，表过态的人不动", () => {
 	}
 });
 
-test("背景图总开关：之前设过图的人读进来照旧开着，关过的人还是关着", () => {
-	// 这个字段是后加的，旧的设置文件里没有它。
+test("背景图开关：之前设过图的人读进来两处都开着，关过总开关的人两处都关着", () => {
+	// 这两个字段是后加的，旧的设置文件里没有它们。
 	const before = normalizeSettings({ appearance: { chatBackground: "chat-1.jpg" } }).appearance;
 	assert.equal(before.chatBackground, "chat-1.jpg");
-	assert.equal(before.chatBackgroundEnabled, true);
+	assert.equal(before.chatBackgroundOnNewChat, true);
+	assert.equal(before.chatBackgroundInChat, true);
 
-	const off = normalizeSettings({ appearance: { chatBackground: "chat-1.jpg", chatBackgroundEnabled: false } }).appearance;
-	assert.equal(off.chatBackgroundEnabled, false);
-	assert.equal(off.chatBackground, "chat-1.jpg", "关掉不丢图");
+	const legacyOff = normalizeSettings({ appearance: { chatBackground: "chat-1.jpg", chatBackgroundEnabled: false } as never }).appearance;
+	assert.equal(legacyOff.chatBackgroundOnNewChat, false);
+	assert.equal(legacyOff.chatBackgroundInChat, false);
+	assert.equal(legacyOff.chatBackground, "chat-1.jpg", "关掉不丢图");
+	assert.equal("chatBackgroundEnabled" in legacyOff, false, "旧的总开关不再带回内存");
+
+	const split = normalizeSettings({ appearance: { chatBackground: "chat-1.jpg", chatBackgroundOnNewChat: true, chatBackgroundInChat: false } }).appearance;
+	assert.equal(split.chatBackgroundOnNewChat, true);
+	assert.equal(split.chatBackgroundInChat, false);
 });

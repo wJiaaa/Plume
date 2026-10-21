@@ -94,6 +94,7 @@ export function useChatBackdropImage(): string | null {
 
 /**
  * 铺在窗格底下的那一层。新对话里是原样；有了消息以后整张图压淡一半，见 `chat-backdrop.css`。
+ * 两处各有一个开关，只开一处时另一处不画。
  *
  * 两种之间当场切换，不过渡：正文是同一帧画出来的，图慢慢淡下去就是原样的图在字底下多留三百多毫秒，
  * 从新对话点进会话看着像整页闪了一下。
@@ -104,7 +105,8 @@ export function useChatBackdropImage(): string | null {
 export function ChatBackdrop({ empty }: { empty: boolean }) {
 	const appearance = useApp((s) => s.settings?.appearance);
 	const url = useChatBackdropImage();
-	if (!appearance?.chatBackground || !appearance.chatBackgroundEnabled || !url) return null;
+	const enabled = empty ? appearance?.chatBackgroundOnNewChat : appearance?.chatBackgroundInChat;
+	if (!appearance?.chatBackground || !enabled || !url) return null;
 	return <BackdropLayer url={url} effect={appearance.chatBackgroundEffect} opacity={appearance.chatBackgroundOpacity} reading={!empty} />;
 }
 

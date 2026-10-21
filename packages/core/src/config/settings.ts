@@ -156,11 +156,15 @@ export interface AppearanceSettings {
 	 */
 	chatBackground: string | null;
 	/**
-	 * 背景图的总开关。关掉时哪里都不画，图、效果、浓度都留着，打开就回来，不用重新选图。
+	 * 新对话里画不画背景图。和 `chatBackgroundInChat` 都关掉时哪里都不画，图、效果、浓度都留着，
+	 * 打开就回来，不用重新选图。
 	 *
-	 * 默认开着：这个字段是后加的，之前设过图的人读进来没有它，得照旧看见自己的图。
+	 * 默认开着：之前设过图的人读进来没有它，得照旧看见自己的图。旧的总开关 `chatBackgroundEnabled`
+	 * 关过的，`normalizeSettings` 把两项都折成关。
 	 */
-	chatBackgroundEnabled: boolean;
+	chatBackgroundOnNewChat: boolean;
+	/** 有了消息以后的会话里画不画背景图。默认开着，理由同上。 */
+	chatBackgroundInChat: boolean;
 	/** 背景图怎么画：原图，或在渲染进程里重绘成网点、字符、扫描线，`haze` 是往下模糊淡出。 */
 	chatBackgroundEffect: ChatBackgroundEffect;
 	/** 0.05–0.65。背景的不透明度。 */
@@ -228,7 +232,8 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
 	fontSmoothing: false,
 	vibrancy: true,
 	chatBackground: null,
-	chatBackgroundEnabled: true,
+	chatBackgroundOnNewChat: true,
+	chatBackgroundInChat: true,
 	chatBackgroundEffect: "none",
 	chatBackgroundOpacity: 0.24,
 };
@@ -808,8 +813,14 @@ export function normalizeSettings(parsed: Partial<Settings>): Settings {
 			groupExplore: _groupExplore,
 			groupTerminal: _groupTerminal,
 			groupChanges: _groupChanges,
+			chatBackgroundEnabled,
 			...appearance
-		} = (parsed.appearance ?? {}) as Partial<AppearanceSettings> & Record<"callChain" | "groupExplore" | "groupTerminal" | "groupChanges", unknown>;
+		} = (parsed.appearance ?? {}) as Partial<AppearanceSettings> & Record<"callChain" | "groupExplore" | "groupTerminal" | "groupChanges" | "chatBackgroundEnabled", unknown>;
+		// 背景图的总开关拆成了新对话、会话中两项：关过总开关的人，两处都还是关的。
+		if (chatBackgroundEnabled === false) {
+			appearance.chatBackgroundOnNewChat ??= false;
+			appearance.chatBackgroundInChat ??= false;
+		}
 		// Merge against defaults so a field the file does not mention takes its default.
 		return {
 			...DEFAULT_SETTINGS,

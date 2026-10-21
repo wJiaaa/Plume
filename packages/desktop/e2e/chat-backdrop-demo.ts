@@ -1,6 +1,6 @@
 /* oxlint-disable no-console -- probe CLI that prints what the real window did */
 /**
- * 会话背景图，在真窗口里从头走一遍：选图 → 换六种效果 → 空会话 → 有消息的会话（压淡）→ 回到新对话 → 总开关 → 浅色 → 移除。
+ * 会话背景图，在真窗口里从头走一遍：选图 → 换六种效果 → 空会话 → 有消息的会话（压淡）→ 回到新对话 → 新对话、对话中两个开关 → 浅色 → 移除。
  *
  * `node --experimental-strip-types e2e/chat-backdrop-demo.ts [图片] [目录]`
  *
@@ -246,47 +246,91 @@ async function main() {
 		check("调浓度直接作用到新对话", (await style(PANE))?.opacity === "0.5");
 		await shot("新对话_雾化_50%");
 
-		console.log("\n【七】总开关：关掉哪里都不画，图留着；打开就回来");
-		await openSettings(app, "外观");
-		await app.evaluate(`document.querySelector(${JSON.stringify(CARD)}).scrollIntoView({ block: "start" })`);
-		await frames(app, 20);
-		await pause(800);
-		await shot("设置页_开关开着", await rect(CARD));
-		await toggleSetting(app, "显示背景图");
+		console.log("\n【七】两个开关：新对话、对话中各管各的；都关掉哪里都不画，图留着，打开就回来");
+		const backToSettings = async () => {
+			await openSettings(app, "外观");
+			await app.evaluate(`document.querySelector(${JSON.stringify(CARD)}).scrollIntoView({ block: "start" })`);
+			await frames(app, 20);
+			await pause(800);
+		};
+		const visitSession = async () => {
+			await openSession(app, SESSION_ID);
+			await until(app, `document.body.innerText.includes("有了消息以后压淡")`);
+			await pause(900);
+		};
+		const visitNewChat = async () => {
+			await click(app, "button", "新对话");
+			await until(app, 'document.querySelector("main textarea")');
+			await pause(900);
+		};
+		await backToSettings();
+		await shot("设置页_两个开关都开着", await rect(CARD));
+
+		await toggleSetting(app, "对话中显示");
+		await pause(900);
+		check("关掉对话中：设置里记成关", (await settings()).appearance.chatBackgroundInChat === false);
+		check("新对话那项还开着", (await settings()).appearance.chatBackgroundOnNewChat === true);
+		check("预览还是新对话的样子，不压淡", Boolean(await style(PREVIEW)) && !(await app.evaluate<boolean>(`Boolean(document.querySelector("[data-ly-chat-background-preview] .ly-chat-veil"))`)));
+		await shot("设置页_只开新对话", await rect(CARD));
+		await closeSettings(app);
+		await until(app, `document.querySelector(${JSON.stringify(PANE)})`);
+		await pause(900);
+		check("只开新对话：新对话里有背景", (await style(PANE))?.opacity === "0.5");
+		await shot("只开新对话_新对话");
+		await visitSession();
+		check("只开新对话：有消息的会话里不画", (await style(PANE)) === null);
+		await shot("只开新对话_会话里没有背景");
+		await visitNewChat();
+
+		await backToSettings();
+		await toggleSetting(app, "新对话里显示");
 		await until(app, `!document.querySelector(${JSON.stringify(PREVIEW)})`);
 		await pause(900);
-		check("关掉以后设置里记成关", (await settings()).appearance.chatBackgroundEnabled === false);
+		check("两个都关：设置里记成关", (await settings()).appearance.chatBackgroundOnNewChat === false && (await settings()).appearance.chatBackgroundInChat === false);
 		check("图还记着", (await settings()).appearance.chatBackground === saved);
 		check("backgrounds 目录里的图还在", (await readdir(join(app.home, "backgrounds"))).includes(String(saved)));
 		const left = await app.evaluate<{ switches: number; buttons: string[] }>(`(() => {
 			const card = document.querySelector(${JSON.stringify(CARD)});
 			return { switches: card.querySelectorAll('[role="switch"]').length, buttons: [...card.querySelectorAll("button:not([role=switch])")].map((b) => b.innerText.trim()) };
 		})()`);
-		check("卡片里只剩开关那一行", left.switches === 1 && left.buttons.length === 0, JSON.stringify(left));
-		await shot("设置页_开关关了", await rect(CARD));
+		check("卡片里只剩两个开关", left.switches === 2 && left.buttons.length === 0, JSON.stringify(left));
+		await shot("设置页_两个都关了", await rect(CARD));
 		await closeSettings(app);
 		await pause(600);
-		check("工作区里不画背景", (await style(PANE)) === null);
-		await shot("开关关了_新对话没有背景");
-		await openSession(app, SESSION_ID);
-		await until(app, `document.body.innerText.includes("有了消息以后压淡")`);
-		await pause(600);
-		check("有消息的会话里也不画", (await style(PANE)) === null);
-		await click(app, "button", "新对话");
-		await openSettings(app, "外观");
-		await app.evaluate(`document.querySelector(${JSON.stringify(CARD)}).scrollIntoView({ block: "start" })`);
-		await frames(app, 20);
-		await toggleSetting(app, "显示背景图");
+		check("两个都关：新对话不画", (await style(PANE)) === null);
+		await visitSession();
+		check("两个都关：有消息的会话里也不画", (await style(PANE)) === null);
+		await visitNewChat();
+
+		await backToSettings();
+		await toggleSetting(app, "对话中显示");
 		await until(app, `document.querySelector(${JSON.stringify(PREVIEW)})`);
 		await still(app, PREVIEW);
 		await pause(900);
-		check("打开以后预览回来，还是原来的效果和浓度", (await style(PREVIEW))?.effect === "haze" && (await style(PREVIEW))?.opacity === "0.5", JSON.stringify(await style(PREVIEW)));
-		await shot("设置页_重新打开", await rect(CARD));
+		check("只开对话中：预览回来，还是原来的效果和浓度", (await style(PREVIEW))?.effect === "haze" && (await style(PREVIEW))?.opacity === "0.5", JSON.stringify(await style(PREVIEW)));
+		check("只开对话中：预览按压淡后的样子画", await app.evaluate<boolean>(`Boolean(document.querySelector("[data-ly-chat-background-preview] .ly-chat-veil"))`));
+		check("预览的说明换成对话中", await app.evaluate<boolean>(`document.querySelector("[data-ly-chat-background-preview]").innerText.includes("对话中预览")`));
+		await shot("设置页_只开对话中", await rect(CARD));
+		await closeSettings(app);
+		await pause(900);
+		check("只开对话中：新对话不画", (await style(PANE)) === null);
+		await shot("只开对话中_新对话没有背景");
+		await visitSession();
+		await until(app, `Boolean(document.querySelector(${JSON.stringify(`${PANE} > .ly-chat-veil`)}))`);
+		await still(app, PANE);
+		await pause(900);
+		check("只开对话中：有消息的会话里画，压淡", (await style(PANE))?.opacity === "0.5");
+		await shot("只开对话中_会话里有背景");
+		await visitNewChat();
+
+		await backToSettings();
+		await toggleSetting(app, "新对话里显示");
+		await pause(600);
 		await closeSettings(app);
 		await until(app, `document.querySelector(${JSON.stringify(PANE)})`);
 		await still(app, PANE);
 		await pause(900);
-		check("工作区里背景回来，不用重新选图", (await style(PANE))?.opacity === "0.5");
+		check("两个都打开：新对话里背景回来，不用重新选图", (await style(PANE))?.opacity === "0.5");
 
 		console.log("\n【八】浅色主题");
 		await patchAppearance({ theme: "light", chatBackgroundEffect: "ascii", chatBackgroundOpacity: 0.4 });
