@@ -31,6 +31,7 @@ import { useTranscriptWindow } from "./view-state.ts";
 import { flash, settleReveal, useDrawingReveal } from "./reveal.ts";
 import { motionReduced } from "../../ui/motion/reduced.ts";
 import { useFollowBottom } from "../../ui/scroll/useFollowBottom.ts";
+import { Arrival, useArrival } from "./useSmoothText.ts";
 import { tailSignature } from "../../ui/scroll/signature.ts";
 import { useLayout } from "../../app/layout.tsx";
 import { useApp } from "../../store/index.ts";
@@ -130,6 +131,7 @@ export const Conversation = memo(function Conversation({ sessionId: _sessionId, 
   }, [toolRuns]);
   const activeSessionId = useScopedSessionId();
   const loadingSession = useScopedLoading();
+  const arrival = useArrival(`${activeSessionId}:${loadingSession}`);
   // 推理默认不画，见 `withoutThinking`。
   const showThinking = useApp((s) => s.settings?.showThinking === true);
   const allRuns = useMemo(() => {
@@ -421,6 +423,8 @@ export const Conversation = memo(function Conversation({ sessionId: _sessionId, 
         onHold={follow.hold}
         onSettle={follow.settle}
       >
+        {/* 切进来、从隐藏里回来时，正在写的那条回复直接画出已有的字，见 `Arrival`。 */}
+        <Arrival.Provider value={arrival}>
         {/*
          * One tree per conversation. The pane keeps the last few mounted, so this
          * key only resets scroll when *this* session's id changes. No enter fade —
@@ -657,6 +661,7 @@ export const Conversation = memo(function Conversation({ sessionId: _sessionId, 
           <div ref={follow.tailRef} aria-hidden className="h-px w-full shrink-0" />
           </>}
         </div>
+        </Arrival.Provider>
       </Scroller>
 
       {/*

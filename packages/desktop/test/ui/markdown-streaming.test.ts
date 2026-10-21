@@ -9,10 +9,11 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { act, createElement as h, StrictMode } from "react";
+import { act, Activity, createElement as h, StrictMode } from "react";
 import type { AssistantMessage } from "@plume/core";
 import { Markdown } from "../../src/features/conversation/Markdown.tsx";
 import { MessageRow } from "../../src/features/conversation/rows.tsx";
+import { Arrival, useArrival } from "../../src/features/conversation/useSmoothText.ts";
 import { I18nProvider } from "../../src/i18n/index.ts";
 import { mount } from "../helpers/mount.ts";
 
@@ -69,6 +70,56 @@ test("演到一半被重挂（一轮跑完换了父元素），新挂上的接�
 		assert.equal(after.all(".ly-fade-char").length, 0, "淡完之后换回纯文本");
 	} finally {
 		await after.unmount();
+	}
+});
+
+/** 一页转录：和 `Conversation` 一样由 `useArrival` 提供 `Arrival`，外面套着 `RetainedViews` 用的 `Activity`。 */
+function Page({ text, hidden = false }: { text: string; hidden?: boolean }) {
+	return h(Activity, { mode: hidden ? "hidden" : "visible", children: h(Transcript, { text }) });
+}
+function Transcript({ text }: { text: string }) {
+	return h(Arrival.Provider, { value: useArrival("session") }, h(Markdown, { text, streaming: true }));
+}
+
+test("切进一个正在写的会话，已经写下的字直接在，不从头重放", async () => {
+	const text = "已经写了一阵的回复。".repeat(60);
+	const view = await mount(h(Page, { text }));
+	try {
+		assert.equal(view.text(), text, "挂上那一帧就是全文");
+		await frames(60);
+		const more = `${text}${"接着来的字。".repeat(20)}`;
+		await view.rerender(h(Page, { text: more }));
+		await frames(30);
+		assert.ok(view.text().length < more.length, "露面之后再来的字照常一点点放");
+	} finally {
+		await view.unmount();
+	}
+});
+
+test("切走期间写下的字，切回来那一帧就在；之后来的字照常放", async () => {
+	const first = "第一段。";
+	const view = await mount(h(Page, { text: first }));
+	try {
+		await frames(60);
+		const burst = `${first}${"后面一口气进来的字。".repeat(20)}`;
+		await view.rerender(h(Page, { text: burst }));
+		await frames(30);
+		assert.ok(view.text().length < burst.length, "看着的时候是一点点放的");
+		await frames(1200);
+
+		await view.rerender(h(Page, { text: burst, hidden: true }));
+		const away = `${burst}${"离开期间写下的字。".repeat(40)}`;
+		await view.rerender(h(Page, { text: away }));
+		assert.equal(view.text(), away, "回来那一帧就是离开期间写下的全文，不停在离开时那一截");
+
+		await frames(60);
+		const more = `${away}${"回来以后才到的字。".repeat(20)}`;
+		await view.rerender(h(Page, { text: more }));
+		await frames(30);
+		const shown = view.text().length;
+		assert.ok(shown > away.length && shown < more.length, `回来以后到的字照常放：${shown}/${more.length}`);
+	} finally {
+		await view.unmount();
 	}
 });
 

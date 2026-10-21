@@ -16,12 +16,51 @@
  * 还没放的照旧等着，不会把剩下的一次画出来，也不从头重放。
  */
 
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { motionReduced } from "../../ui/motion/reduced.ts";
 import { FADE, holdsWord, Pace, wordCut } from "./stream-pace.ts";
 
-/** 挂上时就有这么多字以上，当作打开了一个写到一半的会话：直接画出来，不重放。再少的按刚到的放。 */
+/**
+ * 挂上时就有这么多字以上，当作打开了一个写到一半的会话：直接画出来，不重放。再少的按刚到的放。
+ * 转录里是不是「打开」由 `Arrival` 说了算，这条只管没有它的地方。
+ */
 const REPLAY = 2000;
+
+/**
+ * 这一页刚露面：切进来、从隐藏里回来、读完了盘。这时转录里有的字都是离开期间写下的，直接画出来，
+ * 不当成刚到的一批去放——放的话，回来先看见离开时那一截，下一批字一到，攒下的几百上千字在几百毫秒里
+ * 一口气刷出来。露面之后的第一帧起，再来的字照常放。由 `useArrival` 维护，`Conversation` 提供；
+ * 别处没有这回事，恒为 false。
+ */
+export const Arrival = createContext<{ fresh: boolean }>({ fresh: false });
+
+/** 换了 `key`（会话、读盘状态）、头一次挂上、或者从 `Activity` 的隐藏里回来，到下一帧之前都算刚露面。 */
+export function useArrival(key: string): { fresh: boolean } {
+	const arrival = useRef({ key, fresh: true }).current;
+	if (arrival.key !== key) {
+		arrival.key = key;
+		arrival.fresh = true;
+	}
+	/*
+	 * 回来时攒下的字不在露面的那次提交里：藏着的页面不跟 store 同步，订阅重新挂上才补进来，那是紧跟着
+	 * 的另一次提交（见 `RetainedViews` 的 `finishReplayedAnimations`）。两次都在第一帧之前，所以撑到
+	 * 下一帧；藏起来的那一刻就置上，露面那次提交里子组件的 effect 先于这里跑，也看得到。
+	 */
+	useEffect(() => {
+		if (!arrival.fresh) return;
+		const frame = requestAnimationFrame(() => {
+			arrival.fresh = false;
+		});
+		return () => cancelAnimationFrame(frame);
+	});
+	useEffect(
+		() => () => {
+			arrival.fresh = true;
+		},
+		[arrival],
+	);
+	return arrival;
+}
 
 /**
  * 正在演的那一段：重挂上来的同一段（原文以它为开头、还没演完）接过同一条时间线。
@@ -55,13 +94,15 @@ export function useSmoothText(
 	recent: number;
 } {
 	const motion = !motionReduced();
+	const arrival = useContext(Arrival);
 	const state = useRef<State | null>(null);
 	if (!state.current) {
 		const now = performance.now();
-		const adopted = motion ? resumable(text, live) : null;
+		// 刚露面时也不接别处的时间线：被挤出去又挂回来的那一段，旧时间线只排到离开时的长度。
+		const adopted = motion && !arrival.fresh ? resumable(text, live) : null;
 		const pace = adopted ?? new Pace();
 		if (!adopted) {
-			if (live && motion && text.length <= REPLAY) pace.plan(now, text.length);
+			if (live && motion && !arrival.fresh && text.length <= REPLAY) pace.plan(now, text.length);
 			else pace.present(text.length, now);
 		}
 		const active = motion && (live || pace.cut(now) < text.length || pace.done + FADE > now);
@@ -83,8 +124,8 @@ export function useSmoothText(
 			}, Math.max(0, here.pace.done - performance.now()) + FADE + 40);
 		};
 
-		// 没在演、或者不是往后接着写（换了一段原文）：直接给全文。
-		if (!motion || !text.startsWith(here.target)) {
+		// 没在演、不是往后接着写（换了一段原文）、或者长出来的是离开期间写的：直接给全文。
+		if (!motion || !text.startsWith(here.target) || (arrival.fresh && text !== here.target)) {
 			here.pace = new Pace();
 			here.pace.present(text.length, now);
 			here.target = text;
@@ -127,7 +168,7 @@ export function useSmoothText(
 			return;
 		}
 		here.frame = requestAnimationFrame(step);
-	}, [text, live, motion, here]);
+	}, [text, live, motion, here, arrival]);
 
 	/*
 	 * 清理归自己的 effect 管，每次原文变了先停掉上一趟再起新的一趟。从前靠「`frame` 不为 0 就是还在跑」
