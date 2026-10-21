@@ -8,7 +8,6 @@
 import type { AssistantContent } from "@plume/core";
 import type { ToolRun as ToolRunState } from "../../store/index.ts";
 import { baseName, relativeTo, tildeHome } from "../../lib/paths.ts";
-import { formatList } from "../../i18n/list.ts";
 import { translate } from "../../i18n/translate.ts";
 import { describeCall, describeRun, PEER_TOOLS } from "../../lib/tool-kinds.ts";
 import type { Call, StepMember } from "./grouping.ts";
@@ -35,24 +34,6 @@ function counted(calls: Call[]): Call[] {
     jobs.add(job);
     return true;
   });
-}
-
-/**
- * 跑完的一段说的那句：前两次调用各自的说明，其余报个数。
- *
- * 从前这里只报数（「执行命令 3 个」），而每条 bash 都带着模型写的那句说明，跑着时一行行滚过、跑完就被
- * 计数换掉。模型几批不开口，这一段就是一行「执行命令 20 个」，看不出在查什么——系统提示词曾为此要求
- * 每批都说一句，代价是每批一句、每句五十字。说明全一样（没写说明的几条命令）时退回计数。
- */
-export function nameCalls(calls: Call[], runs: Record<string, ToolRunState>, root?: string): string {
-  const shown = counted(calls);
-  const names = [...new Set(shown.map(({ block }) => {
-    const job = polledJob(block);
-    return describeOne(block, runs[block.id]?.summary, { job: job ? startedJob(runs, job)?.summary : undefined, root });
-  }))];
-  if (names.length < 2) return describeCalls(calls);
-  if (shown.length === 2) return formatList(names);
-  return translate("step.named", { names: formatList(names.slice(0, 2)), total: shown.length });
 }
 
 /**

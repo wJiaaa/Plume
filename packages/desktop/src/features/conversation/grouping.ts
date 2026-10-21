@@ -958,14 +958,6 @@ export function thinkingLive(run: Extract<Run, { kind: "message" }>): boolean {
 	return run.message.role === "assistant" && run.message.stopReason === "pending" && run.upTo === run.message.content.length;
 }
 
-/** 探索、终端、文件更改：它们的调用各有一句说明（命令的说明、读的文件），跑完的那一行说得出来。 */
-const WORKBENCH = new Set(["explore", "terminal", "files"]);
-
-/** 这一段里有没有这三类的调用：有就点名前两次调用（`nameCalls`），全是浏览器这类才报数。 */
-export function workbench(step: Step): boolean {
-	return step.calls.some(({ block }) => WORKBENCH.has(toolCategory(block.name, block.arguments)));
-}
-
 /** 互相接成一段的几类：读、跑命令、改文件、操作网页。边改边在页面上验，本来就是一件事。 */
 const MERGES = new Set(["explore", "terminal", "files", "browser"]);
 

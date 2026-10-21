@@ -1208,7 +1208,6 @@ export const zhCN = {
 	"tools.browserScreenshot": "截取网页",
 	"step.thinking": "思考 {n} 次",
 	"step.separator": " · ",
-	"step.named": "{names} 等 {total} 项",
 	"tools.create": "创建文件",
 	"tools.edit": "修改文件",
 	"tools.read": "读取文件",

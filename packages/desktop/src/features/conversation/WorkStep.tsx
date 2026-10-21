@@ -11,7 +11,8 @@
  *   什么。更早试过跑着时换成最新一步，那时是硬换，每来一次整行跳一下；之后改成 `RollWords` 的滚动，
  *   可来一次就滚一次，连着的 read、grep 一两百毫秒一换，字没读完就滚走了——所以有了停留时长。
  *
- * 行首是这一段第一次调用的图标，和它只有一次调用时那一行是同一枚：从一次长到两次，换的只有字。
+ * 跑着时行首是这一段第一次调用的图标，和它只有一次调用时那一行是同一枚：从一次长到两次，换的只有字。
+ * 收成总的那一句时换成叠层图标：一句里有读、有跑、有改，哪一种的图标都只说对了一样。
  * 不写类名（「终端 ·」「探索 ·」）：摘要本来就以动作开头，「终端 · 执行命令 7 个」把一件事说了两遍，
  * 而一次调用的那一行又没有它，同一种东西两种长相。
  * - **末尾的推理还在写**：句尾接一句「正在思考 · 5s」，句子本身不动。推理不另起一行，所以不会有
@@ -19,7 +20,7 @@
  */
 
 import { Fragment, useRef, type ReactNode } from "react";
-import { CircleX } from "../../ui/icons/index.ts";
+import { CircleX, Layers } from "../../ui/icons/index.ts";
 import { Collapse } from "../../ui/layout/Collapse.tsx";
 import { useScopedFromToolRuns, useScopedMeta } from "../../app/session-scope.tsx";
 import { translate } from "../../i18n/translate.ts";
@@ -29,8 +30,8 @@ import { LiveThought } from "./LiveThought.tsx";
 import { ToolIcon } from "./tool-icons.tsx";
 import { RollWords } from "../../ui/motion/RollWords.tsx";
 import { useHeldKey } from "../../ui/motion/held.ts";
-import { describeCalls, describeOne, diffOf, foldPolls, nameCalls, polledJob, startedJob } from "./call-words.ts";
-import { thinkingLive, workbench, type Call, type Run, type Step } from "./grouping.ts";
+import { describeCalls, describeOne, diffOf, foldPolls, polledJob, startedJob } from "./call-words.ts";
+import { thinkingLive, type Call, type Run, type Step } from "./grouping.ts";
 import { useTranscriptDisclosure } from "./view-state.ts";
 import { useWriteDraft } from "./write-draft.ts";
 
@@ -133,15 +134,8 @@ function StepGroup({ step, thought, live, thinking, from, draw, drawCall }: {
 		return job ? startedJob(runs, job)?.summary : undefined;
 	});
 
-	/*
-	 * 跑完的一段只要有探索、终端、改文件，就说前两次调用各自的说明（`nameCalls`）；跑着时说的是正在跑的那一次，
-	 * 用不上它。全是浏览器这类的照旧报数：「打开网页 todo.html、操作网页 2 次」本来就说清了，换成逐条反而丢了次数。
-	 * 选出字符串，理由同上。
-	 */
-	const naming = workbench(step);
-	const named = useScopedFromToolRuns((runs) => (said || !naming ? "" : nameCalls(calls, runs, root)));
 	// 哪样先来哪样在前：先有的那半句不能被后来的「思考 N 次」从前面挤开。
-	const parts = [named || describeCalls(calls)];
+	const parts = [describeCalls(calls)];
 	if (thought > 0) parts[step.members[0].kind === "thinking" ? "unshift" : "push"](translate("step.thinking", { n: thought }));
 	const words = said ? describeOne(said, saidSummary, { job: saidJob, root }) : parts.join(translate("step.separator"));
 	// 换一次调用、或者从跑着换成总的，就是换了一句话，滚一下；同一次调用的参数还在流进来，只缓宽度。
@@ -153,7 +147,8 @@ function StepGroup({ step, thought, live, thinking, from, draw, drawCall }: {
 	return (
 		<div data-ly-step={step.category} data-ly-run={live ? "running" : "done"}>
 			<FlowRow
-				icon={<ToolIcon name={calls[0].block.name} />}
+				// 跑着时说的是某一次调用，图标跟一次调用那一行是同一枚；收成总的那一句时说的是好几样，换成叠层。
+				icon={said ? <ToolIcon name={calls[0].block.name} /> : <Layers size={13} strokeWidth={1.8} className="shrink-0" />}
 				/*
 				 * 跑着时挂上的这一行滚进来（`enter`）：它接替的是原地那段推理，或者一次调用的那一行而这里已经是下一次
 				 * 了，说的都是另一句话；从旧的宽度缓过去（`from`）。历史里挂上的不滚。光挂在字上而不是经 `running`
