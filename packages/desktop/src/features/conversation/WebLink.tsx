@@ -39,6 +39,7 @@ function useBrowserName(): string {
 export function WebLink({ href, children }: { href: string; children: ReactNode }) {
 	// Context reads, not subscriptions: only a press needs them, and it reads the store then.
 	const scoped = useContext(SessionScope);
+	const local = href.startsWith("ly-preview://");
 	const menu = useContextMenu();
 	const openBuiltin = () => {
 		const state = useApp.getState();
@@ -53,7 +54,7 @@ export function WebLink({ href, children }: { href: string; children: ReactNode 
 				href={href}
 				onClick={(event) => {
 					event.preventDefault();
-					if (useApp.getState().settings?.browser?.openLinks === "builtin" && !event.shiftKey) openBuiltin();
+					if (local || (useApp.getState().settings?.browser?.openLinks === "builtin" && !event.shiftKey)) openBuiltin();
 					else void bridge.system.openExternal(href);
 				}}
 				onContextMenu={(event) => menu.show(event, undefined)}
@@ -72,9 +73,9 @@ function WebLinkMenu({ anchor, href, onBuiltin, onClose }: { anchor: { x: number
 	return (
 		// `wide`: the first row carries a browser's name, and at the default 224px 「在 Google Chrome 中打开」 was cut off.
 		<ContextMenu anchor={anchor} onClose={onClose} width="wide">
-			<MenuItem icon={<ExternalLink {...ICON} />} onClick={() => void bridge.system.openExternal(href)}>
+			{!href.startsWith("ly-preview://") && <MenuItem icon={<ExternalLink {...ICON} />} onClick={() => void bridge.system.openExternal(href)}>
 				{browser ? t("link.openIn", { name: browser }) : t("link.openInSystem")}
-			</MenuItem>
+			</MenuItem>}
 			<MenuItem icon={<Globe {...ICON} />} onClick={onBuiltin}>
 				{t("openTarget.builtinBrowser")}
 			</MenuItem>

@@ -46,8 +46,8 @@ afterEach(async () => {
 
 const settle = () => act(async () => new Promise((resolve) => setTimeout(resolve, 10)));
 
-async function reply(): Promise<HTMLAnchorElement> {
-	view = await mount(h(I18nProvider, { locale: "zh-CN", children: h(SessionScope.Provider, { value: "a" }, h(Markdown, { text: `仓库 [wJiaaa/TokenRouter](${URL})。` })) }));
+async function reply(text = `仓库 [wJiaaa/TokenRouter](${URL})。`): Promise<HTMLAnchorElement> {
+	view = await mount(h(I18nProvider, { locale: "zh-CN", children: h(SessionScope.Provider, { value: "a" }, h(Markdown, { text })) }));
 	return view.find<HTMLAnchorElement>("a");
 }
 
@@ -65,6 +65,26 @@ function row(label: string): HTMLElement {
 	assert.ok(found, `no 「${label}」 row`);
 	return found;
 }
+
+for (const text of ["[打开页面](ly-preview://a/file-demo/index.html)", "ly-preview://a/file-demo/index.html"]) {
+	test(`本地预览链接只在所属会话的内置浏览器里打开：${text}`, async () => {
+		const link = await reply(text);
+		await click(link);
+		assert.deepEqual(calls, [["builtin", "ly-preview://a/file-demo/index.html", "a"]]);
+		await fire(link, new MouseEvent("click", { bubbles: true, cancelable: true, shiftKey: true }));
+		assert.deepEqual(calls.at(-1), ["builtin", "ly-preview://a/file-demo/index.html", "a"]);
+		await rightClick(link);
+		assert.deepEqual(rows(), ["在内置浏览器打开", "复制链接"]);
+		await click(row("复制链接"));
+		assert.deepEqual(calls.at(-1), ["copy", "ly-preview://a/file-demo/index.html"]);
+	});
+}
+
+test("其他会话和无效协议的预览地址不变成链接", async () => {
+	view = await mount(h(SessionScope.Provider, { value: "a" }, h(Markdown, { text: "[别人的页面](ly-preview://b/file-demo/index.html) [脚本](javascript:alert)" })));
+	assert.equal(view.host.querySelector("a"), null);
+	assert.deepEqual(calls, []);
+});
 
 test("a click opens the address in the system browser when the setting is left alone", async () => {
 	await click(await reply());

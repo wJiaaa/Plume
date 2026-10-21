@@ -696,7 +696,9 @@ function Link({ href, children }: { href: string; children: ReactNode }) {
 	 * great many links.
 	 */
 	const project = useScopedProjectPath();
-	const safe = href.startsWith("http://") || href.startsWith("https://");
+	const scoped = useContext(SessionScope);
+	const local = !!scoped && href.startsWith(`ly-preview://${scoped}/`);
+	const safe = local || href.startsWith("http://") || href.startsWith("https://");
 	const target = href.replace(/:\d+(?:-\d+)?$/, "");
 	const guess = safe ? null : resolveAsset(baseDir ?? project ?? (isAbsolutePath(href) ? "/" : undefined), target);
 	/*

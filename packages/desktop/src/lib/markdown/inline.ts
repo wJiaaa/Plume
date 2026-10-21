@@ -131,7 +131,7 @@ export function parseInline(source: string): Inline[] {
 			}
 		}
 
-		if ((char === "h" || char === "w") && isUrlStart(source, i)) {
+		if ((char === "h" || char === "w" || char === "l") && isUrlStart(source, i)) {
 			const url = matchBareUrl(source, i);
 			if (url) {
 				flush(url.next);
@@ -321,7 +321,7 @@ function matchEmphasis(
 
 function isUrlStart(source: string, i: number): boolean {
 	if (i > 0 && /[\p{L}\p{N}/@._-]/u.test(source[i - 1])) return false;
-	return source.startsWith("http://", i) || source.startsWith("https://", i) || source.startsWith("www.", i);
+	return source.startsWith("http://", i) || source.startsWith("https://", i) || source.startsWith("ly-preview://", i) || source.startsWith("www.", i);
 }
 
 /**
@@ -353,6 +353,6 @@ function matchBareUrl(source: string, start: number): { href: string; text: stri
 	}
 
 	// Bare "www.x.com" has no scheme; it still needs one to be opened.
-	if (url.length < 8 || !/^[a-z]+:\/\/|^www\./.test(url)) return null;
+	if (url.length < 8 || !/^[a-z][\w+.-]*:\/\/|^www\./.test(url)) return null;
 	return { href: url.startsWith("www.") ? `https://${url}` : url, text: url, next: start + url.length };
 }
