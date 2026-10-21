@@ -30,6 +30,10 @@ interface ToolCardProps {
 	 * is not: scrolling away and back, or any re-key of the list, restarts the count from zero. A
 	 * command seven minutes in would say `142s` — under the turn's own elapsed time, in the same
 	 * screenshot, which is how it was noticed.
+	 *
+	 * 没有它就是还没开跑：每条运行记录都带着开始时间，缺的只有还没有记录的调用——参数还在写，或者写完
+	 * 了在等整条回复结束。那段不计时，也不说在等输出：一条排了十二秒、只跑了 32ms 的命令，从前显示的是
+	 * 「12s · 等待输出…」。
 	 */
 	startedAt?: number;
 	/** 换掉前面那枚工具图标——派出去的子智能体用它自己的脸。 */
@@ -68,16 +72,15 @@ export function ToolCard({ toolName, summary, args, status, result, stateKey, st
 	const shown = running && result?.content.length === 0 ? undefined : result;
 
 	// A visible timer is the honest signal that a long command is still going.
-	const mountedAt = useRef(Date.now());
-	const since = startedAt ?? mountedAt.current;
 	useEffect(() => {
-		if (!running) return;
-		setElapsed(Math.floor((Date.now() - since) / 1000));
-		const timer = setInterval(() => setElapsed(Math.floor((Date.now() - since) / 1000)), 250);
+		if (!running || startedAt === undefined) return;
+		setElapsed(Math.floor((Date.now() - startedAt) / 1000));
+		const timer = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 250);
 		return () => clearInterval(timer);
-	}, [running, since]);
+	}, [running, startedAt]);
 
 	const live = running && !pending;
+	const started = startedAt !== undefined;
 	// ly-pop 说的是「刚刚跑完」。挂载时就已结束的卡片（历史记录、第一次展开的分组）不弹，否则每次展开 +N -M 都跳一下。
 	const pop = useRef(running).current ? "ly-pop " : "";
 	// What opens under the call.
@@ -111,7 +114,7 @@ export function ToolCard({ toolName, summary, args, status, result, stateKey, st
 			 * with a command and no output section looks like a card that has lost its
 			 * output. Saying so is the difference between waiting and wondering.
 			 */}
-			{!shown && running && (
+			{!shown && running && started && (
 				<Section title={t("toolCard.outputRunning")} mono>
 					<span className="text-ink-faint">{t("toolCard.waiting")}</span>
 				</Section>
@@ -137,7 +140,7 @@ export function ToolCard({ toolName, summary, args, status, result, stateKey, st
 		thinking ? <Fragment key="thinking">{thinking}</Fragment> : null,
 		aside ? <Fragment key="aside">{aside}</Fragment> : null,
 		running && pending ? <span key="pending" className="text-caption text-ink-faint">{pending}</span> : null,
-		live && elapsed > 0 ? <span key="elapsed" className="tabular-nums text-caption">{elapsed}s</span> : null,
+		live && started && elapsed > 0 ? <span key="elapsed" className="tabular-nums text-caption">{elapsed}s</span> : null,
 		failed ? <CircleX key="failed" size={13} strokeWidth={1.9} className={`${pop}text-danger/85`} /> : null,
 		stopped ? (
 			<span key="stopped" data-ly-tip={t("toolCard.stopped")} aria-label={t("toolCard.stopped")} className={`${pop}flex`}>

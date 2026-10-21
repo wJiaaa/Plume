@@ -50,6 +50,13 @@ test("有命令时，查它输出的那几次不算进去", () => {
 	assert.equal(nameCalls(calls, runs({ a: "构建 API 镜像", b: "构建 Web 镜像" })), "构建 API 镜像、构建 Web 镜像");
 });
 
+test("还没开跑的命令：说明已经写出来就用它，不等 tool_start 的摘要", () => {
+	// 写完了、在等整条回复结束：还没有记录，`summary` 是 undefined。
+	const queued = { type: "toolCall", id: "q", name: "bash", arguments: { command: "cp a b", description: "复制界面要用的图标" } } as Call["block"];
+	assert.equal(describeOne(queued, undefined), "复制界面要用的图标");
+	assert.equal(describeOne(bash("n").block, undefined), "执行命令");
+});
+
 function todos(list: unknown): Call["block"] {
 	return { type: "toolCall", id: "t", name: "todo_write", arguments: { todos: list } } as Call["block"];
 }

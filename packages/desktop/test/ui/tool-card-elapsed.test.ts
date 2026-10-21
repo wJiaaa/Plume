@@ -13,7 +13,8 @@ import { test } from "node:test";
 import { createElement as h } from "react";
 
 import { ToolCard } from "../../src/features/conversation/ToolCard.tsx";
-import { mount } from "../helpers/mount.ts";
+import { I18nProvider } from "../../src/i18n/index.ts";
+import { click, mount } from "../helpers/mount.ts";
 
 const running = (extra: Record<string, unknown>) =>
 	h(ToolCard, {
@@ -50,15 +51,34 @@ test("remounting does not restart the count", async () => {
 	await second.unmount();
 });
 
-test("without a start time it falls back to its own mount rather than drawing nonsense", async () => {
+test("without a start time it has not started: no timer, and no waiting for output", async () => {
 	/*
-	 * The sub-agent panel rebuilds its records from a transcript and has no `startedAt` for them.
-	 * A missing value must read as "just started", never as 1970.
+	 * Every record carries `startedAt`; only a call with no record yet comes without one — still
+	 * being written, or written and waiting for the rest of the reply. A command that queued for
+	 * twelve seconds and ran for 32ms used to read `12s` over 「等待输出…」.
 	 */
-	const view = await mount(running({}));
-	const shown = seconds(view.text());
-	assert.ok(shown === null || shown < 5, `expected ~0s from a fresh mount, got ${shown}s`);
-	await view.unmount();
+	const opened = async (extra: Record<string, unknown>) => {
+		const view = await mount(h(I18nProvider, { locale: "zh-CN", children: running(extra) }));
+		await click(view.find("button[aria-expanded]"));
+		return view;
+	};
+	const queued = await opened({});
+	try {
+		await new Promise((resolve) => setTimeout(resolve, 1100));
+		const text = queued.text();
+		assert.equal(seconds(text), null, `a call that has not started is counting: ${text}`);
+		assert.ok(!text.includes("等待输出"), `a call that has not started is waiting for output: ${text}`);
+		assert.ok(text.includes("git push origin HEAD"), `the opened card lost its command: ${text}`);
+	} finally {
+		await queued.unmount();
+	}
+	// Once it has started, the same card does say it is waiting — the check above is not vacuous.
+	const started = await opened({ startedAt: Date.now() });
+	try {
+		assert.ok(started.text().includes("等待输出"), started.text());
+	} finally {
+		await started.unmount();
+	}
 });
 
 test("a finished call is not still counting", async () => {

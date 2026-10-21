@@ -56,13 +56,16 @@ export function nameCalls(calls: Call[], runs: Record<string, ToolRunState>, roo
 }
 
 /**
- * core 给这两个工具留着一句给人看的 `description`：它们的参数是正则和通配，人读不出来。bash 的那句走
- * `summarize`，到这里已经在 `summary` 里。
+ * core 给 grep、glob 留着一句给人看的 `description`：它们的参数是正则和通配，人读不出来。
+ *
+ * bash 的那句 core 也会经 `summarize` 放进 `summary`，但要到 `tool_start` 才有：工具等整条回复写完才
+ * 执行，一条命令后面跟着一个长 `write` 时，它写完了要排十几秒，那段时间没有记录，行上只剩「执行命令」。
+ * 直接读参数，说明一写出来就是标题，和开跑后 core 给的是同一句。
  *
  * read 和 ls 不在这里，说的是 `locationOf`：让模型每次读文件都写一句，写出来的是「读取第三上游响应归一化」
  * 「读取第三上游请求分发」——同一个句式套七遍，中间是它自己起的代号。Claude Code、pi 的 read 也都不收说明。
  */
-const DESCRIBED = new Set(["grep", "glob"]);
+const DESCRIBED = new Set(["grep", "glob", "bash"]);
 
 /**
  * 读文件、列目录那一行说的对象：相对工作区的完整路径，照 pi 的写法。
