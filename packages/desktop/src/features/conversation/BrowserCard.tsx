@@ -130,7 +130,7 @@ export function BrowserCards({ calls, later = NONE }: { calls: string[]; later?:
 		const [tab, page] = rows[i]!;
 		return !rows.slice(i + 1).some(([nextTab, nextPage]) => (tab && nextTab === tab) || (page && nextPage === page));
 	});
-	if (shown.length === 0) return null;
+	// 一张都不画时也留下这个空盒子：`TurnWork` 那一行靠「里面是空元素」把自己的 10px 行距一起藏掉，返回 null 就藏不掉。
 	return (
 		<div className="flex flex-col gap-2.5">
 			{shown.map((id) => <BrowserCard key={id} callId={id} />)}

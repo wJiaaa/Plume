@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronUp } from "../../ui/icons/index.ts";
 import { translate } from "../../i18n/translate.ts";
-import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { ApprovalOverlay } from "./ApprovalOverlay.tsx";
 import { BackToLatest } from "./BackToLatest.tsx";
 import { Composer } from "../composer/index.ts";
@@ -574,12 +574,7 @@ export const Conversation = memo(function Conversation({ sessionId: _sessionId, 
              */
             const opener = allBlocks[range.start + at - 1];
             const key = `${activeSessionId}:process:${runKey((opener?.turn === block.turn ? opener : block).runs[0])}`;
-            /*
-             * 这一轮里 agent 打开过的网页，画在锚下面那一列的最后。
-             *
-             * 有人把这一轮收起来时，卡片要是长在过程里就跟着收走了——而它是 agent 在后台开了网页这件事
-             * 在对话里仅有的痕迹（面板不再自己弹出来，见 `BrowserCard`）。
-             */
+            // 同一轮里后面还会打开的页面，卡片据此知道自己是不是这一页的最后一张（见 `BrowserCards`）。
             const pages = pageOpens(block);
             /*
              * 按**回合**算，不是按块的位置算：正文一开始流式输出，过程就不再排在末尾。
@@ -587,24 +582,31 @@ export const Conversation = memo(function Conversation({ sessionId: _sessionId, 
             const live = running && block.turn === blocks[blocks.length - 1].turn;
             const tail = block.items[block.items.length - 1];
             return (
-              <Fragment key={key}>
-                <TurnWork
-                  entries={block.items.flatMap((item) => {
-                    const entry = {
-                      key: `${activeSessionId}:${item.key}`,
-                      // 正在做的那一段是这一轮的最后一行：后面有了别的（下一段活、一句话），它就做完了。
-                      node: item.kind === "step" ? <WorkStep step={item.step} live={live && item === tail} draw={draw} drawCall={drawCall} /> : draw(item.run),
-                    };
-                    /*
-                     * 图紧跟在画它的那段活后面，不排到整轮末尾：末尾是收尾那句话和它的结算行，排在那后面，
-                     * 时间、耗时就压在了这一轮产出的图上面。挂在段外面而不是段里面，见 `GeneratedImages`。
-                     */
-                    const drawn = item.kind === "step" ? item.step.calls.filter(({ block: call }) => call.name === "image_generate").map(({ block: call }) => call.id) : [];
-                    return drawn.length > 0 ? [entry, { key: `${entry.key}:images`, node: <GeneratedImages calls={drawn} /> }] : [entry];
-                  })}
-                />
-                {pages.length > 0 && <BrowserCards calls={pages} later={laterPages[range.start + at]} />}
-              </Fragment>
+              <TurnWork
+                key={key}
+                entries={block.items.flatMap((item) => {
+                  const entry = {
+                    key: `${activeSessionId}:${item.key}`,
+                    // 正在做的那一段是这一轮的最后一行：后面有了别的（下一段活、一句话），它就做完了。
+                    node: item.kind === "step" ? <WorkStep step={item.step} live={live && item === tail} draw={draw} drawCall={drawCall} /> : draw(item.run),
+                  };
+                  if (item.kind !== "step") return [entry];
+                  /*
+                   * 图和网页卡片紧跟在产出它的那段活后面，不排到整轮末尾：末尾是收尾那句话和它的结算行，排在那后面，
+                   * 时间、耗时就压在了这一轮产出的东西上面。挂在段外面而不是段里面，见 `GeneratedImages`；卡片
+                   * 是 agent 在后台开了网页这件事在对话里仅有的痕迹，段折着也得看得见。
+                   */
+                  const ids = (name: string) => item.step.calls.filter(({ block: call }) => call.name === name).map(({ block: call }) => call.id);
+                  const drawn = ids("image_generate");
+                  const opened = ids("browser_open");
+                  const after = opened.length > 0 ? [...pages.slice(pages.indexOf(opened[opened.length - 1]!) + 1), ...laterPages[range.start + at]!] : [];
+                  return [
+                    entry,
+                    ...(drawn.length > 0 ? [{ key: `${entry.key}:images`, node: <GeneratedImages calls={drawn} /> }] : []),
+                    ...(opened.length > 0 ? [{ key: `${entry.key}:pages`, node: <BrowserCards calls={opened} later={after} /> }] : []),
+                  ];
+                })}
+              />
             );
           })}
           </div>
