@@ -674,13 +674,13 @@ export class SessionStore implements SessionStorage {
 	 */
 	async replyTimings(): Promise<ReplyTiming[]> {
 		return this.db.prepare(`
-			SELECT session_id AS sessionId,
+			SELECT session_id AS sessionId, 'main' AS stream,
 				json_extract(body, '$.message.timestamp') AS timestamp,
 				json_extract(body, '$.message.durationMs') AS durationMs,
 				json_extract(body, '$.message.sseDurationMs') AS sseDurationMs
 			FROM records WHERE kind = 'message' AND json_extract(body, '$.message.role') = 'assistant'
 			UNION ALL
-			SELECT session_id,
+			SELECT session_id, 'sub:' || json_extract(body, '$.event.id'),
 				json_extract(body, '$.event.message.timestamp'),
 				json_extract(body, '$.event.message.durationMs'),
 				json_extract(body, '$.event.message.sseDurationMs')

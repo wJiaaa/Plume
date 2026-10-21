@@ -13,7 +13,7 @@ import { emptyReplayRow, foldUsageRecord, newUsageReplayState, plumeHome, REPLAY
 import type { UsageActivity } from "./usage-types.ts";
 
 /** 改了「从记录里读什么」就加一，理由同 `USAGE_CACHE_VERSION`。 */
-const ACTIVITY_CACHE_VERSION = 2;
+const ACTIVITY_CACHE_VERSION = 3;
 
 interface ActivityCache {
 	version: number;
@@ -68,7 +68,11 @@ export async function scanActivity(store: SessionStorage, home = plumeHome()): P
 		const state = (states[session.id] = cache.states[session.id] ?? newUsageReplayState());
 		if (session.seq <= from) continue;
 		changed = true;
-		for await (const record of store.usageRecords(session.id, from)) foldUsageRecord(state, session.id, record, rowOf);
+		for await (const record of store.usageRecords(session.id, from)) {
+			// 读到快照之后的追加留给下次，状态和落盘游标必须停在同一个位置。
+			if (record.seq > session.seq) break;
+			foldUsageRecord(state, session.id, record, rowOf);
+		}
 	}
 
 	if (changed) {

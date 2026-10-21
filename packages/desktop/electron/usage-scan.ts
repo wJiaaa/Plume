@@ -125,11 +125,11 @@ function requestIndex(tally: UsageTally): Map<string, UsageRequestBucket> {
 
 /**
  * The call's timing. Rows written before spend carried it are looked up in `timings`
- * (`${sessionId}\0${timestamp}` → that reply), which is only loaded on a full rebuild.
+ * (`${sessionId}\0${stream}\0${timestamp}` → that reply), which is only loaded on a full rebuild.
  */
-function factsOf(row: SpendRow, timings: Map<string, ReplyTiming> | null): CallFacts {
+function factsOf(row: SpendRow, timings: Map<string, ReplyTiming | null> | null): CallFacts {
 	const call = row.call;
-	const legacy = call && call.durationMs === undefined && row.sessionId ? timings?.get(`${row.sessionId}\u0000${call.timestamp}`) : undefined;
+	const legacy = call && call.durationMs === undefined && row.sessionId ? timings?.get(`${row.sessionId}\u0000${row.stream}\u0000${call.timestamp}`) : undefined;
 	return {
 		durationMs: call?.durationMs ?? legacy?.durationMs ?? undefined,
 		sseDurationMs: call?.sseDurationMs ?? legacy?.sseDurationMs ?? undefined,
@@ -245,7 +245,12 @@ export async function scanUsage(store: SessionStorage, home = plumeHome(), provi
 	 * 补不到的（会话已删）就是没有——它们照样算请求、算失败与否（按成功算），只是不进「速度」。
 	 */
 	const index = requestIndex(tally);
-	const timings = tally.afterId === 0 ? new Map((await store.replyTimings().catch(() => [])).map((each) => [`${each.sessionId}\u0000${each.timestamp}`, each])) : null;
+	const timings = tally.afterId === 0 ? new Map<string, ReplyTiming | null>() : null;
+	if (timings) for (const each of await store.replyTimings()) {
+		const key = `${each.sessionId}\u0000${each.stream}\u0000${each.timestamp}`;
+		// 同一序列仍可能同毫秒启动两次；对不唯一的旧行宁可不报计时，不能串用。
+		timings.set(key, timings.has(key) ? null : each);
+	}
 
 	// A page at a time: with the cache gone, the whole table would otherwise be one array.
 	let scanned = 0;

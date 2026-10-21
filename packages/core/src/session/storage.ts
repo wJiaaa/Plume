@@ -20,11 +20,12 @@ import type { Boundary, SessionMeta, SessionRecord, SessionRecordInput } from ".
  * 一次回复的计时，从会话记录里读出来。
  *
  * spend 表从 0.9.45 起自己带着计时；在那之前写下的行只有用量，用量页的「速度」「首字」靠这一份
- * 补齐。按 `(sessionId, timestamp)` 对回 spend 行——spend 行的 `call.timestamp` 就是
+ * 补齐。按 `(sessionId, stream, timestamp)` 对回 spend 行——spend 行的 `call.timestamp` 就是
  * 这条消息的 `timestamp`。
  */
 export interface ReplyTiming {
 	sessionId: string;
+	stream: string;
 	timestamp: number;
 	durationMs?: number;
 	sseDurationMs?: number;

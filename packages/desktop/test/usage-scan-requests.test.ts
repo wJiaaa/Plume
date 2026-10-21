@@ -133,3 +133,48 @@ describe("scanUsage request buckets", () => {
 		assert.equal(requests[0].requests, 2);
 	});
 });
+
+
+it("跨午夜完成的主会话和子代理回复与请求汇总落在同一天", async () => {
+	const meta = await conversation();
+	const started = new Date(2026, 8, 1, 23, 59).getTime();
+	clock = new Date(2026, 8, 2, 0, 1).getTime();
+	const message = reply(started, { durationMs: 120_000, sseDurationMs: 60_000 });
+	await store.append(meta, { type: "message", message });
+	await store.append(meta, { type: "event", event: { type: "subagent_message", id: "s", message } });
+	const scan = await scanUsage(store, home);
+	assert.deepEqual(scan.requests.map(row => [row.hour, row.requests]), [["2026-09-01 23", 2]]);
+	assert.deepEqual(scan.activity.map(row => [row.day, row.replies, row.modelMs]), [["2026-09-01", 2, 240_000]]);
+	assert.deepEqual((await scanUsage(store, home)).activity, scan.activity);
+});
+
+it("旧计时按主会话和子代理序列匹配，同毫秒启动也不会串用", async () => {
+	const meta = await conversation();
+	await say(meta, reply(AT, { model: "main", durationMs: 9000, sseDurationMs: 6000 }));
+	await store.append(meta, { type: "event", event: { type: "subagent_message", id: "a", message: reply(AT, { model: "a", durationMs: 3000, sseDurationMs: 2000 }) } });
+	await store.append(meta, { type: "event", event: { type: "subagent_message", id: "b", message: reply(AT, { model: "b", durationMs: 7000, sseDurationMs: 4000 }) } });
+	(store as unknown as { db: { exec(sql: string): void } }).db.exec("UPDATE spend SET call = json_remove(call, '$.durationMs', '$.sseDurationMs')");
+	const scan = await scanUsage(store, home);
+	assert.deepEqual(scan.requests.map(row => [row.model, row.streamMs, row.firstTokenMs]), [["main", 6000, 3000], ["a", 2000, 1000], ["b", 4000, 3000]]);
+	assert.deepEqual((await scanUsage(store, home)).requests, scan.requests);
+});
+
+it("同一序列同一毫秒仍不唯一的旧计时不猜配，照常计请求和费用", async () => {
+	const meta = await conversation();
+	await say(meta, reply(AT, { durationMs: 3000, sseDurationMs: 2000 }));
+	await say(meta, reply(AT, { durationMs: 5000, sseDurationMs: 4000 }));
+	(store as unknown as { db: { exec(sql: string): void } }).db.exec("UPDATE spend SET call = json_remove(call, '$.durationMs', '$.sseDurationMs')");
+	const { requests } = await scanUsage(store, home);
+	assert.deepEqual([requests[0].requests, requests[0].cost, requests[0].timed, requests[0].firstTokens], [2, 0.2, 0, 0]);
+});
+
+it("旧计时读取失败不会把缺失的计时永久写进成功缓存", async () => {
+	const meta = await conversation();
+	await say(meta, reply(AT, { durationMs: 3000, sseDurationMs: 2000 }));
+	(store as unknown as { db: { exec(sql: string): void } }).db.exec("UPDATE spend SET call = json_remove(call, '$.durationMs', '$.sseDurationMs')");
+	const timings = mock.method(store, "replyTimings", async () => { throw new Error("database is locked"); });
+	await assert.rejects(scanUsage(store, home), /database is locked/);
+	timings.mock.restore();
+	const { requests } = await scanUsage(store, home);
+	assert.equal(requests[0].streamMs, 2000);
+});

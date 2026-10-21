@@ -7,7 +7,7 @@
  *
  * 状态（`UsageReplayState`）可以存下来，下次从游标接着回放，见 desktop 的 `usage-activity.ts`。
  *
- * 构成里只有比例是估的：每次请求的输入按「它带了哪些内容」估出各部分的比例，再把那次回复 usage
+ * 构成里的比例按日志可证的内容估计；压缩摘要只估日志里的正文，不补造当时未记录的包装消息。再把回复 usage
  * 里实际计费的输入（含缓存读写）按比例分下去；输出按思考和正文分。所以各部分加起来就是账单上的数。
  */
 
@@ -46,7 +46,7 @@ export const REPLAY_NUMBERS = ["turns", "replies", "timedReplies", "modelMs", "s
 interface StreamState {
 	provider: string | null;
 	model: string | null;
-	/** 还没碰到回复、不知道该记在哪个模型上的轮次，按天。 */
+	/** 等请求确定模型再结算的轮次，按用户发言那天。 */
 	pendingTurns: Record<string, number>;
 	/** 当前提示词各部分的估计 token：系统提示词三类和工具定义。 */
 	prompt: Record<"system" | "instructions" | "skills" | "toolDefs", number>;
@@ -55,6 +55,8 @@ interface StreamState {
 	prefix: Record<"user" | "injected" | "assistant" | "toolResults", number[]>;
 	/** 最近一次请求带了几条消息；回复到了才结算，结算完清掉。 */
 	pending: number | null;
+	/** 压缩边界只相信日志里的保留条数和摘要正文，不从请求消息数倒推合成消息。 */
+	compaction: { seq: number; from: number; summary: number } | null;
 }
 
 export interface UsageReplayState {
@@ -121,7 +123,7 @@ function sizeOf(message: Message): { part: "user" | "injected" | "assistant" | "
 }
 
 function streamOf(state: UsageReplayState, id: string): StreamState {
-	return (state.streams[id] ??= { provider: null, model: null, pendingTurns: {}, prompt: { system: 0, instructions: 0, skills: 0, toolDefs: 0 }, seqs: [], prefix: { user: [], injected: [], assistant: [], toolResults: [] }, pending: null });
+	return (state.streams[id] ??= { provider: null, model: null, pendingTurns: {}, prompt: { system: 0, instructions: 0, skills: 0, toolDefs: 0 }, seqs: [], prefix: { user: [], injected: [], assistant: [], toolResults: [] }, pending: null, compaction: null });
 }
 
 function push(stream: StreamState, seq: number, message: Message): void {
@@ -133,12 +135,12 @@ function push(stream: StreamState, seq: number, message: Message): void {
 	}
 }
 
-/** 最后 `count` 条消息各类的合计；没有请求记录的旧会话按整条序列算。 */
+/** 有压缩边界就取保留尾部及日志摘要，否则按请求条数；旧日志无请求时取整条序列。 */
 function tail(stream: StreamState, count: number | null): Record<keyof StreamState["prefix"], number> {
 	const length = stream.seqs.length;
-	const from = count === null ? 0 : Math.max(0, length - count);
+	const from = stream.compaction?.from ?? (count === null ? 0 : Math.max(0, length - count));
 	const sum = (list: number[]) => (list.at(-1) ?? 0) - (from > 0 ? (list[from - 1] ?? 0) : 0);
-	return { user: sum(stream.prefix.user), injected: sum(stream.prefix.injected), assistant: sum(stream.prefix.assistant), toolResults: sum(stream.prefix.toolResults) };
+	return { user: sum(stream.prefix.user), injected: sum(stream.prefix.injected) + (stream.compaction?.summary ?? 0), assistant: sum(stream.prefix.assistant), toolResults: sum(stream.prefix.toolResults) };
 }
 
 function dayKey(ms: number): string {
@@ -181,7 +183,8 @@ function settleReply(stream: StreamState, message: AssistantMessage, row: UsageR
 
 function foldMessage(state: UsageReplayState, session: string, streamId: string, seq: number, ts: number, message: Message, copy: boolean, rowOf: RowSink): void {
 	const stream = streamOf(state, streamId);
-	const day = dayKey(ts);
+	// 回复与 spend 同按请求开始时间归日，跨午夜写完不换账期。
+	const day = dayKey(message.role === "assistant" ? message.timestamp || ts : ts);
 	// 抄来的历史照样进上下文——之后的请求真的带着它——只是不在这里再数一遍。
 	if (!copy) {
 		if (message.role === "assistant") {
@@ -206,8 +209,7 @@ function foldMessage(state: UsageReplayState, session: string, streamId: string,
 			if (message.isError) row.toolErrors += 1;
 			row.toolMs += message.durationMs ?? 0;
 		} else if (streamId === "main" && !message.synthetic) {
-			if (stream.model) rowOf({ day, session, provider: stream.provider ?? "unknown", model: stream.model }).turns += 1;
-			else stream.pendingTurns[day] = (stream.pendingTurns[day] ?? 0) + 1;
+			stream.pendingTurns[day] = (stream.pendingTurns[day] ?? 0) + 1;
 		}
 	}
 	push(stream, seq, message);
@@ -221,22 +223,30 @@ function useModel(stream: StreamState, session: string, provider: string, model:
 	stream.pendingTurns = {};
 }
 
-function foldEvent(state: UsageReplayState, session: string, streamId: string, event: { type: string } & Record<string, unknown>, rowOf: RowSink): void {
+function foldEvent(state: UsageReplayState, session: string, streamId: string, seq: number, event: { type: string } & Record<string, unknown>, rowOf: RowSink): void {
 	if (event.type === "request" && typeof event.messageCount === "number") {
 		const stream = streamOf(state, streamId);
 		stream.pending = event.messageCount;
 		// 请求在回复之前就记下了模型：一轮只发出请求、没等到回复，也知道该记在谁头上。
 		if (typeof event.provider === "string" && typeof event.model === "string") useModel(stream, session, event.provider, event.model, rowOf);
 	} else if (event.type === "context" && typeof event.systemPrompt === "string") streamOf(state, streamId).prompt = promptOf(event as unknown as Parameters<typeof promptOf>[0]);
+	else if (event.type === "compacted" && typeof event.kept === "number") {
+		const stream = streamOf(state, streamId);
+		stream.compaction = { seq, from: Math.max(0, stream.seqs.length - event.kept), summary: typeof event.summary === "string" ? estimateTokens(event.summary) : 0 };
+		stream.pending = null;
+	}
 }
 
 /** 回放一条记录。`record.copy` 是分叉时抄过来的历史，见 `SessionStore.write`。 */
+// shortcut: 0.9.44 及更早分叉未保存继承边界，活动统计可能重复；旧格式有可靠边界来源时再迁移。
 export function foldUsageRecord(state: UsageReplayState, session: string, record: SessionRecord & { copy?: boolean }, rowOf: RowSink): void {
 	if (record.type === "message") return foldMessage(state, session, "main", record.seq, record.ts, record.message, record.copy === true, rowOf);
 	if (record.type === "truncate") {
 		// 倒回去：之后的请求不再带被截掉的那些消息。
 		const stream = state.streams.main;
 		if (!stream) return;
+		if (stream.compaction && stream.compaction.seq > record.afterSeq) stream.compaction = null;
+		stream.pending = null;
 		const keep = stream.seqs.findIndex((seq) => seq > record.afterSeq);
 		if (keep === -1) return;
 		stream.seqs.length = keep;
@@ -245,10 +255,15 @@ export function foldUsageRecord(state: UsageReplayState, session: string, record
 	}
 	if (record.type !== "event") return;
 	const event = record.event as { type: string; id?: string; message?: Message; event?: { type: string } & Record<string, unknown> } & Record<string, unknown>;
+	if (event.type === "subagent" && typeof event.prompt === "string" && !event.resumed) {
+		const stream = streamOf(state, `sub:${event.id}`);
+		push(stream, record.seq, { role: "user", content: [{ type: "text", text: event.prompt }], timestamp: record.ts, origin: "parent" });
+		return;
+	}
 	if (event.type === "subagent_message" && event.message) return foldMessage(state, session, `sub:${event.id}`, record.seq, record.ts, event.message, record.copy === true, rowOf);
-	if (event.type === "subagent_event" && event.event) return foldEvent(state, session, `sub:${event.id}`, event.event, rowOf);
-	foldEvent(state, session, "main", event, rowOf);
+	if (event.type === "subagent_event" && event.event) return foldEvent(state, session, `sub:${event.id}`, record.seq, event.event, rowOf);
+	foldEvent(state, session, "main", record.seq, event, rowOf);
 }
 
 /** 记录里只有这几种和回放有关；存储据此在 SQL 里就把其余的（钩子、工具开始等）筛掉。 */
-export const USAGE_RECORD_KINDS = ["message", "subagent_message", "subagent_event", "request", "context", "truncate"] as const;
+export const USAGE_RECORD_KINDS = ["message", "subagent", "subagent_message", "subagent_event", "request", "context", "compacted", "truncate"] as const;

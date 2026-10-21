@@ -129,3 +129,84 @@ test("只发出请求、没等到回复的那一轮也算，记在请求的模�
 		assert.deepEqual([row?.turns, row?.replies], [1, 0]);
 	});
 });
+
+test("倒回压缩事件之前时，摘要失效，即使没有消息被截掉", async () => {
+	await withStore(async (store, root) => {
+		const meta = await store.create(root, "m");
+		await store.append(meta, { type: "message", message: tool(10, false, "t".repeat(4000)) });
+		await store.append(meta, { type: "message", message: user("u".repeat(400)) });
+		const before = (await store.get(meta.id))!.seq;
+		await store.append(meta, { type: "event", event: { type: "compacted", before: 2, after: 3, kept: 1, summary: "h".repeat(400) } });
+		await store.append(meta, { type: "truncate", afterSeq: before });
+		await store.append(meta, { type: "event", event: { type: "request", provider: "p", model: "m", messageCount: 2 } });
+		await store.append(meta, { type: "message", message: reply({ input: 1100 }) });
+		const row = (await replay(store, meta)).get("p/m");
+		assert.deepEqual([row?.user, row?.injected, row?.toolResults], [100, 0, 1000]);
+	});
+});
+
+test("压缩按日志的 kept 和摘要估来源，不用合成消息数取回已折叠的工具结果", async () => {
+	await withStore(async (store, root) => {
+		const meta = await store.create(root, "m");
+		await store.append(meta, { type: "event", event: { type: "context", systemPrompt: "s".repeat(400), tools: [], skills: [] } });
+		await store.append(meta, { type: "message", message: tool(10, false, "t".repeat(4000)) });
+		await store.append(meta, { type: "message", message: user("u".repeat(400)) });
+		await store.append(meta, { type: "event", event: { type: "compacted", before: 2, after: 3, kept: 1, summary: "h".repeat(400) } });
+		// 真实请求还有摘要、确认和日期块；日志只证明摘要正文及保留的一条。
+		await store.append(meta, { type: "event", event: { type: "request", provider: "p", model: "m", messageCount: 4 } });
+		const state = newUsageReplayState();
+		await replay(store, meta, state);
+		const after = (await store.get(meta.id))!.seq;
+		await store.append(meta, { type: "message", message: reply({ input: 900 }) });
+		const row = (await replay(store, meta, JSON.parse(JSON.stringify(state)) as UsageReplayState, after)).get("p/m");
+		assert.ok(row);
+		assert.deepEqual([row.system, row.user, row.injected, row.toolResults].map(Math.round), [300, 300, 300, 0]);
+		assert.equal(Math.round(sum(row, INPUT_PARTS)), 900);
+	});
+});
+
+test("子代理开场任务进入来源，续跑的派发事件不再复制已经记录的开场消息", async () => {
+	await withStore(async (store, root) => {
+		const meta = await store.create(root, "m");
+		const dispatch = { type: "subagent" as const, id: "s", agent: "general", description: "", prompt: "u".repeat(400), tools: [] };
+		await store.append(meta, { type: "event", event: dispatch });
+		await store.append(meta, { type: "event", event: { type: "subagent_event", id: "s", event: { type: "context", systemPrompt: "s".repeat(400), tools: [], skills: [] } } });
+		await store.append(meta, { type: "event", event: { type: "subagent_event", id: "s", event: { type: "request", provider: "p", model: "m", messageCount: 2 } } });
+		await store.append(meta, { type: "event", event: { type: "subagent_message", id: "s", message: reply({ input: 200, text: "" }) } });
+		let row = (await replay(store, meta)).get("p/m");
+		assert.deepEqual([row?.user, row?.system, row?.turns], [100, 100, 0]);
+		await store.append(meta, { type: "event", event: { type: "subagent_message", id: "s", message: user(dispatch.prompt) } });
+		await store.append(meta, { type: "event", event: { ...dispatch, resumed: true } });
+		await store.append(meta, { type: "event", event: { type: "subagent_event", id: "s", event: { type: "request", provider: "p", model: "m", messageCount: 4 } } });
+		await store.append(meta, { type: "event", event: { type: "subagent_message", id: "s", message: reply({ input: 300, text: "" }) } });
+		row = (await replay(store, meta)).get("p/m");
+		assert.deepEqual([row?.user, row?.system, row?.turns], [300, 200, 0]);
+	});
+});
+
+test("子代理压缩也只分配给保留尾部和日志摘要，丢弃时没有摘要就不补造正文", async () => {
+	await withStore(async (store, root) => {
+		const meta = await store.create(root, "m");
+		await store.append(meta, { type: "event", event: { type: "subagent", id: "s", agent: "general", description: "", prompt: "old".repeat(1000), tools: [] } });
+		await store.append(meta, { type: "event", event: { type: "subagent_message", id: "s", message: tool(10, false, "t".repeat(4000)) } });
+		await store.append(meta, { type: "event", event: { type: "subagent_message", id: "s", message: user("u".repeat(400)) } });
+		await store.append(meta, { type: "event", event: { type: "subagent_event", id: "s", event: { type: "compacted", before: 3, after: 2, kept: 1, summary: "" } } });
+		await store.append(meta, { type: "event", event: { type: "subagent_event", id: "s", event: { type: "request", provider: "p", model: "m", messageCount: 3 } } });
+		await store.append(meta, { type: "event", event: { type: "subagent_message", id: "s", message: reply({ input: 100 }) } });
+		const row = (await replay(store, meta)).get("p/m");
+		assert.deepEqual([row?.user, row?.injected, row?.toolResults], [100, 0, 0]);
+	});
+});
+
+test("切换模型后的用户轮次由新请求归属，尚未收到回复也不会记给旧模型", async () => {
+	await withStore(async (store, root) => {
+		const meta = await store.create(root, "a");
+		await store.append(meta, { type: "message", message: user("first") });
+		await store.append(meta, { type: "message", message: reply({ model: "a" }) });
+		await store.append(meta, { type: "message", message: user("second") });
+		await store.append(meta, { type: "event", event: { type: "request", provider: "p", model: "b", messageCount: 3 } });
+		const rows = await replay(store, meta);
+		assert.equal(rows.get("p/a")?.turns, 1);
+		assert.equal(rows.get("p/b")?.turns, 1);
+	});
+});

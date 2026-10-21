@@ -79,3 +79,23 @@ it("思考从生成里扣出来，等首字是总时长减生成", () => {
 it("耗时的单位跟着量级走", () => {
 	assert.deepEqual([450, 9_949, 9_960, 59_600, 931_000, 7_500_000].map(formatDuration), ["450ms", "9.9s", "10s", "1m00s", "15m31s", "2h05m"]);
 });
+
+
+it("扫描只累计游标快照以内的记录，并发追加留给下次且只算一次", async () => {
+	const meta = await store.create(home, "m");
+	await store.append(meta, { type: "message", message: tool(100) });
+	const cursors = store.usageCursors.bind(store);
+	let appended = false;
+	mock.method(store, "usageCursors", async () => {
+		const snapshot = await cursors();
+		if (!appended) {
+			appended = true;
+			await store.append(meta, { type: "message", message: tool(30) });
+		}
+		return snapshot;
+	});
+	const total = async () => (await scanActivity(store, home)).reduce((sum, row) => sum + row.toolMs, 0);
+	assert.equal(await total(), 100);
+	assert.equal(await total(), 130);
+	assert.equal(await total(), 130);
+});

@@ -29,7 +29,7 @@ interface UsageCache extends UsageTally {
  * 这张缓存按「读过的行不再读」工作，快是快在这里，代价是它记的是**上一版扫描器的结论**。所以凡是
  * 改变了从一行里读出什么的改动，都必须在这里加一，否则数字永远停在旧口径上——读过的行不会再被重算。
  */
-export const USAGE_CACHE_VERSION = 12 as const;
+export const USAGE_CACHE_VERSION = 13 as const;
 
 const BUCKET_NUMBERS: (keyof UsageBucket)[] = [
 	"input", "output", "cacheRead", "cacheWrite", "reasoning", "cost", "inputCost", "outputCost",
