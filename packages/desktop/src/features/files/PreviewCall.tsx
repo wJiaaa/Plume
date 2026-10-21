@@ -19,27 +19,10 @@
  */
 
 import { useEffect, useState, type ReactNode } from "react";
-import type { Message } from "@plume/core";
 import { useScopedFromMessages } from "../../app/session-scope.tsx";
+import { argumentsSoFar } from "../../lib/streamed-arguments.ts";
 import { PreviewDraft } from "./PreviewDraft.tsx";
 import { draftArguments, draftDocument } from "./preview-draft.ts";
-
-/**
- * The call's arguments text as it stands in the transcript now.
- *
- * Read here rather than taken from the row: the row is redrawn when the transcript's shape changes
- * (`sameRun`), not on every streamed piece of one call's arguments, so a draft fed from it froze at
- * whatever had been written when it first appeared. A string, so only a change in it redraws. Only
- * the last few messages: the call being written is in the reply being written.
- */
-function writtenSoFar(messages: Message[], id: string): string | null {
-	for (let at = messages.length - 1; at >= Math.max(0, messages.length - 4); at--) {
-		const message = messages[at]!;
-		if (message.role !== "assistant") continue;
-		for (const block of message.content) if (block.type === "toolCall" && block.id === id) return block.argumentsText ?? null;
-	}
-	return null;
-}
 
 /** How long the page is left fading in over the draft before the draft goes — the page's own fade. */
 const HANDOVER_MS = 260;
@@ -70,7 +53,7 @@ export function PreviewCall({ block, served, page: drawPage, live, written, wait
 	fallback: (title?: string) => ReactNode;
 }) {
 	const [streamed] = useState(() => !served && (live || waiting));
-	const raw = useScopedFromMessages((messages) => (streamed ? writtenSoFar(messages, block.id) : null)) ?? block.argumentsText;
+	const raw = useScopedFromMessages((messages) => (streamed ? argumentsSoFar(messages, block.id) : null)) ?? block.argumentsText;
 	const [landed, setLanded] = useState(false);
 	const [covered, setCovered] = useState(true);
 	const [height, setHeight] = useState<number>();

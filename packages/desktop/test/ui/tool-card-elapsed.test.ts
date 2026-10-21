@@ -51,31 +51,29 @@ test("remounting does not restart the count", async () => {
 	await second.unmount();
 });
 
-test("without a start time it has not started: no timer, and no waiting for output", async () => {
+test("without a start time it has not started: no timer, and nothing to open", async () => {
 	/*
 	 * Every record carries `startedAt`; only a call with no record yet comes without one — still
 	 * being written, or written and waiting for the rest of the reply. A command that queued for
-	 * twelve seconds and ran for 32ms used to read `12s` over 「等待输出…」.
+	 * twelve seconds and ran for 32ms used to read `12s`, and opened onto 「等待输出…」.
 	 */
-	const opened = async (extra: Record<string, unknown>) => {
-		const view = await mount(h(I18nProvider, { locale: "zh-CN", children: running(extra) }));
-		await click(view.find("button[aria-expanded]"));
-		return view;
-	};
-	const queued = await opened({});
+	const card = (extra: Record<string, unknown>) => mount(h(I18nProvider, { locale: "zh-CN", children: running(extra) }));
+	const queued = await card({});
 	try {
 		await new Promise((resolve) => setTimeout(resolve, 1100));
 		const text = queued.text();
 		assert.equal(seconds(text), null, `a call that has not started is counting: ${text}`);
-		assert.ok(!text.includes("等待输出"), `a call that has not started is waiting for output: ${text}`);
-		assert.ok(text.includes("git push origin HEAD"), `the opened card lost its command: ${text}`);
+		assert.equal(queued.all("button[aria-expanded]").length, 0, "a call that has not started can be opened");
+		assert.ok(text.includes("推送已确认的任务分支"), `the row lost its words: ${text}`);
 	} finally {
 		await queued.unmount();
 	}
-	// Once it has started, the same card does say it is waiting — the check above is not vacuous.
-	const started = await opened({ startedAt: Date.now() });
+	// Once it has started, the same card opens onto the command and says it is waiting.
+	const started = await card({ startedAt: Date.now() });
 	try {
-		assert.ok(started.text().includes("等待输出"), started.text());
+		await click(started.find("button[aria-expanded]"));
+		const text = started.text();
+		assert.ok(text.includes("git push origin HEAD") && text.includes("等待输出"), text);
 	} finally {
 		await started.unmount();
 	}

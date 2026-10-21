@@ -1367,6 +1367,7 @@ export const zhCN = {
 	"gallery.conversationGone": "没能打开这张图所在的对话",
 	"toolCard.mcpServer": "MCP：{name}",
 	"toolCard.waiting": "等待输出…",
+	"toolCard.writtenLines": "已写 {n} 行",
 	"toolCard.stopped": "已停止",
 	"trajectory.loading": "读取中…",
 	"common.discard": "放弃改动",

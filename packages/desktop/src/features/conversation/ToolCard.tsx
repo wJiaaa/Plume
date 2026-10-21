@@ -32,8 +32,8 @@ interface ToolCardProps {
 	 * screenshot, which is how it was noticed.
 	 *
 	 * 没有它就是还没开跑：每条运行记录都带着开始时间，缺的只有还没有记录的调用——参数还在写，或者写完
-	 * 了在等整条回复结束。那段不计时，也不说在等输出：一条排了十二秒、只跑了 32ms 的命令，从前显示的是
-	 * 「12s · 等待输出…」。
+	 * 了在等整条回复结束。那段不计时，也不能展开：一条排了十二秒、只跑了 32ms 的命令，从前显示的是
+	 * 「12s」，点开是「等待输出…」，看上去是跑卡住了。DeepSeek Harness 也是这样，准备中的行不能展开。
 	 */
 	startedAt?: number;
 	/** 换掉前面那枚工具图标——派出去的子智能体用它自己的脸。 */
@@ -81,6 +81,8 @@ export function ToolCard({ toolName, summary, args, status, result, stateKey, st
 
 	const live = running && !pending;
 	const started = startedAt !== undefined;
+	// 点它是去别处看的（`onOpen`）不受影响：那不是展开。
+	const expandable = !onOpen && (started || !running);
 	// ly-pop 说的是「刚刚跑完」。挂载时就已结束的卡片（历史记录、第一次展开的分组）不弹，否则每次展开 +N -M 都跳一下。
 	const pop = useRef(running).current ? "ly-pop " : "";
 	// What opens under the call.
@@ -114,7 +116,7 @@ export function ToolCard({ toolName, summary, args, status, result, stateKey, st
 			 * with a command and no output section looks like a card that has lost its
 			 * output. Saying so is the difference between waiting and wondering.
 			 */}
-			{!shown && running && started && (
+			{!shown && running && (
 				<Section title={t("toolCard.outputRunning")} mono>
 					<span className="text-ink-faint">{t("toolCard.waiting")}</span>
 				</Section>
@@ -171,13 +173,13 @@ export function ToolCard({ toolName, summary, args, status, result, stateKey, st
 				// 光挂在字上而不是经 `running` 挂在外层，和一段活的那一行同一种写法。见 `RollWords`。
 				summary={<RollWords rollKey="call" text={summary} glide={live}>{summary}</RollWords>}
 				trailing={notes.length > 0 ? <span className="flex items-center gap-2">{notes}</span> : undefined}
-				open={onOpen ? undefined : open}
-				onToggle={() => (onOpen ? onOpen() : setOpen((v) => !v))}
+				open={expandable ? open : undefined}
+				onToggle={onOpen ?? (expandable ? () => setOpen((v) => !v) : undefined)}
 				label={onOpen ? openLabel : undefined}
 				data-ly-tip={onOpen ? openLabel : undefined}
 			/>
 
-			{!onOpen && (
+			{expandable && (
 				<Collapse open={open} bodyClassName="flex flex-col gap-2.5 pt-1.5 pl-[22px]">
 					<div className="overflow-hidden rounded-lg border border-line-soft bg-card/45">{body}</div>
 					{extra}

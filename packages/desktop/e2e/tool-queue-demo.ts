@@ -119,10 +119,15 @@ const BASH_CARD = `(() => {
 		seconds: title.match(/(\\d+)s$/) ? Number(title.match(/(\\d+)s$/)[1]) : null,
 		glide: Boolean(row?.querySelector('.ly-glide')),
 		status: card.getAttribute('data-ly-tool'),
+		expandable: Boolean(card.querySelector('button[aria-expanded]')),
 		body: body?.innerText.replace(/\\s+/g, ' ').trim() ?? '',
 	};
 })()`;
-interface Card { title: string; seconds: number | null; glide: boolean; status: string; body: string }
+interface Card { title: string; seconds: number | null; glide: boolean; status: string; expandable: boolean; body: string }
+
+/** write 那张卡的那一行：还在写时标题带路径，行尾说写了几行。 */
+const WRITE_ROW = `document.querySelectorAll('main [data-ly-tool]')[1]?.querySelector('.ly-flow-row')?.innerText.replace(/\\s+/g, ' ').trim() ?? ''`;
+const linesOf = (row: string) => Number(row.match(/已写 (\d+) 行/)?.[1] ?? NaN);
 
 const server = model();
 let app: RunningApp | undefined;
@@ -139,7 +144,7 @@ try {
 	stopRecording = await startRecording(PORT, frames);
 	await page.evaluate("document.fonts.ready");
 	const card = () => page.evaluate<Card | null>(BASH_CARD);
-	// 最早几次运行里见过展开着的卡在命令开跑时自己收起，之后十几次没再复现，原因未查清。读里面写着什么之前先确认它开着。
+	// 没开跑的卡不能展开，开跑之后才点得开。
 	const reopen = async () => {
 		if (await page.evaluate<boolean>(`Boolean(document.querySelector('main [data-ly-tool] .rounded-lg'))`)) return;
 		await click(page, "main [data-ly-tool] button[aria-expanded]");
@@ -166,18 +171,24 @@ try {
 	await until(page, `document.querySelector('main [data-ly-step]')`, 1200);
 	const appeared = Date.now();
 	await pause(1500);
+	const folded = await page.evaluate<string>(`document.querySelector('main [data-ly-step] .ly-flow-row')?.innerText.replace(/\\s+/g, ' ').trim() ?? ''`);
 	await shot("01_排队中_收起");
+	check("收着的那一段，那一行也说在写哪个文件、写了几行", folded.includes("sample.gd") && linesOf(folded) > 0, folded);
 	if (!(await page.evaluate<boolean>(`Boolean(document.querySelector('main [data-ly-tool]'))`))) await click(page, "main [data-ly-step] > button[aria-expanded]");
-	await until(page, `document.querySelector('main [data-ly-tool]')`, 600);
-	await click(page, "main [data-ly-tool] button[aria-expanded]");
-	await pause(2000);
+	await until(page, `document.querySelectorAll('main [data-ly-tool]').length >= 2`, 600);
+	await pause(1200);
 	const queued = await card();
 	assert.ok(queued, "bash 那张卡没画出来");
-	await shot("02_排队中_展开");
+	const early = await page.evaluate<string>(WRITE_ROW);
+	await pause(1200);
+	const later = await page.evaluate<string>(WRITE_ROW);
+	await shot("02_排队中_写文件在长");
 	check("排队时标题是模型写的说明，不是「执行命令」", queued.title.startsWith(DESCRIPTION), queued.title);
 	check("排队时不计时", queued.seconds === null, { title: queued.title, 已出现ms: Date.now() - appeared });
-	check("排队时展开只有命令和参数，没有「等待输出」", queued.body.includes("mkdir -p") && !queued.body.includes("等待输出"), queued.body.slice(-60));
+	check("排队时不能展开", !queued.expandable && queued.body === "", { expandable: queued.expandable, body: queued.body });
 	check("排队时行上照旧有流光——它确实在忙", queued.glide, queued.glide);
+	check("写着的文件标题带上路径", early.includes("sample.gd"), early);
+	check("写着的文件行尾说写了几行，而且在涨", linesOf(early) > 0 && linesOf(later) > linesOf(early), { early, later });
 
 	// 二、回复写完、bash 开跑：从 0 计起。
 	await until(page, `/\\d+s$/.test(document.querySelector('main [data-ly-tool] .ly-flow-row')?.innerText.trim() ?? '')`, 1200);
@@ -190,7 +201,7 @@ try {
 	await shot("03_真正在跑");
 	check("开跑后的秒数从它真正开始算，不含排队的那几秒", running.seconds !== null && running.seconds <= 2 && queuedFor > 6000, { 秒数: running.seconds, 排队ms: queuedFor });
 	check("开跑后标题没变", running.title.startsWith(DESCRIPTION), running.title);
-	check("开跑后展开才说在等输出", running.body.includes("等待输出"), running.body.slice(-40));
+	check("开跑后能展开，展开说在等输出", running.expandable && running.body.includes("等待输出"), running.body.slice(-40));
 
 	// 三、跑完。
 	await until(page, `document.querySelector('main [data-ly-tool]')?.getAttribute('data-ly-tool') === 'done'`, 1200);

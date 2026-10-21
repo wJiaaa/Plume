@@ -1180,6 +1180,7 @@ export const en = {
 	"gallery.conversationGone": "Couldn’t open the conversation this picture is in",
 	"toolCard.mcpServer": "MCP: {name}",
 	"toolCard.waiting": "Waiting for output…",
+	"toolCard.writtenLines": "Line {n}",
 	"toolCard.stopped": "Stopped",
 	"trajectory.loading": "Loading…",
 	"common.discard": "Discard changes",

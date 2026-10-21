@@ -32,6 +32,7 @@ import { useHeldKey } from "../../ui/motion/held.ts";
 import { describeCalls, describeOne, diffOf, foldPolls, nameCalls, polledJob, startedJob } from "./call-words.ts";
 import { thinkingLive, workbench, type Call, type Run, type Step } from "./grouping.ts";
 import { useTranscriptDisclosure } from "./view-state.ts";
+import { useWriteDraft } from "./write-draft.ts";
 
 /**
  * 一次调用画成哪一行，交给转录（`LiveToolCard`）。
@@ -119,7 +120,10 @@ function StepGroup({ step, thought, live, thinking, from, draw, drawCall }: {
 	const want = live ? (running ?? calls[calls.length - 1].block.id) : STEP;
 	// 每一句至少挂 `HOLD_MS`：一两百毫秒来一次的 read、grep 不再来一次滚一次，字读完了才换。从跑着换成总的也一样等。
 	const held = useHeldKey(want);
-	const said = held === STEP ? null : (calls.find(({ block }) => block.id === held) ?? calls[calls.length - 1]).block;
+	const current = held === STEP ? null : (calls.find(({ block }) => block.id === held) ?? calls[calls.length - 1]).block;
+	// 这一段默认收着：还在写的文件，路径和写了几行要在这一行上就看得到。见 `useWriteDraft`。
+	const unrecorded = useScopedFromToolRuns((runs) => (current ? !runs[current.id] : false));
+	const { block: said, lines } = useWriteDraft(current, unrecorded);
 	// bash 给人看的那句话只在记录的 `summary` 里，参数里是命令本身。
 	const saidSummary = useScopedFromToolRuns((runs) => (said ? runs[said.id]?.summary : undefined));
 	const root = useScopedMeta()?.cwd;
@@ -161,9 +165,10 @@ function StepGroup({ step, thought, live, thinking, from, draw, drawCall }: {
 					</RollWords>
 				}
 				trailFrom={from?.trail}
-				trailing={thinking || failed || added + removed > 0 || faces ? (
+				trailing={thinking || failed || added + removed > 0 || faces || lines ? (
 					<span className="flex items-center gap-2">
 						{faces}
+						{lines && <span className="tabular-nums text-caption">{lines}</span>}
 						{thinking}
 						{failed && <CircleX size={13} strokeWidth={1.9} className="text-danger/85" />}
 						{added + removed > 0 && (
