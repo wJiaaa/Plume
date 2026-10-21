@@ -50,7 +50,7 @@ function Legend({ rows }: { rows: { key: string; color: string; label: string; s
 			{rows.map((row) => (
 				<div key={row.key} data-usage-legend={row.key} className="min-w-0">
 					<div className="flex items-center gap-2 text-label">
-						<span className="h-2 w-2 shrink-0 rounded-[3px]" style={{ background: row.color }} />
+						<span className="h-2 w-2 shrink-0 rounded-xs" style={{ background: row.color }} />
 						<span className="min-w-0 flex-1 truncate text-ink">{row.label}</span>
 						<span className="shrink-0 font-medium text-ink tabular-nums">{row.share}</span>
 					</div>

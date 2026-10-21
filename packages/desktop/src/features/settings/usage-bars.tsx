@@ -16,7 +16,8 @@ export function seriesColor(key: string, index: number): string {
 }
 
 export function barValueLabel(value: number, metric: BarMetric): string {
-	if (metric === "cost") return formatCost(value) ?? "$0";
+	// 刻度和悬停要能区分小额费用，不能像摘要一样全写成「<$0.01」。
+	if (metric === "cost") return value > 0 && value < 1 ? `$${Number(value.toPrecision(3))}` : formatCost(value) ?? "$0";
 	if (metric === "speed") return `${Math.round(value)}`;
 	return formatCompact(value);
 }

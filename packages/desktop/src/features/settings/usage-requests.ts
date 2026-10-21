@@ -219,10 +219,11 @@ export function dailyTotals(rows: UsageRequestBucket[]): Map<string, RequestTota
 	return byDay;
 }
 
-const CSV_COLUMNS = ["hour", "provider", "model", "requests", "input", "output", "cacheRead", "cacheWrite", "cost", "timed", "timedOutput", "streamMs", "firstTokens", "firstTokenMs"] as const;
+const CSV_COLUMNS = ["hour", "provider", "model", "requests", "input", "output", "cacheRead", "cacheWrite", "cost", "timed", "timedOutput", "streamMs", "firstTokens", "firstTokenMs", "unpriced"] as const;
 
 function csvCell(value: string | number): string {
-	const text = String(value);
+	// CSV 引号只隔开列，挡不住表格公式；外部字符串要先明确标成文本。
+	const text = typeof value === "string" && /^(?:\s*[=+\-@]|[\t\r\n])/.test(value) ? `'${value}` : String(value);
 	const quoted = text.includes('"') || text.includes(",") || text.includes("\n") || text.includes("\r");
 	return quoted ? '"' + text.replaceAll('"', '""') + '"' : text;
 }
@@ -232,14 +233,15 @@ function csvCell(value: string | number): string {
  *
  * 这不是逐条请求的流水——扫描本来就只留到小时（见 `UsageRequestBucket`）。列名用英文：CSV 是
  * 交给表格软件和脚本的，列名跟着界面语言变，换一次语言脚本就读不懂了。`provider` 写名字，
- * `providerId` 另起一列：id 才认得准，名字才看得懂。
+ * `providerId` 另起一列：id 才认得准，名字才看得懂。`unpriced` 保留查不到价格的请求数，
+ * 否则零费用分不清是免费还是未知，部分计价的金额也看不出只是下限。
  */
 export function requestsCsv(rows: UsageRequestBucket[], providerName: (id: string) => string): string {
 	const header = [...CSV_COLUMNS.slice(0, 2), "providerId", ...CSV_COLUMNS.slice(2)];
 	const lines = [...rows]
 		.sort((a, b) => a.hour.localeCompare(b.hour) || a.provider.localeCompare(b.provider) || a.model.localeCompare(b.model))
 		.map((row) =>
-			[row.hour, providerName(row.provider), row.provider, row.model, row.requests, row.input, row.output, row.cacheRead, row.cacheWrite, row.cost.toFixed(6), row.timed, row.timedOutput, row.streamMs, row.firstTokens, row.firstTokenMs]
+			[row.hour, providerName(row.provider), row.provider, row.model, row.requests, row.input, row.output, row.cacheRead, row.cacheWrite, row.cost.toFixed(6), row.timed, row.timedOutput, row.streamMs, row.firstTokens, row.firstTokenMs, row.unpriced]
 				.map(csvCell)
 				.join(","),
 		);

@@ -77,4 +77,40 @@ describe("request view arithmetic", () => {
 		const csv = requestsCsv([row({ provider: "p1" })], () => 'Relay, "fast"');
 		assert.match(csv.split("\n")[1], /^2026-10-20 10,"Relay, ""fast""",p1,m,1,/);
 	});
+
+	for (const [value, cell] of [
+		["=1+1", "'=1+1"],
+		["+1+1", "'+1+1"],
+		["-1+1", "'-1+1"],
+		["@SUM(1)", "'@SUM(1)"],
+		[" \t=1+1", "' \t=1+1"],
+		["\tplain", "'\tplain"],
+		["=HYPERLINK(\"https://example.com\",\"open\")", "\"'=HYPERLINK(\"\"https://example.com\"\",\"\"open\"\")\""],
+		["\r=1+1", "\"'\r=1+1\""],
+		["\n=1+1", "\"'\n=1+1\""],
+	]) {
+		it(`exports formula-like text as text: ${JSON.stringify(value)}`, () => {
+			const csv = requestsCsv([row({ provider: value, model: value })], () => value);
+			assert.ok(csv.slice(csv.indexOf("\n") + 1).startsWith(`2026-10-20 10,${cell},${cell},${cell},1,100,50,300,0,0.100000,`), csv);
+		});
+	}
+
+	it("exports unpriced counts without confusing unknown cost with free usage", () => {
+		const csv = requestsCsv([
+			row({ model: "free", cost: 0, unpriced: 0 }),
+			row({ model: "unknown", cost: 0, unpriced: 1 }),
+			row({ model: "mixed", requests: 3, cost: 0.1, unpriced: 2 }),
+		], (id) => id);
+		const [header, ...lines] = csv.split("\n");
+		assert.equal(header, "hour,provider,providerId,model,requests,input,output,cacheRead,cacheWrite,cost,timed,timedOutput,streamMs,firstTokens,firstTokenMs,unpriced");
+		assert.deepEqual(lines.map((line) => {
+			const cells = line.split(",");
+			assert.equal(cells.length, header.split(",").length);
+			return [cells[3], cells[4], cells[9], cells.at(-1)];
+		}), [
+			["free", "1", "0.000000", "0"],
+			["mixed", "3", "0.100000", "2"],
+			["unknown", "1", "0.000000", "1"],
+		]);
+	});
 });
