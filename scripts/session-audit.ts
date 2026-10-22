@@ -12,6 +12,7 @@
  *   - 回合结束的原因分布变了吗（第 5 节）
  *   - 提示缓存的前缀有没有在哪一次请求被打断（第 10 节的「原因不明」）
  *   - 压缩让人干等了多久（第 11 节）：决定值不值得把摘要挪到后台提前做
+ *   - 压缩后丢了多少、缓存隔多久还读得到（第 13、14 节，`audit-compaction.ts`）
  *
  * 读的是 `~/.plume/sessions/sessions.db` 里的真实会话，所以数字会随着你自己的使用而变。**要对照就必须是同
  * 一台机器、同一批会话的前后两次**，不同机器之间的绝对值没有可比性。
@@ -46,6 +47,8 @@ import {
 	type CacheCause,
 	type CacheRequestDiagnosis,
 } from "../packages/core/src/runtime/cache-diagnostics.ts";
+import { afterCompaction, cacheLifetime, LIFETIME_BUCKETS, type AuditBoundary } from "./audit-compaction.ts";
+import { KEEP_MIN } from "../packages/core/src/runtime/compaction/compaction-budget.ts";
 import type { Message } from "../packages/core/src/types.ts";
 
 /** 字符数换算 token 的粗系数。绝对值不重要，前后两次用同一个就行。 */
@@ -62,6 +65,8 @@ interface Call {
 	args: unknown;
 	/** 第几个助手回合发出的，用来算这条结果之后还要被重发多少轮。 */
 	round: number;
+	/** 发出它的那条助手消息在主会话消息里的下标，和压缩边界对位用。 */
+	at: number;
 }
 
 /** 一个助手回合：谁答的、发了几个调用、花了多少。 */
@@ -105,6 +110,8 @@ interface Session {
 	compactions: Compaction[];
 	/** 每次写下边界的压缩，和它之前那些摘要请求的计费（`usage` 记录，`source: "compaction"`）。 */
 	compactionRequests: CompactionRequest[];
+	/** 主会话里写下的边界，第 13 节用；子代理的不在这里。 */
+	boundaries: AuditBoundary[];
 }
 
 interface CompactionRequest {
@@ -117,6 +124,10 @@ interface CompactionRequest {
 	cacheWrite: number;
 	output: number;
 	cost: number;
+	/** 摘要请求发给了哪个模型，冷分叉要知道是哪个端点的时限放宽了。 */
+	model?: string;
+	/** 压缩开始时距上一次主请求开始多久；只有主会话的有。 */
+	idleMs?: number;
 }
 
 interface Compaction {
@@ -156,8 +167,12 @@ function loadSessions(): Session[] {
 		let round = 0;
 		const compactions = new Map<string, Compaction>();
 		const compactionRequests: CompactionRequest[] = [];
+		const boundaries: AuditBoundary[] = [];
 		// 摘要请求先计费、后写边界；分叉没成再走独立请求时，两次的账都记在这一次压缩名下。
 		let billed = { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, cost: 0 };
+		let billedModel: string | undefined;
+		let billedAt: number | undefined;
+		let lastRequestAt: number | undefined;
 		for (const line of lines) {
 			let entry: {
 				type?: string;
@@ -187,14 +202,25 @@ function loadSessions(): Session[] {
 					output: billed.output + Number(u.output ?? 0),
 					cost: billed.cost + Number((u.cost as { total?: number } | undefined)?.total ?? 0),
 				};
+				billedModel = (entry as { modelId?: string }).modelId ?? billedModel;
+				billedAt ??= entry.ts;
 			}
 			const compacted = entry.type === "event"
 				? entry.event?.type === "compacted" ? entry.event : entry.event?.type === "subagent_event" && entry.event.event?.type === "compacted" ? entry.event.event : undefined
 				: undefined;
 			if (compacted && (compacted as { kept?: number }).kept !== undefined) {
-				const { via, prefix } = compacted as { via?: string; prefix?: { change?: unknown } };
-				compactionRequests.push({ via: via ?? "unrecorded", prefixChanged: prefix?.change !== undefined, ...billed });
+				const { via, prefix, command } = compacted as { via?: string; prefix?: { change?: unknown }; command?: { timestamp?: number } };
+				// 从压缩开始算，不从计费记录算：后者在摘要写完时才落，晚了一整个请求。
+				const startedAt = command?.timestamp ?? billedAt;
+				const main = entry.event?.type === "compacted";
+				compactionRequests.push({
+					via: via ?? "unrecorded", prefixChanged: prefix?.change !== undefined, ...billed, model: billedModel,
+					idleMs: main && startedAt !== undefined && lastRequestAt !== undefined ? startedAt - lastRequestAt : undefined,
+				});
 				billed = { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, cost: 0 };
+				billedModel = undefined;
+				billedAt = undefined;
+				if (entry.event?.type === "compacted") boundaries.push({ at: mainStream.messages.length, kept: (compacted as { kept: number }).kept });
 			}
 			// 记录写下的时刻减去命令开始的时刻；同一条命令最后一次的结局算数。
 			const command = entry.type === "event" && (entry.event?.type === "command_status" || entry.event?.type === "compacted") ? entry.event.command : undefined;
@@ -219,12 +245,13 @@ function loadSessions(): Session[] {
 				userPrompts.push({ text, synthetic: message.synthetic === true });
 			} else if (message?.role === "assistant") {
 				round++;
+				if (typeof message.timestamp === "number") lastRequestAt = message.timestamp;
 				stops.push(String(message.stopReason ?? "(none)"));
 				const content = (message.content ?? []) as { type: string; id: string; name: string; arguments: unknown }[];
 				let inRound = 0;
 				for (const block of content) {
 					if (block.type === "toolCall") {
-						calls.push({ id: block.id, name: block.name, args: block.arguments, round });
+						calls.push({ id: block.id, name: block.name, args: block.arguments, round, at: mainStream.messages.length - 1 });
 						inRound++;
 						if (block.name === "todo_write" && block.arguments && typeof block.arguments === "object") {
 							const argsObj = block.arguments as { todos?: { content: string; status: string }[] };
@@ -268,6 +295,7 @@ function loadSessions(): Session[] {
 				fileEdits,
 				compactions: [...compactions.values()],
 				compactionRequests,
+				boundaries,
 			});
 	}
 	db.close();
@@ -664,6 +692,15 @@ const byVia = VIA_ORDER.map((via) => {
 	return { via, count: runs.length, inputSide, cacheRead: sum("cacheRead"), cacheReadShare: share(sum("cacheRead"), inputSide), output: sum("output"), cost: +sum("cost").toFixed(4) };
 }).filter((row) => row.count > 0);
 const forkMismatches = compactionRequests.filter((run) => run.prefixChanged).length;
+/*
+ * 冷分叉：摘要确实是分叉写的，缓存却没读到。热的分叉 cacheRead 在 99% 上下，凉了接近 0，取一半不会误判。
+ * 分叉失败后改走独立请求的那种，两次的账混在一起分不开，不算在这里。
+ */
+const COLD_FORK_SHARE = 0.5;
+const coldForks = compactionRequests.filter((run) => {
+	const inputSide = run.input + run.cacheRead + run.cacheWrite;
+	return run.via === "fork" && inputSide > 0 && run.cacheRead / inputSide < COLD_FORK_SHARE;
+});
 const compactionStats = (automatic: boolean) => {
 	const runs = compactionRuns.filter((run) => run.automatic === automatic && run.status === "done");
 	const ms = runs.map((run) => run.ms).sort((a, b) => a - b);
@@ -678,6 +715,10 @@ const compactionStats = (automatic: boolean) => {
 };
 const blockingCompactions = compactionStats(true);
 const manualCompactions = compactionStats(false);
+const folded = afterCompaction(
+	sessions.map((s) => ({ messages: s.cacheStreams[0].messages, calls: s.calls, boundaries: s.boundaries, resultChars: (id: string) => charsOf(s.results.get(id)) })),
+);
+const lifetime = [...cacheLifetime(cacheDiagnoses.map((d) => d.diagnosis))].sort(([a], [b]) => a.localeCompare(b));
 
 /*
  * 样本太薄时先说出来，写在 stderr，不进 `--json` 的输出。
@@ -745,7 +786,13 @@ if (asJson) {
 					classification: "Uncalibrated keyword proxy, not a task-success metric",
 				},
 				compactions: { automatic: blockingCompactions, manual: manualCompactions },
-				compactionRequests: { byVia, forkMismatches },
+				compactionRequests: {
+					byVia,
+					forkMismatches,
+					coldForks: coldForks.map((run) => ({ model: run.model, idleMs: run.idleMs, cacheReadShare: share(run.cacheRead, run.input + run.cacheRead + run.cacheWrite), cost: +run.cost.toFixed(4) })),
+				},
+				afterCompaction: { ...folded, foldedRereadChars: undefined, foldedRereadTokens: tk(folded.foldedRereadChars) },
+				cacheLifetime: Object.fromEntries(lifetime.map(([model, cells]) => [model, Object.fromEntries(LIFETIME_BUCKETS.map((bucket, i) => [bucket.label, cells[i]]))])),
 				cacheMisses: {
 					streams: cacheStreamCount,
 					requests: cacheSummary.requests,
@@ -924,6 +971,31 @@ else {
 		console.log(`  ${VIA_LABELS[row.via].padEnd(10)} ${pad(row.count, 6)} ${pad(row.inputSide.toLocaleString(), 14)} ${pad(row.cacheReadShare, 15)} ${pad(row.output.toLocaleString(), 10)} ${pad(`$${row.cost.toFixed(4)}`, 10)}`);
 }
 console.log(`  分叉发出前被前缀核对拦下：${forkMismatches} 次`);
+console.log(`  冷分叉（分叉写成了摘要，cacheRead 却不到一半）：${coldForks.length} 次`);
+for (const run of coldForks)
+	console.log(
+		`    ${(run.model ?? "(未记录模型)").padEnd(30)} 距上次主请求 ${run.idleMs === undefined ? "—" : `${Math.round(run.idleMs / 1000)}s`}  ` +
+			`cacheRead ${share(run.cacheRead, run.input + run.cacheRead + run.cacheWrite)}  花销 $${run.cost.toFixed(4)}`,
+	);
 console.log("  ⚠ 分叉那一行的 cacheRead 占比应接近 100%（只有新接上的几条和指令没命中）；独立请求接近 0。");
 console.log("    被拦下的每一次都说明本地拼出的请求和上一次对不上，要查——窗口太紧、thinking 预算被压缩时也会这样。");
 console.log("    「未记录路径」是改动前的日志，只能看总的 cacheRead 占比。");
+console.log("  ⚠ 冷分叉说明那个端点的「缓存还热」时限放得太宽：默认线是 `FORK_HOT_MS`，按厂商放宽的在 `ai/vendors` 的 `cacheHotMs`，对照第 14 节改。");
+
+console.log("\n── 13. 压缩之后（摘要丢了多少看这里） ──");
+if (folded.boundaries === 0) console.log("  没有写下过边界的压缩。");
+else {
+	console.log(`  主会话写下边界 ${folded.boundaries} 次；保留的尾部中位 ${folded.keptMedian} 条、约 ${folded.tailTokensMedian.toLocaleString()} token，最少 ${folded.keptMin} 条，少于 ${KEEP_MIN} 条的 ${folded.keptBelowMin} 次`);
+	console.log(`  压缩后到下一次压缩前：read ${folded.reads} 次，其中重读折叠掉的、期间没改过的文件 ${folded.foldedRereads} 次 / ${tk(folded.foldedRereadChars).toLocaleString()} token；recall ${folded.recalls} 次`);
+}
+console.log(`  ⚠ 少于 ${KEEP_MIN} 条说明保留尾部被删过了头；折叠后重读多而 recall 少，说明摘要没让模型确信它已经读过。`);
+
+console.log("\n── 14. 缓存隔多久还读得到（分叉的「缓存还热」那条线看这里） ──");
+if (lifetime.length === 0) console.log("  没有可判断的请求。");
+else {
+	console.log(`  模型                            ${LIFETIME_BUCKETS.map((bucket) => bucket.label.padStart(12)).join("")}`);
+	for (const [model, cells] of lifetime)
+		console.log(`  ${model.slice(0, 30).padEnd(30)}  ${cells.map((cell) => pad(cell.hit + cell.lost + cell.unproven ? `${cell.hit}/${cell.hit + cell.lost + cell.unproven}` : "·", 12)).join("")}`);
+}
+console.log("  每格是「命中 / 本该命中」：只数前缀有理由命中的请求，冷启动、压缩、撤回、换模型和本地改写不算。");
+console.log("  ⚠ 4.5m 之后那几格仍然稳定命中的上游，分叉的时限才值得为它放宽。");
