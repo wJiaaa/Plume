@@ -79,6 +79,8 @@ pre-push 里都是必过项：
 8. **`store`/`ui`/`lib`/`services` 不伸进某个功能域里点名文件。** 第 6 条的另一半：
    那一条只管域与域之间，从下面伸上去它看不见。壳（`app/`、`main.tsx`）不在此列——
    它们 `lazy()` 各域的整屏视图，而把那些视图放进域的出口会让打包器把整个域并回主 chunk。
+9. **`core` 里没有模块 import `kernel/`，类型也不行。** `kernel/host.ts` 是宿主装配，只有根入口
+   `src/index.ts` 转出它；接口跟着实现它的模块走（ADR-0054）。
 10. **agent 循环不 import `runtime/`、`session/`、`kernel/`。** 会话、子代理、侧聊驱动循环，循环不认识
    它们；压缩、审批、钩子、中途换模型都经 `AgentRunConfig` 交进来。循环自己做的历史剪枝在 `agent/`，
    token 估算在 `tokens.ts`。类型也算——从 `runtime/` 拿一个类型，下一次就是拿一个值。
@@ -100,11 +102,11 @@ pre-push 里都是必过项：
 | 想做的 | 去 |
 | --- | --- |
 | 加一个 IPC | `packages/contract/src/methods.ts` 登记 → `electron/ipc/<域>.ts` 注册 → `electron/preload.ts` 暴露；契约的测试会检查三处一致。手机默认调不到；要开放就加进 `contract/src/mobile.ts` 的 `MOBILE_METHODS` 并在 `electron/mobile-rpc.ts` 实现 |
-| 加一个内置工具 | `core/src/tools/`，经 `useToolRegistry` 那条缝 |
+| 加一个内置工具 | `core/src/tools/`，登记进 `tools/groups.ts` 的分组；漏登记 `test/tool-registry.test.ts` 会红 |
 | 加一个右侧面板 | `src/app/panels.tsx` 的 `BUILTIN_PANELS` 加一条；类型在 `features/dock/panels/registry.ts` |
 | 维护模型价格、能力和中转别名 | `core/src/model-catalog.ts` 与 `scripts/update-model-catalog.mjs`；`pnpm catalog:update` 更新离线数据 |
 | 某家模型的思考开关特例 | `core/src/ai/vendors/index.ts` 的 `RULES`，只收撞到过、学习表认领不了的；端点会报错并点名原因的，走 `ai/*-compat.ts` 那几张学习表 |
-| 宿主启动时装配内核 | `core/src/kernel/host.ts` 的 `bootHostKernel`；桌面端与终端共用，加一条缝只改这里 |
+| 宿主启动时的装配 | `core/src/kernel/host.ts` 的 `bootHostKernel`：建会话存储、绑宿主的 skill 注册表；桌面端与终端共用。替换一条进程级的缝（沙箱、压缩、审批……）用各模块的 `useX`，宿主给会话加工具走 `AgentSessionOptions.extraTools`，见 ADR-0054 |
 | 斜杠命令、skill 的解析与展开 | `core/src/commands/invoke.ts`（`@plume/core/commands-view`）；桌面端输入框和命令行都走它 |
 | 默认子智能体定义 | `core/src/agents-builtin.ts`；运行时与设置页共用，浏览器从 `@plume/core/agents-builtin` 导入 |
 | 改设计 token | `src/styles.css` 的 `@theme` 段 |

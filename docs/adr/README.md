@@ -59,5 +59,6 @@
 | [0051](0051-sub-agents-report-one-by-one.md) | 子代理派出即放手，跑完一个送回一个：先到的那份点名还在等谁，都回来了再合并；后台还有子代理时会话不算闲、不报完成；退出时还在跑的，重开后在人下次开口时告诉主会话（取代 ADR-0029 第 2 条） |
 | [0052](0052-macos-screenshot-helper.md) | macOS 截图快照改由常驻的 Swift 取屏小程序拍（`captureImage(in:)`，15.2+）：`desktopCapturer` 的整屏没有窗口阴影；拿不到就退回 `desktopCapturer` |
 | [0053](0053-project-is-an-id.md) | 项目按 id 认、可以重名、一个文件夹可以在好几个项目里；会话记下自己的项目（`SessionMeta.project`），不再按文件夹推算；打开文件夹不登记项目；属于文件夹的配置由共用它的项目共享（部分取代 ADR-0048） |
+| [0054](0054-host-assembly-without-kernel.md) | 删掉插件内核中间层（Context、事件总线、十个默认插件）和 `capability.js`：它们登记的都是模块自带的默认值，两条管道没有监听者；接口回到各自模块，`kernel/` 只剩宿主装配（会话存储、skill 注册表），core 里谁也不 import 它；以后插件化从按会话注入接 |
 
 写一份新的：复制最近一份的结构，编号往下走，加进这张表。

@@ -84,6 +84,17 @@ module.exports = {
 		},
 
 		{
+			name: "core-does-not-reach-the-host-assembly",
+			comment:
+				"`kernel/` 是宿主装配：建会话存储、绑 skill 注册表，桌面端和命令行经根入口调用。core 里任何模块" +
+				"都不该反过来引它——从前 `sandbox/`、`runtime/` 为了拿接口去 import `kernel/services.ts`，依赖方向" +
+				"就是这样倒过来的（ADR-0054）。接口跟着实现它的模块走。类型也算：今天拿一个类型，明天就是拿一个值。",
+			severity: "error",
+			from: { path: "^packages/core/src/", pathNot: "^packages/core/src/(index\\.ts$|kernel/)" },
+			to: { path: "^packages/core/src/kernel/" },
+		},
+
+		{
 			name: "loop-sits-below-the-session",
 			comment:
 				"The agent loop is driven by the session, sub-agents and the side chat; it does not " +

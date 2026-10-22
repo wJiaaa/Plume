@@ -324,7 +324,7 @@ tag 说明和 GitHub Release 正文都由 `scripts/changelog-section.mjs` 从这
 | `packages/core/src/agent/` | 一轮循环、工具执行、重复检测、发给模型前的历史剪枝 |
 | `packages/core/src/runtime/` | 会话、日志、审批、任务队列、压缩 |
 | `packages/core/src/tools/` | 内置工具。`risk*.ts` 判定哪些命令需要人来点头 |
-| `packages/core/src/kernel/` | 插件内核：服务、事件、十条缝 |
+| `packages/core/src/kernel/` | 宿主装配：会话存储与宿主的 skill 注册表。core 里谁也不 import 它 |
 | `packages/cli/` | 非交互命令行，评测用：一个任务进、回答出，见 ADR-0031 |
 | `packages/desktop/electron/` | 主进程：IPC、窗口、Git |
 | `packages/desktop/src/` | 渲染进程。9 个目录，见 ARCHITECTURE.md |

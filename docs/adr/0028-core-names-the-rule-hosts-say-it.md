@@ -2,7 +2,7 @@
 
 - 状态：已采纳
 - 日期：2026-09-27
-- 相关：`packages/core/src/tools/risk-reasons.ts`（`RISK_REASONS`）、`tools/risk.ts` 与 `risk-tables.ts`、`risk-paths.ts`、`risk-network.ts`、`runtime/approvals.ts`（`ApprovalRequest.risk`）、`kernel/services.ts`（`ApprovalVerdict.code`）、desktop `features/conversation/approval-content.ts`（`riskSentence`）、`src/i18n/messages/*.ts` 的 `risk.*`
+- 相关：`packages/core/src/tools/risk-reasons.ts`（`RISK_REASONS`）、`tools/risk.ts` 与 `risk-tables.ts`、`risk-paths.ts`、`risk-network.ts`、`runtime/approvals.ts`（`ApprovalRequest.risk`）、`runtime/approval-policy.ts`（`ApprovalVerdict.code`，原在 `kernel/services.ts`）、desktop `features/conversation/approval-content.ts`（`riskSentence`）、`src/i18n/messages/*.ts` 的 `risk.*`
 
 ## 背景
 
