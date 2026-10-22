@@ -43,12 +43,10 @@ function drawCall({ block, stopReason, page }: Call, line?: { thinking?: ReactNo
 }
 
 /**
- * 只在这一段自己变了时重画，见 `sameStep`。
- *
- * `draw` 每次渲染都是新闭包，不比；它画出来的东西取决于的那几样外部状态由 `drawKey` 带着比。
+ * 只在这一段自己变了时重画，见 `sameStep`。`draw` 只在它画出来的东西会变时才换引用（见 `Conversation`）。
  * 漏比 `live` 的后果见 `ToolRun` 上那段：高亮会一直留在当过「正在做」的每一段上。
  */
-export const WorkStep = memo(WorkStepRow, (a, b) => a.live === b.live && a.drawKey === b.drawKey && sameStep(a.step, b.step));
+export const WorkStep = memo(WorkStepRow, (a, b) => a.live === b.live && a.draw === b.draw && sameStep(a.step, b.step));
 
 function WorkStepRow({ step, live, draw }: {
 	step: Step;
@@ -56,8 +54,6 @@ function WorkStepRow({ step, live, draw }: {
 	live: boolean;
 	/** 推理那一行怎么画，交给转录自己（`MessageRow`），这里不另做一份。 */
 	draw: (run: Run) => ReactNode;
-	/** `draw` 画出来的东西还取决于什么（会话、在不在跑、这一轮从哪起、哪几句挂时间），拼成一个串好比较。 */
-	drawKey: string;
 }) {
 	const tail = step.members[step.members.length - 1];
 	const writing = live && tail?.kind === "thinking" && thinkingLive(tail.run) ? tail.run : null;

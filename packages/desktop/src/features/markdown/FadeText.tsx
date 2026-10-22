@@ -105,24 +105,9 @@ export function useFade(text: string, length: number): { settled: number; group:
 	let settled = 0;
 	while (settled < length && now - births[settled] >= FADE) settled++;
 
-	const [, redraw] = useReducer((n: number) => n + 1, 0);
-	const fading = settled < length;
-	useEffect(() => {
-		if (!fading) return;
-		/*
-		 * 自己续拍，不等渲染完再约：最后一个字淡完之前每拍重画一次。新字是父组件在同一拍里放出来的，
-		 * 这一拍看到的还是旧的出生时刻，可能以为已经淡完就停了——所以字数一变就重新起一趟，不然新来的
-		 * 那组字停在透明度 0 上。
-		 */
-		let tick = 0;
-		const loop = () => {
-			redraw();
-			const latest = state.current?.births.at(-1) ?? 0;
-			if (performance.now() - latest < FADE) tick = requestTick(loop);
-		};
-		tick = requestTick(loop);
-		return () => cancelTick(tick);
-	}, [fading, length]);
+	// 字数一变就重新起一趟：新字是父组件在同一拍里放出来的，这一拍看到的还是旧的出生时刻，
+	// 可能以为已经淡完就停了，新来的那组字会停在透明度 0 上。
+	useRedrawWhileFading(settled < length, length, () => state.current?.births.at(-1) ?? 0);
 
 	return { settled, group: (index) => groups[index], alpha: (head) => fadeAlpha(now - births[head]) };
 }
@@ -135,20 +120,29 @@ export function FadeIn({ as: Tag, className, ...rest }: { as: "code" | "span" } 
 	const born = useRef(0);
 	if (!born.current) born.current = performance.now();
 	const alpha = fadeAlpha(performance.now() - born.current);
+	useRedrawWhileFading(alpha < 1, 0, () => born.current);
+	if (alpha >= 1) return <Tag {...rest} className={className} />;
+	return <Tag {...rest} className={className ? `${className} ly-fade-char` : "ly-fade-char"} style={{ opacity: alpha }} />;
+}
+
+/**
+ * 还有字在淡时，每拍重画一次，直到最晚出生的那个（`latestBirth`）淡完。自己续拍，不等渲染完再约。
+ * `restart` 变了就重新起一趟。
+ */
+function useRedrawWhileFading(fading: boolean, restart: number, latestBirth: () => number): void {
 	const [, redraw] = useReducer((n: number) => n + 1, 0);
-	const fading = alpha < 1;
+	const latest = useRef(latestBirth);
+	latest.current = latestBirth;
 	useEffect(() => {
 		if (!fading) return;
 		let tick = 0;
 		const loop = () => {
 			redraw();
-			if (performance.now() - born.current < FADE) tick = requestTick(loop);
+			if (performance.now() - latest.current() < FADE) tick = requestTick(loop);
 		};
 		tick = requestTick(loop);
 		return () => cancelTick(tick);
-	}, [fading]);
-	if (alpha >= 1) return <Tag {...rest} className={className} />;
-	return <Tag {...rest} className={className ? `${className} ly-fade-char` : "ly-fade-char"} style={{ opacity: alpha }} />;
+	}, [fading, restart]);
 }
 
 /** 出生了 `age` 毫秒的字此刻的透明度。曲线和从前的 CSS 动画同一条（`cubic-bezier(0.33, 0, 0.67, 1)`，近似成 smoothstep）。 */

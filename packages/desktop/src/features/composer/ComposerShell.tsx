@@ -335,15 +335,16 @@ export function ComposerShell({
    * with the level it measured, so a render that changes nothing settles on the same answer and
    * stops.
    *
-   * But only when what is in the row changed: same text and same number of elements means the same
-   * widths, and the box itself is the observer's job above. Reading `scrollWidth` lays out the whole
-   * page, and while replies stream the composer redraws for unrelated reasons — measuring on each of
-   * those was 6% of the renderer.
+   * But only when the row's markup changed: the box itself is the observer's job above, and the same
+   * markup lays out to the same widths. Reading `scrollWidth` lays out the whole page, and while
+   * replies stream the composer redraws for unrelated reasons — measuring on each of those was 6% of
+   * the renderer. The markup, not just the text: a class or an icon swapped in place changes a width
+   * without changing a word. Serialising a toolbar costs far less than the layout it saves.
    */
   const measuredFor = useRef<string | null>(null);
   useLayoutEffect(() => {
     const row = bar.current;
-    const key = row ? `${row.getElementsByTagName("*").length}|${row.textContent}` : null;
+    const key = row ? row.innerHTML : null;
     if (key === measuredFor.current) return;
     measuredFor.current = key;
     remeasure();

@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronUp } from "../../ui/icons/index.ts";
 import { translate } from "../../i18n/translate.ts";
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { ApprovalOverlay } from "./ApprovalOverlay.tsx";
 import { BackToLatest } from "./BackToLatest.tsx";
 import { Composer } from "../composer/index.ts";
@@ -140,11 +140,51 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
     return showThinking ? list : withoutThinking(list);
   }, [messages, compactions, commandRuns, hiccups, showThinking]);
   const turnStart = useMemo(() => currentTurnStart(messages), [messages]);
-  const separators = useMemo(() => timeSeparators(messages), [messages]);
-  // `draw` 闭包里除了 run 本身还读的几样；`WorkStep` 的 memo 拿它判断画出来的推理行会不会变。
-  const separatorList = [...separators].join(",");
-  const drawKey = `${activeSessionId}:${running}:${turnStart}:${separatorList}`;
+  /*
+   * 按内容记住，不按 `messages`：它每个 token 都换，跟着换的话 `draw` 也每个 token 都是新的，
+   * `WorkStep` 的 memo 就形同虚设。
+   */
+  const separatorKey = useMemo(() => [...timeSeparators(messages)].join(","), [messages]);
+  const separators = useMemo(() => new Set(separatorKey ? separatorKey.split(",").map(Number) : []), [separatorKey]);
   const questions = useMemo(() => questionsIn(messages), [messages]);
+  // 一个 Run 画成哪一行。依赖齐了它才换，`WorkStep` 的 memo 拿它的引用判断画出来的推理行会不会变。
+  /*
+   * Automatic compaction belongs on the running indicator. An explicitly submitted
+   * command keeps its own result, so the user can verify the action they requested.
+   */
+  const draw = useCallback((run: Run) =>
+  run.kind === "compaction" ? null : run.kind === "command" ? <CommandRunRow key={`${activeSessionId}:${runKey(run)}`} command={run.command} /> : run.kind === "hiccup" ? (
+    <HiccupRow key={`${activeSessionId}:${runKey(run)}`} hiccup={run.hiccup} />
+  ) : run.kind === "model" ? (
+    <ModelSwitchRow key={`${activeSessionId}:${runKey(run)}`} from={run.from} to={run.to} />
+  ) : run.kind === "message" ? (
+    <MessageRow
+      key={`${activeSessionId}:${runKey(run)}`}
+      viewKey={runKey(run)}
+      showTime={separators.has(run.index)}
+      message={run.message}
+      index={run.index}
+      upTo={run.upTo}
+      from={run.from}
+      lead={run.lead}
+      /* 页脚只给一轮的最后一句；还在跑的那一轮谁是最后一句还没定，见 `currentTurnStart`。 */
+      continued={!run.closes || (running && run.index >= turnStart)}
+      pauses={run.pauses}
+      trailer={run.trailer}
+      /* Computed with the grouping, so its identity changes only when the transcript
+       * does — see `Run` in `grouping.ts` for what recomputing it here used to cost. */
+      turnStats={run.turnStats}
+    />
+  ) : (
+    /*
+     * Keyed on the first call, not the position: inserting anything above must not
+     * make React tear this run down and build it again.
+     *
+     * 走到这里的工具段只有 `shown` 的那种（一页预览、一张会话建议）：其余的都在 `turnBlocks`
+     * 里收成了 `WorkStep`，正在做的那一步的光也由那边给。
+     */
+    <ToolRunGroup key={`${activeSessionId}:${runKey(run)}`} calls={run.calls} shown={run.shown} />
+  ), [activeSessionId, running, turnStart, separators]);
   /*
    * 先分块，再开窗——顺序反过来就是那个「点了没反应」的 bug。
    *
@@ -512,43 +552,6 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
            */}
           <div className="flex flex-col gap-2.5" data-ly-transcript-rows>
           {blocks.map((block, at) => {
-            const draw = (run: Run) =>
-            /*
-						 * Automatic compaction belongs on the running indicator. An explicitly submitted
-						 * command keeps its own result, so the user can verify the action they requested.
-             */
-            run.kind === "compaction" ? null : run.kind === "command" ? <CommandRunRow key={`${activeSessionId}:${runKey(run)}`} command={run.command} /> : run.kind === "hiccup" ? (
-              <HiccupRow key={`${activeSessionId}:${runKey(run)}`} hiccup={run.hiccup} />
-            ) : run.kind === "model" ? (
-              <ModelSwitchRow key={`${activeSessionId}:${runKey(run)}`} from={run.from} to={run.to} />
-            ) : run.kind === "message" ? (
-              <MessageRow
-                key={`${activeSessionId}:${runKey(run)}`}
-                viewKey={runKey(run)}
-                showTime={separators.has(run.index)}
-                message={run.message}
-                index={run.index}
-                upTo={run.upTo}
-                from={run.from}
-                lead={run.lead}
-                /* 页脚只给一轮的最后一句；还在跑的那一轮谁是最后一句还没定，见 `currentTurnStart`。 */
-                continued={!run.closes || (running && run.index >= turnStart)}
-                pauses={run.pauses}
-                trailer={run.trailer}
-                /* Computed with the grouping, so its identity changes only when the transcript
-                 * does — see `Run` in `grouping.ts` for what recomputing it here used to cost. */
-                turnStats={run.turnStats}
-              />
-            ) : (
-              /*
-               * Keyed on the first call, not the position: inserting anything above must not
-               * make React tear this run down and build it again.
-               *
-               * 走到这里的工具段只有 `shown` 的那种（一页预览、一张会话建议）：其余的都在 `turnBlocks`
-               * 里收成了 `WorkStep`，正在做的那一步的光也由那边给。
-               */
-              <ToolRunGroup key={`${activeSessionId}:${runKey(run)}`} calls={run.calls} shown={run.shown} />
-            );
             if (block.kind === "plain") return draw(block.runs[0]);
             /*
              * 不再有 `as Exclude<Run, { kind: "compaction" }>`。
@@ -576,7 +579,7 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
                   const entry = {
                     key: `${activeSessionId}:${item.key}`,
                     // 正在做的那一段是这一轮的最后一行：后面有了别的（下一段活、一句话），它就做完了。
-                    node: item.kind === "step" ? <WorkStep step={item.step} live={live && item === tail} draw={draw} drawKey={drawKey} /> : draw(item.run),
+                    node: item.kind === "step" ? <WorkStep step={item.step} live={live && item === tail} draw={draw} /> : draw(item.run),
                   };
                   if (item.kind !== "step") return [entry];
                   /*
