@@ -24,6 +24,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { translate } from "../../i18n/translate.ts";
 import { placeAttachments } from "../../lib/attachment-placeholders.ts";
 import { Markdown } from "../markdown/index.ts";
+import { Button } from "../../ui/primitives/Button.tsx";
 
 /** 超过这么多行才折。 */
 const FOLD_AT = 14;
@@ -86,11 +87,12 @@ export function BubbleText<File extends { name: string; label?: string }>({
 				</div>
 			</div>
 			{foldable && (
-				<button
-					type="button"
-					aria-expanded={open}
+				<Button
+					variant="subtle"
+					size="xs"
+					expanded={open}
 					data-ly-bubble-fold-toggle=""
-					className="mt-1.5 -ml-1.5 rounded-md px-1.5 text-caption font-medium text-ink-muted transition-colors hover:bg-card-hover hover:text-ink"
+					className="mt-1.5 -ml-1.5 font-medium"
 					onClick={() => {
 						setOpen(!open);
 						// 展开后往下读到了底再收起，气泡一下子矮回十行，人就落在它下面很远的地方。把它拉回视野里。
@@ -98,7 +100,7 @@ export function BubbleText<File extends { name: string; label?: string }>({
 					}}
 				>
 					{open ? translate("userMessage.showLess") : translate("userMessage.showMore")}
-				</button>
+				</Button>
 			)}
 		</div>
 	);

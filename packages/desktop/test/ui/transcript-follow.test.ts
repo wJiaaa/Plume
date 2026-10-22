@@ -90,6 +90,8 @@ async function open(id: string, props: { count?: number; tail?: string; live?: b
 	geometry.view = 400;
 	const view = await mount(h(Harness, { id, ...props }));
 	const el = view.find<HTMLDivElement>(".ly-scroll-view");
+	// 刚露面的两帧里贴底一律一步到位（`useFollowBottom` 的 `arriving`）；这里的界面是已经停稳的那种。
+	await elapse(40);
 	return { view, el };
 }
 
