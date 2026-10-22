@@ -1,8 +1,9 @@
 /**
  * 呼吸点、扫光按拍走——见 `ui/motion/ticked.ts`。
  *
- * 测试用的 DOM 不跑 CSS 动画，这里给元素塞几个假的：只看 hook 对它们做了什么。钉住三件事：点名的
- * 被暂停、之后每拍往前拨（窗口没焦点时停住）；没点名的（悬停时的滚动）一下都不碰；不再按拍走时交还给浏览器接着播。
+ * 测试用的 DOM 不跑 CSS 动画，这里给元素塞几个假的：只看 hook 对它们做了什么。钉住四件事：点名的
+ * 被暂停、之后每拍往前拨（窗口没焦点时停住）；没点名的（悬停时的滚动）一下都不碰；不再按拍走时交还给浏览器接着播；
+ * 几个元素同一拍里先读后写。
  */
 
 import assert from "node:assert/strict";
@@ -78,6 +79,49 @@ test("窗口没焦点时停在原处，回到窗口从停下的地方接着走",
 		assert.ok(breathe.currentTime - frozen < 300, `不把失焦那段补回来：跳了 ${breathe.currentTime - frozen}ms`);
 	} finally {
 		window.dispatchEvent(new Event("focus"));
+		await view.unmount();
+	}
+});
+
+test("几个元素同一拍里先全部读完再一起写，不交错", async () => {
+	const log: string[] = [];
+	const a = new FakeAnimation("ly-breathe-hue", 0);
+	const b = new FakeAnimation("ly-breathe-hue", 0);
+	for (const [name, animation] of [["a", a], ["b", b]] as const) {
+		let time = animation.currentTime;
+		Object.defineProperty(animation, "currentTime", {
+			get: () => time,
+			set: (value: number) => {
+				log.push(`write ${name}`);
+				time = value;
+			},
+		});
+	}
+	function Reader({ name, animation }: { name: string; animation: FakeAnimation }) {
+		const box = useRef<HTMLSpanElement>(null);
+		useTickedAnimations(box, NAMES);
+		return h("span", {
+			ref: (element: HTMLSpanElement | null) => {
+				box.current = element;
+				if (element)
+					Object.assign(element, {
+						getAnimations: () => {
+							log.push(`read ${name}`);
+							return [animation];
+						},
+					});
+			},
+		});
+	}
+	const view = await mount(h("div", null, h(Reader, { name: "a", animation: a }), h(Reader, { name: "b", animation: b })));
+	try {
+		await wait(200);
+		const writes = log.map((entry, at) => (entry.startsWith("write") ? at : -1)).filter((at) => at >= 0);
+		assert.ok(writes.length >= 2, `拍子在拨：${log.join(", ")}`);
+		const first = writes[0];
+		// 第一次写所在的那一拍：前面紧挨着的两次读是这一拍的，后面紧跟的是两次写。
+		assert.deepEqual(log.slice(first - 2, first + 2).map((entry) => entry.split(" ")[0]), ["read", "read", "write", "write"], log.join(", "));
+	} finally {
 		await view.unmount();
 	}
 });

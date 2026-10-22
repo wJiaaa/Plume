@@ -26,34 +26,58 @@ export const GLIDE: ReadonlySet<string> = new Set(["ly-glide"]);
 export function useTickedAnimations(ref: RefObject<HTMLElement | null>, names: ReadonlySet<string>, active = true): void {
 	useEffect(() => {
 		if (!active || motionReduced()) return;
-		// 每个动画自己走到了哪。按拍子的时间差往前拨，各自的相位不变；窗口没焦点的那几拍不拨，
-		// 回来时从停下的地方接着走，不会一下跳过去。
-		const clocks = new Map<Animation, number>();
-		let tick = 0;
-		let previous = 0;
-		const loop = (now: number) => {
-			const step = windowFocused() && previous ? now - previous : 0;
-			previous = now;
-			// 每拍现读：挂扫光的那层可能比「开始运行」晚出现（摘要是流式写进来的）。
-			for (const animation of ref.current?.getAnimations({ subtree: true }) ?? []) {
-				// 只认 CSS 动画；按属性认而不是 `instanceof`，测试用的 DOM 里没有 `CSSAnimation` 这个类。
-				if (!("animationName" in animation) || !names.has((animation as CSSAnimation).animationName)) continue;
-				let time = clocks.get(animation);
-				if (time === undefined) {
-					time = Number(animation.currentTime ?? 0);
-					animation.pause();
-				} else if (!step) continue; // 原地再写一遍也会让它重画
-				time += step;
-				clocks.set(animation, time);
-				animation.currentTime = time;
-			}
-			tick = requestTick(loop);
-		};
-		tick = requestTick(loop);
+		const entry: Entry = { ref, names, clocks: new Map() };
+		entries.add(entry);
+		if (!tick) tick = requestTick(loop);
 		return () => {
-			cancelTick(tick);
+			entries.delete(entry);
+			if (!entries.size) {
+				cancelTick(tick);
+				tick = 0;
+				previous = 0;
+			}
 			// 元素还在、只是不该再按拍走了（比如不再运行）：交还给浏览器，不留一个停住的动画。
-			for (const animation of clocks.keys()) if (animation.playState === "paused") animation.play();
+			for (const animation of entry.clocks.keys()) if (animation.playState === "paused") animation.play();
 		};
 	}, [ref, names, active]);
+}
+
+/** 一个挂着的元素，和它名下每个动画自己走到了哪。按拍子的时间差往前拨，各自的相位不变。 */
+interface Entry {
+	ref: RefObject<HTMLElement | null>;
+	names: ReadonlySet<string>;
+	clocks: Map<Animation, number>;
+}
+
+/*
+ * 所有元素共用一条循环，先全部读完再一起写。`getAnimations` 要先把样式算到最新，拨 `currentTime` 又把
+ * 样式弄脏：各走各的循环时，侧栏 N 个会话在跑就是每拍被逼着重算 N−1 次样式——`measure-batch.ts`
+ * 在滚动那边修掉的同一种读写交错。
+ */
+const entries = new Set<Entry>();
+let tick = 0;
+let previous = 0;
+
+function loop(now: number): void {
+	// 窗口没焦点的那几拍不拨，回来时从停下的地方接着走，不会一下跳过去。
+	const step = windowFocused() && previous ? now - previous : 0;
+	previous = now;
+	// 每拍现读：挂扫光的那层可能比「开始运行」晚出现（摘要是流式写进来的）。
+	const found = [...entries].map((entry) => [entry, entry.ref.current?.getAnimations({ subtree: true }) ?? []] as const);
+	for (const [entry, animations] of found) {
+		for (const animation of animations) {
+			// 只认 CSS 动画；按属性认而不是 `instanceof`，测试用的 DOM 里没有 `CSSAnimation` 这个类。
+			if (!("animationName" in animation) || !entry.names.has((animation as CSSAnimation).animationName)) continue;
+			const time = entry.clocks.get(animation);
+			if (time === undefined) {
+				entry.clocks.set(animation, Number(animation.currentTime ?? 0));
+				animation.pause();
+				continue;
+			}
+			if (!step) continue; // 原地再写一遍也会让它重画
+			entry.clocks.set(animation, time + step);
+			animation.currentTime = time + step;
+		}
+	}
+	tick = requestTick(loop);
 }

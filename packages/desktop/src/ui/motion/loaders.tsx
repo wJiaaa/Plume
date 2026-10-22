@@ -76,6 +76,8 @@ export function ActionSpinner({
 	);
 }
 
+const BREATHE = new Set(["ly-breathe-wave", "ly-breathe-hue", "ly-breathe-core"]);
+
 /**
  * 一圈波纹离开静止的中心，颜色一路走过调色板。
  *
@@ -86,8 +88,6 @@ export function ActionSpinner({
  * 颜色走完 accent → info → violet 的那 2.4 秒，是它说「跑了多久」的方式：扫一眼知道它活着，
  * 多看一会儿知道它**还**活着，而没有任何东西变快或变响。
  */
-const BREATHE = new Set(["ly-breathe-wave", "ly-breathe-hue", "ly-breathe-core"]);
-
 export function BreatheLoader({ size = 14, className = "" }: { size?: number; className?: string }) {
 	// 按拍走，不按帧：变色只能在主线程重绘，见 `ticked.ts`。
 	const box = useRef<HTMLSpanElement>(null);
