@@ -637,7 +637,11 @@ export function turnSlice(set: Set, get: Get) {
 			}
       return;
     }
-    if (settings) await get().saveSettings({ ...settings, thinking });
+    /*
+     * `lastThinking` 跟着同一次写进去。保存是整份覆盖，菜单另发一次 `{ ...旧设置, lastThinking }`
+     * 时，后返回的那次会带着旧的 `thinking` 把刚选的档位盖回去——点下去一秒后又跳回原档。
+     */
+    if (settings) await get().saveSettings({ ...settings, thinking, ...(thinking !== "off" && { lastThinking: thinking }) });
   },
 
 	/*

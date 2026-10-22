@@ -80,8 +80,11 @@ export function EffortMenu({ anchor, onClose, selection }: { anchor: Anchor; onC
 		 * chose, it is a memory of the last thing they did, and remembering it per session would
 		 * mean the switch has nothing to restore in the conversation where it matters most — a
 		 * fresh one.
+		 *
+		 * The blank conversation is left to `setThinking`, which writes it in the same save as the
+		 * level: two saves of the whole settings object race, and the stale one put the old level back.
 		 */
-		if (next !== "off" && settings.lastThinking !== next) {
+		if ((selection || meta) && next !== "off" && settings.lastThinking !== next) {
 			void useApp.getState().saveSettings({ ...settings, lastThinking: next });
 		}
 	};

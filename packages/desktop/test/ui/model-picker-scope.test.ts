@@ -163,6 +163,19 @@ test("未创建会话时仍保留新会话默认档位提示", async () => {
 	assert.match(document.querySelector('[role="group"]')?.textContent ?? "", /作为新会话的默认档位/);
 });
 
+test("空白对话里拖到的档位不会被随后那次保存盖回去", async () => {
+	view = await mount(h(I18nProvider, { locale: "zh-CN", children: h(SessionScope.Provider, { value: null }, h(EffortMenu, { anchor: { x: 20, y: 20 }, onClose: () => {} })) }));
+	const slider = document.querySelector<HTMLInputElement>('input[type="range"]');
+	assert.ok(slider, "no effort slider");
+	Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(slider, "2");
+	await fire(slider, new Event("input", { bubbles: true }));
+	for (let i = 0; i < 5; i++) await act(async () => {});
+	// 菜单曾另发一次 `{ ...旧设置, lastThinking }`，整份覆盖时带回了旧的 `thinking: "off"`。
+	assert.equal(useApp.getState().settings?.thinking, "medium", "the pick was overwritten by a stale save");
+	assert.equal(useApp.getState().settings?.lastThinking, "medium");
+	assert.deepEqual(efforts, [], "the blank screen's effort changed a conversation");
+});
+
 test("naming the live conversation acts as before, and the blank screen touches no conversation", async () => {
 	await useApp.getState().setModel("qa/model-3");
 	await useApp.getState().setModel("qa/model", { sessionId: "a" });
