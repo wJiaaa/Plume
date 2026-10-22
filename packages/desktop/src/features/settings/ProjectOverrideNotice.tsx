@@ -17,7 +17,7 @@
 
 import { folderChoiceName, onePerFolder } from "../../lib/project-identity.ts";
 import { useI18n } from "../../i18n/index.ts";
-import type { ProjectLayerView } from "../../../electron/ipc-types.ts";
+import type { ProjectLayerView } from "@plume/contract";
 import { TriangleAlert } from "../../ui/icons/index.ts";
 import { useEffect } from "react";
 import { create } from "zustand";

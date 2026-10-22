@@ -14,8 +14,15 @@
  */
 
 import { translate } from "../i18n/translate.ts";
-import type { PlumeApi } from "../../electron/ipc-types.ts";
+import type { PlumeApi } from "@plume/contract";
 import { flushPushes } from "./pushes.ts";
+
+/** What the preload puts on `window`; its shape is the contract's. */
+declare global {
+	interface Window {
+		plume: PlumeApi;
+	}
+}
 
 /**
  * The bridge, or a failure that names the cause.

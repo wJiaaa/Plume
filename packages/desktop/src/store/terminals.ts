@@ -18,7 +18,7 @@
  */
 
 import { create } from "zustand";
-import type { TerminalTab } from "../../electron/ipc-types.ts";
+import type { TerminalTab } from "@plume/contract";
 
 interface TerminalsState {
 	/** Every terminal, in the order they were opened. */

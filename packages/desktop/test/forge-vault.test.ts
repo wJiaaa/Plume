@@ -15,7 +15,7 @@ import { after, beforeEach, test } from "node:test";
 import { resetVault, seal } from "@plume/core";
 
 import { saveAccount, tokenFor } from "../electron/forge/vault.ts";
-import type { ForgeAccount } from "../electron/forge/types.ts";
+import type { ForgeAccount } from "@plume/contract";
 
 let home: string;
 const made: string[] = [];

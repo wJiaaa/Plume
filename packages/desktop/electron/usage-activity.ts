@@ -10,7 +10,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { emptyReplayRow, foldUsageRecord, newUsageReplayState, plumeHome, REPLAY_NUMBERS, type SessionStorage, type UsageReplayRow, type UsageReplayState } from "@plume/core";
-import type { UsageActivity } from "./usage-types.ts";
+import type { UsageActivity } from "@plume/contract";
 
 /** 改了「从记录里读什么」就加一，理由同 `USAGE_CACHE_VERSION`。 */
 const ACTIVITY_CACHE_VERSION = 3;

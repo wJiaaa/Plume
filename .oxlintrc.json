@@ -248,6 +248,27 @@
           }
         ]
       }
+    },
+    {
+      // 契约有两个消费者（主进程、preload），手机也读它的类型：从 core 拿的值会被拖进每一个构建。
+      // 能引哪两个入口由 .dependency-cruiser.cjs 的 contract-is-a-leaf 管，这里管「只许类型」。
+      "files": [
+        "packages/contract/src/**"
+      ],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@plume/core", "@plume/core/*"],
+                "allowTypeImports": true,
+                "message": "契约只从 core 引类型（import type），见 ADR-0055。"
+              }
+            ]
+          }
+        ]
+      }
     }
   ],
   "ignorePatterns": [

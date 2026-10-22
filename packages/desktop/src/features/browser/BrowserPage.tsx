@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { BrowserTab } from "../../../shared/browser.ts";
+import type { BrowserTab } from "@plume/contract";
 import { bridge } from "../../services/index.ts";
 import { useApp } from "../../store/index.ts";
 import { motionReduced } from "../../ui/motion/reduced.ts";

@@ -9,7 +9,7 @@ import { readdir, stat } from "node:fs/promises";
 import { basename, join, relative } from "node:path";
 import { git } from "./git-exec.ts";
 import { gitBranch, isGitRepo, worktreeRecords } from "./git-probe.ts";
-import type { RepoRef } from "./ipc-shapes.ts";
+import type { RepoRef } from "@plume/contract";
 import { canonicalPath } from "./path-key.ts";
 
 /** Directories never worth descending into when looking for repositories. */

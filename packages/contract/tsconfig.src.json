@@ -2,13 +2,17 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     /*
-     * No `lib` beyond the language, and no `types` at all.
+     * Core's `lib` and `types`, not the bare language.
      *
-     * This is what keeps the package portable. It depends on nothing, so anything may import it;
-     * a `node:` type creeping in here would compile fine and quietly change that.
+     * The contract names core's types (`import type` from `@plume/core/contract-types` and
+     * `client-types`), and core is consumed as source, so checking this package means checking the
+     * core files those types live in — with the environment core is written for. That is a fact
+     * about type checking only: what this package may *import* is held by `contract-is-a-leaf` in
+     * `.dependency-cruiser.cjs` — types from those two entries and nothing else, so neither of its
+     * consumers' builds can be handed one of core's values through it.
      */
-    "lib": ["ES2023"],
-    "types": [],
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "composite": true

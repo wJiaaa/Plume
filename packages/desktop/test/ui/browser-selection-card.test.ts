@@ -12,7 +12,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { act, createElement as h } from "react";
-import type { BrowserSelection } from "../../shared/browser.ts";
+import type { BrowserSelection } from "@plume/contract";
 import { BrowserSelectionCard } from "../../src/features/browser/BrowserSelectionCard.tsx";
 import { useApp } from "../../src/store/index.ts";
 import { mount } from "../helpers/mount.ts";

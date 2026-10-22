@@ -1,4 +1,4 @@
-import type { WorkspaceDiffFile } from "../../../electron/ipc-types.ts";
+import type { WorkspaceDiffFile } from "@plume/contract";
 
 /**
  * The listed files, with contents filled in wherever they arrived.

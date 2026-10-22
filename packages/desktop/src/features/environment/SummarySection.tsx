@@ -15,7 +15,7 @@ import { bridge } from "../../services/index.ts";
 import { useScopedMessages, useScopedRunning } from "../../app/session-scope.tsx";
 import { SkeletonBar } from "../../ui/primitives/Skeleton.tsx";
 import { exactTime, shortRelativeTime } from "../../lib/relative-time.ts";
-import type { StoredSummary } from "../../../electron/session-summary.ts";
+import type { StoredSummary } from "@plume/contract";
 import { Section, SectionLabel } from "./rows.tsx";
 
 /** 最后一条人或 agent 说出来的话是什么时候——只有它会让摘要过期，工具调用不会。 */

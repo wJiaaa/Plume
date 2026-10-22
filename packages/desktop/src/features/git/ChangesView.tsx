@@ -4,7 +4,7 @@
 import { Check, FolderTree, List, Minus, Plus, RotateCcw } from "../../ui/icons/index.ts";
 import { useEffect, useState } from "react";
 
-import type { GitStatus, GitStatusFile, WorkspaceDiffFile } from "../../../electron/ipc-types.ts";
+import type { GitStatus, GitStatusFile, WorkspaceDiffFile } from "@plume/contract";
 
 import { useConfirmer } from "../../ui/overlay/Confirm.tsx";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";

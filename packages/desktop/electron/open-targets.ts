@@ -26,16 +26,9 @@ import { app, shell } from "electron";
 import { appIcon, findApp } from "./app-icon.ts";
 import { findExecutable } from "./find-executable.ts";
 import { CANDIDATES, type Candidate, launchPlan, resolveTargetId, revealLabel } from "./open-target-ids.ts";
+import type { OpenTarget } from "@plume/contract";
 
 const execFileAsync = promisify(execFile);
-
-export interface OpenTarget {
-	/** Stable across platforms and versions; this is what settings store. */
-	id: string;
-	label: string;
-	/** A data URL of the application's own icon, where the platform can produce one. */
-	icon?: string;
-}
 
 /** Where a candidate's executable is on this machine, or null if it is not installed. */
 async function locate(candidate: Candidate): Promise<string | null> {

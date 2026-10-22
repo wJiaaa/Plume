@@ -1,6 +1,9 @@
-/** Data returned by the main-process usage scanner. */
+/**
+ * What has been spent and what is being kept: the usage page's numbers, the disk the session logs
+ * take and clearing them, and the gallery of generated pictures.
+ */
 
-import type { CacheCause, UsageReplayRow } from "@plume/core";
+import type { CacheCause, Gallery, UsageReplayRow } from "@plume/core/contract-types";
 
 /**
  * 本该从缓存读到、却按全价重算的那部分，见 core 的 `runtime/cache-diagnostics.ts`。
@@ -100,4 +103,78 @@ export interface UsageScan {
 	activity: UsageActivity[];
 	/** How many spend rows were read this time: what the cache saved is what this leaves out. */
 	scanned: number;
+}
+
+/** 一天里最后活动过的那些会话：几条，占多少。 */
+export interface StorageDay {
+	day: string;
+	sessions: number;
+	bytes: number;
+}
+
+export interface StorageUse {
+	/** 会话记录占的字节数。 */
+	bytes: number;
+	/** 有几条会话。 */
+	sessions: number;
+	/** 最早、最晚那条会话的最后活动日（本地 `YYYY-MM-DD`）。没有会话时都是 null。 */
+	earliest: string | null;
+	latest: string | null;
+	/**
+	 * 按天摊开，好让「选了这一段会删掉什么」在按下去之前就算得出来。
+	 *
+	 * 不给这个，界面只能拿总数去问「删除全部 303 条？」——而实际上落在所选范围里的可能只有 1 条。
+	 * 一个说 4 条却删 1 条的确认框已经够糟；反过来那次就是灾难，而它们是同一个 bug 的两个方向。
+	 *
+	 * 一天一行而不是一条会话一行：三百条会话摊在六十天里，六十行传过去是几 KB，而按天足够精确
+	 * ——范围本来就是按天选的。
+	 */
+	days: StorageDay[];
+}
+
+/**
+ * 要删哪一段，两头都含当天。
+ *
+ * 两个都是 null 就是全部——这是「一键清空」，而不是一个退化的区间。
+ */
+export interface ClearRange {
+	from: string | null;
+	to: string | null;
+}
+
+export interface ClearResult {
+	/** 删掉了几条会话。 */
+	removed: number;
+	/** 释放了多少字节（按删之前量到的记录大小算）。 */
+	freed: number;
+	/** 正在跑、所以没动的那几条。 */
+	skipped: number;
+}
+
+export interface UsageApi {
+	/**
+	 * Everything spent, by day and by model, read from the session logs.
+	 *
+	 * Cached between calls against each log's size and mtime, so this is expensive once and
+	 * cheap afterwards. The page does its own slicing; see `usage-requests.ts`.
+	 */
+	scan(): Promise<UsageScan>;
+	/** 这些日志在磁盘上占了多少，有几条会话，最早和最晚那条是哪天。 */
+	storage(): Promise<StorageUse>;
+	/**
+	 * 把一段时间里最后活动过的会话删掉，连同它们的聊天记录。
+	 *
+	 * `{ from: null, to: null }` 是全部。正在跑的会话跳过并在 `skipped` 里报出来——不打断一个
+	 * 正在写东西的 agent，也不假装它被删掉了。**没有回收站**，调用方负责在此之前问过。
+	 */
+	clear(range: ClearRange): Promise<ClearResult>;
+}
+
+export interface GalleryApi {
+	/**
+	 * Every picture `image_generate` drew, in every conversation, with what each was drawn from.
+	 *
+	 * A conversation is read again only after it has been written to, so asking twice is cheap.
+	 */
+	list(): Promise<Gallery>;
 }

@@ -19,7 +19,7 @@ import { looksSecret } from "@plume/core/mcp-placeholders";
 import { FolderOpen, MoreHorizontal, Plus, RefreshCw, SlidersHorizontal, Store, Trash2 } from "../../ui/icons/index.ts";
 import { Collapse } from "../../ui/layout/Collapse.tsx";
 import { useEffect, useRef, useState } from "react";
-import type { AgentCapabilities } from "../../../electron/ipc-types.ts";
+import type { AgentCapabilities } from "@plume/contract";
 import { PluginIcon } from "./PluginIcon.tsx";
 import { useConfirmer } from "../../ui/overlay/Confirm.tsx";
 import { MenuBody, MenuItem, MenuSeparator, Popover, usePopover } from "../../ui/overlay/Popover.tsx";

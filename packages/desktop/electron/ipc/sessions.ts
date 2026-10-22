@@ -25,7 +25,7 @@ import { exportTrajectory, type TrajectoryExportFormat } from "../trajectory-exp
 import { readTrajectoryChanges } from "../trajectory-changes.ts";
 import { ipcMain } from "electron";
 import { resolveSessionApproval } from "../approval-response.ts";
-import type { AgentCapabilities, PlumeApi } from "../ipc-types.ts";
+import type { AgentCapabilities, PlumeApi } from "@plume/contract";
 import {
 	editSessionMessage,
 	revertSessionMessage,

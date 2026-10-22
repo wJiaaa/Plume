@@ -12,7 +12,8 @@
 
 import type { PreviewInspection } from "@plume/core";
 import { BrowserWindow, ipcMain, type NativeImage } from "electron";
-import { PREVIEW_CHECK_MAX_HEIGHT, PREVIEW_CHECK_WIDTH, PREVIEW_MAX_HEIGHT, previewFragment, type PreviewTheme } from "../shared/preview.ts";
+import type { PreviewTheme } from "@plume/contract";
+import { PREVIEW_CHECK_MAX_HEIGHT, PREVIEW_CHECK_WIDTH, PREVIEW_MAX_HEIGHT, previewFragment } from "../shared/preview.ts";
 import { INSPECT_PARTITION, MEASURE_HEIGHT } from "./preview-protocol.ts";
 
 /** Long enough for a CDN script and a first render; a page that is still loading after this is reported as it stands. */

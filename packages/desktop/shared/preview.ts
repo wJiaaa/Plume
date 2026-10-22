@@ -8,6 +8,8 @@
  * that silently stops working, with no error anywhere.
  */
 
+import type { PreviewTheme } from "@plume/contract";
+
 /** The tallest a page is drawn in the conversation before it is folded; the reader can open the rest in place. */
 export const PREVIEW_MAX_HEIGHT = 720;
 
@@ -54,12 +56,6 @@ export const INLINE_KEY = "ly-inline";
 export const THEME_KEY = "ly-theme";
 /** What the page saved last time, handed back before its scripts run as `plume.state`. */
 export const STATE_KEY = "ly-state";
-
-export interface PreviewTheme {
-	scheme: "dark" | "light";
-	/** Custom property name → value, every name starting with `--`. */
-	vars: Record<string, string>;
-}
 
 /**
  * The fragment a page is loaded with. A fragment rather than a query, so the request — and the

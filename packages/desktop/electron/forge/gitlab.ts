@@ -13,13 +13,18 @@
  *    somebody opens the code tab and not before.
  */
 
-import type { PullRequestDetail, PullRequestSummary, WorkspaceDiffFile } from "../ipc-shapes.ts";
+import type {
+	PullRequestDetail,
+	PullRequestSummary,
+	ReviewVerdict,
+	WorkspaceDiffFile,
+} from "@plume/contract";
 import { parseUnifiedDiff } from "../diff-parse.ts";
 import { nativeText } from "../i18n.ts";
 import type { Relation } from "../pr-summary.ts";
 import { assembleDiff } from "./patch.ts";
 import { DIFF_TIMEOUT_MS, json } from "./http.ts";
-import type { ForgeConnection, ForgeDriver, ForgeIdentity, ReviewVerdict } from "./types.ts";
+import type { ForgeConnection, ForgeDriver, ForgeIdentity } from "./types.ts";
 
 /** Enough to see everything current without turning the list into an archive. */
 const PER_BUCKET = 30;

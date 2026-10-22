@@ -13,28 +13,7 @@
  * trivial to write down.
  */
 
-/**
- * Anything that suspends normal work: git will refuse to push or pull, and offering the buttons is
- * offering an error.
- *
- * `bisect` is in here for the same reason as the rest even though git would technically allow a
- * push: you are in the middle of a search, and the commit checked out is not one you chose.
- */
-export type GitOperation = "rebase" | "merge" | "cherry-pick" | "revert" | "bisect";
-
-export type RemoteState =
-	/** No commit exists yet, so there is nothing that could be pushed. */
-	| "no-commits"
-	/** A rebase / merge / … is unfinished. Finish or abort it before anything else. */
-	| "in-progress"
-	/** Not on a branch. There is no "here" for a push to mean. */
-	| "detached"
-	/** A repository with no remotes at all — a perfectly ordinary way to work. */
-	| "none"
-	/** Remotes exist, this branch tracks none of them. */
-	| "no-upstream"
-	/** The ordinary case: a branch with an upstream. */
-	| "tracking";
+import type { GitOperation, RemoteState } from "@plume/contract";
 
 export interface RemoteStanding {
 	state: RemoteState;

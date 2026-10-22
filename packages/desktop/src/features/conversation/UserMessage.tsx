@@ -1,8 +1,5 @@
 import { translate } from "../../i18n/translate.ts";
-import type {
-  UserContent,
-  UserMessage as UserMessageType,
-} from "@plume/core";
+import type { SkillEntry, UserContent, UserMessage as UserMessageType } from "@plume/core";
 import { MessageSquarePlus, Pencil, Boxes, MessagesSquare, Undo2 } from "../../ui/icons/index.ts";
 import { attachToComposer, openFromEvent, openViewer } from "../image/index.ts";
 import { AttachmentMenu, AttachmentStrip, displayName, KIND_LABEL, previewableInPanel, sentKind, type FileKind, type StripFile } from "../composer/index.ts";
@@ -19,7 +16,6 @@ import { MessageEditor } from "./message/MessageEditor.tsx";
 import { useApp } from "../../store/index.ts";
 import { useDockScope, useScopedFromMessages, useScopedMeta, useScopedRunning, useScopedSessionId } from "../../app/session-scope.tsx";
 import { bridge } from "../../services/index.ts";
-import type { SkillEntry } from "../../../electron/ipc-types.ts";
 import { useI18n } from "../../i18n/index.ts";
 import { useConfirmer } from "../../ui/overlay/Confirm.tsx";
 import { lastUserMessageIndex } from "../../lib/revert-draft.ts";

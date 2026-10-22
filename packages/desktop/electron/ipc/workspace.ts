@@ -8,7 +8,7 @@
 
 import { app, ipcMain, dialog, shell } from "electron";
 import type { Settings } from "@plume/core";
-import type { WorkspaceInfo } from "../ipc-types.ts";
+import type { WorkspaceInfo } from "@plume/contract";
 import { applySettings, settings } from "../app-settings.ts";
 import { getWindow } from "../window.ts";
 import { nativeTranslator } from "../i18n.ts";

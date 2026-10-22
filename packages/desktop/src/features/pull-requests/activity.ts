@@ -10,7 +10,7 @@
  */
 
 import { translate } from "../../i18n/translate.ts";
-import type { PullRequestDetail } from "../../../electron/ipc-types.ts";
+import type { PullRequestDetail } from "@plume/contract";
 
 /**
  * What a row is, which decides how it is drawn.

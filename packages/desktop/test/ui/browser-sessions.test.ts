@@ -13,7 +13,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 import { act, createElement as h } from "react";
-import type { BrowserState, BrowserTab } from "../../shared/browser.ts";
+import type { BrowserState, BrowserTab } from "@plume/contract";
 import { useBrowser, useBrowserView, useBrowserWorkspace } from "../../src/features/browser/browser-store.ts";
 import { BrowserTabTitle } from "../../src/features/browser/BrowserPanel.tsx";
 import { translate } from "../../src/i18n/translate.ts";

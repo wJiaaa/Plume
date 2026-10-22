@@ -11,6 +11,7 @@
  */
 
 import type { SessionMeta, SessionStorage } from "@plume/core";
+import type { ClearRange, ClearResult, StorageDay, StorageUse } from "@plume/contract";
 
 /** 本地日期键，和用量页、扫描器用的是同一个口径——不是 ISO/UTC。 */
 function dayKey(ms: number): string {
@@ -18,52 +19,6 @@ function dayKey(ms: number): string {
 	const month = `${date.getMonth() + 1}`.padStart(2, "0");
 	const day = `${date.getDate()}`.padStart(2, "0");
 	return `${date.getFullYear()}-${month}-${day}`;
-}
-
-/** 一天里最后活动过的那些会话：几条，占多少。 */
-interface StorageDay {
-	day: string;
-	sessions: number;
-	bytes: number;
-}
-
-export interface StorageUse {
-	/** 会话记录占的字节数。 */
-	bytes: number;
-	/** 有几条会话。 */
-	sessions: number;
-	/** 最早、最晚那条会话的最后活动日（本地 `YYYY-MM-DD`）。没有会话时都是 null。 */
-	earliest: string | null;
-	latest: string | null;
-	/**
-	 * 按天摊开，好让「选了这一段会删掉什么」在按下去之前就算得出来。
-	 *
-	 * 不给这个，界面只能拿总数去问「删除全部 303 条？」——而实际上落在所选范围里的可能只有 1 条。
-	 * 一个说 4 条却删 1 条的确认框已经够糟；反过来那次就是灾难，而它们是同一个 bug 的两个方向。
-	 *
-	 * 一天一行而不是一条会话一行：三百条会话摊在六十天里，六十行传过去是几 KB，而按天足够精确
-	 * ——范围本来就是按天选的。
-	 */
-	days: StorageDay[];
-}
-
-/**
- * 要删哪一段，两头都含当天。
- *
- * 两个都是 null 就是全部——这是「一键清空」，而不是一个退化的区间。
- */
-export interface ClearRange {
-	from: string | null;
-	to: string | null;
-}
-
-export interface ClearResult {
-	/** 删掉了几条会话。 */
-	removed: number;
-	/** 释放了多少字节（按删之前量到的记录大小算）。 */
-	freed: number;
-	/** 正在跑、所以没动的那几条。 */
-	skipped: number;
 }
 
 /** 落在这一段里吗。两头都含当天，空的那头表示不设限。 */

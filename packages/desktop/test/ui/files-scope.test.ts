@@ -19,7 +19,7 @@ import { DEFAULT_SETTINGS } from "@plume/core";
 import { afterEach, beforeEach, test } from "node:test";
 import { act, createElement as h, useRef } from "react";
 import type { Message, SessionMeta } from "@plume/core";
-import type { FileEntry, WorkspaceInfo } from "../../electron/ipc-types.ts";
+import type { FileEntry, WorkspaceInfo } from "@plume/contract";
 import { LayoutProvider } from "../../src/app/layout.tsx";
 import { DockScope, SessionScope } from "../../src/app/session-scope.tsx";
 import { useMention } from "../../src/features/composer/useMention.ts";

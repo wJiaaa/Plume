@@ -9,7 +9,13 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 import { act, createElement as h } from "react";
 import type { SessionMeta, UserContent } from "@plume/core";
-import type { MergeOutcome, SessionSnapshot, SyncOutcome, WorkspaceInfo, WorktreeState } from "../../electron/ipc-types.ts";
+import type {
+	MergeOutcome,
+	SessionSnapshot,
+	SyncOutcome,
+	WorkspaceInfo,
+	WorktreeState,
+} from "@plume/contract";
 import { LayoutProvider } from "../../src/app/layout.tsx";
 import { SessionScope } from "../../src/app/session-scope.tsx";
 import { Composer } from "../../src/features/composer/Composer.tsx";

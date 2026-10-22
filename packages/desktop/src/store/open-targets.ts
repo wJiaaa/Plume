@@ -17,7 +17,7 @@
 
 import { translate } from "../i18n/translate.ts";
 import { useEffect, useState } from "react";
-import type { OpenTarget } from "../../electron/ipc-types.ts";
+import type { OpenTarget } from "@plume/contract";
 import { useApp } from "./index.ts";
 import { bridge, hostPlatform } from "../services/index.ts";
 import { systemWord } from "../lib/system-words.ts";

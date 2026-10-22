@@ -1,5 +1,5 @@
 import type { Message, MessageAttachment, SessionStorage, Settings, SpawnedFrom, UserContent } from "@plume/core";
-import type { SessionSnapshot } from "./ipc-types.ts";
+import type { SessionSnapshot } from "@plume/contract";
 
 export interface InitialPrompt {
 	content: UserContent[];

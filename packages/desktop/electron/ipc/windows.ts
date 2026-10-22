@@ -12,7 +12,8 @@
  */
 
 import { BrowserWindow, ipcMain } from "electron";
-import { readFileLines, readFilePanelState, requestFilePanel, type FileLines, type FilePanelVersion } from "../../shared/file-panel-state.ts";
+import type { FileLines, FilePanelVersion } from "@plume/contract";
+import { readFileLines, readFilePanelState, requestFilePanel } from "../../shared/file-panel-state.ts";
 import {
 	broadcastSessionWindows,
 	closePanelWindow,

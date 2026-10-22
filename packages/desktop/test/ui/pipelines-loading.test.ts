@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test, type TestContext } from "node:test";
 import { Activity, act, createElement as h } from "react";
-import type { WorkflowRunSummary } from "../../electron/ipc-types.ts";
+import type { WorkflowRunSummary } from "@plume/contract";
 import { PipelinesView } from "../../src/features/git/PipelinesView.tsx";
 import { writeCachedRuns } from "../../src/features/git/pipeline-cache.ts";
 import { click, mount } from "../helpers/mount.ts";

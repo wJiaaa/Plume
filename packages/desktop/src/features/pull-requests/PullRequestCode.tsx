@@ -11,7 +11,7 @@
 
 import { translate } from "../../i18n/translate.ts";
 import { useEffect, useState } from "react";
-import type { WorkspaceDiffFile } from "../../../electron/ipc-types.ts";
+import type { WorkspaceDiffFile } from "@plume/contract";
 import { FileDiffList } from "../git/index.ts";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { CodeSkeleton } from "./PullRequestSkeleton.tsx";

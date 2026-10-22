@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import type { WorkspaceDiffFile } from "../../../electron/ipc-types.ts";
+import type { WorkspaceDiffFile } from "@plume/contract";
 import { iconColour, lookFor } from "../../ui/fileIcon.tsx";
 import { Text } from "../../ui/primitives/Text.tsx";
 import { bridge } from "../../services/index.ts";

@@ -9,7 +9,7 @@
 
 import type { SessionMeta } from "@plume/core";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { WorktreeState } from "../../../electron/ipc-types.ts";
+import type { WorktreeState } from "@plume/contract";
 import { bridge } from "../../services/index.ts";
 import { useApp } from "../../store/index.ts";
 

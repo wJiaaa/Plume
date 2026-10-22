@@ -20,7 +20,7 @@ import { pendingPreload, preloadSession, readSelectedSession, restoreLiveState, 
 import { isProjectLess } from "../lib/project-scope.ts";
 import { projectWorkspace, sessionWorkspace } from "./session-workspace.ts";
 import { sessionProject } from "../lib/project-identity.ts";
-import type { WorkspaceInfo } from "../../electron/ipc-types.ts";
+import type { WorkspaceInfo } from "@plume/contract";
 
 type Get = () => AppState;
 type Set = (partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)) => void;

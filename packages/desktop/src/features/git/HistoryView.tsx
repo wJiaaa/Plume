@@ -5,7 +5,7 @@ import { translate } from "../../i18n/translate.ts";
 import { GitCommitHorizontal } from "../../ui/icons/index.ts";
 import { useEffect, useMemo, useState } from "react";
 
-import type { GitCommit, WorkspaceDiffFile } from "../../../electron/ipc-types.ts";
+import type { GitCommit, WorkspaceDiffFile } from "@plume/contract";
 
 import { PanelEmpty } from "../../ui/layout/PanelEmpty.tsx";
 import { SkeletonBar, SkeletonList, useSlowLoad } from "../../ui/primitives/Skeleton.tsx";

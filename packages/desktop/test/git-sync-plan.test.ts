@@ -13,7 +13,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { GitStatus } from "../electron/ipc-types.ts";
+import type { GitStatus } from "@plume/contract";
 import { syncPlan } from "../src/features/git/syncPlan.ts";
 import { setActiveLocale } from "../src/i18n/translate.ts";
 

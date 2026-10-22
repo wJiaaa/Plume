@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 import { act, createElement as h, Fragment } from "react";
 import type { UserContent } from "@plume/core";
-import type { SessionSnapshot } from "../../electron/ipc-types.ts";
+import type { SessionSnapshot } from "@plume/contract";
 import { SessionScope } from "../../src/app/session-scope.tsx";
 import { LayoutProvider } from "../../src/app/layout.tsx";
 import { I18nProvider } from "../../src/i18n/index.ts";

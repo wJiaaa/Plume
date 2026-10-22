@@ -1,6 +1,6 @@
 import { translate } from "../../i18n/translate.ts";
 import { FileWarning } from "../../ui/icons/index.ts";
-import type { FileContents } from "../../../electron/ipc-types.ts";
+import type { FileContents } from "@plume/contract";
 import { CodeEditor } from "../editor/index.ts";
 import { documentKind } from "../../../shared/document-kind.ts";
 import { PdfView, WordView } from "./DocumentView.tsx";

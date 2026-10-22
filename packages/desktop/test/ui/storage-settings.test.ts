@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import { act, createElement as h } from "react";
-import type { ClearRange, ClearResult, StorageUse } from "../../electron/session-cleanup.ts";
+import type { ClearRange, ClearResult, StorageUse } from "@plume/contract";
 import { StorageSettings } from "../../src/features/settings/StorageSettings.tsx";
 import { I18nProvider } from "../../src/i18n/index.ts";
 import { click, fire, mount, type Mounted } from "../helpers/mount.ts";

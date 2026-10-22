@@ -9,7 +9,7 @@ import { afterPaint } from "../../src/lib/after-paint.ts";
 import { readSelectedSession } from "../../src/store/session-read.ts";
 import { applySessionChange } from "../../src/store/session-changes.ts";
 import { revealSession } from "../../src/features/split/actions.ts";
-import type { PlumeApi } from "../../electron/ipc-types.ts";
+import type { PlumeApi } from "@plume/contract";
 
 type Snapshot = Awaited<ReturnType<PlumeApi["sessions"]["transcript"]>>;
 let readTranscript: PlumeApi["sessions"]["transcript"];

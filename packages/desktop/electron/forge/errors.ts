@@ -12,7 +12,7 @@
  */
 
 import { nativeText, type NativeMessageKey } from "../i18n.ts";
-import type { ForgeKind } from "./types.ts";
+import type { ForgeKind } from "@plume/contract";
 
 /** A failure with the host's own status attached, so callers can tell 401 from 500. */
 export class ForgeError extends Error {

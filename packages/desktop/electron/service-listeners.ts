@@ -1,4 +1,4 @@
-import type { ServiceEndpoint } from "../shared/session-services.ts";
+import type { ServiceEndpoint } from "@plume/contract";
 
 export interface ProcessEntry { pid: number; parent: number }
 export function parseProcesses(text: string): ProcessEntry[] {

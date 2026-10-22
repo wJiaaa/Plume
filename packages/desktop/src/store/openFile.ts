@@ -15,7 +15,7 @@
  */
 
 import { create } from "zustand";
-import type { FileContents, FileEntry } from "../../electron/ipc-types.ts";
+import type { FileContents, FileEntry } from "@plume/contract";
 import type { LineRange } from "../lib/markdown/file-link.ts";
 import { baseName, isDescendantPath } from "../lib/paths.ts";
 import { bridge } from "../services/index.ts";

@@ -17,7 +17,7 @@ import { focusJob } from "../../store/job-focus.ts";
 import { useDockScope } from "../../app/session-scope.tsx";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import { openScopedPanel } from "../dock/index.ts";
-import type { SessionServices } from "../../../shared/session-services.ts";
+import type { SessionServices } from "@plume/contract";
 import { ROW, Section, SectionLabel } from "./rows.tsx";
 
 type Job = SessionServices["jobs"][number];

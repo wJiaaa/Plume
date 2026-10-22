@@ -14,10 +14,8 @@ import type { SessionMeta } from "@plume/core";
 import { git, run } from "./git-exec.ts";
 import { parseStatusZ } from "./git-parse.ts";
 import { worktreeRecords } from "./git-probe.ts";
-import type { WorktreeState } from "./worktree-types.ts";
+import type { WorktreeState } from "@plume/contract";
 import { canonicalPath, samePath } from "./path-key.ts";
-
-export type { WorktreeState };
 
 export type Owned = Pick<SessionMeta, "cwd" | "worktree">;
 

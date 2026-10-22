@@ -7,7 +7,7 @@
 
 import { FolderGit2, GitBranchPlus } from "../../ui/icons/index.ts";
 
-import type { RepoRef } from "../../../electron/ipc-types.ts";
+import type { RepoRef } from "@plume/contract";
 import { useI18n } from "../../i18n/index.ts";
 import { HoverRowMark } from "../../ui/row/HoverRow.tsx";
 import { ScrollText } from "../../ui/scroll/ScrollText.tsx";

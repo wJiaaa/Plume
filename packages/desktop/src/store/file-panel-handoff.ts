@@ -1,4 +1,5 @@
-import { mergeFilePanelChanges, type FilePanelState, type FilePanelVersion } from "../../shared/file-panel-state.ts";
+import type { FilePanelState, FilePanelVersion } from "@plume/contract";
+import { mergeFilePanelChanges } from "../../shared/file-panel-state.ts";
 import { basePanelKind } from "../lib/panel-instance.ts";
 import { baseName } from "../lib/paths.ts";
 import { bridge } from "../services/index.ts";

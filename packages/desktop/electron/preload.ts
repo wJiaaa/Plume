@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { METHODS } from "@plume/contract";
-import type { PlumeApi } from "./ipc-types.ts";
+import type { PlumeApi } from "@plume/contract";
 
 /**
  * Paint the saved theme onto the document before anything else runs.

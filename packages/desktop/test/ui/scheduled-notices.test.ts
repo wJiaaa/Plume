@@ -13,7 +13,7 @@ import { act, createElement as h, Fragment, type ReactNode } from "react";
 import { DEFAULT_SETTINGS, type ScheduledTask, type UiLocale } from "@plume/core";
 import type { SessionActivity } from "@plume/core/activity";
 
-import type { SchedulerNotice } from "../../electron/ipc-types.ts";
+import type { SchedulerNotice } from "@plume/contract";
 import { LayoutProvider } from "../../src/app/layout.tsx";
 import { SessionScope } from "../../src/app/session-scope.tsx";
 import { ScheduledAlert } from "../../src/features/scheduled/ScheduledAlert.tsx";

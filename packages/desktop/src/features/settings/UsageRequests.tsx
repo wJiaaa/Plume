@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { UsageRequestBucket, UsageScan } from "../../../electron/usage-scan.ts";
+import type { UsageRequestBucket, UsageScan } from "@plume/contract";
 import { translate, useI18n } from "../../i18n/index.ts";
 import { CalendarDays, ChartLine, RefreshCw } from "../../ui/icons/index.ts";
 import { ActionSpinner } from "../../ui/motion/loaders.tsx";

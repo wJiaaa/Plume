@@ -15,7 +15,7 @@
 
 import type { MessageKey } from "../../i18n/messages/index.ts";
 import { translate } from "../../i18n/translate.ts";
-import type { GitOperation, GitStatus, RemoteState } from "../../../electron/ipc-types.ts";
+import type { GitOperation, GitStatus, RemoteState } from "@plume/contract";
 
 /** What to call each unfinished operation. Keys — this table is built at import time. */
 const OPERATION: Record<GitOperation, MessageKey> = {

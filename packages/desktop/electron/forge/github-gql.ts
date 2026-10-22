@@ -10,7 +10,7 @@
  * The search half lives in `pr-summary.ts` next door, which predates this file and has the tests.
  */
 
-import type { PullRequestCheck, PullRequestDetail } from "../ipc-shapes.ts";
+import type { PullRequestCheck, PullRequestDetail } from "@plume/contract";
 
 /**
  * Everything the detail pane draws, for one pull request.

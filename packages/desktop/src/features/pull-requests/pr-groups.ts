@@ -9,7 +9,7 @@
 
 import type { MessageKey } from "../../i18n/messages/index.ts";
 import { translate } from "../../i18n/translate.ts";
-import type { PullRequestSummary } from "../../../electron/ipc-types.ts";
+import type { PullRequestSummary } from "@plume/contract";
 
 /** Which pull requests the list is narrowed to. Mirrors the relations the search buckets produce. */
 export type Filter = "all" | "reviewing" | "authored";

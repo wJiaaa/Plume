@@ -11,6 +11,7 @@ import { delimiter } from "node:path";
 import { promisify } from "node:util";
 
 import { explainGitFailure } from "./git-errors.ts";
+import type { RemoteResult } from "@plume/contract";
 
 const execFileAsync = promisify(execFile);
 
@@ -180,13 +181,6 @@ export async function run(cwd: string, args: string[]): Promise<{ ok: boolean; e
 		const text = (detail.stderr || detail.stdout || detail.message || "").trim();
 		return { ok: false, error: text.split("\n").slice(0, 3).join("\n") || "操作失败" };
 	}
-}
-
-export interface RemoteResult {
-	ok: boolean;
-	error?: string;
-	/** The caller stopped it. Not a failure, and nothing should be said about it. */
-	cancelled?: boolean;
 }
 
 /**

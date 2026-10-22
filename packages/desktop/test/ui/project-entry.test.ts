@@ -11,7 +11,7 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 import { DEFAULT_SETTINGS, type Settings } from "@plume/core";
-import type { SessionSnapshot, WorkspaceInfo } from "../../electron/ipc-types.ts";
+import type { SessionSnapshot, WorkspaceInfo } from "@plume/contract";
 import { useApp } from "../../src/store/index.ts";
 
 const usage = { input: 0, output: 0, total: 0, cacheRead: 0, cacheWrite: 0, cost: { input: 0, output: 0, total: 0, cacheRead: 0, cacheWrite: 0 } };

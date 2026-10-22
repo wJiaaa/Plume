@@ -9,7 +9,7 @@
  */
 
 import type { SessionMeta } from "@plume/core";
-import type { WorkspaceInfo } from "../../electron/ipc-types.ts";
+import type { WorkspaceInfo } from "@plume/contract";
 import { baseName } from "../lib/paths.ts";
 import { bridge } from "../services/index.ts";
 

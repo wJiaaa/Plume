@@ -11,7 +11,7 @@
 import assert from "node:assert/strict";
 import { test, type TestContext } from "node:test";
 import { createElement as h } from "react";
-import type { GitStatus } from "../../electron/ipc-types.ts";
+import type { GitStatus } from "@plume/contract";
 import { ChangesView } from "../../src/features/git/ChangesView.tsx";
 import { syncPlan } from "../../src/features/git/syncPlan.ts";
 import { click, mount } from "../helpers/mount.ts";

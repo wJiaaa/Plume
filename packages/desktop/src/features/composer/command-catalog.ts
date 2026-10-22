@@ -1,7 +1,7 @@
 import { translate } from "../../i18n/translate.ts";
 import { builtinCommandsFor, type CommandAction } from "@plume/core/commands-builtin";
 import { parseInvocation, promptArgumentHint, resolveCommand, skillCommandName, type McpPromptEntry, type SlashCommand } from "@plume/core/commands-view";
-import type { SkillEntry } from "../../../electron/ipc-types.ts";
+import type { SkillEntry } from "@plume/core";
 import { DESKTOP_COMMAND_ACTIONS } from "../../../shared/command-actions.ts";
 
 export interface CommandEntry {

@@ -13,12 +13,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+import type { GitOperation } from "@plume/contract";
 import {
 	classifyRemote,
 	defaultRemote,
 	hasNoCommits,
 	remoteOfUpstream,
-	type GitOperation,
 } from "../electron/git-remote-state.ts";
 
 const base = {

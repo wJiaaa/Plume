@@ -15,65 +15,7 @@ import { parseRemote, type RemoteRepo } from "./git-remote.ts";
 import { connectByHost } from "./forge/index.ts";
 import { json as forgeJson } from "./forge/http.ts";
 import type { ForgeConnection } from "./forge/types.ts";
-
-export interface ReleaseInfo {
-	currentVersion: string;
-	latestTag: string | null;
-	commitsSinceTag: { sha: string; shortSha: string; subject: string; author: string; date: string }[];
-	suggestedVersion: {
-		patch: string;
-		minor: string;
-		major: string;
-	};
-}
-
-interface WorkflowJobStep {
-	name: string;
-	status: string;
-	conclusion: string | null;
-	number: number;
-	startedAt?: string;
-	completedAt?: string;
-}
-
-interface WorkflowJob {
-	id: number;
-	name: string;
-	status: string;
-	conclusion: string | null;
-	url?: string;
-	startedAt?: string;
-	completedAt?: string;
-	steps?: WorkflowJobStep[];
-}
-
-export interface WorkflowRunSummary {
-	id: number;
-	name: string;
-	displayTitle: string;
-	event: string;
-	status: "queued" | "in_progress" | "completed" | "waiting" | "unknown";
-	conclusion: "success" | "failure" | "cancelled" | "timed_out" | "skipped" | null;
-	headBranch: string;
-	headSha: string;
-	createdAt: string;
-	url: string;
-	jobs?: WorkflowJob[];
-}
-
-export interface WorkflowRunStatus {
-	id: number;
-	name?: string;
-	displayTitle?: string;
-	event?: string;
-	status: "queued" | "in_progress" | "completed" | "waiting" | "unknown";
-	conclusion: "success" | "failure" | "cancelled" | "timed_out" | "skipped" | null;
-	url: string;
-	createdAt?: string;
-	headBranch?: string;
-	headSha?: string;
-	jobs: WorkflowJob[];
-}
+import type { ReleaseInfo, WorkflowJob, WorkflowRunStatus, WorkflowRunSummary } from "@plume/contract";
 
 /**
  * Increment semver version strings safely.

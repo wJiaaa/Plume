@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test, type TestContext } from "node:test";
 import { createElement as h } from "react";
-import type { GitStatus } from "../../electron/ipc-types.ts";
+import type { GitStatus } from "@plume/contract";
 import { BranchesView } from "../../src/features/git/BranchesView.tsx";
 import { ChangesView } from "../../src/features/git/ChangesView.tsx";
 import { GroupHeader } from "../../src/features/git/GroupHeader.tsx";

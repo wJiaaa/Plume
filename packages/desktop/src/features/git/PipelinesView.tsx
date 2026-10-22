@@ -25,7 +25,7 @@ import {
 import { Caret } from "../../ui/primitives/Caret.tsx";
 import { createPortal } from "react-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { WorkflowRunStatus, WorkflowRunSummary } from "../../../electron/ipc-types.ts";
+import type { WorkflowRunStatus, WorkflowRunSummary } from "@plume/contract";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import { ActionSpinner, StatusSpinner } from "../../ui/motion/loaders.tsx";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";

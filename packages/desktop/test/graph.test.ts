@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { buildGraph, graphWidths } from "../src/features/git/graph.ts";
-import type { GitCommit } from "../electron/ipc-types.ts";
+import type { GitCommit } from "@plume/contract";
 
 const commit = (sha: string, parents: string[]): GitCommit => ({
 	sha,

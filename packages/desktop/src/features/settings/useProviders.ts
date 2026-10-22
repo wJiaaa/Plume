@@ -19,7 +19,7 @@ import { pullModelCatalog } from "../../store/model-catalog.ts";
 import type { CatalogSyncResult } from "@plume/core/model-catalog-sync";
 import { applyModelChange, firstChatModelId, type ModelChange } from "./model-sync.ts";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ProviderTestResult } from "../../../electron/ipc-types.ts";
+import type { ProviderTestResult } from "@plume/contract";
 import { useApp } from "../../store/index.ts";
 import { bridge } from "../../services/index.ts";
 

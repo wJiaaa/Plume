@@ -15,7 +15,7 @@ import { useI18n } from "../../i18n/index.ts";
 import { bridge } from "../../services/index.ts";
 import { useApp } from "../../store/index.ts";
 import { focusPullRequest } from "../../store/pull-request-focus.ts";
-import type { PullRequestSummary } from "../../../electron/ipc-types.ts";
+import type { PullRequestSummary } from "@plume/contract";
 import { cachedPullRequests } from "../pull-requests/index.ts";
 import { ROW, Section } from "./rows.tsx";
 

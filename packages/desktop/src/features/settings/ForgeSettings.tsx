@@ -15,7 +15,7 @@
 import { translate } from "../../i18n/translate.ts";
 import { Pencil, Plus, Trash2 } from "../../ui/icons/index.ts";
 import { useEffect, useState } from "react";
-import type { ForgeAccount, ForgeKindInfo } from "../../../electron/ipc-types.ts";
+import type { ForgeAccount, ForgeKindInfo } from "@plume/contract";
 import { Avatar } from "../pull-requests/index.ts";
 import { useAccountActions, useForgeAccounts } from "../pull-requests/index.ts";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";

@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { request } from "node:http";
 import { promisify } from "node:util";
 import { backgroundJobs } from "@plume/core";
-import type { ServiceEndpoint, ServiceOutput, SessionServices } from "../shared/session-services.ts";
+import type { ServiceEndpoint, ServiceOutput, SessionServices } from "@plume/contract";
 import { advertisedEndpoints, descendants, localHost, parseLsof, parseProcesses, parseSs, parseWindowsListeners, serviceUrl, type ProcessEntry } from "./service-listeners.ts";
 import { readLogSlice } from "./log-slice.ts";
 import { sessions } from "./session-hub.ts";

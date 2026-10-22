@@ -16,7 +16,7 @@ import { useApp } from "../../src/store/index.ts";
 import { applyAgentEvent } from "../../src/store/apply-event.ts";
 import { flushCoalesced } from "../../src/store/coalesce.ts";
 import { warmSession } from "../../src/features/split/warm.ts";
-import type { PlumeApi } from "../../electron/ipc-types.ts";
+import type { PlumeApi } from "@plume/contract";
 
 type Snapshot = Awaited<ReturnType<PlumeApi["sessions"]["transcript"]>>;
 

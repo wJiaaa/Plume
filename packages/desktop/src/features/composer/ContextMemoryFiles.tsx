@@ -1,7 +1,7 @@
 import { translate } from "../../i18n/translate.ts";
 import { FileText } from "../../ui/icons/index.ts";
 import { useState } from "react";
-import type { ContextBreakdown } from "../../../electron/ipc-types.ts";
+import type { ContextBreakdown } from "@plume/core";
 import { Disclosure } from "../../ui/layout/Disclosure.tsx";
 import { ScrollText } from "../../ui/scroll/ScrollText.tsx";
 import { formatTokens } from "../../lib/format-tokens.ts";

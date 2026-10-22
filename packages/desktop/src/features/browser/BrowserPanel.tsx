@@ -3,7 +3,7 @@ import { useI18n } from "../../i18n/index.ts";
 import { AppWindow, ArrowLeft, ArrowRight, Bookmark, Check, ChevronLeft, ChevronRight, CodeXml, Ellipsis, ExternalLink, Globe, Minus, MousePointer2, Plus, RotateCw, Scan, TriangleAlert, WifiOff, X } from "../../ui/icons/index.ts";
 import { useEffect, useRef, useState } from "react";
 import { useDockScope, usePanelKind, useScopedSessionId } from "../../app/session-scope.tsx";
-import type { BrowserCommand, BrowserSelection } from "../../../shared/browser.ts";
+import type { BrowserCommand, BrowserSelection } from "@plume/contract";
 import { bridge } from "../../services/index.ts";
 import { useApp } from "../../store/index.ts";
 import { Input } from "../../ui/inputs/NativeField.tsx";

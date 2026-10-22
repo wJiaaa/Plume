@@ -6,7 +6,7 @@
 import type { HookDraft, HookEventName, HookScope } from "@plume/core";
 import { ChevronRight, Trash2 } from "../../ui/icons/index.ts";
 import { useState } from "react";
-import type { HookView } from "../../../electron/ipc-types.ts";
+import type { HookView } from "@plume/contract";
 import { useI18n } from "../../i18n/index.ts";
 import { TextArea } from "../../ui/inputs/TextArea.tsx";
 import { Button } from "../../ui/primitives/Button.tsx";

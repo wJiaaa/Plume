@@ -8,7 +8,7 @@
 
 import { git } from "./git-exec.ts";
 import { gitBranch, isGitRepo } from "./git-probe.ts";
-import type { BranchList } from "./ipc-shapes.ts";
+import type { BranchList } from "@plume/contract";
 
 /** Local and remote branches, for the switcher in the composer. */
 export async function listBranches(cwd: string): Promise<BranchList> {

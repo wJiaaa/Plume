@@ -6,6 +6,9 @@
  *   which channel does this method use      → `preload.ts`, one `invoke` per method
  *   what does it look like                  → `ipc-types.ts`, a hand-written interface
  *
+ * Both answers live in this package now: the channel here, the signature in `api.ts` and the file
+ * for its subject (ADR-0055).
+ *
  * `test/methods.test.ts` compares it with `preload.ts` and every `ipcMain.handle` in the main
  * process on every run, so none of them can drift apart again. The main process was the last one
  * added and the one that mattered most: it is the end that actually answers, and it was the end

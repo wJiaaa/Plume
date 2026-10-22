@@ -1,4 +1,4 @@
-import type { SessionChange } from "../../electron/ipc-types.ts";
+import type { SessionChange } from "@plume/contract";
 import type { AppState } from "./index.ts";
 
 type Set = (partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)) => void;

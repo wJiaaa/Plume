@@ -45,7 +45,7 @@ import { settingsAfterToggle } from "./toggle.ts";
 import { useInstall, type InstallReports } from "./useInstall.ts";
 import type { Plugin } from "@plume/core";
 import type { Skill } from "@plume/core";
-import type { AgentCapabilities } from "../../../electron/ipc-types.ts";
+import type { AgentCapabilities } from "@plume/contract";
 import { bridge } from "../../services/index.ts";
 import { Markdown } from "../markdown/index.ts";
 import { Readme } from "./Readme.tsx";

@@ -14,7 +14,7 @@ import { useI18n } from "../../i18n/index.ts";
 import { ChevronsDownUp, FilePlus2, Filter, FolderPlus, X } from "../../ui/icons/index.ts";
 import { Fragment, useCallback, useMemo, useRef, useState } from "react";
 
-import type { FileEntry } from "../../../electron/ipc-types.ts";
+import type { FileEntry } from "@plume/contract";
 import { useOpenTarget } from "../../store/open-targets.ts";
 import { useSide, openScopedPanel } from "../dock/index.ts";
 import { useDockScope, useScopedRunning } from "../../app/session-scope.tsx";

@@ -14,9 +14,7 @@ import { git, run } from "./git-exec.ts";
 import { worktreeRecords } from "./git-probe.ts";
 import { samePath } from "./path-key.ts";
 import { baseOf, conflictedFiles, countCommits, isMerging, repoRoot, uncommittedFiles, worktreeRootOf, type Owned } from "./worktree-lifecycle.ts";
-import type { MergeOutcome, Refusal, SyncOutcome } from "./worktree-types.ts";
-
-export type { MergeOutcome, SyncOutcome };
+import type { MergeOutcome, Refusal, SyncOutcome } from "@plume/contract";
 
 type Located = { repo: string; root: string | null; base: string; branch: string };
 type Refused = { kind: "refused"; reason: Refusal; detail?: string };

@@ -15,7 +15,7 @@ import { Input } from "../../ui/inputs/NativeField.tsx";
 import type { ApiFormat, ModelConfig, ProviderConfig } from "@plume/core";
 import { Activity, Check, CircleAlert, CircleHelp, Pencil, Trash2 } from "../../ui/icons/index.ts";
 import { useState } from "react";
-import type { ProviderTestResult } from "../../../electron/ipc-types.ts";
+import type { ProviderTestResult } from "@plume/contract";
 import { useConfirmer } from "../../ui/overlay/Confirm.tsx";
 import { DialogAction } from "../../ui/overlay/Dialog.tsx";
 import { ActionSpinner } from "../../ui/motion/loaders.tsx";

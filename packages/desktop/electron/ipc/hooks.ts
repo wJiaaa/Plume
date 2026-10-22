@@ -22,7 +22,7 @@ import {
 	type HooksConfig,
 } from "@plume/core";
 import { applySettings, settings } from "../app-settings.ts";
-import type { HookView, HooksView } from "../ipc-types.ts";
+import type { HookView, HooksView } from "@plume/contract";
 
 const KNOWN = new Set(["type", "command", "args", "async", "shell", "statusMessage", "timeout", "timeoutMs", "enabled"]);
 

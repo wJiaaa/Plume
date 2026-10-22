@@ -21,7 +21,7 @@ import { readRegistry, withBundle } from "./plugin-index.ts";
 import { releaseBundle, settingsAfterInstall } from "./ipc/plugin-actions.ts";
 import { sessions } from "./session-hub.ts";
 import { eachAppWindow } from "./window.ts";
-import type { PluginUpdateState } from "./ipc-types.ts";
+import type { PluginUpdateState } from "@plume/contract";
 
 /** 启动后多久第一次看：窗口先起来、会话先恢复，这件事不急于那几秒。 */
 const FIRST_CHECK_MS = 40_000;

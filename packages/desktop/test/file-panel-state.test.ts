@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mergeFilePanelChanges, readFilePanelState, requestFilePanel, type FilePanelState } from "../shared/file-panel-state.ts";
+import type { FilePanelState } from "@plume/contract";
+import { mergeFilePanelChanges, readFilePanelState, requestFilePanel } from "../shared/file-panel-state.ts";
 
 const a = { path: "/project/alpha.ts", name: "alpha.ts" };
 const b = { path: "/project/beta.ts", name: "beta.ts" };

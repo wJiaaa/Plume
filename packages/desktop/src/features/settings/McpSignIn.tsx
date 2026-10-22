@@ -6,7 +6,7 @@
  */
 
 import { useState } from "react";
-import type { AgentCapabilities } from "../../../electron/ipc-types.ts";
+import type { AgentCapabilities } from "@plume/contract";
 import { useI18n } from "../../i18n/index.ts";
 import { bridge } from "../../services/index.ts";
 import { Button } from "../../ui/primitives/Button.tsx";

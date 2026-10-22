@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { UsageRequestBucket } from "../electron/usage-scan.ts";
+import type { UsageRequestBucket } from "@plume/contract";
 import { barsFor, filterRequests, isHourly, merge, OTHER, rangeBounds, requestsCsv, requestTotals, SERIES_LIMIT, slotsFor, speedOf } from "../src/features/settings/usage-requests.ts";
 
 const NOW = new Date(2026, 9, 20, 15, 0);

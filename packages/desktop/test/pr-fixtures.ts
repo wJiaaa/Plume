@@ -6,7 +6,7 @@
  * so that no suite quietly stops covering a field because its own local factory never had it.
  */
 
-import type { PullRequestSummary } from "../electron/ipc-shapes.ts";
+import type { PullRequestSummary } from "@plume/contract";
 
 export function pr(
 	over: Partial<PullRequestSummary> & { relation: PullRequestSummary["relation"] },

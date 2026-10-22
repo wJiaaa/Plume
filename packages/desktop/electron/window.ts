@@ -12,7 +12,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { plumeHome, type Settings } from "@plume/core";
 import { app, BrowserWindow, ipcMain, nativeTheme, screen } from "electron";
-import type { FileLines } from "../shared/file-panel-state.ts";
+import type { FileLines } from "@plume/contract";
 import { MAC_MAIN_TRAFFIC_LIGHT_POSITION, MAC_TRAFFIC_LIGHT_POSITION, NATIVE_HEADER_HEIGHT } from "../shared/window-chrome.ts";
 import { appIconCandidates, dockIconCandidates, type IconLocation } from "./app-icon-path.ts";
 import { reopenMaximized, stateToSave, type Opened, type WindowState } from "./window-state.ts";

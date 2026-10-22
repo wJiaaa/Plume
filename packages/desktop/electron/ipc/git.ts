@@ -51,7 +51,8 @@ import {
 	signOut,
 } from "../forge/index.ts";
 
-import { FORGE_KINDS, type ForgeKind, type ReviewVerdict } from "../forge/types.ts";
+import type { ForgeKind, ReviewVerdict } from "@plume/contract";
+import { FORGE_KINDS } from "../forge/types.ts";
 import { RemoteCalls } from "../remote-calls.ts";
 import { nativeText } from "../i18n.ts";
 

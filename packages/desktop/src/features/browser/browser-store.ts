@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { create } from "zustand";
-import type { BrowserCommand, BrowserState, BrowserTab } from "../../../shared/browser.ts";
+import type { BrowserCommand, BrowserState, BrowserTab } from "@plume/contract";
 import { basePanelKind, panelInstance } from "../../lib/panel-instance.ts";
 import { bridge } from "../../services/index.ts";
 import { useApp } from "../../store/index.ts";

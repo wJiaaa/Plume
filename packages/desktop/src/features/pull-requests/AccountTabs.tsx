@@ -16,7 +16,7 @@
  */
 
 import { translate } from "../../i18n/translate.ts";
-import type { ForgeAccount } from "../../../electron/ipc-types.ts";
+import type { ForgeAccount } from "@plume/contract";
 import { Avatar } from "./Avatar.tsx";
 import { useRef } from "react";
 import { Sideways } from "../../ui/scroll/Sideways.tsx";

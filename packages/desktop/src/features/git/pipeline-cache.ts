@@ -4,7 +4,7 @@
  * Prevents skeleton flashing when switching back and forth between Git tabs.
  */
 
-import type { WorkflowRunStatus, WorkflowRunSummary } from "../../../electron/ipc-types.ts";
+import type { WorkflowRunStatus, WorkflowRunSummary } from "@plume/contract";
 
 const RUNS_PREFIX = "plume.pipelines.runs.v1:";
 const DETAIL_PREFIX = "plume.pipelines.detail.v1:";

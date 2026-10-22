@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createElement as h } from "react";
-import type { UsageRequestBucket } from "../../electron/usage-scan.ts";
+import type { UsageRequestBucket } from "@plume/contract";
 import { barValueLabel, UsageBarChart } from "../../src/features/settings/usage-bars.tsx";
 import { axisTicks, CHART } from "../../src/features/settings/usage-chart-hover.ts";
 import { barsFor } from "../../src/features/settings/usage-requests.ts";

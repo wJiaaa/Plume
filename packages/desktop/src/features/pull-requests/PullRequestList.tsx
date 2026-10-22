@@ -17,7 +17,7 @@ import { SearchField } from "../../ui/inputs/SearchField.tsx";
 import { ChevronRight, RefreshCw, UserPlus } from "../../ui/icons/index.ts";
 import { ActionSpinner } from "../../ui/motion/loaders.tsx";
 import { useState } from "react";
-import type { ForgeAccount, PullRequestSummary } from "../../../electron/ipc-types.ts";
+import type { ForgeAccount, PullRequestSummary } from "@plume/contract";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { AccountTabs } from "./AccountTabs.tsx";
 import { rowId } from "./pr-cache.ts";

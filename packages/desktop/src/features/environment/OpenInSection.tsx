@@ -13,7 +13,7 @@ import { useApp } from "../../store/index.ts";
 import { openLabel, revealLabel, useOpenTarget, useOpenTargets } from "../../store/open-targets.ts";
 import { useScopedWorkspace } from "../../app/session-scope.tsx";
 import { MenuBody, MenuItem, Popover, usePopover } from "../../ui/overlay/Popover.tsx";
-import type { OpenTarget } from "../../../electron/ipc-types.ts";
+import type { OpenTarget } from "@plume/contract";
 import { ROW, Section } from "./rows.tsx";
 
 function TargetIcon({ target }: { target: OpenTarget }) {

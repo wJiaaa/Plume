@@ -1,9 +1,6 @@
 /**
  * What the window is told about a conversation's own worktree (`worktree-lifecycle.ts`,
  * `worktree-merge.ts`, ADR-0050).
- *
- * Types only, importing nothing: `ipc-shapes.ts` re-exports them, and the git modules that produce
- * them reaching back into `ipc-shapes.ts` closed a loop through the session hub.
  */
 
 export interface WorktreeState {
@@ -38,3 +35,16 @@ export type SyncOutcome =
 	| { kind: "uncommitted"; files: number }
 	| { kind: "conflict"; files: string[]; base: string }
 	| { kind: "refused"; reason: Refusal; detail?: string };
+
+/**
+ * A conversation's own worktree, by conversation id: where it stands against the branch it was cut
+ * from, merging it back, and bringing that branch's new commits in. Null or `refused` for one with
+ * no worktree. Merging and syncing refuse while the conversation is running. See ADR-0050.
+ */
+export interface WorktreeApi {
+	state(sessionId: string): Promise<WorktreeState | null>;
+	merge(sessionId: string): Promise<MergeOutcome>;
+	sync(sessionId: string): Promise<SyncOutcome>;
+	/** Back out a sync left waiting on conflicts. */
+	abortSync(sessionId: string): Promise<boolean>;
+}

@@ -7,7 +7,7 @@
  * exercised by reaching GitHub is a rule nobody tests.
  */
 
-import type { PullRequestCheck, PullRequestSummary } from "./ipc-shapes.ts";
+import type { PullRequestCheck, PullRequestSummary } from "@plume/contract";
 
 /** Enough to see everything current without turning the list into an archive. */
 export const PER_BUCKET = 30;

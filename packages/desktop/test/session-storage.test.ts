@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { SessionStore } from "@plume/core";
 import { observeSessionStorage } from "../electron/session-storage.ts";
-import type { SessionChange } from "../electron/ipc-shapes.ts";
+import type { SessionChange } from "@plume/contract";
 import { readTrajectoryChanges } from "../electron/trajectory-changes.ts";
 
 test("committed cold-session changes notify every persistence path without broadcasting tokens", async () => {

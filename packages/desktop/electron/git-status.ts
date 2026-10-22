@@ -7,11 +7,11 @@
 
 import { access, readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import type { GitStatus, GitStatusFile } from "./ipc-shapes.ts";
+import type { GitOperation, GitStatus, GitStatusFile } from "@plume/contract";
 import { git, run, mapLimit, MAX_BLOB_BYTES, MAX_FILES } from "./git-exec.ts";
 import { classify } from "./git-diff.ts";
 import { parseNumstat, parseStatusZ } from "./git-parse.ts";
-import { classifyRemote, type GitOperation } from "./git-remote-state.ts";
+import { classifyRemote } from "./git-remote-state.ts";
 import { gitBranch, isGitRepo } from "./git-probe.ts";
 
 /**

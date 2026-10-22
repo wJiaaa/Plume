@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { PullRequestDetail } from "../electron/ipc-shapes.ts";
+import type { PullRequestDetail } from "@plume/contract";
 import {
 	acknowledge,
 	baseline,

@@ -28,18 +28,7 @@ import {
 	type SessionStorage,
 	type Settings,
 } from "@plume/core";
-
-export interface StoredSummary {
-	text: string;
-	/** 已经概括进去的最后一条消息的 `timestamp`。 */
-	upto: number;
-	updatedAt: number;
-}
-
-export type SummarizeResult = { summary: StoredSummary | null; error?: string };
-
-/** 推给窗口的那一份：后台开始生成时 `pending` 为真，生成完带着结果再推一次。 */
-export type SummaryUpdate = { sessionId: string; pending: boolean; summary?: StoredSummary | null; error?: string };
+import type { StoredSummary, SummarizeResult } from "@plume/contract";
 
 /** 一轮结束后静多久才生成：一问一答连着来的时候，不为每一轮各花一次。 */
 const AFTER_TURN_IDLE_MS = 60_000;

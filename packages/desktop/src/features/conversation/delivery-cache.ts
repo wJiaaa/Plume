@@ -5,7 +5,7 @@
  * a 200px insert in a list you were already reading. The cache is the last successful payload
  * for that turn, so coming back paints the card at its real height on the first frame.
  */
-import type { TurnDelivery } from "../../../electron/delivery-record.ts";
+import type { TurnDelivery } from "@plume/contract";
 
 const MAX = 32;
 const cache = new Map<string, TurnDelivery>();

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { nativeImage, webContents, type BrowserWindow, type NativeImage, type WebContents } from "electron";
-import { browserLocalPage, browserUrl, browserViewport, browserZoom, type BrowserCommand, type BrowserPointer, type BrowserState, type BrowserTab } from "../shared/browser.ts";
+import type { BrowserCommand, BrowserPointer, BrowserState, BrowserTab } from "@plume/contract";
+import { browserLocalPage, browserUrl, browserViewport, browserZoom } from "../shared/browser.ts";
 import { eachAppWindow } from "./window.ts";
 import { openLocalPage } from "./local-page.ts";
 import { watchDialogs } from "./browser-dialogs.ts";

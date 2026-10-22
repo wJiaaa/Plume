@@ -10,7 +10,7 @@ import { addMemoryEntry, annotateInjected, buildIndex, clearAllMemory, indexStat
 import { activeModelCatalog } from "@plume/core/model-catalog";
 import { syncModelCatalog } from "@plume/core/model-catalog-sync";
 import { ipcMain } from "electron";
-import type { ProviderTestResult } from "../ipc-types.ts";
+import type { ProviderTestResult } from "@plume/contract";
 import { applySettings, settings } from "../app-settings.ts";
 import { nativeText } from "../i18n.ts";
 import { registerCommandsIpc } from "./commands.ts";

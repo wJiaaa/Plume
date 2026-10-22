@@ -1,4 +1,4 @@
-import type { BrowserSelection } from "../shared/browser.ts";
+import type { BrowserSelection } from "@plume/contract";
 import { browserContents, browserScale } from "./browser-workspace.ts";
 
 const WORLD = 999;

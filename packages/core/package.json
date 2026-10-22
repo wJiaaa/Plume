@@ -9,6 +9,7 @@
 	"exports": {
 		".": "./src/index.ts",
 		"./client-types": "./src/client-types.ts",
+		"./contract-types": "./src/contract-types.ts",
 		"./thinking-options": "./src/ai/thinking-options.ts",
 		"./tokens": "./src/tokens.ts",
 		"./activity": "./src/activity.ts",

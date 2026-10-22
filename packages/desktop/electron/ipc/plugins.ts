@@ -12,7 +12,7 @@ import { ipcMain, shell } from "electron";
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
-import type { Settings, Skill } from "@plume/core";
+import type { RegistryEntry, Settings, Skill } from "@plume/core";
 import { collectSkills, commandEnv, disabledSkillMatcher, plumeHome, installEntry, loadPlugins, readInstalls, uninstallEntry } from "@plume/core";
 import { mcpStatusFor } from "../mcp-probe.ts";
 import { remoteImage } from "../avatars.ts";
@@ -23,7 +23,6 @@ import { startPluginUpdates } from "../plugin-updates.ts";
 import { dropShared } from "../registry-icons.ts";
 import { sessions } from "../session-hub.ts";
 import { releaseBundle, settingsAfterInstall, settingsAfterUninstall } from "./plugin-actions.ts";
-import type { RegistryEntry } from "../ipc-types.ts";
 
 export interface PluginsIpcDeps {
 	settings(): Settings;

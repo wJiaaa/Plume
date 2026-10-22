@@ -15,7 +15,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 import { act, createElement as h } from "react";
 import type { AssistantMessage, Message, SessionMeta, UserContent } from "@plume/core";
-import type { SessionSnapshot, WorkspaceInfo } from "../../electron/ipc-types.ts";
+import type { SessionSnapshot, WorkspaceInfo } from "@plume/contract";
 import { SessionScope, useScopedMessages, useScopedMeta, useScopedRunning } from "../../src/app/session-scope.tsx";
 import { LayoutProvider } from "../../src/app/layout.tsx";
 import { Composer } from "../../src/features/composer/Composer.tsx";

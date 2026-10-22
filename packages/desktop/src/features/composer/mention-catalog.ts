@@ -1,7 +1,6 @@
 import { activeLocale, translate } from "../../i18n/translate.ts";
-import type { ProjectEntry, SessionMeta } from "@plume/core";
+import type { ProjectEntry, SessionMeta, SkillEntry } from "@plume/core";
 import { projectLabel } from "../../lib/project-identity.ts";
-import type { SkillEntry } from "../../../electron/ipc-types.ts";
 
 export type MentionKind = "action" | "file" | "subagent" | "plugin" | "session";
 

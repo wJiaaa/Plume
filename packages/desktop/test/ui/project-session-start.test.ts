@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 import { DEFAULT_SETTINGS, type Settings, type UserContent } from "@plume/core";
-import type { PlumeApi, SessionSnapshot, WorkspaceInfo } from "../../electron/ipc-types.ts";
+import type { PlumeApi, SessionSnapshot, WorkspaceInfo } from "@plume/contract";
 import { startProjectSession } from "../../src/store/project-session.ts";
 import { useApp } from "../../src/store/index.ts";
 

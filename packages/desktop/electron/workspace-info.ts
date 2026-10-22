@@ -8,7 +8,7 @@
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import { gitBranch, probeRepo } from "./git-probe.ts";
-import type { WorkspaceInfo } from "./ipc-types.ts";
+import type { WorkspaceInfo } from "@plume/contract";
 
 /**
  * Two git calls, both of which answer instantly.

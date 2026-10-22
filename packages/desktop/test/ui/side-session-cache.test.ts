@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 import type { AssistantMessage, Message, SessionMeta } from "@plume/core";
-import type { SessionSnapshot } from "../../electron/ipc-shapes.ts";
+import type { SessionSnapshot } from "@plume/contract";
 import { useSide } from "../../src/features/dock/sideStore.ts";
 import { prune, type Cache } from "../../src/store/derive.ts";
 import { useApp, type AppState } from "../../src/store/index.ts";

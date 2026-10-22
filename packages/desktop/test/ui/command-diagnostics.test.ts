@@ -14,7 +14,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { act, createElement as h, type ReactElement } from "react";
-import type { PlumeApi } from "../../electron/ipc-types.ts";
+import type { PlumeApi } from "@plume/contract";
 import { CommandsSettings } from "../../src/features/settings/CommandsSettings.tsx";
 import { useApp } from "../../src/store/index.ts";
 import { mount, type Mounted } from "../helpers/mount.ts";

@@ -11,7 +11,7 @@
  * `previewTool`'s description, and every name there has to be one written here.
  */
 
-import type { PreviewTheme } from "../../../shared/preview.ts";
+import type { PreviewTheme } from "@plume/contract";
 
 /** The colour actually painted behind `element`: the first ancestor with a background of its own. */
 function surfaceBehind(element: Element | null): string | null {

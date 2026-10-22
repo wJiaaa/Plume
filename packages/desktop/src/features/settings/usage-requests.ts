@@ -7,7 +7,7 @@
  */
 
 import { freshTokens } from "@plume/core/tokens";
-import type { UsageCacheMiss, UsageRequestBucket } from "../../../electron/usage-scan.ts";
+import type { UsageCacheMiss, UsageRequestBucket } from "@plume/contract";
 
 export type RequestRange = "today" | "7" | "30" | "all" | "custom";
 export type Split = "model" | "modelProvider" | "provider";

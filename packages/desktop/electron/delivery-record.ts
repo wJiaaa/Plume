@@ -1,8 +1,7 @@
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
-import { computeDiff, formatDiff, plumeHome, readFileChange, type Message, type RecordedChange, type DiffHunk } from "@plume/core";
-export interface DeliveryFile { path: string; added: number; removed: number; hunks: DiffHunk[]; changeIds: string[]; canUndo: boolean }
-export interface TurnDelivery { files: DeliveryFile[]; commands: { command: string; status: string; output: string }[]; serviceJobIds: string[]; warnings: string[]; reportPath: string | null }
+import { computeDiff, formatDiff, plumeHome, readFileChange, type Message, type RecordedChange } from "@plume/core";
+import type { TurnDelivery } from "@plume/contract";
 export function deliveryMessages(messages: Message[], timestamp: number): Message[] {
 	const end = messages.findIndex((message) => message.role === "assistant" && message.timestamp === timestamp);
 	if (end < 0) throw new Error("找不到对应的回答");

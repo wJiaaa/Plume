@@ -6,7 +6,7 @@
  */
 
 import { INPUT_PARTS, OUTPUT_PARTS, type InputPart, type OutputPart } from "@plume/core/usage-parts";
-import type { UsageActivity } from "../../../electron/usage-scan.ts";
+import type { UsageActivity } from "@plume/contract";
 import { filterRequests, type RequestFilter } from "./usage-requests.ts";
 
 export type TokenPart = InputPart | OutputPart;

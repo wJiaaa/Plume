@@ -13,7 +13,7 @@
  */
 
 import type { DiffHunk } from "@plume/core";
-import type { WorkspaceDiffFile } from "./ipc-shapes.ts";
+import type { WorkspaceDiffFile } from "@plume/contract";
 
 /** Past this a diff is not being read, it is being scrolled. */
 const MAX_FILES = 300;

@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
-import type { FileContents } from "../electron/ipc-types.ts";
-import type { FilePanelState, FilePanelVersion } from "../shared/file-panel-state.ts";
+import type { FileContents, FilePanelState, FilePanelVersion } from "@plume/contract";
 import { readFilePanelState, requestFilePanel } from "../shared/file-panel-state.ts";
 
 const reads: string[] = [];

@@ -1,4 +1,4 @@
-import type { MobileMethod } from "@plume/contract";
+import type { MobileMethod } from "@plume/contract/mobile";
 import { relayRoom } from "./relay.ts";
 import type { ClientState, Connection, RemoteEvent } from "./types.ts";
 

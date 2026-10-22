@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { act, createElement as h, type ReactElement } from "react";
 import { DEFAULT_SETTINGS } from "@plume/core";
-import type { PlumeApi } from "../../electron/ipc-types.ts";
+import type { PlumeApi } from "@plume/contract";
 import { PluginsSettings } from "../../src/features/settings/PluginsSettings.tsx";
 import { SkillsSettings } from "../../src/features/settings/SkillsSettings.tsx";
 import { useApp } from "../../src/store/index.ts";

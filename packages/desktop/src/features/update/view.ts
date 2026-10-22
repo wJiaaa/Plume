@@ -10,7 +10,7 @@
  * The components below this are then only layout: they ask what to show and show it.
  */
 
-import type { UpdatePhase } from "../../../electron/ipc-types.ts";
+import type { UpdatePhase } from "@plume/contract";
 import { translate } from "../../i18n/translate.ts";
 
 export type Phase = UpdatePhase;

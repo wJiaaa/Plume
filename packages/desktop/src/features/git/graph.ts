@@ -1,4 +1,4 @@
-import type { GitCommit } from "../../../electron/ipc-types.ts";
+import type { GitCommit } from "@plume/contract";
 
 /** One drawn row: where this commit's dot sits, and every line passing through the row. */
 export interface GraphRow {

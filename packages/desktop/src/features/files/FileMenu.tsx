@@ -29,7 +29,7 @@ import {
 	Trash2,
 } from "../../ui/icons/index.ts";
 
-import type { FileEntry } from "../../../electron/ipc-types.ts";
+import type { FileEntry } from "@plume/contract";
 import { openLabel, useOpenTarget, useRevealLabel } from "../../store/open-targets.ts";
 import { ContextMenu } from "../../ui/overlay/ContextMenu.tsx";
 import { MenuItem, MenuSeparator } from "../../ui/overlay/Menu.tsx";

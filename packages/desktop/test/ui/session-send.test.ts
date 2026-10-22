@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 import type { UserContent } from "@plume/core";
-import type { SessionSnapshot } from "../../electron/ipc-types.ts";
+import type { SessionSnapshot } from "@plume/contract";
 import { useApp } from "../../src/store/index.ts";
 
 const content: UserContent[] = [{ type: "text", text: "相同的问题" }];

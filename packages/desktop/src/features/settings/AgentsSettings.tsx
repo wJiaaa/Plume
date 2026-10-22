@@ -5,7 +5,7 @@ import { imageModelRows } from "@plume/core/image-models";
 import { resolveModelThinkingOptions, resolveThinkingOption } from "@plume/core/thinking-options";
 import { AlertCircle, Brain, Plus, Copy, RefreshCw, RotateCcw, Trash2 } from "../../ui/icons/index.ts";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { AgentCapabilities } from "../../../electron/ipc-types.ts";
+import type { AgentCapabilities } from "@plume/contract";
 import { useApp } from "../../store/index.ts";
 import { useAgentAvatars, type AvatarOf } from "../../store/agent-avatars.ts";
 import { AgentAvatar } from "../../ui/avatar/AgentAvatar.tsx";

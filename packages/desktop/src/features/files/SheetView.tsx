@@ -14,7 +14,7 @@
 import { translate } from "../../i18n/translate.ts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Database, Table2 } from "../../ui/icons/index.ts";
-import type { DocumentData } from "../../../electron/ipc-types.ts";
+import type { DocumentData } from "@plume/contract";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { Text } from "../../ui/primitives/Text.tsx";
 import { bridge } from "../../services/index.ts";

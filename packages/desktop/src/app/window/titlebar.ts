@@ -129,3 +129,21 @@ export function overlayReserved(overlay: OverlayLike | undefined, windowWidth: n
 	if (rect.width === 0) return { start: 0, end: OVERLAY_FALLBACK };
 	return { start: Math.max(0, Math.round(rect.x)), end: Math.max(0, Math.round(windowWidth - rect.right)) };
 }
+
+/**
+ * The Window Controls Overlay API, which TypeScript's DOM library does not describe.
+ *
+ * Chromium exposes it whenever a window is created with `titleBarOverlay` — Windows and Linux
+ * here — and it is the only way to find out how much of the top row the system's own buttons have
+ * taken. See `useTitlebar`.
+ */
+interface WindowControlsOverlay extends EventTarget {
+	readonly visible: boolean;
+	getTitlebarAreaRect(): DOMRect;
+}
+
+declare global {
+	interface Navigator {
+		readonly windowControlsOverlay?: WindowControlsOverlay;
+	}
+}

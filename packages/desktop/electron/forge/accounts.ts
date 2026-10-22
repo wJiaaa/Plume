@@ -10,7 +10,8 @@
 
 import { nativeText } from "../i18n.ts";
 import { ForgeError } from "./errors.ts";
-import type { ForgeAccount, ForgeIdentity, ForgeKind } from "./types.ts";
+import type { ForgeAccount, ForgeKind } from "@plume/contract";
+import type { ForgeIdentity } from "./types.ts";
 
 /**
  * A server address as typed, turned into one this app can key on.

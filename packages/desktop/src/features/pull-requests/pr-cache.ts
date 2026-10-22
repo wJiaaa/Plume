@@ -13,7 +13,7 @@
  * for. A stored value from yesterday crashing the pane today has happened here once already.
  */
 
-import type { PullRequestDetail, PullRequestSummary } from "../../../electron/ipc-types.ts";
+import type { PullRequestDetail, PullRequestSummary } from "@plume/contract";
 
 /**
  * v2 → v3: rows come from several accounts now, so a row without one cannot be placed.

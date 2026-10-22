@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { FileEntry } from "../electron/ipc-types.ts";
+import type { FileEntry } from "@plume/contract";
 import { treeRows } from "../src/features/files/useFileTree.ts";
 
 const APP = "/Users/x/app";

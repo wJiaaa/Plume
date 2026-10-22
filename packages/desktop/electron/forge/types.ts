@@ -12,47 +12,7 @@
  * file that implements this interface, not a change to anything that draws a row.
  */
 
-import type { PullRequestDetail, PullRequestSummary, WorkspaceDiffFile } from "../ipc-shapes.ts";
-
-/** The hosts this app knows how to talk to. Self-hosted instances reuse the kind they run. */
-export type ForgeKind = "github" | "gitlab" | "gitee" | "gitea";
-
-/** What a review can say. `approve` and `request-changes` are decisions; `comment` is not. */
-export type ReviewVerdict = "approve" | "request-changes" | "comment";
-
-/**
- * One signed-in identity, minus the secret.
- *
- * Free of the token on purpose — this object is what crosses IPC and lands in the renderer, and a
- * token that travels to a page is a token that ends up in a screenshot. The secret lives in the
- * vault next door, keyed by `id`, and only the main process ever reads it.
- *
- * `baseUrl` is the *server*, as a person would type it — `https://github.com`,
- * `https://git.corp.example`. Where each host hangs its API off that is the driver's business and
- * is derived, never stored: asking someone to know that GitHub answers on `api.github.com`, GitHub
- * Enterprise on `/api/v3`, GitLab on `/api/v4` and Gitea on `/api/v1` is asking them to do the
- * app's homework.
- */
-export interface ForgeAccount {
-	id: string;
-	kind: ForgeKind;
-	/** What the user typed, or `login · host` when they typed nothing. Shown on the tab. */
-	label: string;
-	/** The server's root, no trailing slash. Web pages live here; the API is derived from it. */
-	baseUrl: string;
-	login: string;
-	avatarUrl: string | null;
-	/**
-	 * Off means "skip me", not "forget me".
-	 *
-	 * Someone with four accounts is usually working in one of them. Switching an account off keeps
-	 * the token and stops it being fetched, which is the difference between quieting a list and
-	 * having to find the token again next week.
-	 */
-	enabled: boolean;
-	/** Last failure from this account, kept so a tab can say why it is empty. */
-	lastError?: string;
-}
+import type { ForgeAccount, ForgeKind, ForgeKindInfo, PullRequestDetail, PullRequestSummary, ReviewVerdict, WorkspaceDiffFile } from "@plume/contract";
 
 /** An account with its secret, which is the only form a driver can use. */
 export interface ForgeConnection {
@@ -86,26 +46,6 @@ export interface ForgeDriver {
 	diff(conn: ForgeConnection, repo: string, number: number): Promise<WorkspaceDiffFile[]>;
 	comment(conn: ForgeConnection, repo: string, number: number, body: string): Promise<void>;
 	review(conn: ForgeConnection, repo: string, number: number, verdict: ReviewVerdict, body: string): Promise<void>;
-}
-
-/**
- * What the "add an account" form needs to know about a host before it has one.
- *
- * `tokenUrl` matters more than it looks: every one of these hosts buries token creation somewhere
- * different, and three of the four accept the scopes as query parameters — so the link can land on
- * a form that is already filled in, and the step that loses people becomes one click.
- */
-export interface ForgeKindInfo {
-	kind: ForgeKind;
-	name: string;
-	/** Suggested server address for the hosted instance. Empty for hosts that are always self-run. */
-	baseUrl: string;
-	/** Where to go create a token on the hosted instance, scopes pre-filled where possible. */
-	tokenUrl: string;
-	/** Which permissions the token needs, said the way that host says it. */
-	scopes: string;
-	/** One line about what is different here, shown under the name while choosing. */
-	note: string;
 }
 
 export const FORGE_KINDS: ForgeKindInfo[] = [

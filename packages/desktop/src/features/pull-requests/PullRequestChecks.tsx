@@ -14,7 +14,7 @@
 import type { MessageKey } from "../../i18n/messages/index.ts";
 import { translate } from "../../i18n/translate.ts";
 import { Check, CircleDashed, ExternalLink, X } from "../../ui/icons/index.ts";
-import type { PullRequestCheck } from "../../../electron/ipc-types.ts";
+import type { PullRequestCheck } from "@plume/contract";
 import { bridge } from "../../services/index.ts";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 

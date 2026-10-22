@@ -1,4 +1,5 @@
 import { nativeTranslator, type NativeLocale } from "./i18n.ts";
+import type { TrayCommand } from "@plume/contract";
 
 /**
  * What the status bar menu offers, as data.
@@ -13,21 +14,6 @@ import { nativeTranslator, type NativeLocale } from "./i18n.ts";
  * in it is ours, and a menu that offered different things depending on which machine you sat at
  * would be two products.
  */
-
-/**
- * What a menu item asks the renderer to do; see `src/tray-commands.ts`.
- *
- * Strings rather than a richer channel, because the whole contract between a menu that knows
- * nothing about views and a window that knows nothing about menus is the name. `open-session`
- * carries its subject in the name for the same reason — one channel, one shape.
- */
-export type TrayCommand =
-	| "new-session"
-	| "pull-requests"
-	| "scheduled"
-	| "settings"
-	| "updates"
-	| `open-session:${string}`;
 
 export type TrayAction =
 	| { kind: "toggle-window" }

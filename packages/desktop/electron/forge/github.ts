@@ -11,14 +11,19 @@
  */
 
 import { parseUnifiedDiff } from "../diff-parse.ts";
-import type { PullRequestDetail, PullRequestSummary, WorkspaceDiffFile } from "../ipc-shapes.ts";
+import type {
+	PullRequestDetail,
+	PullRequestSummary,
+	ReviewVerdict,
+	WorkspaceDiffFile,
+} from "@plume/contract";
 import { BUCKETS, dedupe, parseSearch, PER_BUCKET, SEARCH_QUERY, toSummary } from "../pr-summary.ts";
 import { nativeText } from "../i18n.ts";
 import { ForgeError } from "./errors.ts";
 import { DETAIL_QUERY, type DetailNode, toDetail } from "./github-gql.ts";
 import { DIFF_TIMEOUT_MS, json, text } from "./http.ts";
 import { splitRepo } from "./accounts.ts";
-import type { ForgeConnection, ForgeDriver, ForgeIdentity, ReviewVerdict } from "./types.ts";
+import type { ForgeConnection, ForgeDriver, ForgeIdentity } from "./types.ts";
 
 /** Where this instance answers GraphQL, which is not under the REST root on Enterprise. */
 function graphqlRoot(conn: ForgeConnection): string {

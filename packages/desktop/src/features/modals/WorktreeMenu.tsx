@@ -13,7 +13,7 @@
 import type { SessionMeta } from "@plume/core";
 import { Archive, Check, CircleAlert, FolderOpen, GitMerge, MessageSquare, RefreshCw, Undo2 } from "../../ui/icons/index.ts";
 import { useEffect, useState } from "react";
-import type { MergeOutcome, SyncOutcome, WorktreeState } from "../../../electron/ipc-types.ts";
+import type { MergeOutcome, SyncOutcome, WorktreeState } from "@plume/contract";
 import { useI18n } from "../../i18n/index.ts";
 import type { MessageKey } from "../../i18n/messages/index.ts";
 import { systemWord } from "../../lib/system-words.ts";

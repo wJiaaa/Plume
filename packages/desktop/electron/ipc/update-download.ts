@@ -26,23 +26,10 @@ import { basename, dirname, join } from "node:path";
 import { renameWithRetry } from "@plume/core";
 import { nativeText } from "../i18n.ts";
 import { parseChecksums, sha256, verify, type Verdict } from "../update-checksum.ts";
+import type { UpdatePhase } from "@plume/contract";
 
-/**
- * Where a download is, as one value.
- *
- * `received`/`total` ride along on every phase that has them, including the ones that are not
- * moving: a paused download that could not say how far it got would force the window to remember
- * a number the main process already knows, which is the arrangement this file exists to end.
- */
-export type DownloadPhase =
-	| { at: "idle" }
-	| { at: "downloading"; received: number; total: number }
-	| { at: "paused"; received: number; total: number }
-	/** Downloaded; unpacking or handing to the OS. Which ending it has is not known yet. */
-	| { at: "preparing"; received: number; total: number }
-	/** Done. `relaunch` distinguishes an update we can swap in from an installer the OS now has. */
-	| { at: "ready"; relaunch: boolean }
-	| { at: "failed"; error: string; received: number; total: number };
+/** The window calls it `UpdatePhase`; see there for why it is one type under two names. */
+export type DownloadPhase = UpdatePhase;
 
 /**
  * A failure this file raised itself, already worded for whoever reads it.

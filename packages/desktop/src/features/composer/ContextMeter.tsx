@@ -1,9 +1,8 @@
 import { useI18n } from "../../i18n/index.ts";
 import type { MessageKey } from "../../i18n/messages/index.ts";
-import type { Message, Settings } from "@plume/core";
+import type { ContextBreakdown, ContextSegmentKey, Message, Settings } from "@plume/core";
 import { useEffect, useState } from "react";
 
-import type { ContextBreakdown, ContextSegmentKey } from "../../../electron/ipc-types.ts";
 import { useScopedCompactions, useScopedRunning } from "../../app/session-scope.tsx";
 import { findModel } from "../models/index.ts";
 import { Popover, usePopover } from "../../ui/overlay/Popover.tsx";

@@ -8,7 +8,7 @@
 
 import { translate } from "../i18n/translate.ts";
 import type { ApprovalDecision, AssistantMessage, Message, MessageAttachment, SessionMeta, SpawnedFrom, ThinkingLevel, UserContent, UserMessage } from "@plume/core";
-import type { SessionSnapshot } from "../../electron/ipc-types.ts";
+import type { SessionSnapshot } from "@plume/contract";
 import { prune, rebuildToolRuns, todosFrom, without } from "./derive.ts";
 import { howItStopped } from "./turn-stop.ts";
 import { loadCarried, meterFor, saveCarried, type TurnMeter } from "./turn-meter.ts";

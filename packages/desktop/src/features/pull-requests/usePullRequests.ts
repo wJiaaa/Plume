@@ -13,7 +13,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { PullRequestDetail, PullRequestSummary } from "../../../electron/ipc-types.ts";
+import type { PullRequestDetail, PullRequestSummary } from "@plume/contract";
 import { prefetchAvatars } from "./avatar-cache.ts";
 import { readDetail, readList, readSeen, rowId, writeDetail, writeList, writeSeen } from "./pr-cache.ts";
 import { type Filter, groupFor } from "./pr-groups.ts";

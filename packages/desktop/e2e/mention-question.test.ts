@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { startRecording, encode, type Frame } from "./record.ts";
 import { after, afterEach, before, test } from "node:test";
-import type { SessionSnapshot } from "../electron/ipc-types.ts";
+import type { SessionSnapshot } from "@plume/contract";
 import { closeListeningServer, startApp, type RunningApp } from "./app.ts";
 import { poll, press } from "./drive.ts";
 import { cleanupFixture } from "./fixture-cleanup.ts";

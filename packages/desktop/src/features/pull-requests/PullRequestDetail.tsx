@@ -10,7 +10,7 @@ import { useI18n } from "../../i18n/index.ts";
 import { Bot, ExternalLink, GitPullRequest, Maximize2, Minimize2, RefreshCw } from "../../ui/icons/index.ts";
 import { ActionSpinner } from "../../ui/motion/loaders.tsx";
 import { useEffect, useState } from "react";
-import type { PullRequestDetail as Detail } from "../../../electron/ipc-types.ts";
+import type { PullRequestDetail as Detail } from "@plume/contract";
 import { relativeTime } from "../../lib/relative-time.ts";
 import { Disclosure } from "../../ui/layout/Disclosure.tsx";
 import { Markdown } from "../markdown/index.ts";

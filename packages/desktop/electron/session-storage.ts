@@ -1,5 +1,5 @@
 import type { SessionStorage } from "@plume/core";
-import type { SessionChange } from "./ipc-shapes.ts";
+import type { SessionChange } from "@plume/contract";
 
 /** Observe committed writes at the shared IPC/RPC boundary, including cold sessions. */
 export function observeSessionStorage(store: SessionStorage, changed: (change: SessionChange) => void): SessionStorage {

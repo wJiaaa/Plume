@@ -16,7 +16,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 import { act, createElement as h } from "react";
 import type { SessionMeta } from "@plume/core";
-import type { WorkspaceInfo } from "../../electron/ipc-types.ts";
+import type { WorkspaceInfo } from "@plume/contract";
 import { LayoutProvider } from "../../src/app/layout.tsx";
 import { DockScope, SessionScope } from "../../src/app/session-scope.tsx";
 import { usePaneDock } from "../../src/features/dock/pane-store.ts";

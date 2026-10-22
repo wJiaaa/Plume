@@ -3,7 +3,7 @@ import { ChevronRight, Copy, ExternalLink, Globe, Server, Square, X, CircleAlert
 import { useEffect, useRef, useState } from "react";
 import { JobOutput } from "./JobOutput.tsx";
 import { useJobFocus } from "../../store/job-focus.ts";
-import type { SessionServices as Services } from "../../../shared/session-services.ts";
+import type { SessionServices as Services } from "@plume/contract";
 import { bridge } from "../../services/index.ts";
 import { useApp } from "../../store/index.ts";
 import { useScopedSessionId } from "../../app/session-scope.tsx";

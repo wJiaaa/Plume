@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { SessionMeta } from "@plume/core";
-import type { SkillEntry } from "../../../electron/ipc-types.ts";
+import type { SessionMeta, SkillEntry } from "@plume/core";
 import { bridge } from "../../services/index.ts";
 import { baseName } from "../../lib/paths.ts";
 import { useApp } from "../../store/index.ts";

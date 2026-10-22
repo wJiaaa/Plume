@@ -8,7 +8,7 @@
  */
 
 import { GitBranch, MessageSquare, Users, CircleCheck, CircleAlert, Circle, GitPullRequest } from "../../ui/icons/index.ts";
-import type { PullRequestDetail } from "../../../electron/ipc-types.ts";
+import type { PullRequestDetail } from "@plume/contract";
 import { useI18n } from "../../i18n/index.ts";
 import { translate } from "../../i18n/translate.ts";
 import { verdictLabel } from "./activity.ts";

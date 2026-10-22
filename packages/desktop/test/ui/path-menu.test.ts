@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 import { act, createElement as h, type ReactNode } from "react";
 import type { Message, SessionMeta } from "@plume/core";
-import type { TurnDelivery } from "../../electron/delivery-record.ts";
+import type { TurnDelivery } from "@plume/contract";
 import { LayoutProvider } from "../../src/app/layout.tsx";
 import { DockScope, SessionScope } from "../../src/app/session-scope.tsx";
 import { useDeliveryReview } from "../../src/features/conversation/delivery-review.ts";

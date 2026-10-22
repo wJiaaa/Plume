@@ -30,13 +30,12 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { app, Menu, nativeImage, Tray } from "electron";
-import { trayMenu, type TrayAction, type TrayCommand, type TrayItem } from "./tray-menu.ts";
+import type { TrayCommand } from "@plume/contract";
+import { trayMenu, type TrayAction, type TrayItem } from "./tray-menu.ts";
 import { resolveNativeLocale } from "./i18n.ts";
 import { settings } from "./app-settings.ts";
 import { autostartArgv, autostartFile, readAutostart, writeAutostart } from "./linux-autostart.ts";
 import { probeStatusNotifierHost, trayVisible } from "./tray-host.ts";
-
-export type { TrayCommand } from "./tray-menu.ts";
 
 export interface TrayActions {
 	/** Bring the window up, creating it if it is gone, and run `then` once it can receive events. */

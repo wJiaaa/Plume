@@ -26,7 +26,7 @@ import { join } from "node:path";
 import { plumeHome, writeFileAtomic } from "@plume/core";
 import { seal, unseal } from "@plume/core";
 import { parseAccounts } from "./accounts.ts";
-import type { ForgeAccount } from "./types.ts";
+import type { ForgeAccount } from "@plume/contract";
 
 interface StoredEntry {
 	account: ForgeAccount;

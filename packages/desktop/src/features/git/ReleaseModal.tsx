@@ -15,7 +15,7 @@ import {
 	XCircle,
 } from "../../ui/icons/index.ts";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ReleaseInfo, WorkflowRunStatus } from "../../../electron/ipc-types.ts";
+import type { ReleaseInfo, WorkflowRunStatus } from "@plume/contract";
 import { useI18n } from "../../i18n/index.ts";
 import { useApp } from "../../store/index.ts";
 import { Markdown } from "../markdown/index.ts";

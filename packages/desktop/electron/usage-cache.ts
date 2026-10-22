@@ -2,7 +2,7 @@
 
 import { readFile } from "node:fs/promises";
 import type { CacheDiagnosisState } from "@plume/core";
-import type { UsageBucket, UsageRequestBucket } from "./usage-types.ts";
+import type { UsageBucket, UsageRequestBucket } from "@plume/contract";
 
 /** Everything folded in so far, and where the next pass picks up. */
 export interface UsageTally {

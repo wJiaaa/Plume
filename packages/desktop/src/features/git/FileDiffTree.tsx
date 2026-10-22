@@ -2,7 +2,7 @@ import { translate } from "../../i18n/translate.ts";
 import { ChevronRight, Folder, FolderOpen } from "../../ui/icons/index.ts";
 import { Caret } from "../../ui/primitives/Caret.tsx";
 import { useMemo, useState } from "react";
-import type { WorkspaceDiffFile } from "../../../electron/ipc-types.ts";
+import type { WorkspaceDiffFile } from "@plume/contract";
 import { BinaryDiff } from "./BinaryDiff.tsx";
 import { DiffView } from "./DiffView.tsx";
 import { iconColour, lookFor } from "../../ui/fileIcon.tsx";

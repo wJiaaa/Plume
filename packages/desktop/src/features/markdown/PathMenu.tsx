@@ -14,7 +14,7 @@
 
 import { AppWindow, ChevronRight, CornerUpRight, ExternalLink, FolderOpen, Link2 } from "../../ui/icons/index.ts";
 import { useRef, useState, type ReactNode } from "react";
-import type { OpenTarget } from "../../../electron/ipc-types.ts";
+import type { OpenTarget } from "@plume/contract";
 import { useI18n } from "../../i18n/index.ts";
 import { relativeTo } from "../../lib/paths.ts";
 import { bridge } from "../../services/index.ts";

@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { act, createElement as h } from "react";
 import { DEFAULT_SETTINGS, type McpServerConfig, type Plugin, type RegistryEntry, type Settings } from "@plume/core";
-import type { PlumeApi } from "../../electron/ipc-types.ts";
+import type { PlumeApi } from "@plume/contract";
 import { PluginsView } from "../../src/features/plugins/PluginsView.tsx";
 import { McpSettings } from "../../src/features/settings/McpSettings.tsx";
 import { RegistrySources } from "../../src/features/plugins/RegistrySources.tsx";

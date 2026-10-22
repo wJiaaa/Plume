@@ -15,7 +15,7 @@
 import { useI18n } from "../../i18n/index.ts";
 import { useCallback, useState } from "react";
 
-import type { FileOpResult } from "../../../electron/ipc-types.ts";
+import type { FileOpResult } from "@plume/contract";
 import { useApp } from "../../store/index.ts";
 import { useConfirmGate } from "../../ui/overlay/Confirm.tsx";
 import { baseName, joinPath, parentOf, relativeTo } from "../../lib/paths.ts";

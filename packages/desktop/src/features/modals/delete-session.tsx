@@ -12,7 +12,7 @@
  */
 
 import type { SessionMeta } from "@plume/core";
-import type { WorktreeState } from "../../../electron/ipc-types.ts";
+import type { WorktreeState } from "@plume/contract";
 import { translate } from "../../i18n/translate.ts";
 import { tildeHome } from "../../lib/paths.ts";
 import { sessionTitle } from "../../lib/session-title.ts";

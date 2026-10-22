@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
 import { test } from "node:test";
-import type { FilePanelState, FilePanelVersion } from "../shared/file-panel-state.ts";
+import type { FilePanelState, FilePanelVersion } from "@plume/contract";
 
 interface Contents {
 	id: number;

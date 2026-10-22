@@ -5,7 +5,7 @@
  * conversation would work, and only a request shaped like a conversation's answers that.
  */
 
-import type { ProviderTestResult } from "./ipc-types.ts";
+import type { ProviderTestResult } from "@plume/contract";
 import { USER_AGENT, generateImages, imageDimensions, isImageModel, sessionHeaders, streamAssistant, type AssistantMessage, type ModelConfig, type Settings, type StreamEvent, type ThinkingLevel } from "@plume/core";
 import { nativeText } from "./i18n.ts";
 

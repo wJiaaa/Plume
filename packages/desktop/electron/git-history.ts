@@ -6,9 +6,9 @@
  */
 
 import { computeDiff } from "@plume/core";
-import type { GitCommit, WorkspaceDiffFile } from "./ipc-shapes.ts";
+import type { GitCommit, RemoteResult, WorkspaceDiffFile } from "@plume/contract";
 import { readBlobs, type BlobRead } from "./git-blobs.ts";
-import { git, run, runRemote, MAX_FILES, type RemoteResult } from "./git-exec.ts";
+import { git, run, runRemote, MAX_FILES } from "./git-exec.ts";
 import { capHunks, classify } from "./git-diff.ts";
 import { parseNumstat } from "./git-parse.ts";
 import { defaultRemote } from "./git-remote-state.ts";

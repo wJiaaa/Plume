@@ -12,7 +12,8 @@ import { app, clipboard, ipcMain, nativeImage, shell } from "electron";
 import { documentImage } from "../avatars.ts";
 import { writeClipboardImage } from "../clipboard-image.ts";
 import { openExternalSafely } from "../window-security.ts";
-import { openTargets, openWith, type OpenTarget } from "../open-targets.ts";
+import type { OpenTarget } from "@plume/contract";
+import { openTargets, openWith } from "../open-targets.ts";
 
 export function registerSystemIpc(): void {
 	ipcMain.handle("system:openPath", async (_event, path: string) => void shell.openPath(path));

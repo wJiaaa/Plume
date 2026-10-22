@@ -12,7 +12,7 @@
 import { translate } from "../../i18n/translate.ts";
 import { ArrowLeft } from "../../ui/icons/index.ts";
 import { useState } from "react";
-import type { PullRequestDetail as Detail } from "../../../electron/ipc-types.ts";
+import type { PullRequestDetail as Detail } from "@plume/contract";
 import { useLayout } from "../../app/layout.tsx";
 import { toolbarReserved } from "../../app/window/WindowControls.tsx";
 import { blankDraftKey } from "../../lib/draft-key.ts";

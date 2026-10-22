@@ -13,7 +13,7 @@
 import { translate } from "../../i18n/translate.ts";
 import { Send, X } from "../../ui/icons/index.ts";
 import { useState } from "react";
-import type { BrowserSelection } from "../../../shared/browser.ts";
+import type { BrowserSelection } from "@plume/contract";
 import { ComposerShell } from "../composer/index.ts";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import { ScrollText } from "../../ui/scroll/ScrollText.tsx";

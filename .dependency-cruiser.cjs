@@ -195,9 +195,10 @@ module.exports = {
 		{
 			name: "renderer-does-not-reach-into-main",
 			comment:
-				"The renderer talks to the main process over IPC and nowhere else. Types crossing that " +
-				"boundary are fine — `ipc-types.ts` is the description of it — but a value would be a " +
-				"module from the other process linked into this bundle.",
+				"The renderer talks to the main process over IPC and nowhere else. The description of " +
+				"that boundary is `@plume/contract`, so the renderer has no reason to name a file here; " +
+				"a type still costs nothing, but a value would be a module from the other process linked " +
+				"into this bundle.",
 			severity: "error",
 			from: { path: "^packages/desktop/src" },
 			to: { path: "^packages/desktop/electron/", dependencyTypesNot: ["type-only"] },
@@ -219,12 +220,25 @@ module.exports = {
 			name: "contract-is-a-leaf",
 			comment:
 				"`@plume/contract` has two consumers — the main process registers by it and the preload " +
-				"builds from it. Whatever it imports is dragged into both builds. It depends on " +
-				"nothing, and that is the point of it being a package rather than a directory.",
+				"builds from it — and the phone reads its types. Whatever it imports *as a value* is " +
+				"dragged into every one of those builds. So the only thing it reaches outside itself is " +
+				"core's two type entries: `contract-types` (everything that crosses the IPC boundary) and " +
+				"`client-types` (the part the phone shares). No other package, no `node:`, no npm module. " +
+				"See ADR-0055.",
 			severity: "error",
 			from: { path: "^packages/contract/src" },
-			// Its own modules are fine; anything from another package is not.
-			to: { path: "^packages/(?!contract/)" },
+			to: { pathNot: "^packages/contract/src/|^packages/core/src/(contract-types|client-types)\\.ts$" },
+		},
+
+		{
+			name: "contract-takes-only-types-from-core",
+			comment:
+				"The other half of the rule above: from those two entries, `import type` only. Both " +
+				"files are nothing but `export type`, so a value import would also fail to compile; this " +
+				"says why before the compiler says what.",
+			severity: "error",
+			from: { path: "^packages/contract/src" },
+			to: { path: "^packages/core/", dependencyTypesNot: ["type-only"] },
 		},
 
 		{

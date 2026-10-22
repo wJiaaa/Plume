@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { apiRoot, defaultLabel, hostOf, normalizeServer, parseAccounts, sameIdentity, upsert } from "../electron/forge/accounts.ts";
-import type { ForgeAccount } from "../electron/forge/types.ts";
+import type { ForgeAccount } from "@plume/contract";
 
 function account(over: Partial<ForgeAccount> = {}): ForgeAccount {
 	return {

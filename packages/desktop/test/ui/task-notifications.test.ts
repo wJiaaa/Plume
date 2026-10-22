@@ -8,7 +8,7 @@ import { WindowControls } from "../../src/app/window/WindowControls.tsx";
 import { useTrayCommands } from "../../src/app/window/tray-commands.ts";
 import { Toaster } from "../../src/features/toast/Toaster.tsx";
 import { LayoutProvider } from "../../src/app/layout.tsx";
-import type { PlumeApi } from "../../electron/ipc-types.ts";
+import type { PlumeApi } from "@plume/contract";
 import { click, mount } from "../helpers/mount.ts";
 
 const usage = { input: 0, output: 0, total: 0, cacheRead: 0, cacheWrite: 0, cost: { input: 0, output: 0, total: 0, cacheRead: 0, cacheWrite: 0 } };

@@ -10,7 +10,8 @@ import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
 import { test } from "node:test";
 import { Window } from "happy-dom";
-import { previewFragment, readOpenRequest, readSendRequest, OPEN_MESSAGE, SEND_MESSAGE, type PreviewTheme } from "../shared/preview.ts";
+import type { PreviewTheme } from "@plume/contract";
+import { previewFragment, readOpenRequest, readSendRequest, OPEN_MESSAGE, SEND_MESSAGE } from "../shared/preview.ts";
 import { readableOn } from "../src/features/files/preview-theme.ts";
 
 // `preview-protocol.ts` registers Electron protocols; nothing here touches them, so a hollow module will do.

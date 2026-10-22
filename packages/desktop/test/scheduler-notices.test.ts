@@ -11,7 +11,8 @@ import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { DEFAULT_SETTINGS, type AgentSession, type ScheduledTask, type Settings } from "@plume/core";
 import { setInterfaceLocaleSource } from "../electron/i18n.ts";
-import { Scheduler, type SchedulerNotice } from "../electron/scheduler.ts";
+import type { SchedulerNotice } from "@plume/contract";
+import { Scheduler } from "../electron/scheduler.ts";
 
 // The notices are read in English; the main process reads the interface language from the settings.
 setInterfaceLocaleSource(() => "en");

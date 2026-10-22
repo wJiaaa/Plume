@@ -13,8 +13,9 @@ Plume 是一个 agent 运行时加桌面端与原生手机端。`packages/core` 
 | --- | --- | --- |
 | `core` | agent 内核：provider 适配、agent loop、工具、skill、MCP、会话存储 | 只依赖 `registry-shared` |
 | `cli` | 非交互命令行：用桌面端的设置跑完一个任务，给评测用，见 [ADR-0031](docs/adr/0031-headless-cli-for-evaluation.md) | `core` |
-| `desktop` | Electron 应用。`electron/` 主进程，`src/` 渲染进程，`shared/` 两边共有 | `core` |
-| `client-runtime` | 无 UI 的远程连接、状态与消息合并；桌面复用消息合并 | `contract`、core 类型 |
+| `desktop` | Electron 应用。`electron/` 主进程，`src/` 渲染进程，`shared/` 两边共有 | `core`、`contract` |
+| `contract` | 渲染进程与主进程之间的 IPC 契约：方法表（`methods.ts`）、每个方法的参数与返回值（`api.ts` 拼起各主题的文件）、跨边界的载荷类型 | 只从 `core` 的两个类型入口拿类型，见边界第 5 条 |
+| `client-runtime` | 无 UI 的远程连接、状态与消息合并；桌面复用消息合并 | `contract` 的手机入口（`@plume/contract/mobile`）、core 类型 |
 | `mobile` | 独立 React Native / Expo 手机界面 | `client-runtime` |
 | `registry-shared` | 插件市场的契约：索引能说什么、API 答什么 | 谁也不依赖 |
 
@@ -85,12 +86,16 @@ pre-push 里都是必过项：
 1. **`core` 不 import 桌面端。** 它是平台无关的运行时，一旦引了桌面端就不再是。
 2. **渲染进程从 `core` 只能 `import type`**，白名单子入口除外。从根入口导入*值*会把整个
    index 拉进浏览器包，而它一路连到 `node:fs`——窗口一片空白。类型编译期就擦掉了，免费。
-3. **渲染进程不从 `electron/` 导入值。** 类型可以（那是边界的描述），值就是把另一个进程的
-   模块链进了这个包。
-4. **`shared/` 谁也不依赖。** 它是两个进程共有的判断（比如「这个文件该用哪种查看器」），
-   偏向任何一端就有一端用不了它。
-5. **`@plume/contract` 零依赖。** 它有两个消费者——主进程按它注册、preload 按它生成——
-   依赖谁就把谁拖进另一个的构建里。
+3. **渲染进程不从 `electron/` 导入值。** 值就是把另一个进程的模块链进了这个包。边界的描述
+   在 `@plume/contract`，跨边界的类型也从那里拿，渲染进程没有理由点名 `electron/` 里的文件。
+4. **`shared/` 不依赖任何一个进程。** 它是两个进程共有的判断（比如「这个文件该用哪种查看器」），
+   偏向任何一端就有一端用不了它。它判断的对象若是跨边界的载荷（浏览器标签、文件面板状态），
+   类型从 `@plume/contract` 拿——契约在两个进程之下，不偏向任何一端。
+5. **`@plume/contract` 只有类型依赖。** 它有两个消费者——主进程按它注册、preload 按它生成——
+   手机端也读它的类型；它引了谁的值，就把谁拖进每一个构建里。所以它只许 `import type`，
+   来源只限 `@plume/core` 的两个类型入口：`contract-types`（跨 IPC 的 core 类型）与
+   `client-types`（手机共用的那部分）。手机只经 `@plume/contract/mobile` 进来，那条路只碰
+   `client-types`。见 [ADR-0055](docs/adr/0055-contract-owns-ipc-types.md)。
 6. **`ui/` 与 `lib/` 是叶子。** 见上一节。
 7. **`window.plume` 只在 `services/bridge.ts`。** 由 oxlint 守；`host.ts` 读平台，是唯一的例外。
 8. **`store`/`ui`/`lib`/`services` 不伸进某个功能域里点名文件。** 第 6 条的另一半：
@@ -120,7 +125,7 @@ pre-push 里都是必过项：
 
 | 想做的 | 去 |
 | --- | --- |
-| 加一个 IPC | `packages/contract/src/methods.ts` 登记 → `electron/ipc/<域>.ts` 注册 → `electron/preload.ts` 暴露；契约的测试会检查三处一致。手机默认调不到；要开放就加进 `contract/src/mobile.ts` 的 `MOBILE_METHODS` 并在 `electron/mobile-rpc.ts` 实现 |
+| 加一个 IPC | `packages/contract/src/methods.ts` 登记 channel，签名与载荷类型写进 `contract/src/` 里对应主题的文件（`api.ts` 把各组拼成 `PlumeApi`）→ `electron/ipc/<域>.ts` 注册 → `electron/preload.ts` 暴露；契约的测试会检查三处一致。手机默认调不到；要开放就加进 `contract/src/mobile.ts` 的 `MOBILE_METHODS` 并在 `electron/mobile-rpc.ts` 实现 |
 | 加一个内置工具 | `core/src/tools/`，登记进 `tools/groups.ts` 的分组；漏登记 `test/tool-registry.test.ts` 会红 |
 | 加一个右侧面板 | `src/app/panels.tsx` 的 `BUILTIN_PANELS` 加一条；类型在 `features/dock/panels/registry.ts` |
 | 维护模型价格、能力和中转别名 | `core/src/model-catalog.ts` 与 `scripts/update-model-catalog.mjs`；`pnpm catalog:update` 更新离线数据 |

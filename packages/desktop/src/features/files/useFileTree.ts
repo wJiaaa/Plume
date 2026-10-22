@@ -15,7 +15,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { FileEntry } from "../../../electron/ipc-types.ts";
+import type { FileEntry } from "@plume/contract";
 import { baseName } from "../../lib/paths.ts";
 import { useFileTreeStore } from "../../store/fileTree.ts";
 

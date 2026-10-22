@@ -12,29 +12,7 @@
  */
 
 import { readFile } from "node:fs/promises";
-
-/** One grid: a sheet of a workbook, or a table of a database. */
-interface DocumentSheet {
-	name: string;
-	/** Column headers. For a spreadsheet these are A, B, C…; for a table, its columns. */
-	columns: string[];
-	/** Row-major cells, already stringified — the window draws them, it does not compute with them. */
-	rows: string[][];
-	/**
-	 * How many rows there are in total, which is not always how many are here.
-	 *
-	 * A table with two million rows is not something anybody scrolls, and shipping it across the
-	 * boundary would cost more than the app has. The grid shows what arrived and says what was left.
-	 */
-	total: number;
-}
-
-export interface DocumentData {
-	kind: "sheets" | "tables";
-	sheets: DocumentSheet[];
-	/** Set when the file could not be read at all, in the user's own language. */
-	error?: string;
-}
+import type { DocumentData } from "@plume/contract";
 
 /**
  * How much of a sheet is worth moving.

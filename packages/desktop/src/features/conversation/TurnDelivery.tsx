@@ -2,7 +2,7 @@ import { translate } from "../../i18n/translate.ts";
 import { FileDiff, Files, FileText, Undo2 } from "../../ui/icons/index.ts";
 import { Caret } from "../../ui/primitives/Caret.tsx";
 import { useEffect, useRef, useState } from "react";
-import type { DeliveryFile, TurnDelivery } from "../../../electron/delivery-record.ts";
+import type { DeliveryFile, TurnDelivery } from "@plume/contract";
 import { bridge } from "../../services/index.ts";
 import { relativeTo } from "../../lib/paths.ts";
 import { useApp } from "../../store/index.ts";

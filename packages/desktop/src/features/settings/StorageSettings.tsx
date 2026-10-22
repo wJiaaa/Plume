@@ -23,7 +23,7 @@ import { DateRangeField, rangeLabel } from "../../ui/inputs/DateRangeField.tsx";
 import { inRange, type DayRange } from "../../ui/inputs/day-range.ts";
 import { ActionSpinner } from "../../ui/motion/loaders.tsx";
 import { useConfirmer } from "../../ui/overlay/Confirm.tsx";
-import type { StorageUse } from "../../../electron/session-cleanup.ts";
+import type { StorageUse } from "@plume/contract";
 import { Card, PageHeader, Row, SectionTitle } from "./controls.tsx";
 import { formatBytes } from "./usage-format.ts";
 import { Button } from "../../ui/primitives/Button.tsx";

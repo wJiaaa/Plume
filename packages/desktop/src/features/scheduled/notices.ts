@@ -10,7 +10,7 @@
 import { useEffect } from "react";
 import { create } from "zustand";
 import type { SessionActivity } from "@plume/core/activity";
-import type { SchedulerNotice } from "../../../electron/ipc-types.ts";
+import type { SchedulerNotice } from "@plume/contract";
 import { bridge } from "../../services/index.ts";
 import { useApp } from "../../store/index.ts";
 

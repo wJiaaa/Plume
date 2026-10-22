@@ -1,6 +1,6 @@
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import type { FileContents, FileEntry } from "./ipc-types.ts";
+import type { FileContents, FileEntry } from "@plume/contract";
 import { resolveInside } from "./file-ops.ts";
 
 /** Enough for source and text files without pulling generated output into a renderer. */

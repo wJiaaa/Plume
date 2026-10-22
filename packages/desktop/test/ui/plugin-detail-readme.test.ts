@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { act, createElement as h } from "react";
 import { DEFAULT_SETTINGS, type Plugin, type RegistryEntry, type Settings, type Skill } from "@plume/core";
-import type { PlumeApi } from "../../electron/ipc-types.ts";
+import type { PlumeApi } from "@plume/contract";
 import { PluginsView } from "../../src/features/plugins/PluginsView.tsx";
 import { useApp } from "../../src/store/index.ts";
 import { click, mount } from "../helpers/mount.ts";

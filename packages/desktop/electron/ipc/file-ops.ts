@@ -16,7 +16,7 @@ import { cp, mkdir, readdir, rename, rm, stat, writeFile } from "node:fs/promise
 import { basename, join } from "node:path";
 import { isDescendant, uniqueName, validateName } from "../file-ops.ts";
 import { nativeText } from "../i18n.ts";
-import type { FileOpResult } from "../ipc-types.ts";
+import type { FileOpResult } from "@plume/contract";
 
 export interface FileOpsIpcDeps {
 	/** The path, normalised, if it lies in an open project — otherwise null. */

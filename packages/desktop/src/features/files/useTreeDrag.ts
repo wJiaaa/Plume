@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { FileEntry } from "../../../electron/ipc-types.ts";
+import type { FileEntry } from "@plume/contract";
 import { DRAGGED_PATHS as PATHS, isDescendantPath, parentOf } from "../../lib/paths.ts";
 import { bridge } from "../../services/index.ts";
 import { macKeyboard } from "../../ui/keyboard.ts";

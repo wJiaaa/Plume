@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useSyncExternalStore } from "react";
-import type { ForgeAccount, ForgeKind } from "../../../electron/ipc-types.ts";
+import type { ForgeAccount, ForgeKind } from "@plume/contract";
 import { bridge } from "../../services/index.ts";
 
 let accounts: ForgeAccount[] = [];

@@ -28,7 +28,7 @@ import { TaskPanel } from "../features/task/TaskPanel.tsx";
 import { TerminalPane, TerminalTitle, closeTerminal, confirmCloseTerminal } from "../features/terminal/index.ts";
 import { announceUndo, TrajectoryPanel, useDeliveryReview, useDeliveryUndos, useSharedDeliveryTarget } from "../features/conversation/index.ts";
 import { usePathMenu } from "../features/markdown/index.ts";
-import type { DeliveryFile, TurnDelivery } from "../../electron/delivery-record.ts";
+import type { DeliveryFile, TurnDelivery } from "@plume/contract";
 import { useI18n } from "../i18n/index.ts";
 import { relativeTo } from "../lib/paths.ts";
 import { bridge } from "../services/index.ts";

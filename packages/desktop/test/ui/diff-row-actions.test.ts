@@ -16,7 +16,7 @@ import { test } from "node:test";
 import { createElement as h } from "react";
 import { FileDiffList } from "../../src/features/git/FileDiffList.tsx";
 import { FileDiffTree } from "../../src/features/git/FileDiffTree.tsx";
-import type { WorkspaceDiffFile } from "../../electron/ipc-shapes.ts";
+import type { WorkspaceDiffFile } from "@plume/contract";
 import { mount } from "../helpers/mount.ts";
 
 const files: WorkspaceDiffFile[] = [

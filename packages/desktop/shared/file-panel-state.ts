@@ -1,29 +1,4 @@
-/** 链接指着的那几行，从 1 数起，`from <= to`。 */
-export interface FileLines {
-	from: number;
-	to: number;
-}
-
-/** 打开时要跳到的那几行；`at` 每次打开换一个，同一行点两次靠它认出是新的一次。见 `OpenFile.reveal`。 */
-export interface FileReveal extends FileLines {
-	at: number;
-}
-
-/** View state crosses windows; disk contents and permissions are read by the receiving host. */
-export interface FilePanelState {
-	path: string | null;
-	tabs: { path: string; name: string }[];
-	wrap: boolean;
-	showSource: boolean;
-	/** 只在这一次打开带着行号时有：弹出去的文件窗口据此跳行。没有就不写这个键，形状和从前一样。 */
-	reveal?: FileReveal;
-}
-
-export interface FilePanelVersion {
-	version: number;
-	state: FilePanelState;
-}
-
+import type { FileLines, FilePanelState, FileReveal } from "@plume/contract";
 function record(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }

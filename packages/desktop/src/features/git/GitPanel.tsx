@@ -6,7 +6,7 @@ import { useScopedRunning, useScopedSessionId, useScopedWorkspace } from "../../
 import { syncPlan, type SyncButton } from "./syncPlan.ts";
 import { ActionSpinner } from "../../ui/motion/loaders.tsx";
 
-import type { GitStatus, RepoRef } from "../../../electron/ipc-types.ts";
+import type { GitStatus, RepoRef } from "@plume/contract";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import { Button } from "../../ui/primitives/Button.tsx";
 import { PanelEmpty } from "../../ui/layout/PanelEmpty.tsx";

@@ -9,7 +9,7 @@
 
 import { ChevronRight } from "../../ui/icons/index.ts";
 
-import type { FileEntry } from "../../../electron/ipc-types.ts";
+import type { FileEntry } from "@plume/contract";
 import { iconColour, lookFor } from "../../ui/fileIcon.tsx";
 import { ScrollText } from "../../ui/scroll/ScrollText.tsx";
 import { NameEditor } from "./NameEditor.tsx";

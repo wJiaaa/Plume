@@ -1,3 +1,4 @@
+import type { SessionChange } from "@plume/contract/mobile";
 import type { AgentEvent, ApprovalRequest, Message, SessionMeta, ThinkingLevel } from "@plume/core/client-types";
 
 /** `relay` 为真时 `url` 是中转服务的 WebSocket 地址，否则是电脑的 HTTP 地址。 */
@@ -23,7 +24,7 @@ export interface SessionSnapshot {
 }
 export type RemoteEvent =
 	| { type: "agent_event"; sessionId: string; event: AgentEvent }
-	| { type: "session_changed"; change: { id: string; projectId: string; meta: SessionMeta | null } }
+	| { type: "session_changed"; change: SessionChange }
 	| { type: "bootstrap_changed" };
 export interface ClientState {
 	status: "offline" | "connecting" | "connected" | "reconnecting";

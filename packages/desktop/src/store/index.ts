@@ -2,7 +2,13 @@ import type { TurnMeter, CarriedTurn } from "./turn-meter.ts";
 import type { ApprovalOrigin, ApprovalRequest, ApprovalRisk, QuestionFields } from "@plume/core";
 import { translate } from "../i18n/translate.ts";
 import { applySessionChange } from "./session-changes.ts";
-import type { PluginUpdateState, SessionChange } from "../../electron/ipc-types.ts";
+import type {
+	AgentCapabilities,
+	PluginUpdateState,
+	PlumeApi,
+	SessionChange,
+	WorkspaceInfo,
+} from "@plume/contract";
 import type { AgentEvent, ApprovalDecision, AssistantMessage, CommandRun, HookRun, Message, MessageAttachment, SessionMeta, Settings, SpawnedFrom, ThinkingLevel, UserContent, UserMessage } from "@plume/core";
 import { type SessionActivity } from "@plume/core/activity";
 import { applyAgentEvent } from "./apply-event.ts";
@@ -15,11 +21,6 @@ import { turnSlice } from "./turn-slice.ts";
 import { workspaceSlice } from "./workspace-slice.ts";
 import type { TodoItem } from "@plume/core";
 import { create } from "zustand";
-import type {
-  AgentCapabilities,
-  PlumeApi,
-  WorkspaceInfo,
-} from "../../electron/ipc-types.ts";
 /*
  * `sideStore.ts` directly, not the domain's index.
  *

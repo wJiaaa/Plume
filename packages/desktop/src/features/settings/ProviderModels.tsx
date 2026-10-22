@@ -13,7 +13,7 @@ import { ChoiceMark } from "../../ui/primitives/ChoiceMark.tsx";
 import type { ModelConfig } from "@plume/core";
 import { isImageModel } from "@plume/core/image-models";
 import { useApp } from "../../store/index.ts";
-import type { ProviderTestResult } from "../../../electron/ipc-types.ts";
+import type { ProviderTestResult } from "@plume/contract";
 import { useConfirmer } from "../../ui/overlay/Confirm.tsx";
 import { MenuBody, MenuItem, MenuSeparator, Popover, usePopover } from "../../ui/overlay/Popover.tsx";
 import { ModelIcon } from "../models/index.ts";

@@ -6,7 +6,7 @@
 
 import { ipcMain } from "electron";
 import type { SessionMeta, SessionStorage } from "@plume/core";
-import type { MergeOutcome, SyncOutcome } from "../ipc-shapes.ts";
+import type { MergeOutcome, SyncOutcome } from "@plume/contract";
 import { sessions } from "../session-hub.ts";
 import { worktreeState } from "../worktree-lifecycle.ts";
 import { abortSync, mergeIntoBase, syncFromBase } from "../worktree-merge.ts";

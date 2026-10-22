@@ -19,7 +19,7 @@
  */
 
 import { create } from "zustand";
-import type { FileEntry } from "../../electron/ipc-types.ts";
+import type { FileEntry } from "@plume/contract";
 import { isDescendantPath, joinPath, relativeTo } from "../lib/paths.ts";
 import { bridge } from "../services/index.ts";
 

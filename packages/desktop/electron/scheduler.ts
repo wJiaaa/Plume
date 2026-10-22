@@ -11,25 +11,9 @@
 import { isDue } from "@plume/core";
 import type { AgentSession, ScheduledTask, Settings } from "@plume/core";
 import { nativeText } from "./i18n.ts";
+import type { SchedulerNotice } from "@plume/contract";
 
 const TICK_MS = 60_000;
-
-/**
- * What a task tells the window as it runs, and which task it is about.
- *
- * The sentence alone could only have gone into a corner of the window. With the task's id the window
- * can put it on that task's card; with the session's id it can tell when the run is over — absent
- * when there is no session, as when one could not be created. `kind` is there because the three are
- * not shown alike: a start is a state of the card, while a failure is also worth telling someone who
- * is not looking at the card.
- */
-export interface SchedulerNotice {
-	taskId: string;
-	kind: "started" | "failed" | "cannotStart";
-	level: "info" | "error";
-	message: string;
-	sessionId?: string;
-}
 
 type NoticeSubject = Pick<SchedulerNotice, "taskId" | "kind" | "sessionId">;
 

@@ -18,7 +18,7 @@ import { translate } from "../../i18n/translate.ts";
 import { ExternalLink, ShieldCheck } from "../../ui/icons/index.ts";
 import { ActionSpinner } from "../../ui/motion/loaders.tsx";
 import { useState } from "react";
-import type { ForgeKind, ForgeKindInfo } from "../../../electron/ipc-types.ts";
+import type { ForgeKind, ForgeKindInfo } from "@plume/contract";
 import { useAccountActions } from "../pull-requests/index.ts";
 import { Card, Field, Notice, SecretInput, TextInput } from "./controls.tsx";
 import { bridge } from "../../services/index.ts";

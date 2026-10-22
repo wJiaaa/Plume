@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { act, createElement as h } from "react";
 import { DEFAULT_SETTINGS } from "@plume/core";
-import type { PlumeApi } from "../../electron/ipc-types.ts";
+import type { PlumeApi } from "@plume/contract";
 import { LayoutProvider } from "../../src/app/layout.tsx";
 import { PluginsView } from "../../src/features/plugins/PluginsView.tsx";
 import { useApp } from "../../src/store/index.ts";
