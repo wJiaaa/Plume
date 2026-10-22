@@ -3,11 +3,10 @@ import { readFile, writeFile } from "node:fs/promises";
 import { createServer, type Server, type ServerResponse } from "node:http";
 import { join } from "node:path";
 import { after, afterEach, before, test } from "node:test";
-import { setTimeout as delay } from "node:timers/promises";
 import { closeListeningServer, startApp, type RunningApp } from "./app.ts";
 import { cleanupFixture } from "./fixture-cleanup.ts";
 import { seedInteractions } from "./interaction-fixture.ts";
-import { frames, shot } from "./drive.ts";
+import { frames, poll, shot } from "./drive.ts";
 
 let app: RunningApp;
 let server: Server;
@@ -51,11 +50,7 @@ afterEach(async (t) => {
 });
 after(async () => { await cleanupFixture(() => app?.stop(), () => closeListeningServer(server)); });
 async function until<T = unknown>(expression: string, matches: (value: T) => boolean = Boolean) {
-	const deadline = Date.now() + 10000;
-	while (!matches(await app.evaluate<T>(expression))) {
-		if (Date.now() >= deadline) throw new Error(`Notification condition timed out: ${expression}`);
-		await delay(20);
-	}
+	if (!matches(await poll(() => app.evaluate<T>(expression), matches, 10000, 20))) throw new Error(`Notification condition timed out: ${expression}`);
 }
 const targets = {
 	showSidebar: `document.querySelector('button[aria-label^="显示侧边栏"]')`,

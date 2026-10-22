@@ -64,3 +64,6 @@ test/tool-eval/results/
 
 # 探针写出的截图：跑一次几兆的过程产物，看完就没用了
 test-results/
+
+# 一次性的真窗口验证脚本：验完留在本地，不进仓库。值得守的改写成 e2e/*.test.ts，见 AGENTS.md。
+packages/desktop/e2e/scratch/

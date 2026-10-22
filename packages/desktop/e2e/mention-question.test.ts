@@ -6,7 +6,7 @@ import { startRecording, encode, type Frame } from "./record.ts";
 import { after, afterEach, before, test } from "node:test";
 import type { SessionSnapshot } from "../electron/ipc-types.ts";
 import { closeListeningServer, startApp, type RunningApp } from "./app.ts";
-import { press } from "./drive.ts";
+import { poll, press } from "./drive.ts";
 import { cleanupFixture } from "./fixture-cleanup.ts";
 import { questionModel, REFERENCE_TITLE, seedQuestions } from "./mention-question-fixture.ts";
 
@@ -58,12 +58,8 @@ after(async () => {
 });
 
 async function until(condition: string | (() => Promise<boolean>)) {
-	const deadline = Date.now() + 15_000;
-	while (Date.now() < deadline) {
-		if (typeof condition === "string" ? await app.evaluate(condition) : await condition()) return;
-		await app.evaluate("new Promise(requestAnimationFrame)");
-	}
-	throw new Error("The visible condition did not settle within 15 seconds");
+	const read = typeof condition === "string" ? () => app.evaluate<boolean>(condition) : condition;
+	if (!(await poll(read, Boolean, 15_000, 16))) throw new Error("The visible condition did not settle within 15 seconds");
 }
 async function click(target: keyof typeof clickTargets) {
 	await until(async () => {

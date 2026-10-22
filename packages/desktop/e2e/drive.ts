@@ -23,6 +23,28 @@ export async function until(page: Evaluate, expression: string, budget = 600): P
 	await page.evaluate(`new Promise((resolve,reject)=>{let n=${budget};const f=()=>{if(${expression})resolve();else if(--n)requestAnimationFrame(f);else reject(new Error(${JSON.stringify(expression)}));};f();})`);
 }
 
+/**
+ * 从 Node 这边隔一会儿读一次，直到 `ok(读数)` 成立或到点，返回最后一次的读数。
+ *
+ * 和 `until` 分开：那个在页面里按帧等，预算约十秒，等的只能是一句页面表达式。要等主进程里的事、
+ * 一轮真实对话的几十秒（`evaluate` 自己 40 秒超时），或者想拿着读数断言——失败时报的是读到了什么，
+ * 而不是「超时」——用这个。不抛错：到点没成立就把最后一次读数交回去，由调用方断言。
+ */
+export async function poll<T>(read: () => Promise<T>, ok: (value: T) => boolean, ms = 10_000, every = 150): Promise<T> {
+	const end = Date.now() + ms;
+	let seen = await read();
+	while (!ok(seen) && Date.now() < end) {
+		await new Promise((resolve) => setTimeout(resolve, every));
+		seen = await read();
+	}
+	return seen;
+}
+
+/** 页面表达式版的 `poll`：从 Node 这边等它成立，到点抛错并报出这句表达式。要等的比 `until` 的十秒久时用它。 */
+export async function waitFor(page: Evaluate, expression: string, ms = 30_000, every = 100): Promise<void> {
+	if (!(await poll(() => page.evaluate<boolean>(`Boolean(${expression})`), Boolean, ms, every))) throw new Error(`等不到：${expression}`);
+}
+
 /** 让页面走完 `count` 帧：给刚提交的渲染和过渡起步留出时间。 */
 export async function frames(page: Evaluate, count = 20): Promise<void> {
 	await page.evaluate(`new Promise(r=>{let n=${count};const f=()=>--n?requestAnimationFrame(f):r();requestAnimationFrame(f);})`);
@@ -46,6 +68,24 @@ export async function still(page: Evaluate, selector: string): Promise<void> {
 export async function resize(page: Page, width: number, height: number): Promise<void> {
 	await page.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
 	await until(page, `innerWidth===${width}&&innerHeight===${height}`);
+}
+
+/**
+ * 在手机尺寸、触屏的视口里跑 `run`，跑完撤回。
+ *
+ * 走 `page.send` 那条常驻连接（见 `app.ts`）。覆盖属于设置它的那条会话，而这条会话到应用关掉才断，
+ * 不会自己撤回——所以 finally 里把触屏和尺寸两项都显式清掉，否则后面的用例全量在手机视口里。
+ */
+export async function withTouchViewport(page: Page, size: { width: number; height: number }, run: () => Promise<void>): Promise<void> {
+	await page.send("Emulation.setDeviceMetricsOverride", { ...size, deviceScaleFactor: 1, mobile: true });
+	await page.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+	try {
+		await run();
+	} finally {
+		await page.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+		await page.send("Emulation.clearDeviceMetricsOverride");
+		await frames(page);
+	}
 }
 
 /** 页面里一句找元素的表达式：第一个看得见的匹配项；给了 `name` 就再按人会叫它的名字筛一遍。 */

@@ -6,7 +6,7 @@ import { startApp, type RunningApp } from "./app.ts";
 import type { SessionRecord } from "@plume/core";
 import { zhCN } from "../src/i18n/messages/zh-CN.ts";
 import { seedInteractions } from "./interaction-fixture.ts";
-import { frames, shot, until } from "./drive.ts";
+import { frames, shot, until, withTouchViewport } from "./drive.ts";
 import { named } from "./named.ts";
 import { encode, startRecording, type Frame } from "./record.ts";
 import { settleSharedWindow } from "./shared-window.ts";
@@ -119,39 +119,6 @@ async function clickText(text: string) {
  */
 async function clickDialogAction(text: string) {
 	await clickFound(`(()=>{const row=[...document.querySelectorAll('[data-ly-modal]')].at(-1)?.querySelector('[data-ly-dialog-actions]');if(!row)throw new Error('no open dialog has an action row');const buttons=[...row.querySelectorAll('button')];return buttons.find(e=>e.checkVisibility({visibilityProperty:true})&&${named(text)})??(()=>{throw new Error('the dialog has no '+${JSON.stringify(text)}+' action: '+buttons.map(b=>(b.textContent||'').trim()).join(' | '));})();})()`);
-}
-
-async function withTouchViewport(run: () => Promise<void>) {
-	const targets: { url: string; webSocketDebuggerUrl?: string }[] = await fetch(`http://127.0.0.1:${PORT}/json/list`).then((response) => response.json());
-	const target = targets.find((entry) => entry.url.endsWith("/index.html"));
-	assert.ok(target?.webSocketDebuggerUrl);
-	const socket = new WebSocket(target.webSocketDebuggerUrl);
-	await new Promise<void>((resolve, reject) => {
-		socket.addEventListener("open", () => resolve(), { once: true });
-		socket.addEventListener("error", () => reject(new Error("touch emulation connection failed")), { once: true });
-	});
-	let id = 0;
-	const send = (method: string, params = {}) => new Promise<void>((resolve, reject) => {
-		const request = ++id;
-		const listener = (event: MessageEvent) => {
-			const message: { id?: number; error?: { message: string } } = JSON.parse(String(event.data));
-			if (message.id !== request) return;
-			socket.removeEventListener("message", listener);
-			if (message.error) reject(new Error(message.error.message)); else resolve();
-		};
-		socket.addEventListener("message", listener);
-		socket.send(JSON.stringify({ id: request, method, params }));
-	});
-	try {
-		// Touch overrides belong to the debugger session and disappear when its socket closes.
-		await send("Emulation.setDeviceMetricsOverride", { width: 375, height: 480, deviceScaleFactor: 1, mobile: true });
-		await send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
-		await run();
-	} finally {
-		try { await send("Emulation.clearDeviceMetricsOverride"); }
-		finally { socket.close(); }
-		await frames(app);
-	}
 }
 
 test("release preview and edit share a stable dialog and content height", async (t) => {
@@ -269,7 +236,7 @@ test("project memory is visible in usage and its settings switch stops injection
 test("short touch viewports keep modal actions reachable and reduced motion still dismisses", async (t) => {
 	await clickText("返回工作区");
 	await frames(app);
-	await withTouchViewport(async () => {
+	await withTouchViewport(app, { width: 375, height: 480 }, async () => {
 	await app.evaluate(`window.plume.settings.get().then(s=>window.plume.settings.save({...s,appearance:{...s.appearance,theme:'dark',reduceMotion:'on'}}))`);
 	await frames(app);
 	await clickText("帮我批准");
@@ -326,7 +293,7 @@ test("long registry lists scroll inside the dialog and nested confirmation close
 	await app.send("Input.dispatchKeyEvent", {type:"keyUp",key:"Escape",windowsVirtualKeyCode:27});
 	await until(app, `document.querySelectorAll('[data-ly-modal]').length===1`);
 	assert.equal(await app.evaluate(`window.plume.settings.get().then(s=>s.pluginRegistries.length)`),20);
-	await withTouchViewport(async () => {
+	await withTouchViewport(app, { width: 375, height: 480 }, async () => {
 	await frames(app);
 	const narrow = await app.evaluate(`(()=>{const e=document.querySelector('[data-ly-modal]'),r=e.getBoundingClientRect(),s=e.querySelector('.ly-scroll-view');return {x:r.x,right:r.right,bottom:r.bottom,overflow:s.scrollWidth-s.clientWidth,action:getComputedStyle(e.querySelector('.ly-row-action')).opacity,touch:navigator.maxTouchPoints,hover:matchMedia('(hover: hover)').matches};})()`);
 	assert.ok(narrow.x>=0 && narrow.right<=375 && narrow.bottom<=480,JSON.stringify(narrow));

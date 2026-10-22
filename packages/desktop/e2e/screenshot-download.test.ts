@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { startApp, type AppWindow } from "./app.ts";
 import { captureOwnWindowAsScreen } from "./capture-fixture.ts";
-import { click } from "./drive.ts";
+import { click, waitFor } from "./drive.ts";
 
 /*
  * The main process's `clipboard`, the same object the app imports, bound to `c`. Electron 44
@@ -68,14 +68,7 @@ test("the visible download arrow saves to Desktop or the selected directory and 
 	const checks: { name: string; measured: unknown }[] = [];
 	let overlay: AppWindow | undefined;
 	let passed = false;
-	async function until(page: AppWindow, expression: string) {
-		const end = Date.now() + 10_000;
-		while (Date.now() < end) {
-			if (await page.evaluate<boolean>(expression)) return;
-			await pause(50);
-		}
-		throw new Error(`Not ready: ${expression}`);
-	}
+	const until = (page: AppWindow, expression: string) => waitFor(page, expression, 10_000, 50);
 	async function hold(ms = 1100) {
 		if (!overlay || !process.env.PLUME_E2E_RECORD_DIR) return;
 		const end = Date.now() + ms;

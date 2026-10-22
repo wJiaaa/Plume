@@ -21,7 +21,7 @@ import { after, before, test } from "node:test";
 import { closeListeningServer, startApp, type RunningApp } from "./app.ts";
 import { cleanupFixture } from "./fixture-cleanup.ts";
 import { seedInteractions } from "./interaction-fixture.ts";
-import { click, frames } from "./drive.ts";
+import { click, frames, waitFor } from "./drive.ts";
 
 const CDP_PORT = 9637;
 const STEP_MS = 3000;
@@ -102,14 +102,7 @@ after(async () => {
 	await cleanupFixture(() => app?.stop(), () => closeListeningServer(model));
 });
 
-async function until(expression: string, ms = 30000) {
-	const end = Date.now() + ms;
-	while (Date.now() < end) {
-		if (await app.evaluate<boolean>(`Boolean(${expression})`)) return;
-		await new Promise((r) => setTimeout(r, 100));
-	}
-	throw new Error(`等不到：${expression}`);
-}
+const until = (expression: string, ms = 30000) => waitFor(app, expression, ms);
 const faceMap = () => app.evaluate<Record<string, string>>(`Object.fromEntries([...document.querySelectorAll('[data-agent-profile]')].flatMap(row=>{const f=row.querySelector('.ly-avatar');return f?[[row.dataset.agentProfile,f.dataset.avatar]]:[];}))`);
 
 test("设置页：八个智能体八张脸；指针进来那一行的脸真的弹了一下、眼睛跟着指针，没人碰也会自己眨眼", async () => {

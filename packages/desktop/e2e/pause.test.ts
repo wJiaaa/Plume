@@ -19,6 +19,7 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { closeListeningServer, startApp, type RunningApp } from "./app.ts";
 import { cleanupFixture } from "./fixture-cleanup.ts";
+import { poll } from "./drive.ts";
 
 let app: RunningApp;
 let model: Server;
@@ -226,16 +227,7 @@ const READ_ROW = `(() => {
 })()`;
 
 /** Poll the renderer until `READ_ROW` satisfies `done`, or give up. */
-async function until(done: (row: Row) => boolean, ms = 20_000): Promise<Row> {
-	const deadline = Date.now() + ms;
-	let row: Row = { text: "", buttons: [], belowTheReply: false, running: false };
-	while (Date.now() < deadline) {
-		row = await app.evaluate<Row>(READ_ROW);
-		if (done(row)) return row;
-		await new Promise((resolve) => setTimeout(resolve, 150));
-	}
-	return row;
-}
+const until = (done: (row: Row) => boolean, ms = 20_000) => poll(() => app.evaluate<Row>(READ_ROW), done, ms);
 
 /** Type into the composer and send, whatever conversation is on screen. */
 async function ask(text: string): Promise<void> {
@@ -292,12 +284,7 @@ async function transcript(): Promise<string> {
 }
 
 async function untilTranscript(has: string, ms = 25_000): Promise<boolean> {
-	const deadline = Date.now() + ms;
-	while (Date.now() < deadline) {
-		if ((await transcript()).includes(has)) return true;
-		await new Promise((resolve) => setTimeout(resolve, 200));
-	}
-	return false;
+	return (await poll(transcript, (text) => text.includes(has), ms, 200)).includes(has);
 }
 
 let midTurn: Row;

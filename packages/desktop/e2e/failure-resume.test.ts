@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { closeListeningServer, startApp, type RunningApp } from "./app.ts";
 import { cleanupFixture } from "./fixture-cleanup.ts";
+import { poll } from "./drive.ts";
 
 let app: RunningApp;
 let model: Server;
@@ -141,11 +142,7 @@ const transcript = () => app.evaluate<string>(`(document.querySelector("main")?.
 
 /** Wait for the transcript to contain something, rather than for a fixed time. */
 async function until(text: string, tries = 60): Promise<boolean> {
-	for (let i = 0; i < tries; i++) {
-		if ((await transcript()).includes(text)) return true;
-		await new Promise((r) => setTimeout(r, 250));
-	}
-	return false;
+	return (await poll(transcript, (seen) => seen.includes(text), tries * 250, 250)).includes(text);
 }
 
 test("a failed request offers to carry on, not only to start over", async () => {

@@ -209,6 +209,15 @@ lockfile。依赖已经装好时，每轮都跑一遍什么也确认不了，只
 `check()` 打在终端上，两者说的是同一件事，视频回答「看起来对不对」，终端回答「量出来是多少」。
 只有绿勾没有视频，等于让用户替你相信；只有视频没有断言，下次改坏了没人拦得住。
 
+**验证脚本验完就要有去处，不要散放进 `e2e/`。** 拦住下次改坏的是会被跑的东西，不是躺在目录里的
+脚本：`test:e2e` 只跑 `*.test.ts`，单放的 probe/demo 交付之后再没人跑，界面一改选择器就悄悄失效。
+2026-10 清理时这样的脚本攒了 272 个、5.6 万行，没有一个还在守着什么，倒是每次 grep 都搜到它们。
+写之前就决定它归哪一边：
+
+- **值得守的**：改写成 `e2e/*.test.ts`，或者登记进 `audit-regression`，让它真的会被跑到
+- **其余的**：写在 `packages/desktop/e2e/scratch/`（已在 `.gitignore` 里，`../drive.ts` 照常能
+  import），验完留在本地，不进提交。录屏和截图照旧放桌面
+
 **不要为了让检查通过而放宽检查。** 规则报出来的如果是误报，加行内 `oxlint-disable-next-line`
 并在同一行写明理由；不要去改 `.oxlintrc.json` 把规则关掉，除非你能说清楚这条规则
 对整个仓库都不适用。
@@ -323,7 +332,7 @@ tag 说明和 GitHub Release 正文都由 `scripts/changelog-section.mjs` 从这
 | `packages/desktop/src/ui/` | 基础组件，不读 store 不调 service |
 | `packages/desktop/src/lib/` | 纯逻辑，没有 React |
 | `packages/desktop/src/services/` | 跟主进程说话的唯一出口 |
-| `packages/contract/` | 渲染进程与主进程之间那条线，235 个方法写在一处 |
+| `packages/contract/` | 渲染进程与主进程之间那条线，234 个方法写在一处 |
 | `packages/desktop/shared/` | 两个进程共有的判断，谁也不依赖 |
 
 ## 提交

@@ -6,7 +6,7 @@ import { startRecording, encode, type Frame } from "./record.ts";
 import { after, afterEach, before, test } from "node:test";
 import { closeListeningServer, startApp, type RunningApp } from "./app.ts";
 import { cleanupFixture } from "./fixture-cleanup.ts";
-import { press } from "./drive.ts";
+import { poll, press } from "./drive.ts";
 import { LONG_OPTIONS, LONG_QUESTION, questionModel, seedQuestions } from "./mention-question-fixture.ts";
 
 let app: RunningApp;
@@ -43,12 +43,7 @@ after(async () => {
 });
 
 async function until(condition: () => Promise<boolean>) {
-	const deadline = Date.now() + 15_000;
-	while (Date.now() < deadline) {
-		if (await condition()) return;
-		await app.evaluate("new Promise(requestAnimationFrame)");
-	}
-	throw new Error("Approval UI did not reach the expected visible state");
+	if (!(await poll(condition, Boolean, 15_000, 16))) throw new Error("Approval UI did not reach the expected visible state");
 }
 
 async function settle() {

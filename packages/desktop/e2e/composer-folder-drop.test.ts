@@ -16,6 +16,7 @@ import { mkdir, realpath, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { after, before, beforeEach, test } from "node:test";
 import { startApp, type RunningApp } from "./app.ts";
+import { poll } from "./drive.ts";
 
 let app: RunningApp;
 let root = "";
@@ -46,7 +47,6 @@ after(async () => {
 	await app?.stop();
 });
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const FIELD = `document.querySelector(".ly-composer textarea")`;
 const value = () => app.evaluate<string>(`${FIELD}.value`);
 const unreadable = () => app.evaluate<boolean>(`document.body.innerText.includes("无法读取")`);
@@ -55,15 +55,7 @@ const folderMarks = () =>
 	app.evaluate<string[]>(`[...document.querySelectorAll('.ly-composer .ly-attachment-token[data-kind="folder"]')].map((el) => el.textContent)`);
 
 /** 等某个条件成立，成立不了就把最后一次看到的交给断言去说。 */
-async function until<T>(read: () => Promise<T>, ok: (value: T) => boolean, ms = 5_000): Promise<T> {
-	const end = Date.now() + ms;
-	let seen = await read();
-	while (!ok(seen) && Date.now() < end) {
-		await sleep(100);
-		seen = await read();
-	}
-	return seen;
-}
+const until = <T>(read: () => Promise<T>, ok: (value: T) => boolean, ms = 5_000) => poll(read, ok, ms, 100);
 
 beforeEach(async () => {
 	const ready = await until(() => app.evaluate<boolean>(`!!${FIELD}`), Boolean, 30_000);

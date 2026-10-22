@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { after, afterEach, before, test, type TestContext } from "node:test";
 import { startApp, type RunningApp } from "./app.ts";
-import { click, frames, shot, until } from "./drive.ts";
+import { click, frames, shot, until, withTouchViewport } from "./drive.ts";
 import { settleSharedWindow } from "./shared-window.ts";
 
 let app: RunningApp;
@@ -64,39 +64,6 @@ async function select(label: string, nav = false, counted = false) {
 	await click(app, `${scope}button`, label, counted ? "stripCount" : "exact");
 }
 
-async function withTouchViewport(run: () => Promise<void>) {
-	const targets: { url: string; webSocketDebuggerUrl?: string }[] = await fetch("http://127.0.0.1:9603/json/list").then((response) => response.json());
-	const target = targets.find((entry) => entry.url.endsWith("/index.html"));
-	assert.ok(target?.webSocketDebuggerUrl);
-	const socket = new WebSocket(target.webSocketDebuggerUrl);
-	await new Promise<void>((resolve, reject) => {
-		socket.addEventListener("open", () => resolve(), { once: true });
-		socket.addEventListener("error", () => reject(new Error("touch emulation connection failed")), { once: true });
-	});
-	let id = 0;
-	const send = (method: string, params = {}) => new Promise<void>((resolve, reject) => {
-		const request = ++id;
-		const listener = (event: MessageEvent) => {
-			const message: { id?: number; error?: { message: string } } = JSON.parse(String(event.data));
-			if (message.id !== request) return;
-			socket.removeEventListener("message", listener);
-			if (message.error) reject(new Error(message.error.message)); else resolve();
-		};
-		socket.addEventListener("message", listener);
-		socket.send(JSON.stringify({ id: request, method, params }));
-	});
-	try {
-		// Touch overrides belong to the debugger session and disappear when its socket closes.
-		await send("Emulation.setDeviceMetricsOverride", { width: 375, height: 740, deviceScaleFactor: 1, mobile: true });
-		await send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
-		await run();
-	} finally {
-		try { await send("Emulation.clearDeviceMetricsOverride"); }
-		finally { socket.close(); }
-		await frames(app);
-	}
-}
-
 test("command deletion fades in without shifting its row, works with keyboard/touch, and respects cancel", async (t) => {
 	await click(app, 'button[aria-label="在「行操作验证」里新建会话"]');
 	await click(app, 'button:has(svg.lucide-settings)');
@@ -133,7 +100,7 @@ test("command deletion fades in without shifting its row, works with keyboard/to
 	await until(app, `document.querySelector('[role="dialog"]')`);
 	assert.ok(await app.evaluate(`document.querySelector('[role="dialog"]').textContent.includes(${JSON.stringify(command)})`));
 	await select("取消"); await until(app, `!document.querySelector('[role="dialog"]')`); await access(command);
-	await withTouchViewport(async () => {
+	await withTouchViewport(app, { width: 375, height: 740 }, async () => {
 		await frames(app); await point(selector); await frames(app);
 		const narrow = await measure();
 		t.diagnostic(JSON.stringify(await app.evaluate(`({media:['(hover: hover)','(pointer: fine)','(any-pointer: coarse)'].map(q=>[q,matchMedia(q).matches]),touch:navigator.maxTouchPoints})`)));

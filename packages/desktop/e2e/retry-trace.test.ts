@@ -19,6 +19,7 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { closeListeningServer, startApp, type RunningApp } from "./app.ts";
 import { cleanupFixture } from "./fixture-cleanup.ts";
+import { poll } from "./drive.ts";
 
 let app: RunningApp;
 let model: Server;
@@ -177,13 +178,7 @@ const trace = () =>
 		};
 	})()`);
 
-async function until(check: () => Promise<boolean>, tries = 80): Promise<boolean> {
-	for (let i = 0; i < tries; i++) {
-		if (await check()) return true;
-		await new Promise((r) => setTimeout(r, 250));
-	}
-	return false;
-}
+const until = (check: () => Promise<boolean>, tries = 80) => poll(check, Boolean, tries * 250, 250);
 
 test("流内 error 事件会被重试，而且真的接上了", async () => {
 	failureMode = "stream-error";

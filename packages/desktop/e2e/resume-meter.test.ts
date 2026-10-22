@@ -20,6 +20,7 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { closeListeningServer, startApp, type RunningApp } from "./app.ts";
 import { cleanupFixture } from "./fixture-cleanup.ts";
+import { poll } from "./drive.ts";
 
 let app: RunningApp;
 let model: Server;
@@ -205,13 +206,8 @@ interface Meter {
 const meter = () => app.evaluate<Meter>(READ_METER);
 
 async function untilTranscript(has: string, ms = 25_000): Promise<boolean> {
-	const deadline = Date.now() + ms;
-	while (Date.now() < deadline) {
-		const text = await app.evaluate<string>(`(document.querySelector("main")?.innerText ?? "")`);
-		if (text.includes(has)) return true;
-		await new Promise((resolve) => setTimeout(resolve, 200));
-	}
-	return false;
+	const read = () => app.evaluate<string>(`(document.querySelector("main")?.innerText ?? "")`);
+	return (await poll(read, (text) => text.includes(has), ms, 200)).includes(has);
 }
 
 async function ask(text: string): Promise<void> {

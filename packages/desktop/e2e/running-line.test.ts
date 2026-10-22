@@ -24,6 +24,7 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { closeListeningServer, startApp, type RunningApp } from "./app.ts";
 import { cleanupFixture } from "./fixture-cleanup.ts";
+import { poll } from "./drive.ts";
 // The app's own threshold, so tuning it moves this wait with it rather than quietly stranding it.
 import { STALL_MS } from "../src/features/conversation/answering.ts";
 
@@ -242,16 +243,7 @@ async function claim(): Promise<Claim> {
 	return app.evaluate<Claim>(READ_CLAIM);
 }
 
-async function until(done: (c: Claim) => boolean, ms = 20_000): Promise<Claim> {
-	const deadline = Date.now() + ms;
-	let last: Claim = { line: false, stopButton: false, prose: false, toolCard: false, mounted: false, foldHeight: -1 };
-	while (Date.now() < deadline) {
-		last = await claim();
-		if (done(last)) return last;
-		await new Promise((resolve) => setTimeout(resolve, 150));
-	}
-	return last;
-}
+const until = (done: (c: Claim) => boolean, ms = 20_000) => poll(claim, done, ms);
 
 /**
  * The fold takes time to shut, and reading it mid-close reports a row that is on its way out as

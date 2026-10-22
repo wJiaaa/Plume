@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { WebSocket } from "ws";
 import { evaluateRenderer, type RunningApp } from "./app.ts";
+import * as drive from "./drive.ts";
 
 export interface Frame {
 	at: number;
@@ -216,43 +217,29 @@ export async function encode(frames: Frame[], out: string, fps?: number, maxHold
 
 export const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** 一套绑在某个窗口上的操作。 */
+/**
+ * 录像剧本用的一套操作，绑在一个窗口上。
+ *
+ * 点、悬停、打字、按键都转给 `drive.ts`：真鼠标要等元素停稳、核对落点，打字要走 `Input.insertText`
+ * 而不是给 `value` 赋值——这里从前各抄了一份更粗的，录出来的是人不会走的那条路。这里只留 `drive.ts`
+ * 没有的：从 Node 侧长轮询的 `until`、等一轮跑完的 `settled`，以及给没有抓手的元素挂记号。
+ */
 export function driver(app: RunningApp) {
 	/*
 	 * 从 Node 侧短轮询，不在页面里挂长 promise。
 	 *
 	 * `app.evaluate` 自己 40 秒超时（见 `app.ts`），而一轮真实对话要跑好几分钟——把等待写在页面里，
-	 * 等到的是那条超时，不是那一轮。
+	 * 等到的是那条超时，不是那一轮。`drive.until` 按帧数在页面里等，适合十秒以内的事。
 	 */
-	async function until(expression: string, ms = 300000) {
-		const end = Date.now() + ms;
-		while (Date.now() < end) {
-			if (await app.evaluate<boolean>(`Boolean(${expression})`)) return;
-			await pause(250);
-		}
-		throw new Error(`等不到：${expression}`);
-	}
+	const until = (expression: string, ms = 300000) => drive.waitFor(app, expression, ms, 250);
 
-	const box = (selector: string) =>
-		app.evaluate<{ x: number; y: number }>(
-			`(()=>{const r=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`,
-		);
-
-	/** 真鼠标，不是 `.click()`——后者在这个界面里打不开会话行一类的东西。 */
+	/** 真鼠标，不是 `.click()`——后者在这个界面里打不开会话行一类的东西。先等它出现，一轮回复里出来的按钮要等很久。 */
 	async function click(selector: string) {
 		await until(`document.querySelector(${JSON.stringify(selector)})?.checkVisibility()`, 20000);
-		const point = await box(selector);
-		for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) {
-			await app.send("Input.dispatchMouseEvent", {
-				type, ...point,
-				...(type === "mouseMoved" ? {} : { button: "left", clickCount: 1 }),
-			});
-		}
+		await drive.click(app, selector);
 	}
 
-	async function hover(selector: string) {
-		await app.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...(await box(selector)) });
-	}
+	const hover = (selector: string) => drive.hover(app, selector);
 
 	/** 给一个元素挂个记号，好让后面用一个稳定的选择器找到它。 */
 	async function mark(selector: string, attribute: string) {
@@ -268,26 +255,16 @@ export function driver(app: RunningApp) {
 		);
 	}
 
-	async function type(text: string) {
-		await app.evaluate(`(()=>{
-			const field = document.querySelector("main textarea");
-			const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;
-			setter.call(field, ${JSON.stringify(text)});
-			field.dispatchEvent(new Event("input", { bubbles: true }));
-		})()`);
-	}
+	/** 往主输入框里打字，替换原有内容。 */
+	const type = (text: string) => drive.type(app, COMPOSER, text);
 
+	/** 在主输入框里按回车发出去。 */
 	async function submit() {
-		await app.evaluate(`(()=>{
-			const field = document.querySelector("main textarea");
-			field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
-		})()`);
+		await drive.focus(app, COMPOSER);
+		await drive.press(app, "Enter", 13);
 	}
 
-	async function key(name: string, code: number) {
-		await app.send("Input.dispatchKeyEvent", { type: "keyDown", key: name, code: name, windowsVirtualKeyCode: code });
-		await app.send("Input.dispatchKeyEvent", { type: "keyUp", key: name, code: name, windowsVirtualKeyCode: code });
-	}
+	const key = (name: string, code: number) => drive.press(app, name, code);
 
 	/** 等这一轮跑完——「停止」按钮出现过，然后消失并保持三秒。 */
 	async function settled(ms = 300000) {
@@ -304,3 +281,5 @@ export function driver(app: RunningApp) {
 
 	return { until, click, hover, mark, markByText, type, submit, key, settled };
 }
+
+const COMPOSER = "main textarea";

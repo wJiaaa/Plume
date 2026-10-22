@@ -20,6 +20,7 @@ import { promisify } from "node:util";
 import { after, before, test } from "node:test";
 import { closeListeningServer, startApp, type RunningApp } from "./app.ts";
 import { cleanupFixture } from "./fixture-cleanup.ts";
+import { poll } from "./drive.ts";
 
 const exec = promisify(execFile);
 
@@ -130,11 +131,7 @@ const shell = () => app.evaluate<string>(`(document.body?.innerText ?? "")`);
 
 /** Wait for the window to say something, rather than for a fixed time. */
 async function until(has: (text: string) => boolean, tries = 40): Promise<boolean> {
-	for (let i = 0; i < tries; i++) {
-		if (has(await shell())) return true;
-		await new Promise((r) => setTimeout(r, 300));
-	}
-	return false;
+	return has(await poll(shell, has, tries * 300, 300));
 }
 
 test("a file written mid-turn is counted without waiting for the turn to end", async () => {
