@@ -9,7 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Brain, Check, Info, Plus, Save, Trash2 } from "../../ui/icons/index.ts";
 import { useApp } from "../../store/index.ts";
 import { useListedProjects } from "../../store/listed-projects.ts";
-import { Card, InlineSelect, Row, SectionTitle, TextInput, Toggle } from "./controls.tsx";
+import { Card, InlineSelect, PageHeader, Row, SectionTitle, TextInput, Toggle } from "./controls.tsx";
 import { DialogAction } from "../../ui/overlay/Dialog.tsx";
 import { bridge } from "../../services/index.ts";
 import { MemoryMeta, type MemorySource } from "./MemoryMeta.tsx";
@@ -187,258 +187,260 @@ export function PersonalizationSettings() {
 	};
 
 	return (
-		<div className="space-y-6 pt-2">
-			<h1 className="pb-2 text-display leading-tight font-semibold tracking-tight text-ink">{t("settings.personalization")}</h1>
-			{/* Custom Instructions */}
-			<div>
-				<div className="mb-2 flex items-center justify-between">
-					<div>
-						<SectionTitle>{t("tone.customInstructions")}</SectionTitle>
-						<p className="text-caption text-ink-muted mt-0.5">
-							{t("personalization.globalRules")}
-						</p>
+		<div className="pt-2">
+			<PageHeader title={t("settings.personalization")} />
+			<div className="space-y-6">
+				{/* Custom Instructions */}
+				<div>
+					<div className="mb-2 flex items-center justify-between">
+						<div>
+							<SectionTitle>{t("tone.customInstructions")}</SectionTitle>
+							<p className="text-caption text-ink-muted mt-0.5">
+								{t("personalization.globalRules")}
+							</p>
+						</div>
+						{/*
+						 * 存完那一下变绿，不再多写一个「已保存」。
+						 *
+						 * 原来是同一颗按钮上换一句话，而那句话本身是短暂的——过一会儿又变回「保存」。
+						 * 勾加绿色说的是同一件事，且按钮不必跟着两句话的长短宽一次窄一次。
+						 */}
+						<DialogAction
+							onClick={handleSaveInstructions}
+							disabled={customInstructions === (personalization.customInstructions ?? "")}
+							label={savedNotice ? t("common.saved") : t("common.save")}
+						>
+							{savedNotice ? <Check size={13} className="text-emerald-500" strokeWidth={2.2} aria-hidden /> : <Save size={13} strokeWidth={1.9} aria-hidden />}
+							{savedNotice ? t("common.saved") : t("common.save")}
+						</DialogAction>
 					</div>
-					{/*
-					 * 存完那一下变绿，不再多写一个「已保存」。
-					 *
-					 * 原来是同一颗按钮上换一句话，而那句话本身是短暂的——过一会儿又变回「保存」。
-					 * 勾加绿色说的是同一件事，且按钮不必跟着两句话的长短宽一次窄一次。
-					 */}
-					<DialogAction
-						onClick={handleSaveInstructions}
-						disabled={customInstructions === (personalization.customInstructions ?? "")}
-						label={savedNotice ? t("common.saved") : t("common.save")}
-					>
-						{savedNotice ? <Check size={13} className="text-emerald-500" strokeWidth={2.2} aria-hidden /> : <Save size={13} strokeWidth={1.9} aria-hidden />}
-						{savedNotice ? t("common.saved") : t("common.save")}
-					</DialogAction>
+
+					<Card className="p-3.5 space-y-2">
+						<TextArea
+							value={customInstructions}
+							onChange={setCustomInstructions}
+							placeholder={t("tone.sampleRules")}
+							rows={7}
+							className="ly-textarea-mono"
+						/>
+						<div className="flex items-center gap-1.5 text-micro text-ink-faint px-1">
+							<Info size={12} strokeWidth={1.8} />
+							<span>{t("tone.customDetail")}</span>
+						</div>
+					</Card>
 				</div>
 
-				<Card className="p-3.5 space-y-2">
-					<TextArea
-						value={customInstructions}
-						onChange={setCustomInstructions}
-						placeholder={t("tone.sampleRules")}
-						rows={7}
-						className="ly-textarea-mono"
-					/>
-					<div className="flex items-center gap-1.5 text-micro text-ink-faint px-1">
-						<Info size={12} strokeWidth={1.8} />
-						<span>{t("tone.customDetail")}</span>
+				{/* Memory Management */}
+				<div>
+					<div className="mb-2 flex items-center justify-between">
+						<div>
+							<SectionTitle>{t("memory.title")}</SectionTitle>
+							<p className="text-caption text-ink-muted mt-0.5">
+								{t("personalization.memoryIntro")}
+							</p>
+						</div>
+						{memoryEntries.length > 0 && (
+							<Button
+								variant="danger"
+								size="sm"
+								label={t("personalization.clearMemory")}
+								onClick={handleClearAllMemory}
+								icon={<Trash2 size={13} strokeWidth={1.8} />}
+							/>
+						)}
 					</div>
-				</Card>
-			</div>
 
-			{/* Memory Management */}
-			<div>
-				<div className="mb-2 flex items-center justify-between">
-					<div>
-						<SectionTitle>{t("memory.title")}</SectionTitle>
-						<p className="text-caption text-ink-muted mt-0.5">
-							{t("personalization.memoryIntro")}
-						</p>
-					</div>
-					{memoryEntries.length > 0 && (
-						<Button
-							variant="danger"
-							size="sm"
-							label={t("personalization.clearMemory")}
-							onClick={handleClearAllMemory}
-							icon={<Trash2 size={13} strokeWidth={1.8} />}
+					<Card>
+						<Row
+							title={t("memory.user")}
+							detail={t("memory.userDetail")}
+							control={
+								<Toggle
+									checked={personalization.enableMemory !== false}
+									onChange={handleToggleEnableMemory}
+								/>
+							}
 						/>
+						{/*
+						 * 说清楚代价，因为这一条跟上面那条不同：它要把对话内容发出去。
+						 *
+						 * 上面那条只在本机沉淀偏好；这一条是空闲时读最近几次会话、交给模型提炼这个仓库的
+						 * 约定。一个默认只在本地跑的工具，在这件事上必须把话说在开关旁边，而不是只在
+						 * 第一次弹窗里说一次。
+						 */}
+						<Row
+							title={t("memory.project")}
+							detail={t("memory.projectDetail")}
+							control={<Toggle checked={personalization.enableProjectMemory !== false} onChange={(checked) => { if (settings) void saveSettings({ ...settings, personalization: { ...personalization, enableProjectMemory: checked } }); }} />}
+						/>
+						<Row
+							title={t("memory.autoProject")}
+							detail={t("memory.autoProjectDetail")}
+							control={<Toggle checked={settings?.memoryExtraction === true} onChange={handleToggleExtraction} />}
+						/>
+					</Card>
+
+					{/* Memory Items List */}
+					{personalization.enableMemory !== false && (
+						<div className="mt-3 space-y-2">
+							<div className="flex items-center gap-2">
+								<TextInput
+									type="text"
+									value={newMemory}
+									onChange={setNewMemory}
+									onKeyDown={(e) => {
+										if (e.key === "Enter" && newMemory.trim()) void handleAddMemory();
+									}}
+									placeholder={t("memory.addPlaceholder")}
+									className="flex-1"
+								/>
+								<Button variant="primary" disabled={!newMemory.trim()} onClick={handleAddMemory} icon={<Plus size={14} strokeWidth={2} />} label={t("memory.add")} />
+							</div>
+
+							{memoryEntries.length > 0 ? (
+								<div className="space-y-1.5">
+									{memoryEntries.map((m) => (
+										<div
+											key={m.id}
+											className="flex items-center justify-between gap-3 rounded-lg border border-line bg-card p-3 transition-colors hover:border-line-soft"
+										>
+											{/*
+											 * 脑图标对着这条记忆的中线，跟右边的删除按钮同高。
+											 *
+											 * 它原本贴着第一行文字，而删除按钮是居中的——一条记忆两行高，左右两个图标就差
+											 * 出半行，看着像哪一边没放正。
+											 */}
+											<div className="flex items-center gap-2.5 min-w-0">
+												<Brain size={15} strokeWidth={1.8} className="text-accent shrink-0" />
+												<div className="min-w-0">
+													<span className="text-detail text-ink leading-relaxed break-words">{m.content}</span>
+													<MemoryMeta source={m.source ?? "user"} createdAt={m.createdAt} lastInjectedAt={m.lastInjectedAt} />
+												</div>
+											</div>
+											<IconButton
+												tone="danger"
+												label={t("memory.deleteOne")}
+												onClick={() => handleDeleteMemory(m.id)}
+												icon={<Trash2 size={13.5} strokeWidth={1.8} />}
+											/>
+										</div>
+									))}
+								</div>
+							) : (
+								<div className="rounded-lg border border-line/60 bg-card/40 py-8 text-center text-caption text-ink-faint">
+									{loadingMemory ? t("memory.reading") : t("memory.empty")}
+								</div>
+							)}
+						</div>
+					)}
+					{project && (
+						<div className="pt-2" data-project-memory>
+							<div className="mb-1.5 flex items-center justify-between gap-2">
+								<div className="flex min-w-0 items-center gap-2">
+									<p className="shrink-0 text-caption text-ink-muted">{t("personalization.rememberedByProject")}</p>
+									<InlineSelect
+										value={project.path}
+										onChange={setPicked}
+										options={projects.map((p) => ({ value: p.path, label: folderChoiceName(listed, p.path, resolvedLocale), detail: p.path }))}
+										ariaLabel={t("common.project")}
+									/>
+								</div>
+								{/*
+								 * 「全部忘掉」和逐条删是两种意图，不是一个的快捷方式。
+								 *
+								 * 逐条删是在修一条错的；全部忘掉是「这个项目我重新开始」——多半发生在
+								 * 抽取跑歪了、或者仓库整个换了方向之后。一条条点二十下不是同一件事。
+								 */}
+								{hasProjectMemory && (
+									<Button variant="danger" size="sm" onClick={() => void forgetAllProjectMemory()} data-project-memory-clear>
+										{t("memory.forgetAllProject")}
+									</Button>
+								)}
+							</div>
+							{!(projectMemory && (projectMemory.lessons.length > 0 || projectMemory.extracted)) ? (
+								<div className="rounded-lg border border-line/60 bg-card/40 py-8 text-center text-caption text-ink-faint" data-project-memory-empty>
+									{projectMemory === undefined ? t("memory.reading") : t("personalization.projectMemoryEmpty")}
+								</div>
+							) : (
+								<div className="space-y-1.5">
+									{/*
+									 * 每一条都得能删掉。
+									 *
+									 * 这些会被注入这个项目的每一次请求——一条过时的记忆不是碍眼，是一句对模型
+									 * 永远重复的指示。在这之前，撤回它的唯一办法是自己去改
+									 * `~/.plume/projects` 底下那个项目的记忆目录；用户记忆早就有这颗按钮了，
+									 * 项目记忆没有，纯粹是漏了。
+									 */}
+									{projectMemory.lessons.map((lesson) => (
+										<div key={`${lesson.at}-${lesson.text}`} className="flex items-start justify-between gap-2 rounded-lg border border-line bg-card p-3" data-project-lesson>
+											<div className="min-w-0">
+												<span className="text-detail text-ink leading-relaxed break-words">{lesson.text}</span>
+												{lesson.context && <span className="block text-caption text-ink-muted">{t("personalization.appliesTo", { context: lesson.context })}</span>}
+												<MemoryMeta source="learn" createdAt={lesson.at} lastInjectedAt={lesson.lastInjectedAt} />
+											</div>
+											<IconButton
+												tone="danger"
+												label={t("memory.deleteOne")}
+												onClick={() => void forgetLesson(lesson.at)}
+												data-project-lesson-delete
+												icon={<Trash2 size={13.5} strokeWidth={1.8} />}
+											/>
+										</div>
+									))}
+									{projectMemory.extracted && (
+										<div className="flex items-start justify-between gap-2 rounded-lg border border-line bg-card p-3" data-project-extracted>
+											<div className="min-w-0">
+												<pre className="whitespace-pre-wrap font-sans text-detail text-ink leading-relaxed break-words">{projectMemory.extracted.text}</pre>
+												<MemoryMeta
+													source="extracted"
+													createdAt={projectMemory.extracted.updatedAt ?? Date.now()}
+													lastInjectedAt={projectMemory.extracted.lastInjectedAt}
+												/>
+											</div>
+											{/* 抽取出来的那一份是整体重写的，所以它只有「整份丢掉」这一个动作。下次抽取会重新写。 */}
+											<IconButton
+												tone="danger"
+												label={t("memory.deleteExtracted")}
+												onClick={() => void forgetExtracted()}
+												data-project-extracted-delete
+												icon={<Trash2 size={13.5} strokeWidth={1.8} />}
+											/>
+										</div>
+									)}
+								</div>
+							)}
+						</div>
 					)}
 				</div>
 
-				<Card>
-					<Row
-						title={t("memory.user")}
-						detail={t("memory.userDetail")}
-						control={
-							<Toggle
-								checked={personalization.enableMemory !== false}
-								onChange={handleToggleEnableMemory}
-							/>
-						}
-					/>
-					{/*
-					 * 说清楚代价，因为这一条跟上面那条不同：它要把对话内容发出去。
-					 *
-					 * 上面那条只在本机沉淀偏好；这一条是空闲时读最近几次会话、交给模型提炼这个仓库的
-					 * 约定。一个默认只在本地跑的工具，在这件事上必须把话说在开关旁边，而不是只在
-					 * 第一次弹窗里说一次。
-					 */}
-					<Row
-						title={t("memory.project")}
-						detail={t("memory.projectDetail")}
-						control={<Toggle checked={personalization.enableProjectMemory !== false} onChange={(checked) => { if (settings) void saveSettings({ ...settings, personalization: { ...personalization, enableProjectMemory: checked } }); }} />}
-					/>
-					<Row
-						title={t("memory.autoProject")}
-						detail={t("memory.autoProjectDetail")}
-						control={<Toggle checked={settings?.memoryExtraction === true} onChange={handleToggleExtraction} />}
-					/>
-				</Card>
-
-				{/* Memory Items List */}
-				{personalization.enableMemory !== false && (
-					<div className="mt-3 space-y-2">
-						<div className="flex items-center gap-2">
-							<TextInput
-								type="text"
-								value={newMemory}
-								onChange={setNewMemory}
-								onKeyDown={(e) => {
-									if (e.key === "Enter" && newMemory.trim()) void handleAddMemory();
-								}}
-								placeholder={t("memory.addPlaceholder")}
-								className="flex-1"
-							/>
-							<Button variant="primary" disabled={!newMemory.trim()} onClick={handleAddMemory} icon={<Plus size={14} strokeWidth={2} />} label={t("memory.add")} />
-						</div>
-
-						{memoryEntries.length > 0 ? (
-							<div className="space-y-1.5">
-								{memoryEntries.map((m) => (
-									<div
-										key={m.id}
-										className="flex items-center justify-between gap-3 rounded-lg border border-line bg-card p-3 transition-colors hover:border-line-soft"
-									>
-										{/*
-										 * 脑图标对着这条记忆的中线，跟右边的删除按钮同高。
-										 *
-										 * 它原本贴着第一行文字，而删除按钮是居中的——一条记忆两行高，左右两个图标就差
-										 * 出半行，看着像哪一边没放正。
-										 */}
-										<div className="flex items-center gap-2.5 min-w-0">
-											<Brain size={15} strokeWidth={1.8} className="text-accent shrink-0" />
-											<div className="min-w-0">
-												<span className="text-detail text-ink leading-relaxed break-words">{m.content}</span>
-												<MemoryMeta source={m.source ?? "user"} createdAt={m.createdAt} lastInjectedAt={m.lastInjectedAt} />
-											</div>
-										</div>
-										<IconButton
-											tone="danger"
-											label={t("memory.deleteOne")}
-											onClick={() => handleDeleteMemory(m.id)}
-											icon={<Trash2 size={13.5} strokeWidth={1.8} />}
-										/>
-									</div>
-								))}
-							</div>
-						) : (
-							<div className="rounded-lg border border-line/60 bg-card/40 py-8 text-center text-caption text-ink-faint">
-								{loadingMemory ? t("memory.reading") : t("memory.empty")}
-							</div>
-						)}
+				{/* Personality / Tone */}
+				<div>
+					<div className="mb-2">
+						<SectionTitle>{t("tone.section")}</SectionTitle>
+						<p className="text-caption text-ink-muted mt-0.5">
+							{t("personalization.toneIntro")}
+						</p>
 					</div>
-				)}
-				{project && (
-					<div className="pt-2" data-project-memory>
-						<div className="mb-1.5 flex items-center justify-between gap-2">
-							<div className="flex min-w-0 items-center gap-2">
-								<p className="shrink-0 text-caption text-ink-muted">{t("personalization.rememberedByProject")}</p>
+					<Card>
+						<Row
+							title={t("tone.title")}
+							detail={t("tone.detail")}
+							control={
 								<InlineSelect
-									value={project.path}
-									onChange={setPicked}
-									options={projects.map((p) => ({ value: p.path, label: folderChoiceName(listed, p.path, resolvedLocale), detail: p.path }))}
-									ariaLabel={t("common.project")}
+									value={personalization.tone ?? "friendly"}
+									onChange={(val) => void handleToneChange(val as any)}
+									options={[
+										{ value: "friendly", label: t("tone.warm") },
+										{ value: "professional", label: t("tone.professional") },
+										{ value: "concise", label: t("tone.terse") },
+										{ value: "candid", label: t("tone.blunt") },
+										{ value: "humorous", label: t("tone.playful") },
+									]}
 								/>
-							</div>
-							{/*
-							 * 「全部忘掉」和逐条删是两种意图，不是一个的快捷方式。
-							 *
-							 * 逐条删是在修一条错的；全部忘掉是「这个项目我重新开始」——多半发生在
-							 * 抽取跑歪了、或者仓库整个换了方向之后。一条条点二十下不是同一件事。
-							 */}
-							{hasProjectMemory && (
-								<Button variant="danger" size="sm" onClick={() => void forgetAllProjectMemory()} data-project-memory-clear>
-									{t("memory.forgetAllProject")}
-								</Button>
-							)}
-						</div>
-						{!(projectMemory && (projectMemory.lessons.length > 0 || projectMemory.extracted)) ? (
-							<div className="rounded-lg border border-line/60 bg-card/40 py-8 text-center text-caption text-ink-faint" data-project-memory-empty>
-								{projectMemory === undefined ? t("memory.reading") : t("personalization.projectMemoryEmpty")}
-							</div>
-						) : (
-							<div className="space-y-1.5">
-								{/*
-								 * 每一条都得能删掉。
-								 *
-								 * 这些会被注入这个项目的每一次请求——一条过时的记忆不是碍眼，是一句对模型
-								 * 永远重复的指示。在这之前，撤回它的唯一办法是自己去改
-								 * `~/.plume/projects` 底下那个项目的记忆目录；用户记忆早就有这颗按钮了，
-								 * 项目记忆没有，纯粹是漏了。
-								 */}
-								{projectMemory.lessons.map((lesson) => (
-									<div key={`${lesson.at}-${lesson.text}`} className="flex items-start justify-between gap-2 rounded-lg border border-line bg-card p-3" data-project-lesson>
-										<div className="min-w-0">
-											<span className="text-detail text-ink leading-relaxed break-words">{lesson.text}</span>
-											{lesson.context && <span className="block text-caption text-ink-muted">{t("personalization.appliesTo", { context: lesson.context })}</span>}
-											<MemoryMeta source="learn" createdAt={lesson.at} lastInjectedAt={lesson.lastInjectedAt} />
-										</div>
-										<IconButton
-											tone="danger"
-											label={t("memory.deleteOne")}
-											onClick={() => void forgetLesson(lesson.at)}
-											data-project-lesson-delete
-											icon={<Trash2 size={13.5} strokeWidth={1.8} />}
-										/>
-									</div>
-								))}
-								{projectMemory.extracted && (
-									<div className="flex items-start justify-between gap-2 rounded-lg border border-line bg-card p-3" data-project-extracted>
-										<div className="min-w-0">
-											<pre className="whitespace-pre-wrap font-sans text-detail text-ink leading-relaxed break-words">{projectMemory.extracted.text}</pre>
-											<MemoryMeta
-												source="extracted"
-												createdAt={projectMemory.extracted.updatedAt ?? Date.now()}
-												lastInjectedAt={projectMemory.extracted.lastInjectedAt}
-											/>
-										</div>
-										{/* 抽取出来的那一份是整体重写的，所以它只有「整份丢掉」这一个动作。下次抽取会重新写。 */}
-										<IconButton
-											tone="danger"
-											label={t("memory.deleteExtracted")}
-											onClick={() => void forgetExtracted()}
-											data-project-extracted-delete
-											icon={<Trash2 size={13.5} strokeWidth={1.8} />}
-										/>
-									</div>
-								)}
-							</div>
-						)}
-					</div>
-				)}
-			</div>
-
-			{/* Personality / Tone */}
-			<div>
-				<div className="mb-2">
-					<SectionTitle>{t("tone.section")}</SectionTitle>
-					<p className="text-caption text-ink-muted mt-0.5">
-						{t("personalization.toneIntro")}
-					</p>
+							}
+						/>
+					</Card>
 				</div>
-				<Card>
-					<Row
-						title={t("tone.title")}
-						detail={t("tone.detail")}
-						control={
-							<InlineSelect
-								value={personalization.tone ?? "friendly"}
-								onChange={(val) => void handleToneChange(val as any)}
-								options={[
-									{ value: "friendly", label: t("tone.warm") },
-									{ value: "professional", label: t("tone.professional") },
-									{ value: "concise", label: t("tone.terse") },
-									{ value: "candid", label: t("tone.blunt") },
-									{ value: "humorous", label: t("tone.playful") },
-								]}
-							/>
-						}
-					/>
-				</Card>
 			</div>
 		</div>
 	);

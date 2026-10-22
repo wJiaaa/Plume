@@ -9,7 +9,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Message } from "@plume/core";
 
-import { runKey, runs, turnBlocks, type Run, type TurnBlock } from "../src/features/conversation/grouping.ts";
+import { runKey, runs, type Run } from "../src/features/conversation/grouping.ts";
+import { turnBlocks, type TurnBlock } from "../src/features/conversation/turn-blocks.ts";
 
 let clock = 1000;
 const user = (text: string): Message => ({ role: "user", content: [{ type: "text", text }], timestamp: clock++ }) as Message;

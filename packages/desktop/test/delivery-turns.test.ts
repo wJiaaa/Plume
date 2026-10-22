@@ -12,7 +12,9 @@ import { test } from "node:test";
 import type { AssistantContent, AssistantMessage, Message, StopReason } from "@plume/core";
 import { emptyUsage } from "@plume/core";
 
-import { computeTurnStats, runs, turnBlocks } from "../src/features/conversation/grouping.ts";
+import { runs } from "../src/features/conversation/grouping.ts";
+import { computeTurnStats } from "../src/features/conversation/turns.ts";
+import { turnBlocks } from "../src/features/conversation/turn-blocks.ts";
 
 const user = (text: string, extra: Partial<Extract<Message, { role: "user" }>> = {}): Message => ({ role: "user", content: [{ type: "text", text }], timestamp: 1, ...extra });
 

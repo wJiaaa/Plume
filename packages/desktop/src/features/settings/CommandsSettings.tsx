@@ -4,13 +4,13 @@
 
 import type { BuiltinCommand } from "@plume/core/commands-builtin";
 import type { SlashCommand } from "@plume/core/commands-view";
-import { FolderOpen, Plus, RefreshCw, SquareTerminal, TriangleAlert } from "../../ui/icons/index.ts";
+import { FolderOpen, Plus, RefreshCw, SquareTerminal } from "../../ui/icons/index.ts";
 import { useCallback, useEffect, useState } from "react";
 import { useApp } from "../../store/index.ts";
 import { TextInput } from "./inputs.tsx";
 import { ProjectScope } from "./ProjectScope.tsx";
-import { Card, Notice } from "./layout.tsx";
-import { SearchField } from "../../ui/inputs/SearchField.tsx";
+import { Card, PageHeader } from "./layout.tsx";
+import { DefinitionToolbar, DiagnosticNotices } from "./definition-page.tsx";
 import { Button } from "../../ui/primitives/Button.tsx";
 import { bridge } from "../../services/index.ts";
 import { RowDeleteButton } from "../../ui/primitives/RowDeleteButton.tsx";
@@ -22,11 +22,8 @@ export function CommandsSettings() {
 
 	return (
 		<div className="pt-2">
-			<h1 className="text-display leading-tight font-semibold tracking-tight text-ink">{t("commands.title")}</h1>
-			<p className="mt-2 text-label text-ink-muted">{t("commands.intro")}</p>
-			<div className="mt-6">
-				<SlashCommands />
-			</div>
+			<PageHeader title={t("commands.title")} intro={t("commands.intro")} />
+			<SlashCommands />
 		</div>
 	);
 }
@@ -34,7 +31,6 @@ export function CommandsSettings() {
 /** Where a command came from, said the same way the composer says it. */
 function originOf(command: SlashCommand): string {
 	if (command.origin === "claude") return command.scope === "workspace" ? translate("commands.claudeProject") : translate("commands.claudePersonal");
-	if (command.origin === "agents") return command.scope === "workspace" ? translate("commands.agentsProject") : translate("commands.agentsPersonal");
 	return command.scope === "workspace" ? translate("common.project") : translate("common.personal");
 }
 
@@ -126,42 +122,12 @@ function SlashCommands() {
 
 	return (
 		<div data-ly-commands-settings="">
-			<div className="flex min-w-0 flex-wrap items-center gap-3">
-				<ProjectScope value={project} projects={projects} onChange={setProjectPath} />
-				<div className="h-4 w-px bg-line" aria-hidden />
-				<div className="flex items-center gap-1 text-label font-medium text-ink">
-					{t("commands.title")}
-					<span className="text-detail font-normal text-ink-faint">{visible.length}</span>
-				</div>
-				<SearchField size="comfortable" value={query} onChange={setQuery} placeholder={t("commands.searchPlaceholder")} className="ml-auto max-w-[220px] flex-1 basis-[120px]" />
-			</div>
+			<DefinitionToolbar scope={<ProjectScope value={project} projects={projects} onChange={setProjectPath} />}
+				title={t("commands.title")} count={visible.length} query={query} onQuery={setQuery} placeholder={t("commands.searchPlaceholder")} />
 
-			{diagnostics.length > 0 && (
-				<Notice tone="accent" icon={TriangleAlert} className="mt-5">
-					<div className="min-w-0">
-						<div className="text-accent">{t("commandsSettings.failedToLoad", { n: failed })}</div>
-						{/* By position: a path repeats when one file has two lines, and these rows hold no state. */}
-						{diagnostics.map((diagnostic, index) => (
-							<div key={index} className="mt-0.5">
-								<span className="font-mono">{diagnostic.path}</span> — {diagnostic.message}
-							</div>
-						))}
-					</div>
-				</Notice>
-			)}
-
-			{warnings.length > 0 && (
-				<Notice tone="muted" icon={TriangleAlert} className="mt-5 text-ink-faint">
-					<div className="min-w-0">
-						<div className="text-ink-muted">{t("commandsSettings.warnings", { n: warned })}</div>
-						{warnings.map((warning, index) => (
-							<div key={index} className="mt-0.5">
-								<span className="font-mono">{warning.path}</span> — {warning.message}
-							</div>
-						))}
-					</div>
-				</Notice>
-			)}
+			<DiagnosticNotices className="mt-5"
+				problems={diagnostics} problemsTitle={t("commandsSettings.failedToLoad", { n: failed })}
+				warnings={warnings} warningsTitle={t("commandsSettings.warnings", { n: warned })} />
 
 			<section className="mt-6">
 				<div className="mb-4 flex items-center justify-between gap-3">

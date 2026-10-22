@@ -8,6 +8,7 @@ import { Input } from "../../ui/inputs/NativeField.tsx";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { Button } from "../../ui/primitives/Button.tsx";
 import { ChoiceMark } from "../../ui/primitives/ChoiceMark.tsx";
+import { useOnceAnswer } from "./useOnceAnswer.ts";
 
 /** 输入框里留着人打的原样文字；交之前才换成表单要的类型，换不过去的交给检查去说「不是数字」。 */
 type Draft = Record<string, string | boolean | number | undefined>;
@@ -77,9 +78,7 @@ export function FormChoices({ fields, children, answer }: {
 }) {
 	const [draft, setDraft] = useState<Draft>(() => initialValues(fields));
 	const [tried, setTried] = useState(false);
-	const [pending, setPending] = useState(false);
-	const [error, setError] = useState("");
-	const submitting = useRef(false);
+	const { pending, error, submit } = useOnceAnswer(answer);
 	const formRef = useRef<HTMLFormElement>(null);
 	const checked = checkFormValues(fields, collect(fields, draft));
 	// 没点过提交之前不报错：一张刚弹出来的表满是红字，人还没开始填就像是填错了。
@@ -89,17 +88,6 @@ export function FormChoices({ fields, children, answer }: {
 
 	function set(name: string, value: string | boolean | undefined) {
 		setDraft(current => ({ ...current, [name]: value }));
-	}
-	async function submit(decision: ApprovalDecision) {
-		if (submitting.current) return;
-		submitting.current = true;
-		setPending(true); setError("");
-		try { await answer(decision); }
-		catch (failure) {
-			submitting.current = false;
-			setPending(false);
-			setError(failure instanceof Error ? failure.message : String(failure));
-		}
 	}
 
 	return <form ref={formRef} data-ly-mcp-form="" className="flex min-h-0 flex-1 flex-col" aria-busy={pending} noValidate

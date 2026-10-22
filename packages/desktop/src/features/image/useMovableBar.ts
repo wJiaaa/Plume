@@ -2,16 +2,16 @@
  * 看图器里那条标注工具栏摆在哪：默认贴着窗口底边居中，按住能拖走，拖到哪记到哪。
  *
  * 截图浮层那条有自己的一套（`useToolbarPlacement`），它跟着选区走；这里没有选区，只有一张居中的图
- * 和一扇窗。共用的是两样：夹在窗口里的那条规矩（`clampToolbar`），和「按住才拖、空隙处按下就拖」
- * 的手势——后者在 `AnnotateToolbar` 里，调用方只接 `onGrab`。
+ * 和一扇窗。共用的是：夹在窗口里的那条规矩（`clampToolbar`），量它多大、拖到哪（`useBarDrag`）。
  *
  * 从前这一条钉死在窗口底边，理由是「没有别处可去」。可它要躲的从来不是窗口，是图：在图的下半部
  * 写字、画框时，工具栏和它上面那排粗细颜色正好压在要标的地方，挪不开就只能放大了绕着画。
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { clampToolbar, type Point } from "./screenshot-geometry.ts";
+import { useBarDrag } from "./useBarDrag.ts";
 
 /**
  * Room the bar keeps above itself for the size-and-colour bubble, gap included.
@@ -74,24 +74,11 @@ export interface MovableBar {
 }
 
 export function useMovableBar(avoid: React.RefObject<HTMLElement | null>): MovableBar {
-	const [size, setSize] = useState<Size | null>(null);
-	/**
-	 * The narrowest the bar has been: what it is centred by until it is moved.
-	 *
-	 * It grows a button while something is selected. Centred by its current width, every selection
-	 * and every deselection slid the whole row 20 points sideways under the pointer — draw a box, and
-	 * the tool you were about to press for the next one had moved. Centred by its narrowest, it grows
-	 * to the right and the buttons stay where they are.
-	 */
-	const [base, setBase] = useState<number | null>(null);
-	useEffect(() => {
-		if (size) setBase((was) => (was === null ? size.width : Math.min(was, size.width)));
-	}, [size]);
-	const [manual, setManual] = useState<Point | null>(remembered);
-	const [dragging, setDragging] = useState(false);
 	const [viewport, setViewport] = useState<Size>(() => ({ width: window.innerWidth, height: window.innerHeight }));
-	const drag = useRef<{ from: Point; origin: Point } | null>(null);
-	const observer = useRef<ResizeObserver | null>(null);
+	const { size, manual, dragging, measure, startDrag } = useBarDrag(
+		(at, measured) => (measured ? clampToolbar(at, measured, viewport, BUBBLE) : at),
+		remembered,
+	);
 
 	// A window made smaller must not leave the bar outside it.
 	useEffect(() => {
@@ -99,55 +86,6 @@ export function useMovableBar(avoid: React.RefObject<HTMLElement | null>): Movab
 		window.addEventListener("resize", resize);
 		return () => window.removeEventListener("resize", resize);
 	}, []);
-
-	/*
-	 * Watched, not measured once: the bar grows a button while something is selected, and every rule
-	 * that keeps it on screen is computed against this number. See `useToolbarPlacement`, which learnt
-	 * that the hard way.
-	 */
-	const measure = useCallback((el: HTMLDivElement | null) => {
-		observer.current?.disconnect();
-		observer.current = null;
-		if (!el) return;
-		const read = () => {
-			const r = el.getBoundingClientRect();
-			if (!r.width || !r.height) return;
-			setSize((was) =>
-				was && Math.abs(was.width - r.width) < 1 && Math.abs(was.height - r.height) < 1 ? was : { width: Math.ceil(r.width), height: Math.ceil(r.height) },
-			);
-		};
-		read();
-		observer.current = new ResizeObserver(read);
-		observer.current.observe(el);
-	}, []);
-	useEffect(() => () => observer.current?.disconnect(), []);
-
-	const startDrag = useCallback((grab: { from: Point; origin: Point }) => {
-		drag.current = grab;
-		setDragging(true);
-	}, []);
-
-	// The rest of the drag on the window, so a quick hand that leaves the bar behind keeps hold of it.
-	useEffect(() => {
-		if (!dragging || !size) return;
-		const move = (event: PointerEvent) => {
-			const at = drag.current;
-			if (!at) return;
-			setManual(clampToolbar({ x: at.origin.x + event.clientX - at.from.x, y: at.origin.y + event.clientY - at.from.y }, size, viewport, BUBBLE));
-		};
-		const end = () => {
-			drag.current = null;
-			setDragging(false);
-		};
-		window.addEventListener("pointermove", move);
-		window.addEventListener("pointerup", end);
-		window.addEventListener("pointercancel", end);
-		return () => {
-			window.removeEventListener("pointermove", move);
-			window.removeEventListener("pointerup", end);
-			window.removeEventListener("pointercancel", end);
-		};
-	}, [dragging, size, viewport]);
 
 	useEffect(() => {
 		if (!dragging && manual) remembered = manual;
@@ -171,7 +109,8 @@ export function useMovableBar(avoid: React.RefObject<HTMLElement | null>): Movab
 	 * late: the bubble above it was laid out at the left edge and then jumped 355 points to the middle.
 	 */
 	if (!size) return { at: null, style: { left: "50%", bottom: BOTTOM, transform: "translateX(-50%)" }, dragging, measure, startDrag };
-	const wanted = manual ?? { x: (viewport.width - (base ?? size.width)) / 2, y: viewport.height - BOTTOM - size.height };
+	// Centred by the narrowest it has been, so a button joining the row grows it to the right. See `BarSize`.
+	const wanted = manual ?? { x: (viewport.width - size.narrowest) / 2, y: viewport.height - BOTTOM - size.height };
 	const kept = clampToolbar(wanted, size, viewport, BUBBLE);
 	/*
 	 * Kept off the zoom control once it is let go, not while it is being carried: jumping round the

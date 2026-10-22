@@ -2,32 +2,22 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { groupActivity } from "../src/features/sidebar/group-activity.ts";
 
-test("group activity follows IDs and gives waiting precedence without losing running counts", () => {
+const counts = (running: number, waiting: number, failed: number, done: number) => ({ running, waiting, failed, done });
+
+test("group activity follows IDs, counting a session listed twice once", () => {
 	const result = groupActivity(["a", "b", "a", "c"], { a: "running", b: "waiting", c: "done", other: "failed" }, "c");
-	assert.equal(result.activity, "waiting");
-	assert.deepEqual(result.counts, { running: 1, waiting: 1, failed: 0, done: 0 });
+	assert.deepEqual(result.counts, counts(1, 1, 0, 0));
 });
 
-test("finishing or removing the last running session clears the breathing state", () => {
-	assert.equal(groupActivity(["a"], { a: "running" }, "a").activity, "running");
-	assert.equal(groupActivity(["a"], { a: "done" }, "a").activity, null);
-	assert.equal(groupActivity([], { a: "running" }, null).activity, null);
-	assert.equal(groupActivity(["a"], { a: "failed" }, null).activity, "failed");
+test("finishing or removing the last running session clears the running count", () => {
+	assert.equal(groupActivity(["a"], { a: "running" }, "a").counts.running, 1);
+	assert.equal(groupActivity(["a"], { a: "done" }, "a").counts.running, 0);
+	assert.equal(groupActivity([], { a: "running" }, null).counts.running, 0);
+	assert.deepEqual(groupActivity(["a"], { a: "failed" }, null).counts, counts(0, 0, 1, 0));
 });
 
 test("a side chat on an idle session counts as running without double-counting the main turn", () => {
-	assert.equal(groupActivity(["a"], {}, null, new Set(["a"])).activity, "running");
-	assert.deepEqual(groupActivity(["a"], {}, null, new Set(["a"])).counts, {
-		running: 1,
-		waiting: 0,
-		failed: 0,
-		done: 0,
-	});
-	assert.deepEqual(groupActivity(["a"], { a: "running" }, null, new Set(["a"])).counts, {
-		running: 1,
-		waiting: 0,
-		failed: 0,
-		done: 0,
-	});
-	assert.equal(groupActivity(["a"], { a: "waiting" }, null, new Set(["a"])).activity, "waiting");
+	assert.deepEqual(groupActivity(["a"], {}, null, new Set(["a"])).counts, counts(1, 0, 0, 0));
+	assert.deepEqual(groupActivity(["a"], { a: "running" }, null, new Set(["a"])).counts, counts(1, 0, 0, 0));
+	assert.deepEqual(groupActivity(["a"], { a: "waiting" }, null, new Set(["a"])).counts, counts(0, 1, 0, 0));
 });

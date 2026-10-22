@@ -13,7 +13,6 @@ import { useI18n } from "../../i18n/index.ts";
 import type { PaletteEntry } from "../../lib/palette.ts";
 import { isScratch, listableSessions } from "../../lib/sidebar-grouping.ts";
 import { projectLabel } from "../../lib/project-identity.ts";
-import { bridge } from "../../services/index.ts";
 import { useApp } from "../../store/index.ts";
 import { useListedProjects } from "../../store/listed-projects.ts";
 import { startProjectSession } from "../../store/project-session.ts";
@@ -31,7 +30,7 @@ import {
 	SquarePen,
 } from "../../ui/icons/index.ts";
 import { openScopedPanel, usePanelDefinitions } from "../dock/index.ts";
-import { settingsGroups } from "../settings/index.ts";
+import { SETTINGS_GROUPS } from "../settings/index.ts";
 
 export interface PaletteCommand extends PaletteEntry {
 	id: string;
@@ -206,7 +205,7 @@ export function usePaletteCommands({
 				key: "settings",
 				label: t("sidebar.settings"),
 				onQuery: true,
-				commands: settingsGroups(bridge.platform ?? "darwin").flatMap((group) =>
+				commands: SETTINGS_GROUPS.flatMap((group) =>
 					group.items.map((item) => ({
 						id: `settings:${item.id}`,
 						label: t(item.labelKey),

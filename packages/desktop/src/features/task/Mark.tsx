@@ -10,6 +10,8 @@ import { translate } from "../../i18n/translate.ts";
 import { Check } from "../../ui/icons/index.ts";
 import { StatusSpinner } from "../../ui/motion/loaders.tsx";
 import type { TodoItem } from "@plume/core";
+import { useScopedFromMessages, useScopedStopped, useScopedWorking } from "../../app/session-scope.tsx";
+import { isUserPaused } from "./task-list-state.ts";
 
 export /**
  * Three states, three marks, all on the same 13px grid so the column of them stays a column.
@@ -68,8 +70,28 @@ function Mark({ status, paused, failed, idle }: { status: TodoItem["status"]; pa
 	);
 }
 
+/**
+ * 当前这一步是在跑、被人停下、失败了，还是这一轮干净地收了尾而它没勾上。
+ *
+ * 浮着的清单和任务面板各算过一份，算法一样、依据不一样：面板看的是主会话这一轮在不在跑，于是
+ * 主会话在等后台子智能体时，卡片上那一步在转，面板上同一步是一个停住的点。现在两边读这一份。
+ *
+ * - `running`：后台的子智能体还在跑也算，见 `useScopedWorking`。
+ * - `failed`：计划本身没有失败这一态（`todo_write` 只认三种），从上一轮怎么结束的来。分出来是因为
+ *   给的动作不同：停下的接着做，失败的重试。
+ * - 剩下的 `in_progress` 之后干净 `done` 不算暂停，只有人按了停才算。
+ */
+export function useStepState() {
+	const running = useScopedWorking();
+	const stopped = useScopedStopped();
+	const lastFailed = useScopedFromMessages(lastTurnFailed);
+	const failed = !running && lastFailed;
+	const paused = isUserPaused(running, stopped);
+	return { running, stopped, paused, failed, idle: !running && !paused && !failed };
+}
+
 /** The most recent reply, and whether it ended in an error rather than an answer. */
-export function lastTurnFailed(messages: { role: string; stopReason?: string }[]): boolean {
+function lastTurnFailed(messages: { role: string; stopReason?: string }[]): boolean {
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const message = messages[i];
 		if (message.role !== "assistant") continue;

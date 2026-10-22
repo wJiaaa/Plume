@@ -24,7 +24,7 @@ import { inRange, type DayRange } from "../../ui/inputs/day-range.ts";
 import { ActionSpinner } from "../../ui/motion/loaders.tsx";
 import { useConfirmer } from "../../ui/overlay/Confirm.tsx";
 import type { StorageUse } from "../../../electron/session-cleanup.ts";
-import { Card, Row, SectionTitle } from "./controls.tsx";
+import { Card, PageHeader, Row, SectionTitle } from "./controls.tsx";
 import { formatBytes } from "./usage-format.ts";
 import { Button } from "../../ui/primitives/Button.tsx";
 
@@ -109,8 +109,7 @@ export function StorageSettings() {
 
 	return (
 		<div className="pt-2">
-			<h1 className="text-display leading-tight font-semibold tracking-tight text-ink">{t("storage.title")}</h1>
-			<p className="mt-2 max-w-[580px] pb-7 text-label leading-relaxed text-ink-muted">{t("storage.intro")}</p>
+			<PageHeader title={t("storage.title")} intro={t("storage.intro")} />
 
 			<SectionTitle>{t("storage.records")}</SectionTitle>
 			<Card data-usage-cleanup="true">

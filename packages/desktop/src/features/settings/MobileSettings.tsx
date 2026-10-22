@@ -8,7 +8,8 @@ import { Check, Copy, Eye, EyeOff, TriangleAlert } from "../../ui/icons/index.ts
 import { Button } from "../../ui/primitives/Button.tsx";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import { Text } from "../../ui/primitives/Text.tsx";
-import { Card, Row, SectionTitle, Select, TextInput, Toggle } from "./controls.tsx";
+import { Card, PageHeader, Row, SectionTitle, Select, TextInput, Toggle } from "./controls.tsx";
+import { useCopied } from "../../ui/hooks/useCopied.ts";
 
 // 连接数靠轮询：主进程没有为它单独推事件，而这个数只在这一页打开时才有人看。
 const POLL_MS = 3000;
@@ -38,7 +39,7 @@ export function MobileSettings() {
 	const [qr, setQr] = useState("");
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState("");
-	const [copied, setCopied] = useState<"link" | "token" | null>(null);
+	const { copied, mark } = useCopied<"link" | "token">();
 	const [reveal, setReveal] = useState(false);
 	const [relayDraft, setRelayDraft] = useState<string | null>(null);
 	const running = !!status?.running;
@@ -63,23 +64,18 @@ export function MobileSettings() {
 		if (code) void QRCode.toDataURL(code, { width: 360, margin: 0, errorCorrectionLevel: "M" }).then((value) => { if (current) setQr(value); });
 		return () => { current = false; };
 	}, [code]);
-	useEffect(() => {
-		if (!copied) return;
-		const timer = setTimeout(() => setCopied(null), 2000);
-		return () => clearTimeout(timer);
-	}, [copied]);
 	async function run(action: () => Promise<MobileAccessStatus>) {
 		setBusy(true); setError("");
 		try { accept(await action()); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); } finally { setBusy(false); }
 	}
 	function copy(kind: "link" | "token", text: string) {
-		void bridge.clipboard.write(text).then(() => setCopied(kind)).catch((cause) => setError(String(cause)));
+		void bridge.clipboard.write(text).then(() => mark(kind)).catch((cause) => setError(String(cause)));
 	}
 	const clients = status?.clients ?? 0;
 	const token = status?.token ?? "";
 
 	return <div className="pt-2">
-		<h1 className="pb-8 text-display leading-tight font-semibold tracking-tight text-ink">{t("mobile.title")}</h1>
+		<PageHeader title={t("mobile.title")} />
 		<Card className="mb-8">
 			<Row title={t("mobile.access")} detail={t(running ? relayUrl ? "mobile.descriptionRelay" : "mobile.descriptionOn" : "mobile.description")} control={<Toggle checked={running} disabled={!status || busy} ariaLabel={t("mobile.access")} onChange={(on) => void run(() => on ? bridge.mobile.start(Number(port)) : bridge.mobile.stop())} />} />
 			<Row title={t("mobile.port")} detail={running ? t("mobile.portLocked") : undefined} control={<TextInput aria-label={t("mobile.port")} inputMode="numeric" value={port} disabled={running || busy} onChange={(value) => setPort(value.replace(/\D/g, "").slice(0, 5))} className="w-24" />} />

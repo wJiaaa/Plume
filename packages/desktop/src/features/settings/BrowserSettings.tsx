@@ -5,7 +5,7 @@ import { useApp } from "../../store/index.ts";
 import { bridge } from "../../services/index.ts";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import { ScrollText } from "../../ui/scroll/ScrollText.tsx";
-import { Card, InlineSelect, Row, SectionTitle, TextInput } from "./controls.tsx";
+import { Card, InlineSelect, PageHeader, Row, SectionTitle, TextInput } from "./controls.tsx";
 import { SearchEngineIcon } from "./SearchEngineIcon.tsx";
 import { useI18n } from "../../i18n/index.ts";
 
@@ -46,7 +46,7 @@ export function BrowserSettings() {
 		catch (problem) { setError(problem instanceof Error ? problem.message : String(problem)); }
 	};
 	return <div className="pt-2">
-		<h1 className="pb-8 text-display leading-tight font-semibold tracking-tight text-ink">{t("browser.title")}</h1>
+		<PageHeader title={t("browser.title")} />
 		<SectionTitle>{t("browser.habits")}</SectionTitle>
 		<Card className="mb-7">
 			<Row title={t("browser.openLinksWith")} control={<InlineSelect value={config.openLinks ?? "system"} options={[{ value: "system", label: t("browser.systemBrowser") }, { value: "builtin", label: t("browser.builtin") }]} onChange={(openLinks) => patch({ openLinks })} />} />

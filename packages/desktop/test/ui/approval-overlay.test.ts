@@ -9,6 +9,7 @@ import { QuestionChoices } from "../../src/features/conversation/QuestionChoices
 import { RunningIndicator } from "../../src/features/conversation/RunningIndicator.tsx";
 import { translate } from "../../src/i18n/translate.ts";
 import { useApp } from "../../src/store/index.ts";
+import { provideScope, usePaneDock } from "../../src/features/dock/index.ts";
 import { click, fire, mount, press } from "../helpers/mount.ts";
 
 test("approval bodies preserve full content once and omit whitespace-only reasons", async () => {
@@ -307,17 +308,24 @@ test("a pending question replaces the thinking mutter with the dashed waiting li
 const PLAN_DETAIL = "# 登录换成 OAuth\n\n## 方案\n换成 OAuth\n\n## 改动\n- `src/login.ts`：读登录模块\n- `src/oauth.ts`：换成 OAuth\n- `test/oauth.test.ts`：补测试";
 const planApproval = (id = "plan", options = ["批准，开始执行", "要改"]) => ({ id, kind: "interactive" as const, subject: "submit_plan", title: "审批计划", detail: PLAN_DETAIL, options, allowCustomInput: true, selectionMode: "single" as const, allowSkip: false });
 
+/** 记下右栏被要求开的面板：计划面板落在哪一屏由 dock 决定，这里只看开没开、开的是不是计划。 */
+function watchPlanPane() {
+	const opened: string[] = [];
+	const open = usePaneDock.getState().open;
+	provideScope(() => "owner");
+	usePaneDock.setState({ open: (_scope: string, kind: string) => { opened.push(kind); return true; } });
+	return { opened, release: () => { provideScope(() => null); usePaneDock.setState({ open }); } };
+}
+
 async function planCard(id: string, permissionMode: "ask" | "auto", options?: string[]) {
-	const { providePlanOpener } = await import("../../src/app/plan-opener.ts");
 	const { DEFAULT_SETTINGS } = await import("@plume/core");
 	const answered: unknown[] = [];
 	const saved: unknown[] = [];
-	const opened: (string | undefined)[] = [];
+	const plan = watchPlanPane();
 	Object.defineProperty(window, "plume", { configurable: true, value: { agent: { approve: async (_session: string, _id: string, decision: unknown) => { answered.push(decision); } } } });
-	providePlanOpener((screen) => opened.push(screen));
 	useApp.setState({ activeSessionId: "owner", approvals: [planApproval(id, options)], settings: { ...DEFAULT_SETTINGS, permissionMode }, saveSettings: async (settings) => { saved.push(settings.permissionMode); } });
 	const render = () => mount(h(LayoutProvider, { children: h(ApprovalOverlay) }));
-	return { render, answered, saved, opened, release: () => providePlanOpener(null) };
+	return { render, answered, saved, opened: plan.opened, release: plan.release };
 }
 
 /*
@@ -332,7 +340,7 @@ test("a submitted plan opens the plan pane once and is answered from one row of 
 		assert.equal(view.all("h2").length, 0, "计划正文在右栏，不在卡片里再画一遍");
 		assert.equal(view.all("[data-ly-question-option]").length, 0, "不走业务提问的选项列表");
 		assert.deepEqual(view.all("[data-plan-action]").map((button) => button.getAttribute("data-plan-action")), ["reject", "revise", "accept"], "已经是自动档，不给「接受并开启自动模式」");
-		assert.equal(card.opened.length, 1, "交上来时替人打开计划面板");
+		assert.deepEqual(card.opened, ["plan"], "交上来时替人打开计划面板");
 
 		// 同一份计划重新挂一次卡片（切走再回来），人关掉的面板不再追着开。
 		await view.unmount();
@@ -427,13 +435,11 @@ test("在新会话里执行：core 给了这一项才画，点了交出这一项
 
 // 窄窗口右栏一次只摆一格，开面板会把卡片盖住：不替人开，计划照旧画在卡片里。
 test("in a compact window a submitted plan stays drawn in the card as markdown", async () => {
-	const { providePlanOpener } = await import("../../src/app/plan-opener.ts");
 	const previous = useApp.getState();
 	const width = Object.getOwnPropertyDescriptor(window, "innerWidth");
 	Object.defineProperty(window, "innerWidth", { configurable: true, value: 700 });
 	Object.defineProperty(window, "plume", { configurable: true, value: {} });
-	const opened: (string | undefined)[] = [];
-	providePlanOpener((screen) => opened.push(screen));
+	const plan = watchPlanPane();
 	useApp.setState({ activeSessionId: "owner", approvals: [planApproval("plan-compact")] });
 	const view = await mount(h(LayoutProvider, { children: h(ApprovalOverlay) }));
 	try {
@@ -441,9 +447,9 @@ test("in a compact window a submitted plan stays drawn in the card as markdown",
 		assert.equal(view.find(".ly-approval-scroll h2").textContent, "方案");
 		assert.equal(view.all(".ly-approval-scroll ul li").length, 3);
 		assert.ok(view.find('[data-plan-action="revise"]'), "打回时能写一句为什么");
-		assert.equal(opened.length, 0);
+		assert.equal(plan.opened.length, 0);
 	} finally {
-		providePlanOpener(null);
+		plan.release();
 		await view.unmount();
 		if (width) Object.defineProperty(window, "innerWidth", width);
 		useApp.setState(previous, true);

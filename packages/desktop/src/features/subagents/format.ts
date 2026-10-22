@@ -47,6 +47,13 @@ export function statusWord(status: SubAgentStatus): string {
 	return translate("subAgentStatus.running");
 }
 
+/** 名单上一行的状态：在跑的是秒表，排着的说排着，结束的说怎么结束、跑了多久。 */
+export function stateLine(one: { status: SubAgentStatus; startedAt: number; endedAt?: number }): string {
+	if (one.status === "running") return elapsedSince(one.startedAt);
+	if (one.status === "queued") return statusWord(one.status);
+	return `${statusWord(one.status)} · ${ranFor(one)}`;
+}
+
 /**
  * `12.3k · $0.04` — or the tokens alone when the model has no pricing, and nothing before it has
  * spent any.

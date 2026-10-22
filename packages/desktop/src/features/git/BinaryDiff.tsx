@@ -15,6 +15,7 @@ import type { WorkspaceDiffFile } from "../../../electron/ipc-types.ts";
 import { iconColour, lookFor } from "../../ui/fileIcon.tsx";
 import { Text } from "../../ui/primitives/Text.tsx";
 import { bridge } from "../../services/index.ts";
+import { baseName } from "../../lib/paths.ts";
 import { useI18n, type MessageKey } from "../../i18n/index.ts";
 
 /** Which sides exist for a given change, in reading order. */
@@ -89,7 +90,7 @@ export function BinaryDiff({ cwd, file }: { cwd: string | null; file: WorkspaceD
 /** The file's own mark and its size, for everything that is not a picture. */
 function Mark({ file }: { file: WorkspaceDiffFile }) {
 	const { t } = useI18n();
-	const name = file.path.slice(file.path.lastIndexOf("/") + 1);
+	const name = baseName(file.path);
 	const look = lookFor(name, false);
 
 	return (

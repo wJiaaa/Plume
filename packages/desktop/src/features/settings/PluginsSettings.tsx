@@ -9,7 +9,7 @@
 
 import { useI18n } from "../../i18n/index.ts";
 import type { Plugin } from "@plume/core";
-import { ArrowUp, FolderOpen, MoreHorizontal, Store, TriangleAlert, Trash2 } from "../../ui/icons/index.ts";
+import { ArrowUp, FolderOpen, MoreHorizontal, Store, Trash2 } from "../../ui/icons/index.ts";
 import { useState } from "react";
 
 import { Confirm } from "../../ui/overlay/Confirm.tsx";
@@ -22,11 +22,12 @@ import { settingsAfterToggle, useLocalScan, type MarketMark } from "../plugins/i
 import { Card, ListRow, Notice, Toggle } from "./controls.tsx";
 import { PluginIcon } from "./PluginIcon.tsx";
 import { ProjectOverrideNotice } from "./ProjectOverrideNotice.tsx";
+import { DiagnosticNotices } from "./definition-page.tsx";
 import { bridge } from "../../services/index.ts";
 import { Button } from "../../ui/primitives/Button.tsx";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 
-export function PluginsSettings({ filter = "", markOf }: { filter?: string; markOf?: (id?: string, name?: string) => MarketMark | undefined }) {
+export function PluginsSettings({ filter, markOf }: { filter: string; markOf: (id?: string, name?: string) => MarketMark | undefined }) {
 	const { t } = useI18n();
 	const settings = useApp((s) => s.settings);
 	const saveSettings = useApp((s) => s.saveSettings);
@@ -78,33 +79,9 @@ export function PluginsSettings({ filter = "", markOf }: { filter?: string; mark
 	return (
 		<div>
 			<ProjectOverrideNotice keys={["disabledPlugins"]} cwd={cwd} />
-			{/* The notices are the commands page's, so a failure reads the same on every definition page. */}
-			{diagnostics.length > 0 && (
-				<Notice tone="accent" icon={TriangleAlert} className="mb-5">
-					<div className="min-w-0">
-						<div className="text-accent">{t("pluginsSettings.problems", { n: diagnostics.length })}</div>
-						{/* By position: a path repeats when one file has two diagnostics, and these rows hold no state. */}
-						{diagnostics.map((diagnostic, index) => (
-							<div key={index} className="mt-0.5">
-								<span className="font-mono">{diagnostic.path}</span> — {diagnostic.message}
-							</div>
-						))}
-					</div>
-				</Notice>
-			)}
-
-			{warnings.length > 0 && (
-				<Notice tone="muted" icon={TriangleAlert} className="mb-5 text-ink-faint">
-					<div className="min-w-0">
-						<div className="text-ink-muted">{t("pluginsSettings.warnings", { n: warned })}</div>
-						{warnings.map((warning, index) => (
-							<div key={index} className="mt-0.5">
-								<span className="font-mono">{warning.path}</span> — {warning.message}
-							</div>
-						))}
-					</div>
-				</Notice>
-			)}
+			<DiagnosticNotices className="mb-5"
+				problems={diagnostics} problemsTitle={t("pluginsSettings.problems", { n: diagnostics.length })}
+				warnings={warnings} warningsTitle={t("pluginsSettings.warnings", { n: warned })} />
 
 			{/*
 			 * Said out loud, because otherwise the page is a list of plugins that are all off for no
@@ -150,7 +127,7 @@ export function PluginsSettings({ filter = "", markOf }: { filter?: string; mark
 							plugin={plugin}
 							outdated={behind.has(plugin.id)}
 							updating={updates?.updating.includes(plugin.id) ?? false}
-							mark={markOf?.(plugin.id, plugin.manifest.interface?.displayName ?? plugin.manifest.name)}
+							mark={markOf(plugin.id, plugin.manifest.interface?.displayName ?? plugin.manifest.name)}
 							onToggle={(enabled) => toggle(plugin, enabled)}
 							onDetails={() => details(plugin)}
 							onChanged={bumpExtensions}

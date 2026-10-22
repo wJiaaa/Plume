@@ -278,7 +278,7 @@ test("Magpie 管理的 MCP 可查看但不能误改，手动服务器仍可编�
 		{ id: "magpie__shared", name: "共享服务", transport: "http", url: "https://example.invalid/mcp", enabled: true, managedBy: "magpie" },
 		{ id: "own", name: "个人服务", transport: "stdio", command: "node", enabled: false },
 	] });
-	const view = await mount(h(McpSettings));
+	const view = await mount(h(McpSettings, { filter: "", markOf: () => undefined }));
 	try {
 		await settle();
 		assert.match(view.text(), /由 Magpie 管理/);

@@ -23,7 +23,7 @@ import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { SearchField } from "../../ui/inputs/SearchField.tsx";
 import { useContextMenu } from "../../ui/overlay/ContextMenu.tsx";
 import { FileMenu } from "./FileMenu.tsx";
-import { baseName, dirName } from "../../lib/paths.ts";
+import { baseName, parentOf } from "../../lib/paths.ts";
 import { NewRow, TreeRow } from "./TreeRow.tsx";
 import { useFileActions } from "./useFileActions.ts";
 import { useFileTree } from "./useFileTree.ts";
@@ -82,7 +82,7 @@ export function FileTree({
 		const last = selection.at(-1);
 		if (!last) return home;
 		const entry = byPath.get(last);
-		return entry?.isDirectory ? last : dirName(last);
+		return entry?.isDirectory ? last : parentOf(last);
 	}, [selection, byPath, home]);
 
 	const focusTree = useCallback(() => rowsHost.current?.focus(), []);
@@ -289,7 +289,7 @@ export function FileTree({
 	}
 
 	const menuEntry = menu.target;
-	const menuDir = menuEntry ? (menuEntry.isDirectory ? menuEntry.path : dirName(menuEntry.path)) : home;
+	const menuDir = menuEntry ? (menuEntry.isDirectory ? menuEntry.path : parentOf(menuEntry.path)) : home;
 	const menuCount = menuEntry && chosen.has(menuEntry.path) ? selection.length : menuEntry ? 1 : 0;
 
 	return (

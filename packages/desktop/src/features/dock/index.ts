@@ -21,6 +21,7 @@ export {
 	openScopedPanel,
 	provideReveal,
 	provideScope,
+	quoteInSideChat,
 	showScopedPanel,
 	sideChatFor,
 	watchPanelWindows,

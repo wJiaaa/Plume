@@ -4,7 +4,7 @@ import { useI18n } from "../../i18n/index.ts";
 import { bridge } from "../../services/index.ts";
 import { useApp } from "../../store/index.ts";
 import { SkeletonBar, useSlowLoad } from "../../ui/primitives/Skeleton.tsx";
-import { Card, EmptyHint } from "./controls.tsx";
+import { Card, EmptyHint, PageHeader } from "./controls.tsx";
 import type { ProviderNaming } from "./usage-providers.ts";
 import { UsageBreakdownSkeleton } from "./UsageBreakdown.tsx";
 import { UsageRequests } from "./UsageRequests.tsx";
@@ -48,10 +48,7 @@ export function UsageSettings() {
 
 	return (
 		<div className="pt-2">
-			<header className="pb-5">
-				<h1 className="text-display leading-tight font-semibold tracking-tight text-ink">{t("usage.title")}</h1>
-				<p className="mt-2 text-label text-ink-muted">{t("usage.intro")}</p>
-			</header>
+			<PageHeader title={t("usage.title")} intro={t("usage.intro")} />
 			{scan ? <UsageRequests scan={scan} now={scannedAt} naming={naming} reload={load} refreshing={refreshing} /> : slow || failed ? <UsageSkeleton failed={failed} /> : null}
 		</div>
 	);

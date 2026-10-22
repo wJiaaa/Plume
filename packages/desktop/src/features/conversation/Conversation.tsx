@@ -15,9 +15,11 @@ import { GeneratedImages } from "./ImageCanvas.tsx";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { ActionSpinner } from "../../ui/motion/loaders.tsx";
 import { useAnswering } from "./useAnswering.ts";
-import { currentTurnStart, runs, runKey, turnBlocks, withoutThinking, type Run } from "./grouping.ts";
+import { runs, runKey, type Run } from "./grouping.ts";
+import { currentTurnStart } from "./turns.ts";
+import { turnBlocks, withoutThinking } from "./turn-blocks.ts";
 import { intact } from "../../lib/transcript.ts";
-import { LiveToolCard, ToolRun as ToolRunGroup, WINDOW_TURNS } from "./runs.tsx";
+import { ToolRun as ToolRunGroup, WINDOW_TURNS } from "./runs.tsx";
 import { CommandRunRow } from "./CommandRunRow.tsx";
 import { HookTrustBanner } from "./HookTrustBanner.tsx";
 import { QuestionNav } from "./QuestionNav.tsx";
@@ -25,7 +27,7 @@ import { QuoteMenu } from "./QuoteMenu.tsx";
 import { questionsIn, timeSeparators } from "./question-navigation.ts";
 import { MessageRow } from "./rows.tsx";
 import { TurnWork } from "./TurnWork.tsx";
-import { WorkStep, type DrawCall } from "./WorkStep.tsx";
+import { WorkStep } from "./WorkStep.tsx";
 import { useTranscriptWindow } from "./view-state.ts";
 import { flash, settleReveal, useDrawingReveal } from "./reveal.ts";
 import { motionReduced } from "../../ui/motion/reduced.ts";
@@ -79,7 +81,7 @@ const ENVIRONMENT_LANE = ENVIRONMENT_CARD + 24;
  * 主对话外围那几样——环境卡片、任务清单、「接着做」、问题导航、钩子提示、输入框——不画，输入框由
  * 侧边聊天自己摆在底下。
  */
-export const Conversation = memo(function Conversation({ sessionId: _sessionId, side = false }: { sessionId?: string | null; side?: boolean } = {}) {
+export const Conversation = memo(function Conversation({ side = false }: { side?: boolean } = {}) {
   /*
    * 转录的入口，也是那道闸门的位置。
    *
@@ -536,32 +538,16 @@ export const Conversation = memo(function Conversation({ sessionId: _sessionId, 
                 turnStats={run.turnStats}
               />
             ) : (
-              /* Keyed on the first call, not the position: inserting anything above must not
-               * make React tear this run down and build it again. */
-              <ToolRunGroup
-                key={`${activeSessionId}:${runKey(run)}`}
-                calls={run.calls}
-                shown={run.shown}
-                /*
-                 * The run being worked on keeps its highlight moving — and only that one, so the
-                 * transcript never claims two things are happening at once.
-                 *
-                 * Which run that is comes from `grouping.ts`, because it is a question about the
-                 * shape of the turn rather than about the position of a row. Asking it here, as
-                 * "the last run on screen", is what left a finished run gliding through the whole
-                 * of the next reply: a new question does not move the last run, so the highlight
-                 * simply stayed where the previous turn had left it.
-                 *
-                 * `running` is still asked separately: the newest work in a turn that has ended is
-                 * still the newest work, and nothing should glide once the turn is over.
-                 */
-                live={running && Boolean(run.live)}
-                // The turn line above says what the work amounted to; here every call is its own row.
-                flat
-              />
+              /*
+               * Keyed on the first call, not the position: inserting anything above must not
+               * make React tear this run down and build it again.
+               *
+               * 走到这里的工具段只有 `shown` 的那种（一页预览、一张会话建议）：其余的都在 `turnBlocks`
+               * 里收成了 `WorkStep`，正在做的那一步的光也由那边给。
+               */
+              <ToolRunGroup key={`${activeSessionId}:${runKey(run)}`} calls={run.calls} shown={run.shown} />
             );
             if (block.kind === "plain") return draw(block.runs[0]);
-            const drawCall: DrawCall = ({ block: call, stopReason, page }, line) => <LiveToolCard block={call} stopReason={stopReason} page={page} thinking={line?.thinking} extra={line?.extra} polls={line?.polls} />;
             /*
              * 不再有 `as Exclude<Run, { kind: "compaction" }>`。
              *
@@ -588,7 +574,7 @@ export const Conversation = memo(function Conversation({ sessionId: _sessionId, 
                   const entry = {
                     key: `${activeSessionId}:${item.key}`,
                     // 正在做的那一段是这一轮的最后一行：后面有了别的（下一段活、一句话），它就做完了。
-                    node: item.kind === "step" ? <WorkStep step={item.step} live={live && item === tail} draw={draw} drawCall={drawCall} /> : draw(item.run),
+                    node: item.kind === "step" ? <WorkStep step={item.step} live={live && item === tail} draw={draw} /> : draw(item.run),
                   };
                   if (item.kind !== "step") return [entry];
                   /*

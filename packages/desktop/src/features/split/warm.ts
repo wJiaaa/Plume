@@ -8,61 +8,27 @@
  */
 
 import type { SessionMeta } from "@plume/core";
-import { intact } from "../../lib/transcript.ts";
 import { bridge } from "../../services/index.ts";
-import { howItStopped, prune, rebuildToolRuns, todosFrom } from "../../store/derive.ts";
 import { useApp } from "../../store/index.ts";
+import { readSideSession } from "../../store/session-read.ts";
 import { useSubAgents } from "../../store/subAgents.ts";
-
-const inflight = new Set<string>();
 
 export async function warmSession(meta: SessionMeta): Promise<void> {
 	const state = useApp.getState();
 	if (state.activeSessionId === meta.id) return;
 	const cached = state.sessionCache[meta.id];
 	if (cached && !cached.dirty && cached.messages.length > 0) return;
-	if (inflight.has(meta.id)) return;
-	inflight.add(meta.id);
 	// Its sub-agents too: the bar and panel in this screen show this conversation's, not the focused one's.
 	void bridge.subAgents.list(meta.id).then((list) => {
 		if (Array.isArray(list) && useApp.getState().activeSessionId !== meta.id) useSubAgents.getState().retain(meta.id, list);
 	}).catch(() => {});
-	try {
-		const snapshot = await bridge.sessions.transcript(meta.id);
-		if (!snapshot) return;
-		if (useApp.getState().activeSessionId === meta.id) return;
-		const messages = intact(snapshot.messages);
-		const live = useApp.getState();
-		// A command still running there stays running, with what it has printed — see `rebuildToolRuns`.
-		const toolRuns = rebuildToolRuns(messages, snapshot.running, live.sessionCache[meta.id]?.toolRuns);
-		useApp.setState({
-			sessionCache: prune(
-				{
-					...live.sessionCache,
-					[meta.id]: {
-						meta: snapshot.meta,
-						messages,
-						toolRuns,
-						state: {
-							running: snapshot.running,
-							commandRuns: snapshot.commandRuns ?? [],
-							hookRuns: snapshot.hookRuns ?? [],
-							todos: todosFrom(messages),
-							compactions: (snapshot.compactions ?? []).map((at) => ({ at, before: 0, after: 0 })),
-							approvals: snapshot.pendingApprovals,
-							stopped: snapshot.running ? null : howItStopped(messages),
-							retrying: null,
-							capabilities: null,
-							pendingUserMessage: null,
-						},
-					},
-				},
-				live.activeSessionId ?? meta.id,
-			),
-		});
-	} catch {
-		// A pane that cannot warm still opens when focused; a throw here would blank the workspace.
-	} finally {
-		inflight.delete(meta.id);
-	}
+	/*
+	 * 读法和侧边聊天一样：读的过程中到的事件先攒着，读完叠上去。只是读完时它若已经成了当前会话，
+	 * 就不写——那时 `readSelectedSession` 正在读同一份，交给它。
+	 */
+	const set: Parameters<typeof readSideSession>[1] = (partial) => {
+		if (useApp.getState().activeSessionId !== meta.id) useApp.setState(partial);
+	};
+	// A pane that cannot warm still opens when focused; a throw here would blank the workspace.
+	await readSideSession(meta, set, useApp.getState).catch(() => {});
 }

@@ -1,7 +1,7 @@
 // Through the browser-safe door: the main barrel reaches the filesystem, and this runs in a page.
 import { translate } from "../../i18n/translate.ts";
 import { parseInvocation, parseSkillMention } from "@plume/core/commands-view";
-import { Camera, ChevronDown, CircleAlert, Folder, GitBranch, GitFork, MessageSquare, Plus, X } from "../../ui/icons/index.ts";
+import { Camera, ChevronDown, CircleAlert, Folder, GitBranch, GitFork, MessageSquare, X } from "../../ui/icons/index.ts";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { motionReduced } from "../../ui/motion/reduced.ts";
 import { DURATION, EASING } from "../../ui/motion/tokens.ts";
@@ -10,7 +10,6 @@ import { CommandMenu } from "./CommandMenu.tsx";
 import { QueuedMessages } from "./QueuedMessages.tsx";
 import { buildOutgoing, queuePreview, queueThumbnail } from "./outgoing.ts";
 import { QuoteChip } from "./QuoteChip.tsx";
-import type { DraftQuote } from "../../lib/quote.ts";
 import { unmarkedIn } from "../../lib/attachment-placeholders.ts";
 import type { QueuedMessage } from "../../store/queue-slice.ts";
 import { MentionMenu } from "./MentionMenu.tsx";
@@ -21,7 +20,7 @@ import { useCommands } from "./useCommands.ts";
 import { useInputHistory } from "./useInputHistory.ts";
 import { commandEntries } from "./command-catalog.ts";
 import { ScheduledAlert } from "../scheduled/index.ts";
-import { ComposerSend, ComposerShell } from "./ComposerShell.tsx";
+import { ComposerSend, ComposerShell, landInField } from "./ComposerShell.tsx";
 import { SubAgentBar } from "../subagents/index.ts";
 import { askSide, openFilePane, openScopedPanel, sideChatFor } from "../dock/index.ts";
 import { DEFAULT_SIDE_CHAT_ID } from "@plume/contract";
@@ -29,8 +28,6 @@ import { ContextMeter } from "./ContextMeter.tsx";
 import { PlanModeToggle } from "./PlanModeToggle.tsx";
 import { WorktreeToggle } from "../../ui/inputs/WorktreeToggle.tsx";
 import { EffortTrigger } from "../models/index.ts";
-import { useRolled } from "../../ui/motion/RollingText.tsx";
-import { ScrollText } from "../../ui/scroll/ScrollText.tsx";
 import { ModelTrigger } from "../models/index.ts";
 import { usePopover } from "../../ui/overlay/Popover.tsx";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
@@ -40,21 +37,9 @@ import { ProjectPicker } from "../modals/index.ts";
 import { useLayout } from "../../app/layout.tsx";
 import type { DraftAttachment } from "./attachments/read.ts";
 import { useComposerAttachments } from "./useComposerAttachments.tsx";
+import { useDraft } from "./useDraft.ts";
 import { useApp } from "../../store/index.ts";
-import {
-	focusScreenOf,
-	useScopedFromMessages,
-	useScopedMessages,
-	useScopedMeta,
-	useScopedRunning,
-	useScopedSessionId,
-	useScopedStopped,
-	useScopedSubAgents,
-	useScopedTodos,
-	useScopedToolRuns,
-	useScopedWorking,
-	useScopedWorkspace,
-} from "../../app/session-scope.tsx";
+import { focusScreenOf, useScopedFromMessages, useScopedMessages, useScopedMeta, useScopedRunning, useScopedSessionId, useScopedStopped, useScopedSubAgents, useScopedTodos, useScopedToolRuns, useScopedWorking, useScopedWorkspace } from "../../app/session-scope.tsx";
 import { awaitingSubAgents } from "../../store/subAgents.ts";
 import { awaitingSession } from "../../store/tool-run.ts";
 import { carryOnPrompt } from "../../store/derive.ts";
@@ -66,6 +51,7 @@ import { blankDraftKey } from "../../lib/draft-key.ts";
 import { nextFollowup } from "../../lib/followups.ts";
 import { compactText } from "../../lib/notice-text.ts";
 import { acceleratorLabel } from "../../ui/keyboard.ts";
+import { Chip, DistanceMarks } from "./ComposerChip.tsx";
 
 /** 输入框里挂着的一份附件——和侧边聊天、子智能体那两个框是同一个形状，见 `attachments/read.ts`。 */
 type Attachment = DraftAttachment;
@@ -149,8 +135,6 @@ export function Composer({ centered = false }: {
 	}, [centered]);
 	const draftKey = activeSessionId ?? blankDraftKey(workspace, scratchCwd);
 
-	const savedDraft = useApp((s) => s.drafts[draftKey]);
-	const setDraft = useApp((s) => s.setDraft);
 	/*
 	 * Whether this new conversation gets a worktree of its own (`WorktreeToggle`), held against the
 	 * draft it was chosen for: another blank conversation, or this one moved to another project, starts
@@ -160,15 +144,12 @@ export function Composer({ centered = false }: {
 	const [worktreePick, setWorktreePick] = useState<{ draft: string; on: boolean } | null>(null);
 	const inWorktree = worktreePick?.draft === draftKey ? worktreePick.on : Boolean(settings?.worktrees?.autoCreateOnNewSession);
 
-	const [text, setText] = useState(() => savedDraft?.text ?? "");
-	const [sessionRefs, setSessionRefs] = useState<Array<{ id: string; title: string }>>(() => savedDraft?.sessionRefs ?? []);
-	const sessionRefsRef = useRef(sessionRefs);
-	sessionRefsRef.current = sessionRefs;
-	const [attachments, setAttachments] = useState<Attachment[]>(() => (savedDraft?.attachments as Attachment[]) ?? []);
-	/** 对话里划下来的引文，画成框上方那枚「N 条对话引用」，发出去时才拼进正文。见 `QuoteChip`。 */
-	const [quotes, setQuotes] = useState<DraftQuote[]>(() => savedDraft?.quotes ?? []);
-	const quotesRef = useRef(quotes);
-	quotesRef.current = quotes;
+	/*
+	 * 打了一半的话按「在对谁说」存着，换个对话再回来还在——和侧边聊天、子智能体那两个框同一份，见
+	 * `useDraft`。引文画成框上方那枚「N 条对话引用」，发出去时才拼进正文，见 `QuoteChip`。
+	 */
+	const { text, setText, attachments, setAttachments, sessionRefs, setSessionRefs, quotes, setQuotes, clear, append, peek } = useDraft<Attachment>(draftKey);
+	const empty = !text.trim() && !attachments.length && !sessionRefs.length && !quotes.length;
 
 	/*
 	 * 这一轮留下的活，和「继续」该发的那句话——没有就是 `null`。
@@ -199,39 +180,7 @@ export function Composer({ centered = false }: {
 	 * 三是模型收尾时十有八九是在反问——「请问你想查哪座城市？」——这时候按下去发出去的是
 	 * 「继续推进当前任务」，而没有任务在推进，它在等一个地名。一次白跑的往返。
 	 */
-	const continueReady = Boolean(activeSessionId) && !working && !text.trim() && !attachments.length && !sessionRefs.length
-		&& !quotes.length && carryOn !== null;
-	const textRef = useRef(text);
-	textRef.current = text;
-	const attachmentsRef = useRef(attachments);
-	attachmentsRef.current = attachments;
-	const draftKeyRef = useRef(draftKey);
-
-	/*
-	 * Sync local input state whenever the target session/blank draft key switches.
-	 */
-	useEffect(() => {
-		const prevKey = draftKeyRef.current;
-		if (prevKey !== draftKey) {
-			// Save draft for the key we are leaving.
-			setDraft(prevKey, { text: textRef.current, attachments: attachmentsRef.current, sessionRefs: sessionRefsRef.current, quotes: quotesRef.current });
-			draftKeyRef.current = draftKey;
-
-			// Restore draft for the key we just moved to.
-			const nextDraft = useApp.getState().drafts[draftKey];
-			setText(nextDraft?.text ?? "");
-			setSessionRefs(nextDraft?.sessionRefs ?? []);
-			setAttachments((nextDraft?.attachments as Attachment[]) ?? []);
-			setQuotes(nextDraft?.quotes ?? []);
-		}
-	}, [draftKey, setDraft]);
-
-	/*
-	 * Persist changes to current draft in the store so switching away (or remounting) preserves it.
-	 */
-	useEffect(() => {
-		setDraft(draftKey, { text, attachments, sessionRefs, quotes });
-	}, [text, attachments, sessionRefs, quotes, draftKey, setDraft]);
+	const continueReady = Boolean(activeSessionId) && !working && empty && carryOn !== null;
 
 	/*
 	 * Text left here by something outside the composer — a suggestion card, a review, an error.
@@ -277,7 +226,7 @@ export function Composer({ centered = false }: {
 		setText((current) => current.trim() ? `${current.trimEnd()}\n\n${browserAttachment.text}` : browserAttachment.text);
 		attach([{ id: crypto.randomUUID(), name: translate("composer.regionShot"), mimeType: "image/png", isText: false, data: browserAttachment.dataUrl.split(",")[1] }], Number.MAX_SAFE_INTEGER);
 		useApp.setState({ browserAttachment: null });
-	}, [browserAttachment, draftKey, attach]);
+	}, [browserAttachment, draftKey, attach, setText]);
 	/*
 	 * 往回翻自己说过的话。
 	 *
@@ -311,8 +260,8 @@ export function Composer({ centered = false }: {
 		const quoted = draft.quotes ?? [];
 		if (!draft.text && !files.length && !refs.length && !quoted.length) return;
 		// Sent once it is in, by the effect below — and only into an empty field (see `ComposerDraft.send`).
-		sendDraft.current =
-			Boolean(draft.send) && !textRef.current.trim() && attachmentsRef.current.length === 0 && sessionRefsRef.current.length === 0 && quotesRef.current.length === 0;
+		const now = peek();
+		sendDraft.current = Boolean(draft.send) && !now.text.trim() && !now.attachments.length && !now.sessionRefs.length && !now.quotes.length;
 		if (draft.text) {
 			setText((current) =>
 				draft.replace || !current.trim() ? draft.text : `${current.trimEnd()}\n\n${draft.text}`,
@@ -351,18 +300,8 @@ export function Composer({ centered = false }: {
 		 * without the focus makes that a click they have to find first. At the end, not selected:
 		 * this is a draft to add to, not one to type over.
 		 */
-		const el = field.current;
-		if (el) {
-			el.focus();
-			requestAnimationFrame(() => el.setSelectionRange(el.value.length, el.value.length));
-		}
-		const shell = el?.closest(".ly-composer");
-		if (!(shell instanceof HTMLElement)) return;
-		shell.classList.remove("ly-composer-catch");
-		void shell.offsetWidth;
-		shell.classList.add("ly-composer-catch");
-		shell.addEventListener("animationend", () => shell.classList.remove("ly-composer-catch"), { once: true });
-	}, [draft, activeSessionId, attach]);
+		landInField(field.current, { flash: true });
+	}, [draft, activeSessionId, attach, peek, setText, setAttachments, setSessionRefs, setQuotes]);
 	/*
 	 * A draft that asked to be sent goes once the render that put it in has happened: `submit` reads the
 	 * text and attachments of the render it belongs to, and in the effect that took the draft they were
@@ -376,13 +315,12 @@ export function Composer({ centered = false }: {
 		// oxlint-disable-next-line exhaustive-deps
 	}, [text, attachments]);
 
-
 	const commandCwd = workspace?.path ?? scratchCwd ?? "";
 	const slash = useCommands(text, commandCwd, activeSessionId, field, setText);
 	const pickFileForMention = useCallback(async (actionId: string) => {
 		try {
 			const paths = await bridge.files.pick({ directory: actionId === "action:pick-directory", multiple: false });
-			if (!paths.length || draftKeyRef.current !== draftKey) return null;
+			if (!paths.length || peek().owner !== draftKey) return null;
 			return formatMention(paths[0]);
 		} catch (err) {
 			useApp
@@ -390,7 +328,7 @@ export function Composer({ centered = false }: {
 				.notify(translate("composer.pickFailed", { reason: err instanceof Error ? err.message : String(err) }), "error");
 			return null;
 		}
-	}, [draftKey]);
+	}, [draftKey, peek]);
 	const mention = useMention(text, commandCwd, field, setText, pickFileForMention, (session) => {
 		setSessionRefs((refs) => refs.some((ref) => ref.id === session.id) ? refs : [...refs, session]);
 	});
@@ -441,7 +379,7 @@ export function Composer({ centered = false }: {
 
 	async function submitOnce(release: () => void) {
 		const trimmed = text.trim();
-		if (!trimmed && attachments.length === 0 && sessionRefs.length === 0 && quotes.length === 0) {
+		if (empty) {
 			if (!continueReady || !carryOn) return;
 			/*
 			 * `carryOn` 那三句会被 `grouping.ts` 按原文认出来，配上 `carryOn: true`，这一轮的耗时
@@ -476,11 +414,7 @@ export function Composer({ centered = false }: {
 		if (builtin?.action === "aside") {
 			if (!activeSessionId) { useApp.getState().notify(translate("composer.asideNeedsSession"), "warn"); return; }
 			const question = { text: invocation?.rest ?? "", attachments, sessionRefs, quotes };
-			setText("");
-			setAttachments([]);
-			setSessionRefs([]);
-			setQuotes([]);
-			setDraft(draftKey, null);
+			clear();
 			release();
 			const sideId = sideChatFor(activeSessionId, false);
 			// 只打了 `/btw`：开出那一格就够了，话到那边去说。
@@ -501,8 +435,7 @@ export function Composer({ centered = false }: {
 			const planOn = activeSessionId ? meta?.planMode === true : draftPlanMode;
 			if (!invocation?.rest) {
 				if (attachments.length || sessionRefs.length || quotes.length) { useApp.getState().notify(translate("composer.commandNoFiles"), "warn"); return; }
-				setText("");
-				setDraft(draftKey, null);
+				clear();
 				release();
 				await useApp.getState().setPlanMode(!planOn, activeSessionId);
 				return;
@@ -513,8 +446,7 @@ export function Composer({ centered = false }: {
 			if (attachments.length || sessionRefs.length || quotes.length) { useApp.getState().notify(translate("composer.commandNoFiles"), "warn"); return; }
 			if (builtin.action === "compact" && !activeSessionId) { useApp.getState().notify(translate("composer.nothingToCompact"), "warn"); return; }
 			if (builtin.action !== "compact" && invocation?.rest) { useApp.getState().notify(translate("composer.commandNoArgs"), "warn"); return; }
-			setText("");
-			setDraft(draftKey, null);
+			clear();
 			// The guard covers draft resolution; runtime execution must not block subsequent messages.
 			release();
 			if (builtin.action === "compact" && activeSessionId) {
@@ -532,20 +464,17 @@ export function Composer({ centered = false }: {
 		// `/plan 要规划的事` 发出去的只是后半句：开关已经拨过了，`/plan` 留在气泡里模型会当成一条它不认识的命令。
 		const said = builtin?.action === "plan" ? invocation?.rest ?? "" : trimmed;
 		const composed = { text: said, attachments, sessionRefs: referencedSessions, quotes };
-		const built = await buildOutgoing(composed, commandCwd, () =>
+		const built = await buildOutgoing(composed, commandCwd, () => {
 			// A disk scan must not dispatch an obsolete draft or erase edits made while it was pending.
-			draftKeyRef.current === draftKey && textRef.current === text && attachmentsRef.current === attachments && sessionRefsRef.current === sessionRefs && quotesRef.current === quotes,
-		activeSessionId);
+			const now = peek();
+			return now.owner === draftKey && now.text === text && now.attachments === attachments && now.sessionRefs === sessionRefs && now.quotes === quotes;
+		}, activeSessionId);
 		if (!built) return;
 		// 人在对话里的页面上调过的东西，跟着这句话交给模型；气泡里只有人打的字。见 `page-state.ts`。
 		const states = activeSessionId ? takePageStates(activeSessionId) : "";
 		const outgoing = states ? { ...built, content: [...built.content, { type: "text" as const, text: states }], displayText: built.displayText ?? said } : built;
 
-		setText("");
-		setAttachments([]);
-		setSessionRefs([]);
-		setQuotes([]);
-		setDraft(draftKey, null);
+		clear();
 		release();
 
 		/*
@@ -595,18 +524,18 @@ export function Composer({ centered = false }: {
 			// 没发出去就还留在欢迎页，之后再从这里点开别的会话不该算交接。
 			if (centered) sending = false;
 			// A transport rejection must preserve the original files and command text for retry.
-			const newer = useApp.getState().drafts[draftKey];
-			const restored = { text: newer?.text ? `${text}\n${newer.text}` : text, attachments: [...attachments, ...(newer?.attachments ?? [])], sessionRefs: [...new Map([...referencedSessions, ...(newer?.sessionRefs ?? [])].map(ref => [ref.id, ref])).values()], quotes: [...quotes, ...(newer?.quotes ?? [])] };
-			setDraft(draftKey, restored);
-			if (draftKeyRef.current === draftKey) {
+			if (peek().owner === draftKey) {
 				setText(current => current ? `${text}\n${current}` : text);
 				setAttachments(current => [...attachments, ...current]);
 				setSessionRefs(current => [...new Map([...referencedSessions, ...current].map(ref => [ref.id, ref])).values()]);
 				setQuotes(current => [...quotes, ...current]);
+			} else {
+				// 人已经换去了别的对话：写回原来那一个名下，和它在那之后存下的拼在一起。
+				const newer = useApp.getState().drafts[draftKey];
+				useApp.getState().setDraft(draftKey, { text: newer?.text ? `${text}\n${newer.text}` : text, attachments: [...attachments, ...(newer?.attachments ?? [])], sessionRefs: [...new Map([...referencedSessions, ...(newer?.sessionRefs ?? [])].map(ref => [ref.id, ref])).values()], quotes: [...quotes, ...(newer?.quotes ?? [])] });
 			}
 		}
 	}
-
 
 	const takeScreenshot = useCallback(async () => {
 		try { await bridge.screenshot.start(settings?.screenshot); }
@@ -618,29 +547,10 @@ export function Composer({ centered = false }: {
 	 *
 	 * 退回来的是「那一次提交」而不是它的文本，所以附件和引用一起回来——编辑一句配了三张图的话，图
 	 * 不跟着回来的话就等于没退回来。
-	 *
-	 * 追加，不是替换：输入框里可能已经打了别的字，那是手打的，丢掉比接得难看糟得多。
-	 *
-	 * 输入框自己也动一下。被拿走的那一行在上面收掉，字落在下面，中间没有任何东西说这两件事是同一件
-	 * ——闪一下的是接住它的这个框，人的眼睛才跟得过来。类先摘掉再挂上，中间强制一次布局：同一个
-	 * 动画连着放第二遍，不这样它根本不会重新开始。
 	 */
 	const restoreQueued = (entry: QueuedMessage) => {
-		setText((current) => (current.trim() ? `${current.trimEnd()}\n\n${entry.draft.text}` : entry.draft.text));
-		setAttachments((current) => [...current, ...(entry.draft.attachments as Attachment[])]);
-		setSessionRefs((current) => [...new Map([...current, ...entry.draft.sessionRefs].map((ref) => [ref.id, ref])).values()]);
-		if (entry.draft.quotes?.length) setQuotes((current) => [...current, ...entry.draft.quotes!]);
-		const el = field.current;
-		if (!el) return;
-		el.focus();
-		// 光标落在末尾，等文本真的进去之后——这是一份可以接着改的草稿，不是一段等着被覆盖的选中。
-		requestAnimationFrame(() => el.setSelectionRange(el.value.length, el.value.length));
-		const shell = el.closest(".ly-composer");
-		if (!(shell instanceof HTMLElement)) return;
-		shell.classList.remove("ly-composer-catch");
-		void shell.offsetWidth;
-		shell.classList.add("ly-composer-catch");
-		shell.addEventListener("animationend", () => shell.classList.remove("ly-composer-catch"), { once: true });
+		append(entry.draft);
+		landInField(field.current, { flash: true });
 	};
 
 	return (
@@ -819,20 +729,7 @@ export function Composer({ centered = false }: {
 					 * 顶上那条标题栏也在卡片里，只盖下半截的话，标题栏亮着横在蒙版上面，像是另一块东西。
 					 */
 					dropZone=".ly-dock-card"
-					/*
-					 * 翻到第几条了，写在框里的最上沿。
-					 *
-					 * 在框里而不是框外：翻出来的那句就落在它下面一行，两者说的是同一件事，隔着边框分开摆
-					 * 就得让人自己把它们联系起来。不写又不行——翻出来的那句和自己刚打的那句长得一模一样，
-					 * 都是输入框里的黑字，按到哪儿了全凭记性，一旦记错，再按一下就走过头了。
-					 */
-					hint={
-						history.position ? (
-							<div data-ly-history="" className="ly-composer-hint text-caption text-ink-faint">
-								{t("composer.history", { current: history.position.current, total: history.position.total })}
-							</div>
-						) : undefined
-					}
+					historyPosition={history.position}
 					value={text}
 					onChange={(next) => {
 						slash.change(next);
@@ -872,9 +769,8 @@ export function Composer({ centered = false }: {
 							: { id: slash.id, active: slash.active, open: slash.matches.length > 0 }
 					}
 					onSubmit={() => void submit()}
-					/* 右键点在一枚标记上弹出它的菜单，点开一枚走预览或打开——三个输入框同一份，见 `useComposerAttachments`。 */
-					onContextMenu={kit.onContextMenu}
-					onAttachmentClick={kit.onAttachmentClick}
+					/* 贴、拖、右键点在一枚标记上弹出它的菜单、点开一枚走预览或打开——几个输入框同一份，见 `useComposerAttachments`。 */
+					{...kit.shell}
 					onKeyDown={(event) => {
 						/*
 						 * 退格吃掉整枚标记，不是一个字符。
@@ -887,9 +783,8 @@ export function Composer({ centered = false }: {
 						 */
 						if (marks.keyDown(event)) return;
 						if (mention.keyDown(event)) return;
-						slash.keyDown(event, () => void submit());
-						// 命令单接下了这个键就到此为止：它是拿 preventDefault 说这话的，见 ComposerShell。
-						if (event.defaultPrevented) return;
+						// 命令单接下了这个键就到此为止。
+						if (slash.keyDown(event, () => void submit())) return;
 						// 只在框里一个字也没有时接管 Tab：有字的时候灰字本来就不显示，按了填进去的是看不见的东西。
 						if (event.key === "Tab" && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey && nextPrompt && !text) {
 							event.preventDefault();
@@ -899,30 +794,21 @@ export function Composer({ centered = false }: {
 						history.keyDown(event);
 					}}
 					placeholder={nextPrompt ?? t("composer.placeholder")}
-					onFiles={(picked) => void kit.addFiles(picked)}
-					attachments={
-						/*
-						 * 只在真有东西可画时展开：这一排只画图片（文件在句子里那枚标记上，见 `strip`）。从前按
-						 * `attachments.length` 开，贴进来一个压缩包，这一行就撑开一道空的内衬——输入框上沿平白
-						 * 高出 12px，里面什么都没有。
-						 */
-						<div className="ly-reveal" data-open={kit.strip.length > 0 || sessionRefs.length > 0 || quotes.length > 0 ? "true" : "false"} data-ly-composer-attachments="">
-							<div>
-								<div className="ly-composer-attachments">
-									{quotes.length > 0 && <QuoteChip quotes={quotes} onRemove={(id) => setQuotes((was) => was.filter((quote) => quote.id !== id))} />}
-									{sessionRefs.length > 0 && (
-										<div className="flex flex-wrap gap-2">
-											{sessionRefs.map((session) => <button key={session.id} type="button" aria-label={translate("composer.removeSessionRef", { title: session.title })} onClick={() => setSessionRefs((refs) => refs.filter((ref) => ref.id !== session.id))} className="flex h-8 max-w-[240px] items-center gap-1.5 rounded-lg border border-line-soft bg-card pr-1.5 pl-2 text-caption text-ink-muted transition-colors hover:text-ink"><MessageSquare size={12} className="shrink-0" /><span className="min-w-0 truncate">{session.title}</span><X size={12} className="shrink-0" /></button>)}
-										</div>
-									)}
-									{kit.stripNode}
+					attachments={kit.tray(
+						<>
+							{quotes.length > 0 && <QuoteChip quotes={quotes} onRemove={(id) => setQuotes((was) => was.filter((quote) => quote.id !== id))} />}
+							{sessionRefs.length > 0 && (
+								<div className="flex flex-wrap gap-2">
+									{sessionRefs.map((session) => <button key={session.id} type="button" aria-label={translate("composer.removeSessionRef", { title: session.title })} onClick={() => setSessionRefs((refs) => refs.filter((ref) => ref.id !== session.id))} className="flex h-8 max-w-[240px] items-center gap-1.5 rounded-lg border border-line-soft bg-card pr-1.5 pl-2 text-caption text-ink-muted transition-colors hover:text-ink"><MessageSquare size={12} className="shrink-0" /><span className="min-w-0 truncate">{session.title}</span><X size={12} className="shrink-0" /></button>)}
 								</div>
-							</div>
-						</div>
-					}
+							)}
+						</>,
+						sessionRefs.length > 0 || quotes.length > 0,
+						{ "data-ly-composer-attachments": "" },
+					)}
 					left={
 						<>
-							<IconButton size="composer" emphasis label={t("composer.addAttachment")} onClick={kit.picker.open} icon={<Plus size={16} strokeWidth={1.9} />} />
+							{kit.addButton}
 							{settings?.screenshot?.enabled !== false && settings?.screenshot?.showInComposer && (
 								<IconButton
 									size="composer"
@@ -934,8 +820,6 @@ export function Composer({ centered = false }: {
 									icon={<Camera size={15} strokeWidth={1.9} />}
 								/>
 							)}
-							{kit.picker.input}
-
 							<button
 								type="button"
 								/* The app's own tooltip, so the icon-only form still says what it is. */
@@ -1002,13 +886,13 @@ export function Composer({ centered = false }: {
 							<EffortTrigger modelId={modelId} />
 
 							{/* 正忙时按下去是排队而不是插话，所以它说的也不再是「发送」——见 `submitOnce`。 */}
-							<div className="ly-queue-send" data-visible={running && Boolean(text.trim() || attachments.length || sessionRefs.length || quotes.length)} inert={!running || !(text.trim() || attachments.length || sessionRefs.length || quotes.length)}><div><ComposerSend running={false} active={running && Boolean(text.trim() || attachments.length || sessionRefs.length || quotes.length)} disabled={!running || !(text.trim() || attachments.length || sessionRefs.length || quotes.length)} tip={t("composer.queueWaiting")} onSend={() => void submit()} onStop={() => void abort(activeSessionId ?? undefined)} /></div></div>
+							<div className="ly-queue-send" data-visible={running && !empty} inert={!running || empty}><div><ComposerSend running={false} active={running && !empty} disabled={!running || empty} tip={t("composer.queueWaiting")} onSend={() => void submit()} onStop={() => void abort(activeSessionId ?? undefined)} /></div></div>
 							<ComposerSend
 								running={running}
 								continueReady={continueReady}
 								// 说的和转录下面那行「继续」一样，因为按下去是同一件事。
 								tip={continueReady ? translate("composer.finishUnfinished") : undefined}
-								disabled={!continueReady && !text.trim() && attachments.length === 0 && sessionRefs.length === 0 && quotes.length === 0}
+								disabled={!continueReady && empty}
 								onSend={() => void submit()}
 								onStop={() => void abort(activeSessionId ?? undefined)}
 							/>
@@ -1031,82 +915,5 @@ export function Composer({ centered = false }: {
 			{/* 句子里那一枚被右键点中时弹的菜单——见 `useComposerAttachments`。 */}
 			{kit.menu}
 		</div>
-	);
-}
-
-function Chip({
-	icon,
-	label,
-	tip,
-	marks,
-	onClick,
-	onClear,
-	active,
-	busy,
-	dimmed,
-}: {
-	icon: React.ReactNode;
-	label: string;
-	/** What the tooltip says, when the label alone does not; the label otherwise. */
-	tip?: string;
-	/** Small facts after the label: how far a worktree has moved from its base. */
-	marks?: React.ReactNode;
-	onClick: (event: React.MouseEvent<HTMLElement>) => void;
-	onClear?: () => void;
-	active?: boolean;
-	/** Something is being changed about what this names; the label is held until it lands. */
-	busy?: boolean;
-	/** What it names is not on disk right now — a worktree that was taken back. */
-	dimmed?: boolean;
-}) {
-	const { t } = useI18n();
-	const rolls = useRolled(label);
-
-	const chip = (
-		<button
-			type="button"
-			data-ly-tip={busy ? t("composer.switchingBranch") : (tip ?? label)}
-			aria-haspopup="menu"
-			aria-expanded={active}
-			aria-busy={busy || undefined}
-			onClick={onClick}
-			/* Dimmed while it is being changed, so the name reads as "still this, for now". */
-			className={`ly-composer-control ly-scroll flex min-w-0 items-center gap-1 rounded-lg pr-2 pl-3 text-label transition-[color,background-color,opacity] duration-[var(--ly-t-quick)] ${
-				busy ? "opacity-60" : ""
-			} ${dimmed ? "text-ink-muted" : "text-ink"} ${active ? "bg-card-hover" : onClear ? "group-hover/chip:bg-card-hover" : "hover:bg-card-hover"}`}
-		>
-			<span className="shrink-0 text-ink-muted">{icon}</span>
-			{/* Keyed on the label so switching project or branch rolls the new one in. `ScrollText`
-			    cannot take `RollingText` as a child — it measures the string to decide whether the
-			    chip scrolls on hover — so the remount happens around it instead, on the same terms. */}
-			<ScrollText key={label} text={label} className={`min-w-0 ${rolls ? "ly-roll" : ""}`} />
-			{marks}
-			<ChevronDown size={14} className={`shrink-0 text-ink-muted ${onClear ? "group-hover/chip:opacity-0 group-focus-within/chip:opacity-0" : ""}`} aria-hidden />
-		</button>
-	);
-	if (!onClear) return chip;
-	return (
-		<div className="group/chip relative flex min-w-0">
-			{chip}
-			<span className="pointer-events-none absolute inset-y-0 right-1 flex items-center opacity-0 group-hover/chip:pointer-events-auto group-hover/chip:opacity-100 group-focus-within/chip:pointer-events-auto group-focus-within/chip:opacity-100">
-				<IconButton size="sm" label={t("project.without")} icon={<X size={14} />} onClick={onClear} />
-			</span>
-		</div>
-	);
-}
-
-/**
- * `↑3 ↓1`: commits this side has that the other lacks, and the reverse — a worktree against its base, a
- * branch against its upstream. Nothing when there is nothing to say, and a mark of its own while a
- * worktree's sync waits on conflicts.
- */
-function DistanceMarks({ ahead, behind, conflicted = false }: { ahead: number; behind: number; conflicted?: boolean }) {
-	if (!ahead && !behind && !conflicted) return null;
-	return (
-		<span data-ly-distance-marks="" className="flex shrink-0 items-center gap-1 text-caption text-ink-faint tabular-nums">
-			{ahead > 0 && <span>↑{ahead}</span>}
-			{behind > 0 && <span>↓{behind}</span>}
-			{conflicted && <CircleAlert size={12} strokeWidth={2} className="text-amber-500" aria-hidden />}
-		</span>
 	);
 }

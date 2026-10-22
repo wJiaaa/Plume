@@ -17,6 +17,8 @@
 import { useLayoutEffect, useRef, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
 
 import { useI18n } from "../../i18n/index.ts";
+import { Plus } from "../../ui/icons/index.ts";
+import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import { scanPlaceholders } from "../../lib/attachment-placeholders.ts";
 import { openFromEvent, openViewer } from "../image/index.ts";
 import { AttachmentMenu } from "./attachments/AttachmentMenu.tsx";
@@ -43,6 +45,19 @@ export interface ComposerAttachments<T> {
 	menu: ReactNode;
 	/** 左下角那颗「+」背后的文件选择框。 */
 	picker: { open: () => void; input: ReactNode };
+	/** 那颗「+」连同它背后的选择框，四个输入框摆的是同一颗。 */
+	addButton: ReactNode;
+	/**
+	 * 框上方那一格托盘：图片，加上调用方自己的东西（引文、会话引用）放在前面。只在真有东西可画时展开——
+	 * 按附件数开的话，贴进来一个压缩包，输入框上沿平白高出一道空的内衬。
+	 */
+	tray: (before?: ReactNode, beforeShown?: boolean, attrs?: Record<string, string>) => ReactNode;
+	/** 交给 `ComposerShell` 的那几样：贴、拖、点中和右键句子里的标记。 */
+	shell: {
+		onFiles: (picked: PickedFile[]) => void;
+		onAttachmentClick: (index: number, rect?: DOMRect) => void;
+		onContextMenu: (event: React.MouseEvent<HTMLTextAreaElement>) => void;
+	};
 }
 
 export function useComposerAttachments<T extends DraftAttachment>({
@@ -277,5 +292,26 @@ export function useComposerAttachments<T extends DraftAttachment>({
 		),
 	};
 
-	return { marks, addFiles, strip, stripNode, onAttachmentClick, onContextMenu, menu, picker };
+	const addButton = (
+		<>
+			<IconButton size="composer" emphasis label={t("composer.addAttachment")} onClick={picker.open} icon={<Plus size={16} strokeWidth={1.9} />} />
+			{picker.input}
+		</>
+	);
+
+	const tray = (before?: ReactNode, beforeShown = false, attrs?: Record<string, string>) => (
+		<div className="ly-reveal" data-open={strip.length > 0 || beforeShown ? "true" : "false"} {...attrs}>
+			<div>
+				<div className="ly-composer-attachments">
+					{before}
+					{stripNode}
+				</div>
+			</div>
+		</div>
+	);
+
+	return {
+		marks, addFiles, strip, stripNode, onAttachmentClick, onContextMenu, menu, picker, addButton, tray,
+		shell: { onFiles: (picked) => void addFiles(picked), onAttachmentClick, onContextMenu },
+	};
 }

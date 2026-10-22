@@ -12,9 +12,9 @@ import { test } from "node:test";
 import {
 	baseName,
 	canonicalPath,
-	dirName,
 	isDescendantPath,
 	joinPath,
+	parentOf,
 	relativeTo,
 	samePath,
 	splitExtension,
@@ -30,9 +30,10 @@ test("the name is the last segment, with or without a trailing slash", () => {
 });
 
 test("the parent is everything before it, and the root's parent is the root", () => {
-	assert.equal(dirName("/work/app/src/main.ts"), "/work/app/src");
-	assert.equal(dirName("/work/app/src/"), "/work/app");
-	assert.equal(dirName("/main.ts"), "/", "not the empty string, which would name nothing");
+	assert.equal(parentOf("/work/app/src/main.ts"), "/work/app/src");
+	assert.equal(parentOf("/work/app/src/"), "/work/app");
+	assert.equal(parentOf("/main.ts"), "/", "not the empty string, which would name nothing");
+	assert.equal(parentOf("main.ts"), "", "a bare name has no folder, not itself");
 });
 
 test("joining reuses the separator the parent already has", () => {

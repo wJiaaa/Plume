@@ -20,6 +20,7 @@ import { SkeletonList } from "../../ui/primitives/Skeleton.tsx";
 import type { SyncPlan } from "./syncPlan.ts";
 import type { Act } from "./types.ts";
 import { bridge } from "../../services/index.ts";
+import { baseName } from "../../lib/paths.ts";
 import { useI18n } from "../../i18n/index.ts";
 
 /** 平铺还是树，记在本地。 */
@@ -70,6 +71,14 @@ export function ChangesView({
 	const { t } = useI18n();
   const [treeView, setTreeView] = useTreeViewPreference();
   const confirm = useConfirmer();
+  const askDiscard = (path: string) =>
+    confirm.ask({
+      // `baseName`, not `split("/").pop()`: an untracked directory arrives as `.claude/`, whose last piece is empty.
+      title: t("changes.discardConfirm", { name: baseName(path) }),
+      detail: t("changes.discardDetail"),
+      confirmLabel: t("common.discard"),
+      onConfirm: () => void act(() => bridge.git.discard(cwd, [path])),
+    });
   /** The hunks, once they arrive. The rows themselves do not wait for them — see `rowsFor`. */
   const [hunks, setHunks] = useState<{ staged: WorkspaceDiffFile[]; unstaged: WorkspaceDiffFile[] }>({
     staged: [],
@@ -253,16 +262,7 @@ export function ChangesView({
                     size="sm"
                     tone="danger"
                     disabled={busy}
-                    onClick={() =>
-                      confirm.ask({
-                        title: t("changes.discardConfirm", { name: file.path.split("/").pop() ?? "" }),
-                        detail:
-                          t("changes.discardDetail"),
-                        confirmLabel: t("common.discard"),
-                        onConfirm: () =>
-                          void act(() => bridge.git.discard(cwd, [file.path])),
-                      })
-                    }
+                    onClick={() => askDiscard(file.path)}
                   />
                   <IconButton
                     icon={<Plus size={12} strokeWidth={1.9} />}
@@ -288,16 +288,7 @@ export function ChangesView({
                     size="sm"
                     tone="danger"
                     disabled={busy}
-                    onClick={() =>
-                      confirm.ask({
-                        title: t("changes.discardConfirm", { name: file.path.split("/").pop() ?? "" }),
-                        detail:
-                          t("changes.discardDetail"),
-                        confirmLabel: t("common.discard"),
-                        onConfirm: () =>
-                          void act(() => bridge.git.discard(cwd, [file.path])),
-                      })
-                    }
+                    onClick={() => askDiscard(file.path)}
                   />
                   <IconButton
                     icon={<Plus size={12} strokeWidth={1.9} />}

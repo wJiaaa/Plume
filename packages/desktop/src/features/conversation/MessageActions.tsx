@@ -1,12 +1,11 @@
 import { translate } from "../../i18n/translate.ts";
 import { Check, Copy } from "../../ui/icons/index.ts";
-import { useEffect, useState } from "react";
-
 import { useI18n, type ResolvedUiLocale } from "../../i18n/index.ts";
 import { Text } from "../../ui/primitives/Text.tsx";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import { formatDate } from "../../lib/date-format.ts";
 import { hourStyle } from "../../lib/hour-style.ts";
+import { useCopied } from "../../ui/hooks/useCopied.ts";
 
 /**
  * The row under a message: when it was written, and what you can do with it.
@@ -65,19 +64,13 @@ export function MessageActions({
 	/** Anything this side of the transcript offers beyond copying — editing, on a sent message. */
 	children?: React.ReactNode;
 }) {
-	const [copied, setCopied] = useState(false);
+	const { copied, mark } = useCopied();
 	/*
 	 * From the context rather than `activeLocale()`: the rows that render this are memoised
 	 * (`MessageRow`), and a language switch only reaches through a memo by context. Reading the
 	 * module-level locale would leave every message already on screen in the old language.
 	 */
 	const { resolvedLocale } = useI18n();
-
-	useEffect(() => {
-		if (!copied) return;
-		const timer = setTimeout(() => setCopied(false), 1600);
-		return () => clearTimeout(timer);
-	}, [copied]);
 
 	const timeTip = formatTimestampTip(timestamp, resolvedLocale);
 	const durationBadge = formatDurationBadge(durationMs, sseDurationMs, tokens);
@@ -113,7 +106,7 @@ export function MessageActions({
 			<IconButton
 				label={translate("messageActions.copyThis")}
 				onClick={() => {
-					void navigator.clipboard.writeText(typeof text === "function" ? text() : text).then(() => setCopied(true));
+					void navigator.clipboard.writeText(typeof text === "function" ? text() : text).then(() => mark(true));
 				}}
 				icon={copied ? <Check size={12.5} strokeWidth={2.2} className="ly-pop text-ok" /> : <Copy size={12.5} strokeWidth={1.8} />}
 			/>

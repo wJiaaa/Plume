@@ -152,28 +152,6 @@ export function shouldShow(update: { available: boolean } | null): boolean {
 	return Boolean(update?.available);
 }
 
-/**
- * The line under 版本 in 设置 → 关于, which is three different statements wearing one sentence.
- *
- * Here rather than in the component for the reason everything else in this file is: the case that
- * goes wrong is not any one of them, it is the one that was folded into another. A check that
- * could not reach GitHub returns the running version as the newest — the same shape as a
- * successful check on an up-to-date app — so a row written as `available ? … : 已经是最新版本`
- * tells someone with no network that they have the latest release. They have no information at
- * all, and that is the only honest thing to print.
- */
-export function versionNote(
-	info: { current: string; latest: string; available: boolean; checked: boolean } | null,
-	phase: Phase,
-): string {
-	if (!info) return translate("update.reading");
-	// The phase said in words, so the row means something *during* a download and not only before
-	// one: 「新版本 0.3.2」, 「下载中 45%」, 「已暂停 45%」, 「重启更新」…
-	if (info.available) return translate("update.currentAnd", { current: info.current, what: labelFor(phase, info.latest) });
-	if (!info.checked) return translate("update.offline", { current: info.current });
-	return translate("update.upToDate", { current: info.current });
-}
-
 /** Bytes as something a person reads at a glance. One decimal: 90.4MB, not 90.37MB. */
 export function mb(bytes: number): string {
 	return `${(bytes / 1_048_576).toFixed(1)}MB`;

@@ -28,7 +28,7 @@ const storage: Record<string, string> = {};
 
 const { useApp } = await import("../src/store/index.ts");
 const { applyAgentEvent } = await import("../src/store/apply-event.ts");
-const { computeTurnStats, liveTurnMeter } = await import("../src/features/conversation/grouping.ts");
+const { computeTurnStats, liveTurnMeter } = await import("../src/features/conversation/turns.ts");
 const { CARRY_ON_PROMPTS } = await import("../src/store/derive.ts");
 
 const SESSION = "test-session";

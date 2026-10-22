@@ -1,10 +1,7 @@
-/**
- * Which repository the panel is looking at.
- */
 import { Check, Folder, GitBranchPlus } from "../../ui/icons/index.ts";
 import { Caret } from "../../ui/primitives/Caret.tsx";
 
-import type { RepoRef } from "../../../electron/git.ts";
+import type { RepoRef } from "../../../electron/ipc-types.ts";
 
 import { MENU_MAX_HEIGHT, MenuBody, MenuItem, Popover, usePopover } from "../../ui/overlay/Popover.tsx";
 import { ScrollText } from "../../ui/scroll/ScrollText.tsx";

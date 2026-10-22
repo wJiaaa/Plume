@@ -17,9 +17,6 @@
  */
 
 import { create } from "zustand";
-import { provideFileOpener } from "../../app/file-opener.ts";
-import { provideSideQuote } from "../../app/side-quote.ts";
-import { providePlanOpener } from "../../app/plan-opener.ts";
 import { flushSync } from "react-dom";
 import { bridge } from "../../services/index.ts";
 import { translate } from "../../i18n/translate.ts";
@@ -27,6 +24,7 @@ import { useApp } from "../../store/index.ts";
 import { applyFilePanelState, filePanelSnapshot } from "../../store/file-panel-handoff.ts";
 import { fileSlot, openFileOf, useOpenFile } from "../../store/openFile.ts";
 import { allowsMany, basePanelKind, nextPanelKind, sideIdOfPanel } from "../../lib/panel-instance.ts";
+import type { DraftQuote } from "../../lib/quote.ts";
 import { baseName, canonicalPath, samePath } from "../../lib/paths.ts";
 import { emptyDockTree, usePaneDock } from "./pane-store.ts";
 import { has, kinds, remove, type DockNode, type PaneKind } from "./tree.ts";
@@ -365,11 +363,6 @@ export function openFilePane(given: string, target?: string): Promise<void> {
 	});
 }
 
-// 会话里生成图的「在新标签页中打开」从这里进来，见 `provideFileOpener`。
-provideFileOpener(openFilePane);
-// 审批卡上的「打开计划」从这里进来，见 `providePlanOpener`。
-providePlanOpener((screen) => void openScopedPanel("plan", screen));
-
 /**
  * 工具栏那排按钮、快捷键、标签条的「+」和「⋮」菜单：能开好几个的（终端、侧边聊天、文件、网页）再开一个，
  * 只能开一个的开着就切过去——右栏收着就展开，弹出去了就把那个窗口叫到前面。从不关，关只在标签上的 ✕
@@ -412,11 +405,11 @@ export function sideChatFor(scope: string, reuse: boolean): string | null {
 	return sideIdOfPanel(kind);
 }
 
-// 对话里划词「在侧边聊天中提问」从这里进来：引文挂到那一格的输入框上，问什么由人接着写。
-provideSideQuote((sessionId, quote) => {
+/** 对话里划词「在侧边聊天中提问」：引文挂到那一格的输入框上，问什么由人接着写。 */
+export function quoteInSideChat(sessionId: string, quote: DraftQuote): void {
 	const sideId = sideChatFor(sessionId, true);
 	if (sideId) useSide.getState().seedQuote(sessionId, sideId, quote);
-});
+}
 
 /**
  * 启动时发现的孤儿：盘上有回家记录，却没有对应的面板窗口。

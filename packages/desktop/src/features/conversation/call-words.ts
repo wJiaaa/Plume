@@ -10,7 +10,8 @@ import type { ToolRun as ToolRunState } from "../../store/index.ts";
 import { baseName, relativeTo, tildeHome } from "../../lib/paths.ts";
 import { translate } from "../../i18n/translate.ts";
 import { describeCall, describeRun, PEER_TOOLS } from "../../lib/tool-kinds.ts";
-import type { Call, StepMember } from "./grouping.ts";
+import type { Call } from "./grouping.ts";
+import type { StepMember } from "./turn-blocks.ts";
 
 type ToolCallBlock = Extract<AssistantContent, { type: "toolCall" }>;
 
@@ -135,19 +136,15 @@ export function pollOutput(runs: (ToolRunState | undefined)[]): string {
 /**
  * 一次调用在行上怎么说：读文件、列目录说路径（`root` 是工作区，见 `locationOf`）；模型写了一句给人看的
  * 说明就用它，没写就退回 core 的摘要。查后台任务输出的那一次说是哪个任务（`job`：启动它的那条命令的说明）。
- *
- * grep、glob 的 `description` 还兜着另一种用法：没给 `pattern` 时，模型常把要搜的式子写在那里（core 的
- * `extractGrepPattern`）。那时它是一条正则、不是一句话，照旧说成「搜索内容 …」。
  */
 export function describeOne(block: ToolCallBlock, summary?: string, context: { job?: string; root?: string } = {}): string {
   if (polledJob(block)) return describePolls(context.job, 1);
   if (block.name === "todo_write") return describeTodos(block.arguments);
   const location = locationOf(block, context.root);
   if (location) return describeRun([{ toolName: block.name, subject: location }]);
-  const { description, pattern } = (block.arguments ?? {}) as { description?: unknown; pattern?: unknown };
+  const { description } = (block.arguments ?? {}) as { description?: unknown };
   const said = typeof description === "string" ? description.trim() : "";
-  const asPattern = (block.name === "grep" || block.name === "glob") && typeof pattern !== "string";
-  if (said && DESCRIBED.has(block.name) && !asPattern) return said;
+  if (said && DESCRIBED.has(block.name)) return said;
   return describeCall(block.name, summary, subjectOf(block));
 }
 

@@ -6,10 +6,10 @@ import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { ScrollText } from "../../ui/scroll/ScrollText.tsx";
 import { Text } from "../../ui/primitives/Text.tsx";
 import { useApp } from "../../store/index.ts";
-import { useScopedMessages, useScopedSessionId, useScopedStopped, useScopedTodos, useScopedWorking } from "../../app/session-scope.tsx";
+import { useScopedSessionId, useScopedTodos } from "../../app/session-scope.tsx";
 import { carryOnPrompt } from "../../store/derive.ts";
-import { Mark, lastTurnFailed } from "./Mark.tsx";
-import { isUserPaused, taskListHeadline } from "./task-list-state.ts";
+import { Mark, useStepState } from "./Mark.tsx";
+import { taskListHeadline } from "./task-list-state.ts";
 import { useDelayedOffer } from "./hover-offer.ts";
 
 /**
@@ -35,22 +35,11 @@ export function TaskList({ placement }: { placement: "floating" | "inline" }) {
 	 * originally tied to a detected interruption, which was too narrow — a model that simply
 	 * stopped without finishing leaves a perfectly intact log and a step that spins forever.
 	 */
-	// 后台的子智能体还在跑也算：主会话收尾了，活没停，结果回来它会接着干。见 `useScopedWorking`。
-	const running = useScopedWorking();
-	const stopped = useScopedStopped();
-	const paused = isUserPaused(running, stopped);
+	const marks = useStepState();
+	const { running, stopped, paused, failed } = marks;
 	const sessionId = useScopedSessionId();
 	const abort = useApp((s) => s.abort);
 	const send = useApp((s) => s.send);
-	const messages = useScopedMessages();
-	/*
-	 * The last turn ended badly, so the step it was on did not merely stop — it failed.
-	 *
-	 * Distinguished because the offer is different: a paused step is carried on with, a failed
-	 * one is tried again. The plan itself has no failed state — `todo_write` only knows pending,
-	 * in progress and completed — so it comes from how the turn ended.
-	 */
-	const failed = !running && lastTurnFailed(messages);
 
 	/** What the control on the current step does, which is also what its mark shows. */
 	const action = running
@@ -175,7 +164,7 @@ export function TaskList({ placement }: { placement: "floating" | "inline" }) {
 								todo={todo}
 								paused={paused}
 								failed={failed}
-								idle={!running && !paused && !failed}
+								idle={marks.idle}
 								action={todo.status === "in_progress" ? action : undefined}
 							/>
 						))}

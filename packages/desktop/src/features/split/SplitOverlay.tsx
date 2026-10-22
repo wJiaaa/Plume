@@ -1,6 +1,7 @@
 import { useI18n } from "../../i18n/index.ts";
 import { DROP_INSET, regionForSide } from "./drop.ts";
-import { pct, type PaneBox } from "./layout.ts";
+import { pct } from "../../lib/tiling.ts";
+import type { PaneBox } from "./layout.ts";
 import { useSplitOverlay } from "./overlay.ts";
 import { paneKey } from "./pane-key.ts";
 

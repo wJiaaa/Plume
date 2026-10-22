@@ -20,7 +20,7 @@
     "package": "pnpm build && pnpm --filter @plume/desktop package",
     "typecheck": "pnpm -r typecheck",
     "lint": "oxlint --deny-warnings",
-    "i18n": "node scripts/check-i18n.mjs",
+    "i18n": "node scripts/check-i18n.mjs && node scripts/check-i18n-unused.mjs",
     "lint:fix": "oxlint --fix",
     "knip": "knip",
     "test": "pnpm -r --no-bail test && node --test --experimental-strip-types test/*.test.ts",

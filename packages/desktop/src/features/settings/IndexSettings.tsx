@@ -5,7 +5,7 @@ import { ActionSpinner } from "../../ui/motion/loaders.tsx";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useListedProjects } from "../../store/listed-projects.ts";
-import { Card, EmptyHint, InlineSelect, Row, SectionTitle } from "./controls.tsx";
+import { Card, EmptyHint, InlineSelect, PageHeader, Row, SectionTitle } from "./controls.tsx";
 import { DialogAction } from "../../ui/overlay/Dialog.tsx";
 import { bridge } from "../../services/index.ts";
 import { useI18n } from "../../i18n/index.ts";
@@ -66,10 +66,7 @@ export function IndexSettings() {
 
 	return (
 		<div className="pt-2">
-			<h1 className="text-display leading-tight font-semibold tracking-tight text-ink">{t("index.title")}</h1>
-			<p className="mt-2 max-w-[580px] pb-7 text-label leading-relaxed text-ink-muted">
-				{t("index.recordsWhat")}<strong className="font-medium text-ink">{t("index.definitions")}</strong>{t("index.definitionsDetail")}
-			</p>
+			<PageHeader title={t("index.title")} intro={<>{t("index.recordsWhat")}<strong className="font-medium text-ink">{t("index.definitions")}</strong>{t("index.definitionsDetail")}</>} />
 
 			{!path ? (
 				<Card>

@@ -28,11 +28,11 @@
 
 import type { PanelKind } from "./sideStore.ts";
 import { EPSILON, MIN_FRACTION } from "./geometry.ts";
+import type { Axis } from "../../lib/tiling.ts";
 
 /** What can occupy a pane: any registered panel, or the conversation itself. */
 export type PaneKind = PanelKind | "conversation";
 
-export type Axis = "row" | "col";
 type DropSide = "left" | "right" | "top" | "bottom";
 
 export interface DockLeaf {

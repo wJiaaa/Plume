@@ -13,7 +13,7 @@ import { Button } from "../../ui/primitives/Button.tsx";
 import { Toggle } from "./controls.tsx";
 import { TextInput } from "./inputs.tsx";
 import { Select } from "../../ui/inputs/Select.tsx";
-import { Card, Field } from "./layout.tsx";
+import { Card, Field, PageHeader } from "./layout.tsx";
 
 const EVENTS: HookEventName[] = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest", "PostToolUse", "PostToolUseFailure", "Stop", "StopFailure", "SessionEnd"];
 
@@ -95,10 +95,9 @@ export function HookForm({
 				<ChevronRight size={14} aria-hidden className="shrink-0 text-ink-faint" />
 				<span className="truncate px-2 text-ink">{hook ? hook.event : t("hooks.add")}</span>
 			</nav>
-			<h1 className="mt-4 text-display leading-tight font-semibold tracking-tight text-ink">{hook ? t("hooks.edit") : t("hooks.add")}</h1>
-			<p className="mt-2 text-label text-ink-muted">{t("hooks.intro")}</p>
+			<PageHeader className="mt-4" title={hook ? t("hooks.edit") : t("hooks.add")} intro={t("hooks.intro")} />
 
-			<Card className="mt-6 space-y-4 p-4">
+			<Card className="space-y-4 p-4">
 				<div className="grid gap-3 sm:grid-cols-3">
 					<Field label={t("hooks.event")}>
 						<Select value={event} onChange={setEvent} options={EVENTS.map((name) => ({ value: name, label: name }))} ariaLabel={t("hooks.event")} />

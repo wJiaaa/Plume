@@ -72,7 +72,7 @@ export function TerminalPane() {
 	useEffect(() => bridge.terminal.onExit(({ id }) => useTerminals.getState().remove(id)), []);
 	useEffect(() => bridge.terminal.onProcess(({ id, process }) => useTerminals.getState().setProcess(id, process)), []);
 	/** Closing this tab while it runs something is asked here — see `close-guard.ts`. */
-	const question = useCloseQuestion((state) => (active && state.asking?.id === active ? state.asking : null));
+	const question = useCloseQuestion((state) => (active && state.asking?.key === active ? state.asking : null));
 	useEffect(() => (active ? showing(active) : undefined), [active]);
 
 	/*

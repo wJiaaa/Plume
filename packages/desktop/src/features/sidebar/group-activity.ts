@@ -1,8 +1,6 @@
 import type { SessionActivity } from "@plume/core/activity";
 import { rowActivity } from "../../lib/row-activity.ts";
 
-const PRIORITY: SessionActivity[] = ["waiting", "running", "failed", "done"];
-
 /** Count identities once, so a session listed twice is not counted twice. */
 export function groupActivity(
 	ids: readonly string[],
@@ -15,7 +13,7 @@ export function groupActivity(
 		const state = rowActivity(activity[id] ?? null, sideRunning.has(id), id === activeId);
 		if (state) counts[state]++;
 	}
-	return { counts, activity: PRIORITY.find((state) => counts[state] > 0) ?? null };
+	return { counts };
 }
 
 const EMPTY_SIDE: ReadonlySet<string> = new Set();

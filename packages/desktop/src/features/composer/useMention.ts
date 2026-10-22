@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { SessionMeta } from "@plume/core";
 import type { SkillEntry } from "../../../electron/ipc-types.ts";
 import { bridge } from "../../services/index.ts";
@@ -15,6 +15,7 @@ import {
 	type MentionFile,
 	type MentionItem,
 } from "./mention-catalog.ts";
+import { useCompletionList } from "./useCompletionList.ts";
 
 export function useMention(
 	text: string,
@@ -24,12 +25,7 @@ export function useMention(
 	onPickAction?: (actionId: string) => Promise<string | null>,
 	onPickSession?: (session: { id: string; title: string }) => void,
 ) {
-	const [active, setActive] = useState(0);
-	const [keyboardSelection, setKeyboardSelection] = useState(true);
-	const [dismissed, setDismissed] = useState(false);
-	const [selection, setSelection] = useState({ text, start: text.length, end: text.length });
-	const [focused, setFocused] = useState(false);
-	const id = useId();
+	const list = useCompletionList(text, field, setText, parseMentionTrigger, cwd);
 
 	const [agents, setAgents] = useState<Array<{ id: string; name: string; description: string; avatar?: string }>>([]);
 	const [skills, setSkills] = useState<SkillEntry[]>([]);
@@ -43,13 +39,7 @@ export function useMention(
 	const nonce = useApp((state) => state.extensionsNonce);
 	const projects = useApp((state) => state.settings?.projects);
 
-	// Detect @ completion trigger
-	const completion = parseMentionTrigger(
-		text,
-		selection.text === text ? selection.start : text.length,
-		selection.text === text ? selection.end : text.length,
-	);
-	const mentionMode = completion !== null;
+	const mentionMode = list.completion !== null;
 
 	// Load candidates (skills, sessions, workspace files)
 	useEffect(() => {
@@ -107,10 +97,10 @@ export function useMention(
 		};
 	}, [cwd, folderKey, nonce, mentionMode]);
 
-	const term = completion?.term ?? null;
+	const { term, listening } = list;
 
 	const matches = useMemo(() => {
-		if (term === null || dismissed || !focused) return [];
+		if (!listening || term === null) return [];
 		return rankMentions(term, {
 			files: workspaceFiles,
 			agents,
@@ -119,38 +109,22 @@ export function useMention(
 			skills,
 			allowAction: true,
 		});
-	}, [term, dismissed, focused, workspaceFiles, sessions, projects, skills, agents]);
+	}, [term, listening, workspaceFiles, sessions, projects, skills, agents]);
 
-	useEffect(() => {
-		setActive(0);
-		setKeyboardSelection(true);
-	}, [term, cwd]);
+	const current = list.activeIn(matches.length);
 
-	const current = Math.min(active, Math.max(0, matches.length - 1));
-
-	function select() {
-		const el = field.current;
-		if (el) setSelection({ text: el.value, start: el.selectionStart, end: el.selectionEnd });
-	}
-
+	/* 选文件要等一个系统对话框：回来时框里的字要是已经变了，那段位置也就不作数了。 */
 	function insertMentionText(tokenText: string) {
-		const el = field.current;
-		if (!completion || !el || el.value !== text) return;
-		el.focus();
-		el.setSelectionRange(completion.start, completion.end);
-		const trailingSpace = !tokenText || /\s/.test(text[completion.end] ?? "") ? "" : " ";
-		document.execCommand("insertText", false, `${tokenText}${trailingSpace}`);
-		setText(el.value);
-		select();
-		setDismissed(true);
+		if (field.current?.value !== text) return;
+		list.replace(tokenText);
 	}
 
 	async function pick(item: MentionItem) {
-		if (!completion) return;
+		if (!list.completion) return;
 
 		if (item.id === "action:compact") { insertMentionText("@compact"); return; }
 		if (item.kind === "action") {
-			setDismissed(true);
+			list.dismiss();
 			const token = await onPickAction?.(item.id);
 			if (token) insertMentionText(token);
 			return;
@@ -187,53 +161,20 @@ export function useMention(
 	}, [text, agents, avatarOf]);
 
 	return {
-		id,
+		id: list.id,
 		matches,
 		/** 菜单里那几个智能体的完整名单：它们的脸要按这份名单排，才和设置页里的是同一张。 */
 		agents,
 		term: term ?? "",
 		active: current,
-		keyboardSelection,
-		hover(index: number) { setKeyboardSelection(false); setActive(index); },
+		keyboardSelection: list.keyboardSelection,
+		hover: list.hover,
 		pick,
-		insertMentionText,
 		mentionDecorations,
-		completion,
-		sessions,
-		change(next: string) {
-			setText(next);
-			setDismissed(false);
-		},
-		select,
-		focus() {
-			setFocused(true);
-			select();
-		},
-		blur() {
-			setFocused(false);
-		},
-		keyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
-			if (!matches.length || event.nativeEvent.isComposing || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) {
-				return false;
-			}
-			if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-				event.preventDefault();
-				setKeyboardSelection(true);
-				setActive((current + (event.key === "ArrowDown" ? 1 : matches.length - 1)) % matches.length);
-				return true;
-			}
-			if (event.key === "Enter" || event.key === "Tab") {
-				event.preventDefault();
-				const chosen = matches[current];
-				if (chosen) pick(chosen);
-				return true;
-			}
-			if (event.key === "Escape") {
-				event.preventDefault();
-				setDismissed(true);
-				return true;
-			}
-			return false;
-		},
+		change: list.change,
+		select: list.select,
+		focus: list.focus,
+		blur: list.blur,
+		keyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => list.keyDown(event, matches.length, (index) => void pick(matches[index])),
 	};
 }

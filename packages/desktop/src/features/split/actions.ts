@@ -14,25 +14,9 @@ import { columnCount } from "./moves.ts";
 import { useSplit } from "./store.ts";
 import { useSplitOverlay } from "./overlay.ts";
 
-/**
- * Kept for tests that wait out the old burst window. The pane now swaps on
- * every press — retained trees made remounting every row cheap. Disk reads
- * still collapse to the last id in `readSelectedSession`.
- */
-export const SESSION_SETTLE_MS = 360;
-
-/** Tests call this between cases. Hydrate is no longer a timer, so there is nothing to drop. */
-export function abandonSessionReveal(): void {
-	return;
-}
-
 function stillWants(id: string): boolean {
 	const state = useApp.getState();
 	return state.pendingSessionId === id || state.activeSessionId === id;
-}
-
-function queueSettle(meta: SessionMeta): void {
-	void commitSettle(meta);
 }
 
 async function commitSettle(target: SessionMeta): Promise<void> {
@@ -78,7 +62,7 @@ export function revealSession(meta: SessionMeta): void {
 		if (current.view !== "chat") current.setView("chat");
 		return;
 	}
-	queueSettle(meta);
+	void commitSettle(meta);
 }
 
 export function focusPane(sessionId: string | null): void {

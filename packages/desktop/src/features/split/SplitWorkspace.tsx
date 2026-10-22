@@ -5,15 +5,17 @@ import { bridge } from "../../services/index.ts";
 import { startInset, useBoxSize, provideReveal, provideScope, usePaneDock } from "../dock/index.ts";
 import { canSplit, contains, firstSession, hasBlank, leafCount, nodeAt, sessionIds } from "./tree.ts";
 import { warmSession } from "./warm.ts";
-import { isOriginPane, isTopEndPane, layoutPanes, layoutSplitters } from "./layout.ts";
+import { layoutSplitters } from "../../lib/tiling.ts";
+import { isOriginPane, isTopEndPane, layoutPanes } from "./layout.ts";
 import { canSplitSide, fitSplitTree, resizeFloors, subtreeMinPx } from "./geometry.ts";
 import { paneAtShare, panePixels, rememberSplitRoot } from "./hit.ts";
 import { useSplit } from "./store.ts";
+import { holdSplitPersist } from "./persist.ts";
 import { useSplitOverlay } from "./overlay.ts";
 import { assignPaneKeys, paneKey, type PaneIdentity } from "./pane-key.ts";
 import { SplitPane } from "./SplitPane.tsx";
 import { SplitOverlay } from "./SplitOverlay.tsx";
-import { Splitter } from "./Splitter.tsx";
+import { Splitter } from "../../ui/layout/Splitter.tsx";
 import { sidesByDistance } from "./drop.ts";
 import { dropOnPane, focusPane, moveOnto, resetSplit, revealInWorkspace } from "./actions.ts";
 import { provideScreenFocus } from "../../app/session-scope.tsx";
@@ -302,6 +304,7 @@ export function SplitWorkspace() {
 					key={`${handle.path.join(".")}:${handle.index}`}
 					handle={handle}
 					containerRef={root}
+					onDragStart={holdSplitPersist}
 					onResize={(share) => {
 						const node = nodeAt(tree, handle.path);
 						const span = size && node?.type === "split"

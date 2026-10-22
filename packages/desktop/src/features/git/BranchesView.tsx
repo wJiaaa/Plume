@@ -5,8 +5,7 @@ import { Input } from "../../ui/inputs/NativeField.tsx";
 import { ArrowLeft, GitBranchPlus, X } from "../../ui/icons/index.ts";
 import { useCallback, useEffect, useState } from "react";
 
-import type { GitStatus, WorkspaceDiffFile } from "../../../electron/ipc-types.ts";
-import type { BranchList, RepoRef } from "../../../electron/git.ts";
+import type { BranchList, GitStatus, RepoRef, WorkspaceDiffFile } from "../../../electron/ipc-types.ts";
 
 import { useConfirmer } from "../../ui/overlay/Confirm.tsx";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";

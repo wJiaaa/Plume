@@ -9,6 +9,7 @@ import { LOCALE_OPTIONS, useI18n } from "../../i18n/index.ts";
 import {
   Card,
   InlineSelect,
+  PageHeader,
   Row,
   SectionTitle,
   Segmented,
@@ -51,9 +52,7 @@ export function GeneralSettings() {
 
   return (
     <div className="pt-2">
-      <h1 className="pb-8 text-display leading-tight font-semibold tracking-tight text-ink">
-		{t("settings.general")}
-      </h1>
+      <PageHeader title={t("settings.general")} />
 
       <ProjectLayerCards />
 		<Card className="mb-9">

@@ -10,9 +10,8 @@
 import { useLayout } from "../../app/layout.tsx";
 import { PaneHeader } from "./PaneHeader.tsx";
 import { PaneSurface } from "./PaneSurface.tsx";
-import { pct } from "./css.ts";
+import { pct, type Box } from "../../lib/tiling.ts";
 import { cardRoom, EPSILON, HEADER_HEIGHT, PANE_INSET, PANEL_FLOAT, panePaintMinWidth } from "./geometry.ts";
-import type { Box } from "./layout.ts";
 import type { PaneKind } from "./tree.ts";
 
 /**

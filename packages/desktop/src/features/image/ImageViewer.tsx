@@ -29,7 +29,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { clampZoom, wheelZoomFactor, ZOOM_MAX, ZOOM_MIN, ZOOM_STEP, zoomAt, type Point } from "./annotate.ts";
 import { useAnnotator } from "./Annotator.tsx";
 import { AnnotateCanvas, STAGE_FIT } from "./AnnotateCanvas.tsx";
-import { AnnotateToolbar, BAR_SURFACE } from "./AnnotateToolbar.tsx";
+import { AnnotateToolbar } from "./AnnotateToolbar.tsx";
 import { atRest, atThumbnail, paintedBox, type Box, type FlightKeyframe, type Thumb } from "./flight.ts";
 import { useLayout } from "../../app/layout.tsx";
 import { EASING } from "../../ui/motion/tokens.ts";
@@ -728,10 +728,8 @@ export function ImageViewer() {
 				<div ref={bar.measure} data-annotate-bar="" className="pointer-events-none fixed z-[120]" style={bar.style}>
 				<AnnotateToolbar
 					annotator={annotator}
-					size="large"
 					onGrab={bar.startDrag}
 					grabbing={bar.dragging}
-					className={BAR_SURFACE}
 					canReplace={Boolean(image.onReplace)}
 					delivers={!image.onReplace && Boolean(image.onAttach)}
 					/*

@@ -74,7 +74,7 @@ export function SessionWindow() {
 			<SessionScope.Provider value={sessionId}>
 				<div className="relative isolate flex min-h-0 flex-1 flex-col">
 					<ChatBackdrop empty={surface === "empty"} />
-					{surface === "skeleton" || !sessionId ? <ConversationSkeleton /> : <Conversation sessionId={sessionId} />}
+					{surface === "skeleton" || !sessionId ? <ConversationSkeleton /> : <Conversation />}
 				</div>
 			</SessionScope.Provider>
 		</div>

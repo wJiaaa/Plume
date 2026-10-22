@@ -12,7 +12,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { CONVERSATION_MIN_WIDTH_PX, PANEL_MIN_WIDTH_PX, paneFloor } from "../src/features/dock/geometry.ts";
-import { fitTree, layoutPanes, layoutSplitters, shareFromPointer } from "../src/features/dock/layout.ts";
+import { fitTree, layoutPanes } from "../src/features/dock/layout.ts";
+import { layoutSplitters, shareFromPointer } from "../src/lib/tiling.ts";
 import { leafOf, type DockNode } from "../src/features/dock/tree.ts";
 
 /** A row of leaves at the given shares. */

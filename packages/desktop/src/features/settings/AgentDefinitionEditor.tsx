@@ -9,7 +9,7 @@ import { AgentAvatar } from "../../ui/avatar/AgentAvatar.tsx";
 import { Popover, usePopover } from "../../ui/overlay/Popover.tsx";
 import { formatAvatar, freshAvatar, parseAvatar, type Avatar } from "../../lib/agent-avatar.ts";
 import type { AvatarOf } from "../../store/agent-avatars.ts";
-import { InlineSelect, Notice, TextInput } from "./controls.tsx";
+import { InlineSelect, Notice, PageHeader, TextInput } from "./controls.tsx";
 import { AvatarPicker, avatarName } from "./AvatarPicker.tsx";
 import { bridge } from "../../services/index.ts";
 import { useI18n } from "../../i18n/index.ts";
@@ -78,9 +78,8 @@ export function AgentDefinitionEditor({ record, copy, projectId, projectName, de
 			<ChevronRight size={14} aria-hidden className="shrink-0 text-ink-faint" />
 			<span className="truncate px-2 text-ink">{editing && record ? record.definition.name : t("agents.add")}</span>
 		</nav>
-		<h1 className="mt-4 text-display leading-tight font-semibold tracking-tight text-ink">{title}</h1>
-		<p className="mt-2 text-label text-ink-muted">{record?.scope === "builtin" && !copy ? t("agentEditor.saveAsCustom") : t("agentEditor.intro")}</p>
-		<div className="@container mt-6 space-y-4">
+		<PageHeader className="mt-4" title={title} intro={record?.scope === "builtin" && !copy ? t("agentEditor.saveAsCustom") : t("agentEditor.intro")} />
+		<div className="@container space-y-4">
 			{leaving && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line px-3.5 py-2.5 text-detail text-ink">
 				{t("agentEditor.unsaved")}
 				<div className="flex items-center gap-2">

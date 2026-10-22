@@ -12,7 +12,8 @@ import { test } from "node:test";
 import type { AssistantContent, AssistantMessage, Message, StopReason, ToolCallContent } from "@plume/core";
 import { emptyUsage } from "@plume/core";
 
-import { currentTurnStart, runs, type Run } from "../src/features/conversation/grouping.ts";
+import { runs, type Run } from "../src/features/conversation/grouping.ts";
+import { currentTurnStart } from "../src/features/conversation/turns.ts";
 
 function user(text: string): Message {
 	return { role: "user", content: [{ type: "text", text }], timestamp: 1 };

@@ -27,29 +27,27 @@ import { translate } from "../../i18n/translate.ts";
 import { StepDispatchFaces } from "./DelegationCard.tsx";
 import { FlowRow } from "./FlowRow.tsx";
 import { LiveThought } from "./LiveThought.tsx";
+import { LiveToolCard } from "./runs.tsx";
 import { ToolIcon } from "./tool-icons.tsx";
 import { RollWords } from "../../ui/motion/RollWords.tsx";
 import { useHeldKey } from "../../ui/motion/held.ts";
 import { describeCalls, describeOne, diffOf, foldPolls, polledJob, startedJob } from "./call-words.ts";
-import { thinkingLive, type Call, type Run, type Step } from "./grouping.ts";
+import type { Call, Run } from "./grouping.ts";
+import { thinkingLive, type Step } from "./turn-blocks.ts";
 import { useTranscriptDisclosure } from "./view-state.ts";
 import { useWriteDraft } from "./write-draft.ts";
 
-/**
- * 一次调用画成哪一行，交给转录（`LiveToolCard`）。
- *
- * 不在这里 import：`runs.tsx` 经文件预览、`ToolCard` 经 diff 视图、`ThinkingBlock` 经 Markdown，都会连回
- * 转录本身，这里引它们就是新的循环依赖。转录本来就引着它们，由它递进来。
- */
-export type DrawCall = (call: Call, line?: { thinking?: ReactNode; extra?: ReactNode; polls?: string[] }) => ReactNode;
+/** 一次调用画成的那一行：和它单独成行时是同一张工具卡。 */
+function drawCall({ block, stopReason, page }: Call, line?: { thinking?: ReactNode; extra?: ReactNode; polls?: string[] }) {
+	return <LiveToolCard block={block} stopReason={stopReason} page={page} thinking={line?.thinking} extra={line?.extra} polls={line?.polls} />;
+}
 
-export function WorkStep({ step, live, draw, drawCall }: {
+export function WorkStep({ step, live, draw }: {
 	step: Step;
 	/** 这一段是不是这一轮此刻正在做的那一段：一轮还在跑，而它后面什么都还没有。 */
 	live: boolean;
 	/** 推理那一行怎么画，交给转录自己（`MessageRow`），这里不另做一份。 */
 	draw: (run: Run) => ReactNode;
-	drawCall: DrawCall;
 }) {
 	const tail = step.members[step.members.length - 1];
 	const writing = live && tail?.kind === "thinking" && thinkingLive(tail.run) ? tail.run : null;
@@ -84,7 +82,7 @@ export function WorkStep({ step, live, draw, drawCall }: {
 	}
 	return (
 		<div ref={box}>
-			<StepGroup step={step} thought={thought} live={live} thinking={thinking} from={from.current} draw={draw} drawCall={drawCall} />
+			<StepGroup step={step} thought={thought} live={live} thinking={thinking} from={from.current} draw={draw} />
 		</div>
 	);
 }
@@ -92,7 +90,7 @@ export function WorkStep({ step, live, draw, drawCall }: {
 /** 这一行说的是总的那一句，而不是某一次调用。调用的 id 不会是它。 */
 const STEP = "step";
 
-function StepGroup({ step, thought, live, thinking, from, draw, drawCall }: {
+function StepGroup({ step, thought, live, thinking, from, draw }: {
 	step: Step;
 	/** 原地被它接替的那一行画出来的宽度；没有就是这一段刚出现。 */
 	from: { words: number; trail: number } | null;
@@ -101,7 +99,6 @@ function StepGroup({ step, thought, live, thinking, from, draw, drawCall }: {
 	live: boolean;
 	thinking?: ReactNode;
 	draw: (run: Run) => ReactNode;
-	drawCall: DrawCall;
 }) {
 	const [open, setOpen] = useTranscriptDisclosure(step.key);
 	const { calls } = step;

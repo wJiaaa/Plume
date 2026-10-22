@@ -15,13 +15,9 @@ import type { AppearanceSettings } from "@plume/core";
 import { sharedHighlightStyle } from "../../lib/code/highlight.ts";
 import { withHanFallback } from "../../lib/code/font-stack.ts";
 import { sendWindowColors } from "./window-tint.ts";
+import { mix, parseHex, toHex, type Rgb } from "./colour.ts";
 import { findCodeTheme } from "../../lib/code/themes.ts";
 
-interface Rgb {
-	r: number;
-	g: number;
-	b: number;
-}
 
 export function applyAppearance(input: AppearanceSettings): void {
 	/*
@@ -393,34 +389,6 @@ function resolveDark(theme: AppearanceSettings["theme"]): boolean {
 	if (theme === "dark") return true;
 	if (theme === "light") return false;
 	return window.matchMedia("(prefers-color-scheme: dark)").matches;
-}
-
-export function parseHex(hex: string | undefined | null): Rgb | null {
-	// Null rather than a throw for anything that is not a colour, including nothing at all: every
-	// caller already has a fallback for an unparseable one, and none of them expect an exception.
-	if (typeof hex !== "string") return null;
-	const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim());
-	if (!match) return null;
-	let value = match[1];
-	if (value.length === 3) value = value.split("").map((c) => c + c).join("");
-	return {
-		r: Number.parseInt(value.slice(0, 2), 16),
-		g: Number.parseInt(value.slice(2, 4), 16),
-		b: Number.parseInt(value.slice(4, 6), 16),
-	};
-}
-
-function mix(from: Rgb, to: Rgb, amount: number): Rgb {
-	const t = Math.max(0, Math.min(1, amount));
-	return {
-		r: Math.round(from.r + (to.r - from.r) * t),
-		g: Math.round(from.g + (to.g - from.g) * t),
-		b: Math.round(from.b + (to.b - from.b) * t),
-	};
-}
-
-function toHex({ r, g, b }: Rgb): string {
-	return `#${[r, g, b].map((v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, "0")).join("")}`;
 }
 
 /** Readable text colour for a swatch, so a hex chip stays legible on any background. */

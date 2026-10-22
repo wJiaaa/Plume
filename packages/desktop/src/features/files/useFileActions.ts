@@ -18,7 +18,7 @@ import { useCallback, useState } from "react";
 import type { FileOpResult } from "../../../electron/ipc-types.ts";
 import { useApp } from "../../store/index.ts";
 import { useConfirmGate } from "../../ui/overlay/Confirm.tsx";
-import { baseName, dirName, joinPath, relativeTo } from "../../lib/paths.ts";
+import { baseName, joinPath, parentOf, relativeTo } from "../../lib/paths.ts";
 import { systemWord } from "../../lib/system-words.ts";
 import { bridge, hostPlatform } from "../../services/index.ts";
 
@@ -90,7 +90,7 @@ export function useFileActions({ root, refresh, onMoved, onRemoved }: FileAction
 
 	const rename = useCallback(
 		async (path: string, name: string): Promise<string | null> => {
-			const dir = dirName(path);
+			const dir = parentOf(path);
 			const to = joinPath(dir, name);
 			if (to === path) return path;
 
@@ -105,7 +105,7 @@ export function useFileActions({ root, refresh, onMoved, onRemoved }: FileAction
 
 	const duplicate = useCallback(
 		async (path: string): Promise<string | null> => {
-			const dir = dirName(path);
+			const dir = parentOf(path);
 			const free = await bridge.files.uniquePath(dir, baseName(path));
 			if (!report(free) || !free.path) return null;
 
@@ -129,7 +129,7 @@ export function useFileActions({ root, refresh, onMoved, onRemoved }: FileAction
 			const touched = new Set<string>([dir]);
 
 			for (const path of paths) {
-				const from = dirName(path);
+				const from = parentOf(path);
 				touched.add(from);
 				if (!copying && from === dir) continue;
 
@@ -189,7 +189,7 @@ export function useFileActions({ root, refresh, onMoved, onRemoved }: FileAction
 			const result = permanent ? await bridge.files.remove(paths) : await bridge.files.trash(paths);
 			if (!report(result)) return false;
 			onRemoved(paths);
-			await refresh(paths.map(dirName));
+			await refresh(paths.map(parentOf));
 			return true;
 		},
 		[ask, refresh, report, onRemoved, t],

@@ -9,7 +9,8 @@
 import { Input } from "../../ui/inputs/NativeField.tsx";
 import { useEffect, useState } from "react";
 import { NumberField } from "./pickers.tsx";
-import { contrastingInk, parseHex } from "./theme.ts";
+import { contrastingInk } from "./theme.ts";
+import { parseHex } from "./colour.ts";
 
 /**
  * 能解析的颜色统一写成 `#RRGGBB`，解析不了是 null。

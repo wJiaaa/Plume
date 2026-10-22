@@ -24,7 +24,6 @@ type TableBlock = Extract<Block, { kind: "table" }>;
 export function MarkdownTable({
 	block,
 	inline,
-	preview = false,
 }: {
 	block: TableBlock;
 	/**
@@ -34,8 +33,6 @@ export function MarkdownTable({
 	 * and the renderer is the one that knows how a cell's emphasis and links are drawn.
 	 */
 	inline: (text: string) => ReactNode;
-	/** A bounded, non-interactive excerpt: no thumb, no control, nothing to reach for. */
-	preview?: boolean;
 }) {
 	const { t } = useI18n();
 	const viewport = useRef<HTMLDivElement>(null);
@@ -61,7 +58,7 @@ export function MarkdownTable({
 		return () => observer.disconnect();
 	}, []);
 
-	const control = !preview && (overflow || wrap);
+	const control = overflow || wrap;
 	const label = t(wrap ? "markdown.tableNowrap" : "markdown.tableWrap");
 
 	return (
@@ -111,7 +108,7 @@ export function MarkdownTable({
 				</table>
 			</div>
 
-			{!preview && <OverlayScrollbar viewport={viewport} orientation="horizontal" />}
+			<OverlayScrollbar viewport={viewport} orientation="horizontal" />
 		</div>
 	);
 }

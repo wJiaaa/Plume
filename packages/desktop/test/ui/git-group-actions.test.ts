@@ -134,3 +134,15 @@ for (const [name, ahead, behind, upstream] of [
 		} finally { await view.unmount(); }
 	});
 }
+
+// git 把整个没跟踪的目录报成 `.claude/`：按 `/` 切开取最后一段是空串，确认框里就成了「放弃  的改动？」。
+test("discarding an untracked directory names it in the question", async t => {
+	fixture(t);
+	const dir = { path: ".claude/", status: "untracked", staged: false, unstaged: true, added: 0, removed: 0 } as const;
+	const view = await mount(changes(false, { ...status, staged: [], unstaged: [dir] }));
+	try {
+		await click(view.find('[aria-label="放弃改动"]'));
+		const question = document.body.textContent ?? "";
+		assert.ok(question.includes("放弃 .claude 的改动？"), question.slice(-200));
+	} finally { await view.unmount(); }
+});

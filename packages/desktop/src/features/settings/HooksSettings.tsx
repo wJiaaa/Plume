@@ -12,13 +12,13 @@ import type { HookView, HooksView } from "../../../electron/ipc-types.ts";
 import { useI18n } from "../../i18n/index.ts";
 import { bridge } from "../../services/index.ts";
 import { useApp } from "../../store/index.ts";
-import { SearchField } from "../../ui/inputs/SearchField.tsx";
+import { DefinitionToolbar } from "./definition-page.tsx";
 import { useConfirmer } from "../../ui/overlay/Confirm.tsx";
 import { Button } from "../../ui/primitives/Button.tsx";
 import { Toggle } from "./controls.tsx";
 import { HookForm } from "./HookForm.tsx";
 import { ProjectScope } from "./ProjectScope.tsx";
-import { Card, Notice } from "./layout.tsx";
+import { Card, Notice, PageHeader } from "./layout.tsx";
 
 function matchesQuery(hook: HookView, query: string): boolean {
 	if (!query) return true;
@@ -123,18 +123,9 @@ export function HooksSettings() {
 
 	return (
 		<div className="pt-2" data-ly-hooks-settings="">
-			<h1 className="text-display leading-tight font-semibold tracking-tight text-ink">{t("hooks.title")}</h1>
-			<p className="mt-2 text-label text-ink-muted">{t("hooks.intro")}</p>
-
-			<div className="mt-6 flex min-w-0 flex-wrap items-center gap-3">
-				<ProjectScope value={project} projects={projects} onChange={setProjectPath} />
-				<div className="h-4 w-px bg-line" aria-hidden />
-				<div className="flex items-center gap-1 text-label font-medium text-ink">
-					{t("hooks.title")}
-					<span className="text-detail font-normal text-ink-faint">{visible.length}</span>
-				</div>
-				<SearchField size="comfortable" value={query} onChange={setQuery} placeholder={t("hooks.searchPlaceholder")} className="ml-auto max-w-[220px] flex-1 basis-[120px]" />
-			</div>
+			<PageHeader title={t("hooks.title")} intro={t("hooks.intro")} />
+			<DefinitionToolbar scope={<ProjectScope value={project} projects={projects} onChange={setProjectPath} />}
+				title={t("hooks.title")} count={visible.length} query={query} onQuery={setQuery} placeholder={t("hooks.searchPlaceholder")} />
 
 			{untrusted && view?.projectPath && (
 				<Notice tone="accent" icon={TriangleAlert} className="mt-5">

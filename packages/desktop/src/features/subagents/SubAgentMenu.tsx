@@ -16,7 +16,6 @@
  * 最自然的问题，而答案就是设置里的并发上限（`maxConcurrentSubAgents`，默认 4，1–8）。放在底下
  * 而不是标题里：标题本来就说了三件事，再塞一句就被截成「同时最…」。
  */
-
 import { X } from "../../ui/icons/index.ts";
 import { useEffect, useRef } from "react";
 import type { SubAgentSummary } from "@plume/core";
@@ -26,7 +25,7 @@ import { stateOf } from "../../lib/dispatches.ts";
 import { AgentAvatar } from "../../ui/avatar/AgentAvatar.tsx";
 import { useI18n } from "../../i18n/index.ts";
 import { translate } from "../../i18n/translate.ts";
-import { doingWord, elapsedSince, figuresWord, ranFor, statusWord } from "./format.ts";
+import { doingWord, figuresWord, stateLine } from "./format.ts";
 import { useApp } from "../../store/index.ts";
 import { bridge } from "../../services/index.ts";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
@@ -51,12 +50,6 @@ function doing(one: SubAgentSummary, figures: string | null): string {
 }
 
 /** 一行右上角那个读数：在跑的是表，排着的是「排队中」，结束的是怎么结束的、跑了多久。 */
-function stateLine(one: SubAgentSummary): string {
-	if (one.status === "running") return elapsedSince(one.startedAt);
-	if (one.status === "queued") return translate("subAgent.queued");
-	return `${statusWord(one.status)} · ${ranFor(one)}`;
-}
-
 /**
  * 闸门有多宽：就是设置里的并发上限。运行时的闸门按同一个数开（见 `dispatch-guard.ts`），读设置时
  * 已经收进 1–8，这里不再算一遍。

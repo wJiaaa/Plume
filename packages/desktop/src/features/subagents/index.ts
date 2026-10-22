@@ -8,4 +8,4 @@
  */
 
 export { SubAgentBar } from "./SubAgentBar.tsx";
-export { elapsedSince, ranFor, statusWord } from "./format.ts";
+export { stateLine } from "./format.ts";

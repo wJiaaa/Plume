@@ -9,7 +9,7 @@
 
 import { useEffect, useState, type RefObject } from "react";
 import { useScopedSessionId } from "../../app/session-scope.tsx";
-import { quoteInSideChat } from "../../app/side-quote.ts";
+import { quoteInSideChat } from "../dock/index.ts";
 import { useI18n } from "../../i18n/index.ts";
 import { useApp } from "../../store/index.ts";
 import { Popover } from "../../ui/overlay/Popover.tsx";

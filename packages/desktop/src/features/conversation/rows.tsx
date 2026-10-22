@@ -25,7 +25,8 @@ import { UserMessage } from "./UserMessage.tsx";
 import { useScopedMeta, useScopedSessionId } from "../../app/session-scope.tsx";
 import { useI18n } from "../../i18n/index.ts";
 import { useApp } from "../../store/index.ts";
-import { isNudge, type TurnStats } from "./grouping.ts";
+import { isNudge } from "./grouping.ts";
+import type { TurnStats } from "./turns.ts";
 import { LiveToolCard, segments, ToolRun as ToolRunGroup } from "./runs.tsx";
 
 /**

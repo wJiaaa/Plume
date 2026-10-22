@@ -10,6 +10,7 @@
 
 import { bridge } from "../../services/index.ts";
 import { heldScrims, onScrimsChange, type Scrim } from "../../ui/overlay/scrims.ts";
+import { mix, parseHex, toHex } from "./colour.ts";
 
 export interface WindowColors {
 	/** The window's backing colour. */
@@ -61,16 +62,9 @@ function send(): void {
 	}
 }
 
-/** `hex` with `scrim` laid over it. Anything that is not `#rrggbb` is passed through untouched. */
+/** `hex` with `scrim` laid over it. Anything that is not a hex colour is passed through untouched. */
 function blend(hex: string, scrim: Scrim): string {
-	const from = rgb(hex);
-	const over = rgb(scrim.color);
-	if (!from || !over) return hex;
-	const a = Math.max(0, Math.min(1, scrim.alpha));
-	return `#${from.map((v, i) => Math.round(v + (over[i]! - v) * a).toString(16).padStart(2, "0")).join("")}`;
-}
-
-function rgb(hex: string): number[] | null {
-	const match = /^#([0-9a-f]{6})$/i.exec(hex.trim());
-	return match ? [0, 2, 4].map((i) => Number.parseInt(match[1]!.slice(i, i + 2), 16)) : null;
+	const from = parseHex(hex);
+	const over = parseHex(scrim.color);
+	return from && over ? toHex(mix(from, over, scrim.alpha)) : hex;
 }

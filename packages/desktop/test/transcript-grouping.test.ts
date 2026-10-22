@@ -13,7 +13,8 @@ import { test } from "node:test";
 import type { AssistantContent, AssistantMessage, Message, StopReason, ToolCallContent } from "@plume/core";
 import { emptyUsage } from "@plume/core";
 
-import { computeTurnStats, runs, runKey, type Run } from "../src/features/conversation/grouping.ts";
+import { runs, runKey, type Run } from "../src/features/conversation/grouping.ts";
+import { computeTurnStats } from "../src/features/conversation/turns.ts";
 import { CARRY_ON_PROMPTS } from "../src/store/derive.ts";
 
 function user(text: string, timestamp = 1): Message {

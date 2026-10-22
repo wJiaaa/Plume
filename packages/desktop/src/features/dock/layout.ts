@@ -17,59 +17,12 @@
  * which is also what makes the rearrangement animate for free.
  */
 
+import { FULL, slice, type Axis, type Box } from "../../lib/tiling.ts";
 import { EPSILON } from "./geometry.ts";
-import type { Axis, DockNode, PaneKind } from "./tree.ts";
-
-/**
- * A rectangle in fractions of the dock, 0 to 1 on both axes.
- *
- * Fractions rather than pixels so this stays pure: it needs no element, no measurement and no
- * layout pass, and it produces the same answer before the first paint as after it. The percentages
- * go straight onto the elements, so a window resize is handled by the browser rather than by a
- * recalculation here.
- */
-export interface Box {
-	left: number;
-	top: number;
-	width: number;
-	height: number;
-}
+import type { DockNode, PaneKind } from "./tree.ts";
 
 export interface PaneBox extends Box {
 	kind: PaneKind;
-}
-
-/**
- * One draggable boundary between two panes.
- *
- * Identified by the split it belongs to and the child on its near side, which is exactly what
- * `resize` in `tree.ts` takes — so a handle can act without anything in between having to work
- * out what it is a handle *for*.
- */
-export interface SplitterBox extends Box {
-	path: number[];
-	index: number;
-	dir: Axis;
-	/** The near pane's current share, so a drag can start from where the handle actually is. */
-	share: number;
-	/** The two panes' shares combined, which is the range a drag on this handle may cover. */
-	pair: number;
-	/**
-	 * The box of the split this handle divides.
-	 *
-	 * Carried here rather than looked up later because it is the frame of reference a drag on this
-	 * handle is measured in — and it is already known at the moment the handle is produced.
-	 */
-	split: Box;
-}
-
-const FULL: Box = { left: 0, top: 0, width: 1, height: 1 };
-
-/** Carve a child's box out of its parent's, given where along the axis it starts and how much it takes. */
-function slice(rect: Box, dir: Axis, offset: number, share: number): Box {
-	return dir === "row"
-		? { left: rect.left + offset * rect.width, top: rect.top, width: share * rect.width, height: rect.height }
-		: { left: rect.left, top: rect.top + offset * rect.height, width: rect.width, height: share * rect.height };
 }
 
 /**
@@ -95,46 +48,6 @@ export function layoutPanes(tree: DockNode, within: Box = FULL): PaneBox[] {
 		});
 	};
 	walk(tree, within);
-	return out;
-}
-
-/**
- * Every boundary that can be dragged.
- *
- * A split of n children has n−1 of them — the outer edges of a split are the edges of whatever
- * contains it, and are not boundaries between two panes.
- *
- * Each is drawn as a zero-thickness line; the grab area is added by the component, which is the
- * only place that knows how many pixels nine of them are.
- */
-export function layoutSplitters(tree: DockNode, within: Box = FULL): SplitterBox[] {
-	const out: SplitterBox[] = [];
-	const walk = (node: DockNode, rect: Box, path: number[]) => {
-		if (node.type === "leaf") return;
-		let offset = 0;
-		node.children.forEach((child, i) => {
-			const share = node.sizes[i] ?? 0;
-			const childRect = slice(rect, node.dir, offset, share);
-			walk(child, childRect, [...path, i]);
-			offset += share;
-			// The boundary after this child, unless this was the last one.
-			if (i < node.children.length - 1) {
-				const next = node.sizes[i + 1] ?? 0;
-				out.push({
-					path,
-					index: i,
-					dir: node.dir,
-					share,
-					pair: share + next,
-					split: rect,
-					...(node.dir === "row"
-						? { left: rect.left + offset * rect.width, top: rect.top, width: 0, height: rect.height }
-						: { left: rect.left, top: rect.top + offset * rect.height, width: rect.width, height: 0 }),
-				});
-			}
-		});
-	};
-	walk(tree, within, []);
 	return out;
 }
 
@@ -275,32 +188,4 @@ export function fitTree(node: DockNode, span: { width: number; height: number },
 			),
 		),
 	};
-}
-
-/**
- * Turn a pointer position into the share the handle's near pane should take.
- *
- * The split's own box is the frame of reference, not the dock's. A handle inside a nested split
- * moves within *that* split's length, and measuring against the whole window would make it travel
- * at the wrong rate — sluggish inside a narrow column, and running off both ends of a wide one.
- *
- * `position` is a client coordinate on the drag axis: `clientX` for a row, `clientY` for a column.
- */
-export function shareFromPointer(
-	handle: SplitterBox,
-	position: number,
-	container: { left: number; top: number; width: number; height: number },
-): number {
-	const { split } = handle;
-	const row = handle.dir === "row";
-	const span = row ? split.width * container.width : split.height * container.height;
-	if (!(span > 0)) return handle.share;
-
-	// Where the split starts, and where the pointer is, both as a share of the split's length.
-	const origin = row ? container.left + split.left * container.width : container.top + split.top * container.height;
-	const at = (position - origin) / span;
-	// How much of the split lies before the near pane — everything on this side of the handle
-	// except the pane the handle is *for*.
-	const boundary = row ? (handle.left - split.left) / split.width : (handle.top - split.top) / split.height;
-	return at - (boundary - handle.share);
 }

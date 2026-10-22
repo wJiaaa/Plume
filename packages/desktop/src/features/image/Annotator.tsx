@@ -182,9 +182,6 @@ export interface Annotator {
 
 
 export interface AnnotatorOptions {
-	initialTool?: Tool;
-	initialColour?: string;
-	initialWeight?: number;
 	/**
 	 * A value that changes when the picture does, even if the bytes do not.
 	 *
@@ -221,8 +218,8 @@ export function useAnnotator(src: string | RawPixels | null, options?: Annotator
 	const image = useRef<Decoded | null>(null);
 	/** Filled in by `AnnotateCanvas` while a caption is being typed. See `flushText`. */
 	const pendingText = useRef<(() => void) | null>(null);
-	const [tool, setTool] = useState<Tool>(options?.initialTool ?? "pen");
-	const [colour, setColour] = useState(options?.initialColour ?? COLOURS[0]!);
+	const [tool, setTool] = useState<Tool>("pen");
+	const [colour, setColour] = useState(COLOURS[0]!);
 	const [backdrop, setBackdrop] = useState<string | undefined>(undefined);
 	const [history, setHistory] = useState<History>(emptyHistory);
 	const [selected, setSelected] = useState<number | null>(null);
@@ -230,7 +227,7 @@ export function useAnnotator(src: string | RawPixels | null, options?: Annotator
 	/** See `revision` on `Annotator`: the counter `ready` cannot be. */
 	const [revision, setRevision] = useState(0);
 	const [width, setWidth] = useState(0);
-	const [weight, setWeight] = useState(options?.initialWeight ?? 1);
+	const [weight, setWeight] = useState(1);
 	const [unit, setUnit] = useState(1);
 
 	// Load once; every repaint draws this same decoded bitmap rather than re-decoding the data URL.

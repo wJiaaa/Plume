@@ -83,75 +83,31 @@ const COLOUR_NAMES: Record<string, MessageKey> = {
 };
 
 /**
- * How big the bar is, as one table rather than a size prop threaded through six components.
- *
- * `compact` is the bar as it was: 24pt buttons with 14pt icons, which is right inside the image
- * viewer, where the picture is the thing being looked at and the bar is a strip along the bottom of
- * a window that already has its own chrome.
- *
- * `large` is for the capture overlay, and the reason it exists is that the same 24pt button behaves
- * differently there. The bar is floating over a frozen desktop with no window around it, at a
- * position that changes with every selection, and it is aimed at *while the hand is still moving*
- * from the drag that made the region. Every capture tool on this platform sizes that row at around
- * 32-36pt for exactly that reason — the report this answers is 「截图控件尺寸实在是太小了」, next to
- * a screenshot of WeChat's, which is 36.
- *
- * The numbers are kept together because they are not independent: `TOOL_STEP` and `TOOL_INSET` are
+ * How big the bar is, kept together because the numbers are not independent: `step` and `inset` are
  * how far along the row a tool's centre sits, and the properties bubble is anchored with them. A
  * button that grew without them would leave the bubble pointing at the wrong tool.
+ *
+ * 36pt buttons, everywhere. The capture overlay is why: the bar floats over a frozen desktop with no
+ * window around it, at a position that changes with every selection, and it is aimed at *while the
+ * hand is still moving* from the drag that made the region. Every capture tool on this platform sizes
+ * that row at around 32-36pt for exactly that reason — the report this answers is 「截图控件尺寸实在是
+ * 太小了」, next to a screenshot of WeChat's, which is 36. The image viewer once kept a 24pt `compact`
+ * size of its own; it asked for this one too, and the smaller table was left with no caller.
  */
-interface ToolbarMetrics {
-	/** The bar itself: gap between controls, padding, corner. */
-	bar: string;
-	/** A tool button. */
-	button: string;
-	/** Icon size in points, for every control on the row. */
-	icon: number;
-	/** The divider between groups. */
-	divider: string;
-	/** The two buttons that end the job. */
-	action: string;
-	confirm: string;
-	/** Distance between two tool-button centres, and where the first one's centre is. */
-	step: number;
-	inset: number;
-	/** The properties bubble: its box, its weight buttons, and how big a colour swatch is. */
-	bubble: string;
-	weight: string;
-	swatch: string;
-	bubbleDivider: string;
-}
-
-const METRICS: Record<"compact" | "large", ToolbarMetrics> = {
-	compact: {
-		bar: "gap-0.5 rounded-xl px-1.5 py-1",
-		button: "h-6 w-6 rounded-md",
-		icon: 14,
-		divider: "mx-1.5 h-4",
-		action: "h-6 px-2",
-		confirm: "h-6 w-6",
-		step: 26,
-		inset: 18,
-		bubble: "gap-1 rounded-lg px-2 py-1",
-		weight: "h-5 w-5",
-		swatch: "h-[14px] w-[14px]",
-		bubbleDivider: "mx-0.5 h-3.5",
-	},
-	large: {
-		bar: "gap-1 rounded-2xl px-2 py-1.5",
-		button: "h-9 w-9 rounded-lg",
-		icon: 18,
-		divider: "mx-1.5 h-5",
-		action: "h-9 px-2.5",
-		confirm: "h-9 w-9",
-		// 36pt button + 4pt gap, and 8pt of padding before the first button's own half-width.
-		step: 40,
-		inset: 26,
-		bubble: "gap-1.5 rounded-xl px-2.5 py-1.5",
-		weight: "h-7 w-7",
-		swatch: "h-[18px] w-[18px]",
-		bubbleDivider: "mx-1 h-4",
-	},
+const METRICS = {
+	bar: "gap-1 rounded-2xl px-2 py-1.5",
+	button: "h-9 w-9 rounded-lg",
+	icon: 18,
+	divider: "mx-1.5 h-5",
+	action: "h-9 px-2.5",
+	confirm: "h-9 w-9",
+	// 36pt button + 4pt gap, and 8pt of padding before the first button's own half-width.
+	step: 40,
+	inset: 26,
+	bubble: "gap-1.5 rounded-xl px-2.5 py-1.5",
+	weight: "h-7 w-7",
+	swatch: "h-[18px] w-[18px]",
+	bubbleDivider: "mx-1 h-4",
 };
 
 /**
@@ -165,33 +121,13 @@ const HOLD_TO_DRAG_MS = 320;
 const HOLD_SLOP = 4;
 
 /**
- * The bar when the caller does not place it: floating at the bottom of the window.
+ * The bar's own look. Where it stands is the holder's: both callers hold it in a box of their own and
+ * place that — the capture overlay beside its selection, the image viewer wherever it has been dragged.
  *
- * Floating rather than in a column under the image, which is where it began: that made the picture
- * give up height to make room, so entering edit mode visibly shrank it. Floating means the picture
- * is exactly the same size in both modes, and the bar stays legible through its own background
- * rather than by pushing anything out of the way.
- *
- * Which is why exactly one class here may set `position`, and a test holds it to that. A list cannot hold two —
- * which one wins is decided by the order Tailwind emits them, not the order they are written, and
- * `relative` is emitted after `fixed`. A stray `relative` sat in this list and did exactly that: the
- * bar the comment below calls floating was in fact in flow, and the image viewer's stage is a flex
- * row, so it became a second item beside the picture, 406px wide. The picture was pushed
- * (1280 − 1100 − 406) / 2 = 113px off the left edge of the window and the bar landed at x=1424,
- * outside it, clipped away by the overlay's `overflow-hidden`. Pressing 标注 moved the image and
- * took the toolbar with it — with nothing left to annotate with.
- *
- * Named rather than inline because that is what makes it testable; `ScreenshotOverlay` passes its
- * own list and is unaffected either way.
- */
-export const FLOATING_BAR =
-	"pointer-events-auto fixed bottom-6 left-1/2 z-[120] flex items-center border border-white/12 bg-[#1c1c1e]/92 shadow-overlay backdrop-blur-xl transition-[opacity,transform] duration-[var(--ly-t-base)] ease-out";
-
-/**
- * The bar's own look, for a caller that holds it in a box of its own and places that.
- *
- * Both callers do now — the capture overlay beside its selection, the image viewer wherever it has
- * been dragged — and the two used to carry this string separately. Position is the holder's.
+ * Exactly one class here may set `position`, and a test holds it to that. A list cannot hold two —
+ * which one wins is decided by the order Tailwind emits them, not the order they are written. A stray
+ * `relative` beside a `fixed` once kept a bar that was meant to float in flow, as a second item in the
+ * image viewer's flex stage: the picture was pushed 113px off the window and the bar was clipped away.
  */
 export const BAR_SURFACE =
 	"pointer-events-auto relative flex items-center border border-white/12 bg-[#1c1c1e]/92 shadow-overlay backdrop-blur-xl transition-[opacity,transform] duration-[var(--ly-t-base)] ease-out";
@@ -204,13 +140,11 @@ export function AnnotateToolbar({
 	onDownload,
 	onGrab,
 	grabbing = false,
-	size = "compact",
 	canReplace,
 	delivers = false,
 	saveLabel,
 	cancelLabel,
 	requireDirty = true,
-	className,
 	style,
 	propertiesSide = "above",
 }: {
@@ -233,25 +167,18 @@ export function AnnotateToolbar({
 	 * 两个位置。带上 `origin` 而不是让调用方自己去 DOM 里量：这一条的位置只有它自己最清楚，而且
 	 * 按住按钮触发的那一次是从定时器里发出的，那会儿 React 的合成事件早就没有 `currentTarget` 了。
 	 *
-	 * 不传就是不能挪：看图器里这一条钉在窗口底边，没有别处可去。
+	 * 不传就是不能挪。
 	 */
 	onGrab?: (grab: { from: { x: number; y: number }; origin: { x: number; y: number } }) => void;
 	/** 正在挪，好让整条和它上面每个控件都显示同一个光标。 */
 	grabbing?: boolean;
 	/**
-	 * How big the controls are. `large` is the capture overlay; see `METRICS`.
-	 *
-	 * Defaulted rather than required so the image viewer, which is the other caller and wants the
-	 * bar it already had, does not have to say so.
-	 */
-	size?: "compact" | "large";
-	/**
 	 * Which way the tool's own settings bubble opens, in terms of this bar.
 	 *
 	 * `above` puts it over the bar, `below` under it. The caller decides because only the caller
 	 * knows where the bar was placed relative to what is being annotated: the bubble has to open
-	 * away from that, or it covers it. Defaults to `above`, which is right for the file editor,
-	 * where the bar is pinned to the bottom of the stage.
+	 * away from that, or it covers it. Defaults to `above`, which is right for the image viewer,
+	 * where the bar starts along the bottom of the stage.
 	 */
 	propertiesSide?: "above" | "below";
 	/** Whether saving can replace the original, or only produce a copy. */
@@ -276,10 +203,8 @@ export function AnnotateToolbar({
 	 * unannotated region is the commonest thing anyone wants.
 	 */
 	requireDirty?: boolean;
-	className?: string;
 	style?: React.CSSProperties;
 }) {
-	const metrics = METRICS[size];
 	const [shown, setShown] = useState(false);
 	useEffect(() => {
 		// One frame late, so the transition has a start state to move away from.
@@ -354,15 +279,6 @@ export function AnnotateToolbar({
 	return (
 		<div
 			/*
-			 * The caller says where the bar is; `metrics` says how big it is.
-			 *
-			 * Appended rather than left to the caller, because those two decisions belong to different
-			 * people and used to be one string. The overlay's own class list carried `gap-0.5 px-1.5
-			 * py-1` copied from the default — so a size change here would have had no effect there at
-			 * all, and the two would have drifted the first time either was touched. What a caller
-			 * passes now is position, background and shadow; spacing is not its business.
-			 */
-			/*
 			 * And every control on it, while it is being dragged.
 			 *
 			 * The bar follows the pointer, so the pointer spends the whole drag *on the bar* — over
@@ -381,10 +297,9 @@ export function AnnotateToolbar({
 			 * 现在按钮之外的地方按下就能拖，光标从进来那一刻就说得清楚。按钮上按住不放也能拖——
 			 * 见 `HOLD_TO_DRAG_MS`——因为这条几乎全是按钮，只留缝隙可拖等于还是要瞄准。
 			 */
-			className={`${className ?? FLOATING_BAR} ${metrics.bar} ${grabbing ? "cursor-grabbing [&_*]:cursor-grabbing" : onGrab ? "cursor-grab" : ""}`}
+			className={`${BAR_SURFACE} ${METRICS.bar} ${grabbing ? "cursor-grabbing [&_*]:cursor-grabbing" : onGrab ? "cursor-grab" : ""}`}
 			style={{
 				opacity: shown ? 1 : 0,
-				transform: className ? undefined : `translateX(-50%) translateY(${shown ? 0 : 10}px)`,
 				...style,
 			}}
 			/*
@@ -457,7 +372,7 @@ export function AnnotateToolbar({
 			 * at the tool it belongs to, the row is just the tools, and what is on screen is only
 			 * what the current tool actually has.
 			 */}
-			<ToolProperties annotator={annotator} index={TOOLS.findIndex(([id]) => id === annotator.tool)} side={propertiesSide} metrics={metrics} />
+			<ToolProperties annotator={annotator} index={TOOLS.findIndex(([id]) => id === annotator.tool)} side={propertiesSide} />
 
 			{/*
 			 * 行首曾经有一个竖点手柄，现在没有了。
@@ -467,18 +382,18 @@ export function AnnotateToolbar({
 			 * 少一格，这一条还窄了 20pt，在一块框得很小的区域旁边，那 20pt 是看得出来的。
 			 */}
 			{TOOLS.map(([id, Icon, label], at) => (
-				<ToolButton key={id} metrics={metrics} toolIndex={at} label={translate(label)} active={annotator.tool === id} onClick={() => annotator.setTool(id)}>
-					<Icon size={metrics.icon} strokeWidth={1.9} />
+				<ToolButton key={id} toolIndex={at} label={translate(label)} active={annotator.tool === id} onClick={() => annotator.setTool(id)}>
+					<Icon size={METRICS.icon} strokeWidth={1.9} />
 				</ToolButton>
 			))}
 
-			<Divider metrics={metrics} />
+			<Divider />
 
-			<ToolButton metrics={metrics} label={translate("annotate.undo")} disabled={!annotator.canUndo} onClick={annotator.undo}>
-				<Undo2 size={metrics.icon} strokeWidth={1.9} />
+			<ToolButton label={translate("annotate.undo")} disabled={!annotator.canUndo} onClick={annotator.undo}>
+				<Undo2 size={METRICS.icon} strokeWidth={1.9} />
 			</ToolButton>
-			<ToolButton metrics={metrics} label={translate("annotate.redo")} disabled={!annotator.canRedo} onClick={annotator.redo}>
-				<Redo2 size={metrics.icon} strokeWidth={1.9} />
+			<ToolButton label={translate("annotate.redo")} disabled={!annotator.canRedo} onClick={annotator.redo}>
+				<Redo2 size={METRICS.icon} strokeWidth={1.9} />
 			</ToolButton>
 			{/*
 			 * Deleting the selected mark, where the selected mark is not.
@@ -489,13 +404,13 @@ export function AnnotateToolbar({
 			 */}
 			{annotator.selected !== null && (
 				<span className="flex animate-[ly-tool-in_var(--ly-t-base)_ease-out]">
-					<ToolButton metrics={metrics} label={translate("annotate.deleteSelected")} onClick={annotator.removeSelected}>
-						<Delete size={metrics.icon} strokeWidth={1.9} />
+					<ToolButton label={translate("annotate.deleteSelected")} onClick={annotator.removeSelected}>
+						<Delete size={METRICS.icon} strokeWidth={1.9} />
 					</ToolButton>
 				</span>
 			)}
-			<ToolButton metrics={metrics} label={translate("annotate.clear")} disabled={!annotator.dirty} onClick={annotator.clear}>
-				<Trash2 size={metrics.icon} strokeWidth={1.9} />
+			<ToolButton label={translate("annotate.clear")} disabled={!annotator.dirty} onClick={annotator.clear}>
+				<Trash2 size={METRICS.icon} strokeWidth={1.9} />
 			</ToolButton>
 
 			{/*
@@ -506,19 +421,19 @@ export function AnnotateToolbar({
 			 * picture on the desktop to look at, 下载 leaves it in a folder to keep. They only appear
 			 * where they mean something — the image viewer's copy of this bar has neither.
 			 */}
-			{(onPin || onDownload) && <Divider metrics={metrics} />}
+			{(onPin || onDownload) && <Divider />}
 			{onPin && (
-				<ToolButton metrics={metrics} label={translate("annotate.pinToDesktop")} onClick={onPin}>
-					<Pin size={metrics.icon} strokeWidth={1.9} />
+				<ToolButton label={translate("annotate.pinToDesktop")} onClick={onPin}>
+					<Pin size={METRICS.icon} strokeWidth={1.9} />
 				</ToolButton>
 			)}
 			{onDownload && (
-				<ToolButton metrics={metrics} label={translate("annotate.download")} onClick={onDownload}>
-					<Download size={metrics.icon} strokeWidth={1.9} />
+				<ToolButton label={translate("annotate.download")} onClick={onDownload}>
+					<Download size={METRICS.icon} strokeWidth={1.9} />
 				</ToolButton>
 			)}
 
-			<Divider metrics={metrics} />
+			<Divider />
 
 			<button
 				type="button"
@@ -526,9 +441,9 @@ export function AnnotateToolbar({
 				data-ly-tip-side="top"
 				aria-label={cancelLabel ?? translate("annotate.exit")}
 				onClick={onCancel}
-				className={`flex cursor-pointer items-center rounded-lg text-white/65 transition-colors duration-[var(--ly-t-quick)] hover:text-white ${metrics.action}`}
+				className={`flex cursor-pointer items-center rounded-lg text-white/65 transition-colors duration-[var(--ly-t-quick)] hover:text-white ${METRICS.action}`}
 			>
-				<X size={metrics.icon - 1} strokeWidth={2} />
+				<X size={METRICS.icon - 1} strokeWidth={2} />
 			</button>
 			<button
 				type="button"
@@ -540,18 +455,18 @@ export function AnnotateToolbar({
 				// its padding: without it "保存副本" wrapped to two lines and took the whole bar's
 				// height with it.
 				aria-label={saveLabel ?? translate(canReplace ? "common.save" : delivers ? "common.done" : "annotate.saveCopy")}
-				className={`grid cursor-pointer place-items-center rounded-lg bg-white text-[#1c1c1e] transition-opacity duration-[var(--ly-t-quick)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-35 ${metrics.confirm}`}
+				className={`grid cursor-pointer place-items-center rounded-lg bg-white text-[#1c1c1e] transition-opacity duration-[var(--ly-t-quick)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-35 ${METRICS.confirm}`}
 			>
 				{/* A separate download button owns file saving; confirming a capture must not promise another download. */}
-				{canReplace || onDownload || delivers ? <Check size={metrics.icon - 1} strokeWidth={2.4} aria-hidden /> : <Download size={metrics.icon - 1} strokeWidth={2} aria-hidden />}
+				{canReplace || onDownload || delivers ? <Check size={METRICS.icon - 1} strokeWidth={2.4} aria-hidden /> : <Download size={METRICS.icon - 1} strokeWidth={2} aria-hidden />}
 			</button>
 		</div>
 	);
 }
 
 /** `mx-1.5` rather than `mx-1`: the swatch next to a divider carries a ring that needs the room. */
-const Divider = ({ metrics }: { metrics: ToolbarMetrics }) => (
-	<span className={`w-px shrink-0 bg-white/15 ${metrics.divider}`} />
+const Divider = () => (
+	<span className={`w-px shrink-0 bg-white/15 ${METRICS.divider}`} />
 );
 
 /**
@@ -570,12 +485,10 @@ function ToolProperties({
 	annotator,
 	index,
 	side,
-	metrics,
 }: {
 	annotator: Annotator;
 	index: number;
 	side: "above" | "below";
-	metrics: ToolbarMetrics;
 }) {
 	const isText = annotator.tool === "text";
 	// The mosaic is the one tool with no colour of its own — it takes the picture's.
@@ -595,13 +508,13 @@ function ToolProperties({
 	 * points out for one frame.
 	 */
 	const box = useRef<HTMLDivElement | null>(null);
-	const [anchor, setAnchor] = useState(Math.max(0, index) * metrics.step + metrics.inset);
+	const [anchor, setAnchor] = useState(Math.max(0, index) * METRICS.step + METRICS.inset);
 	useLayoutEffect(() => {
 		const bar = box.current?.offsetParent as HTMLElement | null;
 		const button = bar?.querySelector<HTMLElement>(`[data-tool-index="${index}"]`);
 		if (!button) return;
 		setAnchor(button.offsetLeft + button.offsetWidth / 2);
-	}, [index, metrics, annotator.selected]);
+	}, [index, annotator.selected]);
 
 	/*
 	 * Kept inside the window, the tail still pointing at its button.
@@ -646,7 +559,7 @@ function ToolProperties({
 			 * 空白（按钮之间那几个像素）如果也算数，调粗细时手一沉整条工具栏就跟着走了。
 			 */
 			data-toolbar-bubble
-			className={`absolute left-0 flex cursor-default animate-[ly-tool-in_var(--ly-t-base)_ease-out] items-center border border-white/12 bg-[#1c1c1e]/95 shadow-overlay backdrop-blur-xl ${metrics.bubble} ${
+			className={`absolute left-0 flex cursor-default animate-[ly-tool-in_var(--ly-t-base)_ease-out] items-center border border-white/12 bg-[#1c1c1e]/95 shadow-overlay backdrop-blur-xl ${METRICS.bubble} ${
 				side === "below" ? "top-full mt-2" : "bottom-full mb-2"
 			}`}
 			/*
@@ -677,7 +590,7 @@ function ToolProperties({
 						label: translate(label),
 					})}
 					aria-pressed={annotator.weight === value}
-					className={`flex cursor-pointer items-center justify-center rounded-md transition-colors ${metrics.weight} ${
+					className={`flex cursor-pointer items-center justify-center rounded-md transition-colors ${METRICS.weight} ${
 						annotator.weight === value ? "bg-white/20 text-white" : "text-white/55 hover:bg-white/10 hover:text-white"
 					}`}
 				>
@@ -685,7 +598,7 @@ function ToolProperties({
 				</button>
 			))}
 
-			{hasColour && <span className={`w-px shrink-0 bg-white/15 ${metrics.bubbleDivider}`} />}
+			{hasColour && <span className={`w-px shrink-0 bg-white/15 ${METRICS.bubbleDivider}`} />}
 
 			{hasColour &&
 				COLOURS.map((value) => (
@@ -696,7 +609,7 @@ function ToolProperties({
 						aria-pressed={annotator.colour === value}
 						onClick={() => annotator.setColour(value)}
 						style={{ background: value }}
-						className={`shrink-0 cursor-pointer rounded-full transition-transform duration-[var(--ly-t-quick)] ${metrics.swatch} ${
+						className={`shrink-0 cursor-pointer rounded-full transition-transform duration-[var(--ly-t-quick)] ${METRICS.swatch} ${
 							annotator.colour === value
 								? "scale-110 ring-2 ring-white/85 ring-offset-2 ring-offset-[#1c1c1e]"
 								: "opacity-80 hover:scale-110 hover:opacity-100"
@@ -705,7 +618,7 @@ function ToolProperties({
 				))}
 
 			{/* A caption can sit on a plate; nothing else can, so nothing else offers it. */}
-			{isText && <span className={`w-px shrink-0 bg-white/15 ${metrics.bubbleDivider}`} />}
+			{isText && <span className={`w-px shrink-0 bg-white/15 ${METRICS.bubbleDivider}`} />}
 			{isText &&
 				BACKDROPS.map(([value, label]) => (
 					<button
@@ -715,7 +628,7 @@ function ToolProperties({
 						aria-pressed={annotator.backdrop === value}
 						onClick={() => annotator.setBackdrop(value)}
 						style={value ? { background: value } : undefined}
-						className={`shrink-0 cursor-pointer rounded-sm transition-transform duration-[var(--ly-t-quick)] ${metrics.swatch} ${
+						className={`shrink-0 cursor-pointer rounded-sm transition-transform duration-[var(--ly-t-quick)] ${METRICS.swatch} ${
 							value ? "" : "ly-checker-xs"
 						} ${
 							annotator.backdrop === value
@@ -753,7 +666,6 @@ function ToolButton({
 	active,
 	disabled,
 	onClick,
-	metrics,
 	toolIndex,
 	children,
 }: {
@@ -761,7 +673,6 @@ function ToolButton({
 	active?: boolean;
 	disabled?: boolean;
 	onClick: () => void;
-	metrics: ToolbarMetrics;
 	/** Which drawing tool this is, so the properties bubble can find it and point at it. */
 	toolIndex?: number;
 	children: React.ReactNode;
@@ -779,7 +690,7 @@ function ToolButton({
 			aria-pressed={active}
 			disabled={disabled}
 			onClick={onClick}
-			className={`flex cursor-pointer items-center justify-center transition-colors duration-[var(--ly-t-quick)] disabled:cursor-not-allowed disabled:opacity-30 ${metrics.button} ${
+			className={`flex cursor-pointer items-center justify-center transition-colors duration-[var(--ly-t-quick)] disabled:cursor-not-allowed disabled:opacity-30 ${METRICS.button} ${
 				active ? "bg-white text-[#1c1c1e]" : "text-white/65 hover:bg-white/12 hover:text-white"
 			}`}
 		>

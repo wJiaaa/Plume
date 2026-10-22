@@ -122,23 +122,15 @@ test("plan 的步骤有序号、文件是一排小签；风险是列表，空的
 	}
 });
 
-test("长文本直接展开，交给调用方画成 Markdown——那是交付物，不用先点一下", async () => {
+test("长文本直接展开，画成 Markdown——那是交付物，不用先点一下", async () => {
 	const report = "## 结论\n\n第一行\n".repeat(20);
-	const seen: string[] = [];
-	const view = await mount(
-		h(StructuredOutput, {
-			output: { summary: "一句话结论", report },
-			prose: (text: string) => {
-				seen.push(text);
-				return h("div", { "data-prose": "" }, text);
-			},
-		}),
-	);
+	const view = await mount(h(StructuredOutput, { output: { summary: "一句话**结论**", report } }));
 	try {
 		assert.equal(view.find("[data-field=report]").dataset.kind, "long-text");
 		assert.match(view.find("[data-field=report] h4").textContent ?? "", /完整报告/);
 		assert.equal(view.all("[data-field=report] button").length, 0, "不折叠");
-		assert.deepEqual(seen, ["一句话结论", report], "结论和报告都走同一个画法");
+		assert.equal(view.all("[data-field=report] h2").length, 20, "报告里的标题画成了标题");
+		assert.equal(view.find("[data-field=summary] strong").textContent, "结论", "结论和报告是同一个画法");
 	} finally {
 		await view.unmount();
 	}

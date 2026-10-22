@@ -29,7 +29,7 @@ import type { MessageKey } from "../../i18n/index.ts";
  * 仍旧是中文，但那句中文谁也看不见——一个不会被发现是错的错误。键改用 `labelKey`，它本来
  * 就是唯一的。
  */
-const GROUPS: { labelKey: MessageKey; items: { id: SettingsSection; labelKey: MessageKey; icon: typeof Settings2 }[] }[] = [
+export const SETTINGS_GROUPS: { labelKey: MessageKey; items: { id: SettingsSection; labelKey: MessageKey; icon: typeof Settings2 }[] }[] = [
 	{
 		labelKey: "settings.group.basic",
 		items: [
@@ -75,9 +75,3 @@ const GROUPS: { labelKey: MessageKey; items: { id: SettingsSection; labelKey: Me
 		],
 	},
 ];
-
-
-/** Desktop capture works on every desktop platform, so every platform gets the same pages. */
-export function settingsGroups(_platform: string) {
-	return GROUPS;
-}

@@ -31,15 +31,6 @@ export function baseName(path: string): string {
 	return cut === -1 ? trimmed : trimmed.slice(cut + 1);
 }
 
-/** The folder a path is in. The root's parent is the root; the tree never goes above it anyway. */
-export function dirName(path: string): string {
-	const trimmed = path.replace(TRAILING, "");
-	const cut = lastCut(trimmed);
-	if (cut === -1) return trimmed;
-	// A cut at 0 means the parent is the filesystem root, which is the separator itself.
-	return cut === 0 ? trimmed.slice(0, 1) : trimmed.slice(0, cut);
-}
-
 export function joinPath(dir: string, name: string): string {
 	const separator = separatorOf(dir);
 	return dir.endsWith("/") || dir.endsWith("\\") ? `${dir}${name}` : `${dir}${separator}${name}`;
@@ -151,10 +142,13 @@ export function tildeHome(path: string): string {
  * 能是 Windows。
  */
 export function parentOf(path: string): string {
-	const at = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
-	// 根目录（`/a`）的上级是 `/`，不是空串——空串会被当成「没有路径」而把菜单项画成灰的。
+	// 末尾的分隔符不算一层：`/a/b/` 的上级是 `/a`。
+	const trimmed = path.replace(TRAILING, "");
+	const at = lastCut(trimmed);
+	// 只有一个名字、前面没有目录时是空串，不是它自己——那会把文件名当成目录名显示出来。
 	if (at < 0) return "";
-	return at === 0 ? path.slice(0, 1) : path.slice(0, at);
+	// 根目录（`/a`）的上级是 `/`，不是空串——空串会被当成「没有路径」而把菜单项画成灰的。
+	return at === 0 ? trimmed.slice(0, 1) : trimmed.slice(0, at);
 }
 
 export function splitExtension(name: string): [stem: string, extension: string] {

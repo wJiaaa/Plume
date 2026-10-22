@@ -53,7 +53,8 @@ function stashInCache(
 			todos: todosFrom(intactSnapshot.messages),
 			compactions: (intactSnapshot.compactions ?? []).map((at) => ({ at, before: 0, after: 0 })),
 			approvals: intactSnapshot.pendingApprovals,
-			stopped: howItStopped(intactSnapshot.messages),
+			// 还在跑的会话没有「停在哪」：上一轮的报错不该在这一轮跑着时冒出来，和读当前会话那条路一样。
+			stopped: intactSnapshot.running ? null : howItStopped(intactSnapshot.messages),
 			retrying: null,
 			capabilities: null,
 			pendingUserMessage: null,

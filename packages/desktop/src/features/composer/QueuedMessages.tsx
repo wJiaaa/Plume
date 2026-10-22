@@ -39,14 +39,9 @@ interface Leaving {
 }
 
 /**
- * 一条队伍从哪儿来、能对它做什么。
- *
- * 主会话的队伍在 app store 里（`queue-slice.ts`），侧边聊天的在它自己的 store 里——两个对话、两条
- * 队，但条是同一条：同样的行、同样的拖动、同样的「编辑就是整份退回输入框」。做不到的事就不给：
- * 侧边聊天没有「现在就发」，也没有「拿到侧边聊天去问」。
+ * 能对排着的一条做什么。条上的每一行都从这里拿动作；做不到的事就不给——侧边聊天没有「现在就发」。
  */
-export interface QueueSource {
-	items: QueuedMessage[];
+interface QueueSource {
 	/** 拿走一条并交还——删掉和编辑是同一个动作。 */
 	drop: (id: string) => QueuedMessage | null;
 	move: (id: string, targetId: string, placement: "before" | "after") => void;
@@ -56,11 +51,16 @@ export interface QueueSource {
 	aside?: (id: string) => void;
 }
 
+/**
+ * 一个对话的那条队。主会话和侧边聊天的队伍都在 app store 里（`queue-slice.ts`），按会话 id 分开——
+ * 两个对话、两条队，条是同一条：同样的行、同样的拖动、同样的「编辑就是整份退回输入框」。
+ */
 export function QueuedMessages({
 	sessionId,
 	running,
 	onEdit,
 	onAside,
+	sendNow = true,
 }: {
 	sessionId: string;
 	/**
@@ -77,48 +77,29 @@ export function QueuedMessages({
 	 * 管这叫环）。输入框本来就站在 dock 旁边。
 	 */
 	onAside?: (entry: QueuedMessage) => void;
+	/** 侧边聊天不给：它没有「停下这一轮、拿这一条重来」这件事。 */
+	sendNow?: boolean;
 }) {
-	const items = useApp((state) => state.queued[sessionId] ?? NONE);
-	const moveQueued = useApp((state) => state.moveQueued);
-	const dropQueued = useApp((state) => state.dropQueued);
-	const sendQueuedNow = useApp((state) => state.sendQueuedNow);
-	const source: QueueSource = {
-		items,
-		drop: (id) => dropQueued(sessionId, id),
-		move: (id, targetId, placement) => void moveQueued(sessionId, id, targetId, placement),
-		sendNow: (id) => void sendQueuedNow(sessionId, id),
-		/* 同样从队列里取走：一句话只该被问一次。 */
-		...(onAside
-			? {
-					aside: (id: string) => {
-						const taken = dropQueued(sessionId, id);
-						if (taken) onAside(taken);
-					},
-				}
-			: {}),
-	};
-	return <QueueList source={source} running={running} onEdit={onEdit} />;
-}
-
-/** 那条队，画出来。数据和动作由 `source` 给——主会话和侧边聊天各给各的。 */
-export function QueueList({ source: given, running, onEdit }: { source: QueueSource; running: boolean; onEdit: (entry: QueuedMessage) => void }) {
 	const { t } = useI18n();
-	const items = given.items;
+	const items = useApp((state) => state.queued[sessionId] ?? NONE);
 	const [leaving, setLeaving] = useState<Leaving[]>([]);
 	const previous = useRef(items);
 	/** 人从条上拿走的那几条。只有它们播收起；不在这里面的离场都是被送出去了，见文件头。 */
 	const dismissed = useRef(new Set<string>());
+	const take = (id: string) => {
+		dismissed.current.add(id);
+		return useApp.getState().dropQueued(sessionId, id);
+	};
 	const source: QueueSource = {
-		...given,
-		drop: (id) => {
-			dismissed.current.add(id);
-			return given.drop(id);
-		},
-		...(given.aside
+		drop: take,
+		move: (id, targetId, placement) => void useApp.getState().moveQueued(sessionId, id, targetId, placement),
+		...(sendNow ? { sendNow: (id: string) => void useApp.getState().sendQueuedNow(sessionId, id) } : {}),
+		/* 同样从队列里取走：一句话只该被问一次。 */
+		...(onAside
 			? {
 					aside: (id: string) => {
-						dismissed.current.add(id);
-						given.aside?.(id);
+						const taken = take(id);
+						if (taken) onAside(taken);
 					},
 				}
 			: {}),

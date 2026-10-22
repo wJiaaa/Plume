@@ -5,9 +5,7 @@
  * 派过谁的名单，结束的也留着，点一行和那条栏的单子一样——面板翻到它那一页。名单长了只放前几个，
  * 剩下的去面板里看。
  */
-
 import { useEffect, useState } from "react";
-import type { SubAgentSummary } from "@plume/core";
 import { useI18n } from "../../i18n/index.ts";
 import { rosterOrder, useSubAgents } from "../../store/subAgents.ts";
 import { useAgentAvatars } from "../../store/agent-avatars.ts";
@@ -15,16 +13,10 @@ import { stateOf } from "../../lib/dispatches.ts";
 import { useDockScope, useScopedSubAgents } from "../../app/session-scope.tsx";
 import { AgentAvatar } from "../../ui/avatar/AgentAvatar.tsx";
 import { openScopedPanel } from "../dock/index.ts";
-import { elapsedSince, ranFor, statusWord } from "../subagents/index.ts";
+import { stateLine } from "../subagents/index.ts";
 import { ROW, Section, SectionLabel } from "./rows.tsx";
 
 const SHOWN = 5;
-
-function stateLine(one: SubAgentSummary): string {
-	if (one.status === "running") return elapsedSince(one.startedAt);
-	if (one.status === "queued") return statusWord(one.status);
-	return `${statusWord(one.status)} · ${ranFor(one)}`;
-}
 
 export function SubAgentsSection() {
 	const { t } = useI18n();

@@ -5,7 +5,7 @@ import { useI18n } from "../../i18n/index.ts";
 import { bridge } from "../../services/index.ts";
 import { useApp } from "../../store/index.ts";
 import { useDockScope } from "../../app/session-scope.tsx";
-import { openFileInScreen } from "../../app/file-opener.ts";
+import { openFilePane } from "../dock/index.ts";
 import { useRevealLabel } from "../../store/open-targets.ts";
 import { copyImage, imageDataUrl, notifyExportFailed, saveImage } from "../image/index.ts";
 
@@ -27,7 +27,7 @@ export function GeneratedImageMenu({ anchor, image, onClose }: { anchor: { x: nu
 	if (!anchor || !image) return null;
 
 	const openInPane = (path: string) => {
-		void openFileInScreen(path, screen ?? undefined);
+		void openFilePane(path, screen ?? undefined);
 	};
 
 	const addToChat = async () => {

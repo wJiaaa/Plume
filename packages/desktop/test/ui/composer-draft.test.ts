@@ -34,3 +34,26 @@ for (const switched of [false, true]) {
 		} finally { await view.unmount(); useApp.setState(previous, true); }
 	});
 }
+
+/*
+ * 主输入框换会话时，A 的字不能写进 B 名下——哪怕只是一帧。
+ *
+ * 侧边聊天和子智能体的框早就用 `useDraft` 修过这件事；主输入框自己手写了一份按键存的同步，换键那次
+ * 提交里 state 还是 A 的字、键已经是 B，于是 A 的草稿被写到了 B 名下，屏幕上也闪了一帧 A 的字。
+ */
+test("switching conversations never writes A's draft under B, nor paints it there", async () => {
+	const previous = useApp.getState();
+	useApp.setState({ activeSessionId: "a", meta: null, workspace: null, scratchCwd: "/test", settings: null, messages: [], running: false,
+		drafts: { a: { text: "写给 A 的半句话", attachments: [] }, b: { text: "写给 B 的", attachments: [] } } });
+	Object.defineProperty(window, "plume", { configurable: true, value: { commands: { list: async () => ({ commands: [], skills: [], agents: [] }) } } });
+	const writtenToB: string[] = [];
+	const stop = useApp.subscribe((state) => { const b = state.drafts.b; if (b) writtenToB.push(b.text); });
+	const view = await mount(h(I18nProvider, { locale: "zh-CN", children: h(LayoutProvider, { children: h(Composer) }) }));
+	try {
+		assert.equal(view.find<HTMLTextAreaElement>("textarea").value, "写给 A 的半句话");
+		await act(async () => { useApp.setState({ activeSessionId: "b" }); });
+		assert.equal(view.find<HTMLTextAreaElement>("textarea").value, "写给 B 的");
+		assert.ok(!writtenToB.includes("写给 A 的半句话"), `B 名下出现过 A 的字：${JSON.stringify(writtenToB)}`);
+		assert.equal(useApp.getState().drafts.a?.text, "写给 A 的半句话");
+	} finally { stop(); await view.unmount(); useApp.setState(previous, true); }
+});

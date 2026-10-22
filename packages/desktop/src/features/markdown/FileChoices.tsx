@@ -5,7 +5,7 @@
  */
 
 import { useI18n } from "../../i18n/index.ts";
-import { baseName, dirName, relativeTo } from "../../lib/paths.ts";
+import { baseName, parentOf, relativeTo } from "../../lib/paths.ts";
 import { iconColour, lookFor } from "../../ui/fileIcon.tsx";
 import { MenuBody, MenuItem, MenuLabel } from "../../ui/overlay/Menu.tsx";
 import { MENU_MAX_HEIGHT, Popover } from "../../ui/overlay/Popover.tsx";
@@ -40,7 +40,8 @@ export function FileChoices({
 				<MenuLabel>{label}</MenuLabel>
 				{paths.map((path) => {
 					// The name is the same on every row and the reply already shows it: the row is where it lives.
-					const shown = dirName(root ? relativeTo(root, path) : path);
+					// 项目根下的那一个没有上级目录可写，写项目自己的名字。
+					const shown = parentOf(root ? relativeTo(root, path) : path) || baseName(root ?? path);
 					return (
 						<MenuItem
 							key={path}

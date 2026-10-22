@@ -63,17 +63,3 @@ function spanOf(iso: string, now: number): string {
   if (months < 12) return translate("time.months", { n: months });
   return translate("time.years", { n: Math.round(months / 12) });
 }
-
-/**
- * The repository this panel is looking at, and everywhere else it could look.
- *
- * A workspace is a folder someone opened. Plenty of them hold several repositories — a frontend
- * beside a backend, services versioned apart on purpose — and any repository may have worktrees,
- * which are further checkouts of the same history on other branches. All of it was being found
- * and none of it was reachable: the panel picked whichever repository sorted first and gave no
- * way to say otherwise.
- *
- * Worktrees are nested under the repository they belong to rather than listed as peers, because
- * that is what they are. Sharing one history is the whole point of a worktree, and a flat list
- * would put two checkouts of the same project side by side as though they were separate work.
- */

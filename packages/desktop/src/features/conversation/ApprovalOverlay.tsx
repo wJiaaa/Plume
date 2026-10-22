@@ -9,7 +9,7 @@ import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { useLayout } from "../../app/layout.tsx";
 import { useApp } from "../../store/index.ts";
 import { useDockScope, useScopedApprovals, useScopedSessionId } from "../../app/session-scope.tsx";
-import { openPlanInScreen } from "../../app/plan-opener.ts";
+import { openScopedPanel } from "../dock/index.ts";
 import { usePlanReview } from "../../store/plan-review.ts";
 import { useAgentAvatars } from "../../store/agent-avatars.ts";
 import { AgentAvatar } from "../../ui/avatar/AgentAvatar.tsx";
@@ -86,13 +86,13 @@ export function ApprovalOverlay() {
 	const planText = planId ? request.detail : null;
 	useEffect(() => {
 		if (!sessionId || !planId || planText === null) return;
-		if (usePlanReview.getState().show(sessionId, planId, planText) && !compact) openPlanInScreen(screen ?? undefined);
+		if (usePlanReview.getState().show(sessionId, planId, planText) && !compact) openScopedPanel("plan", screen ?? undefined);
 	}, [sessionId, planId, planText, compact, screen]);
 	if (!request) return null;
 	const gutter = `flex shrink-0 justify-center pb-2 ${compact ? "ly-content-gutter-compact" : "ly-content-gutter"}`;
 	const expiry = request.expiresAt !== undefined && <Expiry at={request.expiresAt} />;
 	if (planId) return <div data-approval-region className={gutter}>
-		<PlanApproval key={planId} request={request} sessionId={sessionId} compact={compact} openPlan={() => openPlanInScreen(screen ?? undefined)} tags={expiry} />
+		<PlanApproval key={planId} request={request} sessionId={sessionId} compact={compact} openPlan={() => void openScopedPanel("plan", screen ?? undefined)} tags={expiry} />
 	</div>;
 	const collapsed = collapsedId === request.id;
 	const interactive = request.kind === "interactive";

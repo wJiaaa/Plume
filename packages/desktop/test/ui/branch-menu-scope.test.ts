@@ -15,7 +15,7 @@ import { afterEach, beforeEach, test } from "node:test";
 import { act, createElement as h } from "react";
 import type { SessionMeta } from "@plume/core";
 import type { SessionSnapshot, WorkspaceInfo } from "../../electron/ipc-types.ts";
-import type { BranchList } from "../../electron/git.ts";
+import type { BranchList } from "../../electron/ipc-types.ts";
 import { LayoutProvider } from "../../src/app/layout.tsx";
 import { SessionScope } from "../../src/app/session-scope.tsx";
 import { Composer } from "../../src/features/composer/Composer.tsx";

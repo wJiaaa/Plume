@@ -83,23 +83,12 @@ test("the wrap control flips the flag the cells are styled from, and offers the 
 	}
 });
 
-test("a table that fits its column offers no control, and an excerpt offers none either", async () => {
+test("a table that fits its column offers no control", async () => {
 	const narrow = await mount(h(Markdown, { text: TABLE }));
 	try {
 		assert.ok(narrow.find(".ly-table-scroll table"));
 		assert.equal(narrow.host.querySelector(".ly-table-toggle"), null);
 	} finally {
 		await narrow.unmount();
-	}
-
-	const restore = widen();
-	const excerpt = await mount(h(Markdown, { text: TABLE, preview: true }));
-	try {
-		assert.ok(excerpt.find(".ly-table-scroll table"));
-		assert.equal(excerpt.host.querySelector(".ly-table-toggle"), null);
-		assert.equal(excerpt.host.querySelector(".ly-hthumb"), null);
-	} finally {
-		await excerpt.unmount();
-		restore();
 	}
 });

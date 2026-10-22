@@ -59,10 +59,11 @@ test("pane composers use the shared pad, not a one-off gutter", async () => {
 		assert.doesNotMatch(source, /pb-\[15px\]/);
 		assert.doesNotMatch(source, /ly-composer-pad[^>]*(?:pt-2|pb-\[|px-3)/);
 	}
-	// One element between the tray's collapsing child and the padded row — see composer.css.
-	assert.match(dock, /<div>\s*<div className="ly-composer-attachments">/);
-	assert.match(side, /<div><div className="ly-composer-attachments">/);
-	assert.match(sub, /<div><div className="ly-composer-attachments">/);
+	// One element between the tray's collapsing child and the padded row — see composer.css. The
+	// tray is drawn once, in the attachments kit, and every pane composer takes it from there.
+	const kit = await readFile(new URL("../src/features/composer/useComposerAttachments.tsx", import.meta.url), "utf8");
+	assert.match(kit, /<div>\s*<div className="ly-composer-attachments">/);
+	for (const source of [dock, side, sub]) assert.match(source, /kit\.tray\(/);
 	assert.doesNotMatch(side, /px-3\.5 pt-3/);
 	assert.doesNotMatch(sub, /px-3\.5 pt-3/);
 	assert.match(conversation, /ly-content-gutter/);

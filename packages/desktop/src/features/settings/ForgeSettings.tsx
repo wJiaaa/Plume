@@ -19,7 +19,7 @@ import type { ForgeAccount, ForgeKindInfo } from "../../../electron/ipc-types.ts
 import { Avatar } from "../pull-requests/index.ts";
 import { useAccountActions, useForgeAccounts } from "../pull-requests/index.ts";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
-import { Badge, Card, EmptyHint, ListRow, SectionTitle, TextInput, Toggle } from "./controls.tsx";
+import { Badge, Card, EmptyHint, ListRow, PageHeader, SectionTitle, TextInput, Toggle } from "./controls.tsx";
 import { DialogAction } from "../../ui/overlay/Dialog.tsx";
 import { ForgeBrandIcon } from "./ForgeBrandIcon.tsx";
 import { ForgeSignIn } from "./ForgeSignIn.tsx";
@@ -71,10 +71,7 @@ export function ForgeSettings() {
 
 	return (
 		<div className="pt-2">
-			<h1 className="text-display leading-tight font-semibold tracking-tight text-ink">{t("forge.title")}</h1>
-			<p className="mt-2 max-w-[600px] pb-7 text-label leading-relaxed text-ink-muted">
-				{translate("forge.intro")}
-			</p>
+			<PageHeader title={t("forge.title")} intro={translate("forge.intro")} />
 
 			<SectionTitle>{t("common.account")}</SectionTitle>
 			<div className="mb-3">

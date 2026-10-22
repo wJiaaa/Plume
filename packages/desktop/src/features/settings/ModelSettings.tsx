@@ -20,7 +20,7 @@ import { useConfirmer } from "../../ui/overlay/Confirm.tsx";
 import { DialogAction } from "../../ui/overlay/Dialog.tsx";
 import { MenuBody, MenuItem, Popover, usePopover } from "../../ui/overlay/Popover.tsx";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
-import { Card } from "./layout.tsx";
+import { Card, PageHeader } from "./layout.tsx";
 import { FetchModelsModal } from "./FetchModelsModal.tsx";
 import { ModelEditor } from "./ModelEditor.tsx";
 import { ProviderAvatar } from "./ProviderAvatar.tsx";
@@ -44,104 +44,95 @@ export function ModelSettings() {
 	return (
 		// Keep the provider editor usable when a short window cannot fit its minimum height.
 		<Scroller className="flex-1" contentClassName="flex flex-col">
-			<header className="flex shrink-0 items-start justify-between gap-4 pt-2 pb-6">
-				<div>
-					<h1 className="text-display leading-tight font-semibold tracking-tight text-ink">
-						{t("modelSettings.title")}
-					</h1>
-					<p className="mt-2 text-label text-ink-muted">
-						{t("modelSettings.intro")}
-					</p>
-					{/* 上限、能力和价格都从这份目录来；它会自动更新，这里给个看得见的版本和手动更新的入口。 */}
-					<p className="mt-1 text-detail text-ink-faint" data-ly-model-catalog="">
-						{t("modelSettings.catalogStatus", {
-							source: p.catalog.name,
-							date: new Date(p.catalog.updatedAt).toLocaleDateString(activeLocale()),
-							count: p.catalogModels,
-						})}
-						{" · "}
-						<button
-							type="button"
-							disabled={p.updatingCatalog}
-							onClick={() => void p.updateCatalog()}
-							className="text-ink-muted transition-colors hover:text-ink disabled:pointer-events-none disabled:opacity-60"
-						>
-							{p.updatingCatalog ? t("modelSettings.catalogUpdating") : t("modelSettings.catalogUpdate")}
-						</button>
-						{p.catalogResult && !p.updatingCatalog && (
-							<span className={p.catalogResult.status === "failed" ? "text-danger" : undefined}>
-								{" · "}
-								{p.catalogResult.status === "failed"
-									? t("modelSettings.catalogFailed", { error: p.catalogResult.error ?? "" })
-									: t(p.catalogResult.status === "updated" ? "modelSettings.catalogUpdated" : "modelSettings.catalogUnchanged")}
-							</span>
-						)}
-					</p>
-				</div>
+			<PageHeader className="shrink-0 pt-2" title={t("modelSettings.title")} intro={t("modelSettings.intro")} actions={<>
 				{/*
 				 * Carrying the list to another machine is something done once a year, so it goes
 				 * behind ⋯ with its words spelled out — as two bare arrows it was a guess which one
 				 * imports. Testing moved next to the key it tests.
 				 */}
-				<div className="mt-1 flex shrink-0 items-center gap-1.5">
-					<IconButton
-						label={t("common.more")}
-						menu={transferMenu.open}
-						onClick={transferMenu.toggle}
-						className="aria-expanded:bg-card-hover aria-expanded:text-ink"
-						icon={<MoreHorizontal size={16} strokeWidth={1.8} />}
-					/>
-					{/* 添加供应商放在页面右上角：列表底部那颗会被一长串供应商挤出视野。 */}
-					<DialogAction tone="primary" onClick={() => void p.add()} data-ly-add-provider="">
-						<Plus size={14} strokeWidth={2} aria-hidden />
-						{t("modelSettings.addProvider")}
-					</DialogAction>
-				</div>
-
-				{transferMenu.open && (
-					<Popover anchor={transferMenu.anchor} onClose={transferMenu.close} placement="bottom" align="end" width="compact" role="menu" label={t("common.more")}>
-						<MenuBody>
-							<MenuItem
-								icon={<Upload size={13} strokeWidth={1.8} />}
-								onClick={() => {
-									transferMenu.close();
-									fileRef.current?.click();
-								}}
-							>
-								{t("providerTransfer.importTip")}
-							</MenuItem>
-							<MenuItem
-								icon={<Download size={13} strokeWidth={1.8} />}
-								disabled={!transfer.canExport}
-								onClick={() => {
-									transferMenu.close();
-									confirm.ask({
-										title: t("providerTransfer.exportConfirm"),
-										detail: t("providerTransfer.exportConfirmDetail"),
-										confirmLabel: t("providerTransfer.exportAction"),
-										onConfirm: transfer.exportAll,
-									});
-								}}
-							>
-								{t("providerTransfer.exportTip")}
-							</MenuItem>
-						</MenuBody>
-					</Popover>
-				)}
-
-				{/* Reset after every pick, or choosing the same file twice fires no change event. */}
-				<input
-					ref={fileRef}
-					type="file"
-					accept="application/json,.json"
-					hidden
-					onChange={(e) => {
-						const file = e.target.files?.[0];
-						e.target.value = "";
-						if (file) void transfer.offer(file);
-					}}
+				<IconButton
+					label={t("common.more")}
+					menu={transferMenu.open}
+					onClick={transferMenu.toggle}
+					className="aria-expanded:bg-card-hover aria-expanded:text-ink"
+					icon={<MoreHorizontal size={16} strokeWidth={1.8} />}
 				/>
-			</header>
+				{/* 添加供应商放在页面右上角：列表底部那颗会被一长串供应商挤出视野。 */}
+				<DialogAction tone="primary" onClick={() => void p.add()} data-ly-add-provider="">
+					<Plus size={14} strokeWidth={2} aria-hidden />
+					{t("modelSettings.addProvider")}
+				</DialogAction>
+			</>}>
+				{/* 上限、能力和价格都从这份目录来；它会自动更新，这里给个看得见的版本和手动更新的入口。 */}
+				<p className="mt-1 text-detail text-ink-faint" data-ly-model-catalog="">
+					{t("modelSettings.catalogStatus", {
+						source: p.catalog.name,
+						date: new Date(p.catalog.updatedAt).toLocaleDateString(activeLocale()),
+						count: p.catalogModels,
+					})}
+					{" · "}
+					<button
+						type="button"
+						disabled={p.updatingCatalog}
+						onClick={() => void p.updateCatalog()}
+						className="text-ink-muted transition-colors hover:text-ink disabled:pointer-events-none disabled:opacity-60"
+					>
+						{p.updatingCatalog ? t("modelSettings.catalogUpdating") : t("modelSettings.catalogUpdate")}
+					</button>
+					{p.catalogResult && !p.updatingCatalog && (
+						<span className={p.catalogResult.status === "failed" ? "text-danger" : undefined}>
+							{" · "}
+							{p.catalogResult.status === "failed"
+								? t("modelSettings.catalogFailed", { error: p.catalogResult.error ?? "" })
+								: t(p.catalogResult.status === "updated" ? "modelSettings.catalogUpdated" : "modelSettings.catalogUnchanged")}
+						</span>
+					)}
+				</p>
+			</PageHeader>
+
+			{transferMenu.open && (
+				<Popover anchor={transferMenu.anchor} onClose={transferMenu.close} placement="bottom" align="end" width="compact" role="menu" label={t("common.more")}>
+					<MenuBody>
+						<MenuItem
+							icon={<Upload size={13} strokeWidth={1.8} />}
+							onClick={() => {
+								transferMenu.close();
+								fileRef.current?.click();
+							}}
+						>
+							{t("providerTransfer.importTip")}
+						</MenuItem>
+						<MenuItem
+							icon={<Download size={13} strokeWidth={1.8} />}
+							disabled={!transfer.canExport}
+							onClick={() => {
+								transferMenu.close();
+								confirm.ask({
+									title: t("providerTransfer.exportConfirm"),
+									detail: t("providerTransfer.exportConfirmDetail"),
+									confirmLabel: t("providerTransfer.exportAction"),
+									onConfirm: transfer.exportAll,
+								});
+							}}
+						>
+							{t("providerTransfer.exportTip")}
+						</MenuItem>
+					</MenuBody>
+				</Popover>
+			)}
+
+			{/* Reset after every pick, or choosing the same file twice fires no change event. */}
+			<input
+				ref={fileRef}
+				type="file"
+				accept="application/json,.json"
+				hidden
+				onChange={(e) => {
+					const file = e.target.files?.[0];
+					e.target.value = "";
+					if (file) void transfer.offer(file);
+				}}
+			/>
 
 			{/*
 			 * Side by side when there is room, stacked when there is not.

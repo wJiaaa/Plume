@@ -6,7 +6,8 @@
  * carry — only the pointer does — so the root is measured once and the rest is share arithmetic.
  */
 
-import type { Box, PaneBox } from "./layout.ts";
+import type { Box } from "../../lib/tiling.ts";
+import type { PaneBox } from "./layout.ts";
 
 export interface PixelBox {
 	left: number;

@@ -16,7 +16,7 @@ import { freshTokens } from "@plume/core/tokens";
 import { formatTokens } from "../../lib/format-tokens.ts";
 import { formatElapsed } from "@plume/client-runtime/running";
 import { useLiveRate, useProducedChars } from "./useLiveRate.ts";
-import { liveTurnMeter } from "./grouping.ts";
+import { liveTurnMeter } from "./turns.ts";
 
 /**
  * What the agent is spending while it works: elapsed time and tokens so far.

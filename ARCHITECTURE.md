@@ -99,9 +99,9 @@ pre-push 里都是必过项：
 
 | 想做的 | 去 |
 | --- | --- |
-| 加一个 IPC | `packages/contract/src/methods.ts` 登记 → `electron/ipc/<域>.ts` 注册 → `electron/preload.ts` 暴露；契约的测试会检查三处一致。浏览器默认调不到；要开放就加进 `contract/src/web.ts` 并在 `electron/web-rpc.ts` 实现 |
+| 加一个 IPC | `packages/contract/src/methods.ts` 登记 → `electron/ipc/<域>.ts` 注册 → `electron/preload.ts` 暴露；契约的测试会检查三处一致。手机默认调不到；要开放就加进 `contract/src/mobile.ts` 的 `MOBILE_METHODS` 并在 `electron/mobile-rpc.ts` 实现 |
 | 加一个内置工具 | `core/src/tools/`，经 `useToolRegistry` 那条缝 |
-| 加一个右侧面板 | `src/panels/registry.ts` 注册一条记录 |
+| 加一个右侧面板 | `src/app/panels.tsx` 的 `BUILTIN_PANELS` 加一条；类型在 `features/dock/panels/registry.ts` |
 | 维护模型价格、能力和中转别名 | `core/src/model-catalog.ts` 与 `scripts/update-model-catalog.mjs`；`pnpm catalog:update` 更新离线数据 |
 | 某家模型的思考开关特例 | `core/src/ai/vendors/index.ts` 的 `RULES`，只收撞到过、学习表认领不了的；端点会报错并点名原因的，走 `ai/*-compat.ts` 那几张学习表 |
 | 宿主启动时装配内核 | `core/src/kernel/host.ts` 的 `bootHostKernel`；桌面端与终端共用，加一条缝只改这里 |

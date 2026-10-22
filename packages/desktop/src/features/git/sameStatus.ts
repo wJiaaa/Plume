@@ -13,7 +13,7 @@
  * changing it always changes those counts.
  */
 
-import type { GitStatus, GitStatusFile } from "../../../electron/git.ts";
+import type { GitStatus, GitStatusFile } from "../../../electron/ipc-types.ts";
 
 function sameFiles(a: GitStatusFile[], b: GitStatusFile[]): boolean {
 	if (a.length !== b.length) return false;

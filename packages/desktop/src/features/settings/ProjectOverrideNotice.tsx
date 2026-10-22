@@ -23,7 +23,7 @@ import { useEffect } from "react";
 import { create } from "zustand";
 import { useApp } from "../../store/index.ts";
 import { bridge } from "../../services/index.ts";
-import { Card } from "./controls.tsx";
+import { Card, Notice } from "./controls.tsx";
 import { configProblemText } from "../../lib/notice-text.ts";
 
 interface LayerState {
@@ -73,14 +73,11 @@ export function OverrideNotice({ view, keys }: { view: ProjectLayerView; keys: s
 	const refused = view.refused.filter((key) => keys.includes(key));
 	if (hits.length === 0 && refused.length === 0) return null;
 	return (
-		<Card className="mb-6 border-accent/35 bg-accent/6">
-			<div className="px-4 py-3" data-project-override>
-				<div className="mb-1.5 flex items-center gap-1.5 text-label text-accent">
-					<TriangleAlert size={13} strokeWidth={1.9} />
-					{t("override.title")}
-				</div>
+		<Notice tone="accent" icon={TriangleAlert} className="mb-6">
+			<div className="min-w-0" data-project-override>
+				<div className="text-accent">{t("override.title")}</div>
 				{hits.map((one) => (
-					<div key={one.key} className="py-0.5 text-detail" data-project-override-key={one.key}>
+					<div key={one.key} className="mt-0.5" data-project-override-key={one.key}>
 						<span className="font-mono text-ink">{one.key}</span>
 						<span className="text-ink-muted">
 							{" "}
@@ -93,7 +90,7 @@ export function OverrideNotice({ view, keys }: { view: ProjectLayerView; keys: s
 					</div>
 				))}
 				{refused.map((key) => (
-					<div key={key} className="py-0.5 text-detail text-ink-muted" data-project-refused-key={key}>
+					<div key={key} className="mt-0.5" data-project-refused-key={key}>
 						<span className="font-mono text-ink">{key}</span> {t("override.notAllowed")}
 					</div>
 				))}
@@ -101,7 +98,7 @@ export function OverrideNotice({ view, keys }: { view: ProjectLayerView; keys: s
 					{view.path}
 				</p>
 			</div>
-		</Card>
+		</Notice>
 	);
 }
 

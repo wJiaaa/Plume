@@ -1,5 +1,5 @@
 import type { Plugin, Skill, SkillCandidate } from "@plume/core";
-import { Sparkles, TriangleAlert, WandSparkles } from "../../ui/icons/index.ts";
+import { Sparkles, WandSparkles } from "../../ui/icons/index.ts";
 import { useCallback, useEffect, useState } from "react";
 import { RowDeleteButton } from "../../ui/primitives/RowDeleteButton.tsx";
 import { useDefinitionRemoval } from "./useDefinitionRemoval.tsx";
@@ -9,6 +9,7 @@ import { useApp } from "../../store/index.ts";
 import { usePluginsProject } from "./usePluginsProject.ts";
 import { SkeletonList, useSlowLoad } from "../../ui/primitives/Skeleton.tsx";
 import { Badge, Card, EmptyHint, ListRow, Toggle } from "./controls.tsx";
+import { DiagnosticNotices } from "./definition-page.tsx";
 import { SkillCandidates } from "./SkillCandidates.tsx";
 import { DiffView } from "../git/index.ts";
 import { ShadowedList } from "./ShadowedList.tsx";
@@ -55,7 +56,7 @@ function groupSkills(skills: ScannedSkill[], plugins: Plugin[]): { key: string; 
 	return [...groups.values()].sort((a, b) => a.rank - b.rank || a.title.localeCompare(b.title));
 }
 
-export function SkillsSettings({ filter = "" }: { filter?: string }) {
+export function SkillsSettings({ filter }: { filter: string }) {
 	const { t } = useI18n();
 	const workspace = usePluginsProject();
 	const settings = useApp((s) => s.settings);
@@ -143,38 +144,10 @@ export function SkillsSettings({ filter = "" }: { filter?: string }) {
 			    each opening with its own pair of them was a header that said nothing about the tab. */}
 
 			{pending && pending.length > 0 && <SkillCandidates candidates={pending} onDecide={decide} />}
-			{diagnostics.length > 0 && (
-				<Card className="mb-6 border-accent/35 bg-accent/6">
-					<div className="px-4 py-3">
-						<div className="mb-2 flex items-center gap-1.5 text-label text-accent">
-							<TriangleAlert size={13} strokeWidth={1.9} />
-							{t("skillsSettings.failedToLoad", { n: failed })}
-						</div>
-						{/* By position: a path repeats when one file has two diagnostics, and these rows hold no state. */}
-						{diagnostics.map((diagnostic, index) => (
-							<div key={index} className="py-0.5 text-detail text-accent/85">
-								<span className="font-mono">{diagnostic.path}</span> — {diagnostic.message}
-							</div>
-						))}
-					</div>
-				</Card>
-			)}
-
-			{warnings.length > 0 && (
-				<Card className="mb-6">
-					<div className="px-4 py-3">
-						<div className="mb-2 flex items-center gap-1.5 text-label text-ink-muted">
-							<TriangleAlert size={13} strokeWidth={1.9} />
-							{t("skillsSettings.warnings", { n: warned })}
-						</div>
-						{warnings.map((warning, index) => (
-							<div key={index} className="py-0.5 text-detail text-ink-faint">
-								<span className="font-mono">{warning.path}</span> — {warning.message}
-							</div>
-						))}
-					</div>
-				</Card>
-			)}
+			{/* 和插件、命令页同一种提示：同样的失败在每个定义页上读起来一样。 */}
+			<DiagnosticNotices className="mb-5"
+				problems={diagnostics} problemsTitle={t("skillsSettings.failedToLoad", { n: failed })}
+				warnings={warnings} warningsTitle={t("skillsSettings.warnings", { n: warned })} />
 
 			{/*
 			 * Shadowing, said out loud.

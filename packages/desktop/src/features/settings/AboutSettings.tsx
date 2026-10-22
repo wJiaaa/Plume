@@ -9,8 +9,9 @@ import { useApp } from "../../store/index.ts";
 import { ActionSpinner } from "../../ui/motion/loaders.tsx";
 import { Button } from "../../ui/primitives/Button.tsx";
 import { Markdown } from "../markdown/index.ts";
-import { UpdateDialog, check, labelFor, notesForLocale, useUpdate } from "../update/index.ts";
+import { UpdateDialog, check, labelFor, notesForLocale, restartCheckTimer, useUpdate } from "../update/index.ts";
 import { Card, InlineSelect, Row, SectionTitle } from "./controls.tsx";
+import { PageHeader } from "./layout.tsx";
 
 /** 安装包发布在这个公开仓库，代码仓库是私有的，见 `electron/ipc/updates.ts` 的 `REPO`。 */
 const RELEASES = "https://github.com/wJiaaa/Plume/releases";
@@ -47,9 +48,7 @@ export function AboutSettings() {
 	const setIntervalHours = (hours: number) => {
 		if (!settings) return;
 		void saveSettings({ ...settings, updateCheckIntervalHours: hours });
-		import("../update/index.ts")
-			.then(({ restartCheckTimer }) => restartCheckTimer(hours))
-			.catch(() => {});
+		restartCheckTimer(hours);
 	};
 
 	const status = !info
@@ -61,99 +60,95 @@ export function AboutSettings() {
 				: { tone: "text-ink-faint", icon: <WifiOff size={13} strokeWidth={2} aria-hidden />, text: t("about.offline") };
 
 	return (
-		<div className="space-y-6 pt-2">
-			<div>
-				<h1 className="text-display leading-tight font-semibold tracking-tight text-ink">{t("about.title")}</h1>
-				<p className="mt-2 text-label text-ink-muted">
-					{t("about.intro")}
-				</p>
-			</div>
-
-			<section className="ly-about-hero ly-swap-in relative overflow-hidden rounded-lg px-6 pt-6 pb-5" data-ly-about="">
-				<div className="flex flex-wrap items-center gap-5">
-					<img src={icon} alt="" width={68} height={68} draggable={false} className="ly-about-icon shrink-0 rounded-2xl" />
-					<div className="min-w-0 flex-1">
-						<div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-							<h2 className="text-display leading-tight font-semibold tracking-tight text-ink">Plume</h2>
-							{info?.current && <span className="font-mono text-label text-ink-muted tabular-nums">v{info.current}</span>}
+		<div className="pt-2">
+			<PageHeader title={t("about.title")} intro={t("about.intro")} />
+			<div className="space-y-6">
+				<section className="ly-about-hero ly-swap-in relative overflow-hidden rounded-lg px-6 pt-6 pb-5" data-ly-about="">
+					<div className="flex flex-wrap items-center gap-5">
+						<img src={icon} alt="" width={68} height={68} draggable={false} className="ly-about-icon shrink-0 rounded-2xl" />
+						<div className="min-w-0 flex-1">
+							<div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+								<h2 className="text-display leading-tight font-semibold tracking-tight text-ink">Plume</h2>
+								{info?.current && <span className="font-mono text-label text-ink-muted tabular-nums">v{info.current}</span>}
+							</div>
+							<p className="mt-1 text-label text-ink-muted">{t("about.tagline")}</p>
+							<p className={`mt-2 flex flex-wrap items-center gap-1.5 text-detail ${status.tone}`} data-ly-version-status="">
+								{status.icon}
+								{status.text}
+								{info?.publishedAt && (
+									<span className="text-ink-faint">
+										· {t("about.publishedOn", { date: new Date(info.publishedAt).toLocaleDateString(activeLocale()) })}
+									</span>
+								)}
+							</p>
 						</div>
-						<p className="mt-1 text-label text-ink-muted">{t("about.tagline")}</p>
-						<p className={`mt-2 flex flex-wrap items-center gap-1.5 text-detail ${status.tone}`} data-ly-version-status="">
-							{status.icon}
-							{status.text}
-							{info?.publishedAt && (
-								<span className="text-ink-faint">
-									· {t("about.publishedOn", { date: new Date(info.publishedAt).toLocaleDateString(activeLocale()) })}
-								</span>
+						<div className="flex shrink-0 flex-wrap items-center gap-2">
+							<Button
+								variant="subtle"
+								onClick={() => void check(true)}
+								disabled={checking}
+								icon={checking ? <ActionSpinner size={13} /> : <RefreshCw size={13} strokeWidth={2} aria-hidden />}
+							>
+								{checking ? t("about.checking") : t("about.checkUpdate")}
+							</Button>
+							{available && (
+								<Button variant="primary" onClick={() => setOpenDialog(true)} icon={<CloudDownload size={13} strokeWidth={2} aria-hidden />}>
+									{t("about.updateNow", { version: info?.latest ?? "" })}
+								</Button>
 							)}
-						</p>
+						</div>
 					</div>
-					<div className="flex shrink-0 flex-wrap items-center gap-2">
+
+					<div className="mt-5">
 						<Button
 							variant="subtle"
-							onClick={() => void check(true)}
-							disabled={checking}
-							icon={checking ? <ActionSpinner size={13} /> : <RefreshCw size={13} strokeWidth={2} aria-hidden />}
+							size="sm"
+							icon={<Tag size={13} strokeWidth={2} aria-hidden />}
+							onClick={() => void bridge.system.openExternal(info?.url || RELEASES)}
+							className="bg-card/80"
+							data-ly-open-releases=""
 						>
-							{checking ? t("about.checking") : t("about.checkUpdate")}
+							{t("about.releases")}
 						</Button>
-						{available && (
-							<Button variant="primary" onClick={() => setOpenDialog(true)} icon={<CloudDownload size={13} strokeWidth={2} aria-hidden />}>
-								{t("about.updateNow", { version: info?.latest ?? "" })}
-							</Button>
-						)}
 					</div>
-				</div>
-
-				<div className="mt-5">
-					<Button
-						variant="subtle"
-						size="sm"
-						icon={<Tag size={13} strokeWidth={2} aria-hidden />}
-						onClick={() => void bridge.system.openExternal(info?.url || RELEASES)}
-						className="bg-card/80"
-						data-ly-open-releases=""
-					>
-						{t("about.releases")}
-					</Button>
-				</div>
-			</section>
-
-			<Card>
-				<Row
-					title={t("about.checkInterval")}
-					control={
-						<InlineSelect
-							value={String(interval)}
-							onChange={(v) => setIntervalHours(Number(v))}
-							options={[
-								{ value: "1", label: t("about.every1h") },
-								{ value: "4", label: t("about.every4h") },
-								{ value: "6", label: t("about.every6h") },
-								{ value: "8", label: t("about.every8h") },
-								{ value: "12", label: t("about.every12h") },
-								{ value: "24", label: t("about.every24h") },
-							]}
-						/>
-					}
-				/>
-				<Row title={t("about.environment")} control={<span className="font-mono text-label text-ink-muted">{platform}</span>} />
-			</Card>
-
-			{notes ? (
-				<section>
-					<SectionTitle>{available ? t("about.updateDetails", { version: info?.latest ?? "" }) : t("about.releaseNotes", { version: info?.current ?? "" })}</SectionTitle>
-					<Card>
-						<div className="px-5 py-4">
-							<Markdown key={resolvedLocale} text={notes} className="text-label" />
-						</div>
-					</Card>
 				</section>
-			) : (
-				info?.checked === false && <p className="text-center text-detail text-ink-faint">{t("about.checkPrompt")}</p>
-			)}
 
-			{openDialog && info && <UpdateDialog info={info} phase={phase} onClose={() => setOpenDialog(false)} />}
+				<Card>
+					<Row
+						title={t("about.checkInterval")}
+						control={
+							<InlineSelect
+								value={String(interval)}
+								onChange={(v) => setIntervalHours(Number(v))}
+								options={[
+									{ value: "1", label: t("about.every1h") },
+									{ value: "4", label: t("about.every4h") },
+									{ value: "6", label: t("about.every6h") },
+									{ value: "8", label: t("about.every8h") },
+									{ value: "12", label: t("about.every12h") },
+									{ value: "24", label: t("about.every24h") },
+								]}
+							/>
+						}
+					/>
+					<Row title={t("about.environment")} control={<span className="font-mono text-label text-ink-muted">{platform}</span>} />
+				</Card>
+
+				{notes ? (
+					<section>
+						<SectionTitle>{available ? t("about.updateDetails", { version: info?.latest ?? "" }) : t("about.releaseNotes", { version: info?.current ?? "" })}</SectionTitle>
+						<Card>
+							<div className="px-5 py-4">
+								<Markdown key={resolvedLocale} text={notes} className="text-label" />
+							</div>
+						</Card>
+					</section>
+				) : (
+					info?.checked === false && <p className="text-center text-detail text-ink-faint">{t("about.checkPrompt")}</p>
+				)}
+
+				{openDialog && info && <UpdateDialog info={info} phase={phase} onClose={() => setOpenDialog(false)} />}
+			</div>
 		</div>
 	);
 }

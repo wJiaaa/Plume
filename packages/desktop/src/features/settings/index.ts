@@ -16,7 +16,7 @@ export { newMcpServer } from "./mcp-defaults.ts";
 export { NumberField, Slider, TimeField } from "./pickers.tsx";
 export { ColorField } from "./appearance-controls.tsx";
 export { applyAppearance, onAppearanceApplied, watchSystemTheme } from "./theme.ts";
-export { settingsGroups } from "./settings-navigation.ts";
+export { SETTINGS_GROUPS } from "./settings-navigation.ts";
 
 /*
  * 顶层视图不在这张表上。

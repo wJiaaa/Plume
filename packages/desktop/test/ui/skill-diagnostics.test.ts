@@ -84,7 +84,7 @@ test("skill warnings are counted by skill, under a header that does not name one
 	const commit = "/home/me/.claude/skills/commit/SKILL.md";
 	const review = "/home/me/.claude/skills/review/SKILL.md";
 	const page = await render(
-		h(SkillsSettings),
+		h(SkillsSettings, { filter: "" }),
 		scan({ skillDiagnostics: [warning(commit, SHORT), warning(commit, SCOPED), warning(commit, UNMATCHED), warning(review, SCOPED)] }),
 	);
 	try {
@@ -105,7 +105,7 @@ test("the failed-to-load header counts skills that did not load, and nothing els
 	const broken = "/work/.plume/skills/broken/SKILL.md";
 	const short = "/work/.plume/skills/short/SKILL.md";
 	const page = await render(
-		h(SkillsSettings),
+		h(SkillsSettings, { filter: "" }),
 		scan({ skillDiagnostics: [error(broken, UNCLOSED), error(broken, NO_DESCRIPTION), warning(short, SHORT)] }),
 	);
 	try {
@@ -124,7 +124,7 @@ test("a rescan that reorders the rows neither doubles nor drops one", async () =
 	const commit = "/home/me/.claude/skills/commit/SKILL.md";
 	const review = "/home/me/.claude/skills/review/SKILL.md";
 	const page = await render(
-		h(SkillsSettings),
+		h(SkillsSettings, { filter: "" }),
 		scan({ skillDiagnostics: [warning(commit, SHORT), warning(commit, SCOPED), warning(review, UNMATCHED)] }),
 		scan({ skillDiagnostics: [warning(review, UNMATCHED), warning(commit, SHORT), warning(commit, SCOPED)] }),
 	);
@@ -142,7 +142,7 @@ test("a rescan that reorders the rows neither doubles nor drops one", async () =
 test("plugin skill warnings are counted by skill; plugin problems are still counted one by one", async () => {
 	const skills = "/home/me/.plume/plugins/waza/skills";
 	const page = await render(
-		h(PluginsSettings),
+		h(PluginsSettings, { filter: "", markOf: () => undefined }),
 		scan({
 			pluginDiagnostics: [
 				warning(`${skills}/think/SKILL.md`, SHORT),

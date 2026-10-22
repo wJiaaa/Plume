@@ -9,6 +9,7 @@ import { useSide, openScopedPanel } from "../dock/index.ts";
 import { useDockScope } from "../../app/session-scope.tsx";
 import { useFade } from "./FadeText.tsx";
 import { OverlayScrollbar } from "../../ui/scroll/OverlayScrollbar.tsx";
+import { useCopied } from "../../ui/hooks/useCopied.ts";
 
 /**
  * Fences that are commands rather than code.
@@ -56,7 +57,7 @@ function commandFrom(code: string): string {
 }
 
 export function CodeBlock({ lang, code, fade = false }: { lang: string; code: string; fade?: boolean }) {
-	const [copied, setCopied] = useState(false);
+	const { copied, mark } = useCopied();
 	const [wrap, setWrap] = useState(false);
 	const label = lang.toLowerCase() || "text";
 	const look = lookFor(`code.${LANG_EXTENSION[label] ?? label}`, false);
@@ -161,9 +162,7 @@ export function CodeBlock({ lang, code, fade = false }: { lang: string; code: st
 				<CodeAction
 					tip={translate("common.copy")}
 					onClick={() => {
-						void navigator.clipboard.writeText(code);
-						setCopied(true);
-						setTimeout(() => setCopied(false), 1400);
+						void navigator.clipboard.writeText(code).then(() => mark(true));
 					}}
 				>
 					{copied ? <Check size={14} strokeWidth={2} className="text-ok" /> : <Copy size={14} strokeWidth={1.9} />}

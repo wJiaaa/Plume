@@ -22,7 +22,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ScreenshotSettings } from "@plume/core";
 import { useAnnotator } from "./Annotator.tsx";
 import { AnnotateCanvas } from "./AnnotateCanvas.tsx";
-import { AnnotateToolbar, BAR_SURFACE } from "./AnnotateToolbar.tsx";
+import { AnnotateToolbar } from "./AnnotateToolbar.tsx";
 import { ScreenshotLoupe } from "./ScreenshotLoupe.tsx";
 import { useToolbarPlacement } from "./useToolbarPlacement.ts";
 import { useSelectionGesture, EDGE_GRAB } from "./useSelectionGesture.ts";
@@ -917,16 +917,6 @@ export function ScreenshotOverlay() {
 						onDownload={handleDownload}
 						onGrab={toolbar.startDrag}
 						grabbing={toolbar.dragging}
-						/*
-						 * Bigger here than in the image viewer, and the reason is where it is standing.
-						 *
-						 * This bar floats over a frozen desktop with no window around it, at a position
-						 * that moves with every selection, and it is aimed at while the hand is still
-						 * travelling from the drag that made the region. 24pt buttons are fine in a
-						 * window whose chrome tells you where things are; out here they are the report
-						 * this answers — 「截图控件尺寸实在是太小了」.
-						 */
-						size="large"
 						canReplace={false}
 						saveLabel={translate("common.done")}
 						cancelLabel={translate("common.cancel")}
@@ -938,9 +928,6 @@ export function ScreenshotOverlay() {
 						 * of the very region being annotated.
 						 */
 						propertiesSide={toolbarAt?.side === "below" ? "below" : "above"}
-						// Position, background and shadow only: spacing comes from `size`, or the two
-						// would drift the first time either was changed. See `AnnotateToolbar`.
-						className={BAR_SURFACE}
 					/>
 				</div>
 			)}

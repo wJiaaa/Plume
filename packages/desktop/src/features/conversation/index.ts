@@ -15,8 +15,8 @@ export { SessionStatus } from "./SessionStatus.tsx";
 /* 建议新会话的「开始」那一排：环境卡片那一节和对话里的卡片问同一个问题。 */
 export { SuggestionStart } from "./SessionSuggestionCard.tsx";
 export { ThinkingBlock } from "./ThinkingBlock.tsx";
-export { DetailCard } from "./detail/DetailCard.tsx";
-export { runs, runKey, withoutThinking } from "./grouping.ts";
+export { runs, runKey } from "./grouping.ts";
+export { withoutThinking } from "./turn-blocks.ts";
 export { ModelSwitchRow } from "./ModelSwitchRow.tsx";
 export { ToolRun, segments } from "./runs.tsx";
 /* 人说的一句话画成气泡——侧边聊天和子智能体面板共用，见 `SpokenBubble`。 */

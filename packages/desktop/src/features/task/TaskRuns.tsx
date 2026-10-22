@@ -1,7 +1,7 @@
 import { translate } from "../../i18n/translate.ts";
 import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import type { ToolRun } from "../../store/index.ts";
-import { DetailCard } from "../conversation/index.ts";
+import { DetailCard } from "./DetailCard.tsx";
 import { ScrollText } from "../../ui/scroll/ScrollText.tsx";
 import { Text } from "../../ui/primitives/Text.tsx";
 import { RunDetail } from "./RunDetail.tsx";
@@ -99,7 +99,7 @@ export function TaskRuns({ runs, scrollRef, query = "" }: { runs: ToolRun[]; que
 				onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocusedId(null); }}
 				className={`absolute right-0 left-0 flow-root ${open ? "z-20" : ""}`}
 				style={{ top: index * rowHeight + (index > openIndex && openIndex >= 0 ? extra : 0) }}>
-				<DetailCard enter={false} open={open} onToggle={() => { setOpenId(open ? null : run.toolCallId); setOpenHeight(0); }}
+				<DetailCard open={open} onToggle={() => { setOpenId(open ? null : run.toolCallId); setOpenHeight(0); }}
 					summary={<ScrollText text={run.summary} className="ly-fade-tail min-w-0 flex-1 text-detail" />}
 					trailing={<>
 						<span className={`h-[6px] w-[6px] shrink-0 rounded-full ${run.status === "running" ? "ly-pulse bg-accent" : run.status === "error" ? "bg-danger" : "bg-ok/70"}`} />

@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { FileEntry } from "../../../electron/ipc-types.ts";
-import { DRAGGED_PATHS as PATHS, dirName, isDescendantPath } from "../../lib/paths.ts";
+import { DRAGGED_PATHS as PATHS, isDescendantPath, parentOf } from "../../lib/paths.ts";
 import { bridge } from "../../services/index.ts";
 import { macKeyboard } from "../../ui/keyboard.ts";
 
@@ -161,12 +161,12 @@ export function useTreeDrag({
 			},
 			onDragOver: (event: React.DragEvent) => {
 				// A file is not a destination; dropping on one means dropping beside it.
-				const dir = entry.isDirectory ? entry.path : dirName(entry.path);
+				const dir = entry.isDirectory ? entry.path : parentOf(entry.path);
 				if (accept(event, dir)) springOpen(entry);
 				event.stopPropagation();
 			},
 			onDragLeave: cancelSpring,
-			onDrop: (event: React.DragEvent) => finish(event, entry.isDirectory ? entry.path : dirName(entry.path)),
+			onDrop: (event: React.DragEvent) => finish(event, entry.isDirectory ? entry.path : parentOf(entry.path)),
 		}),
 		[accept, cancelSpring, finish, pathsFor, springOpen],
 	);

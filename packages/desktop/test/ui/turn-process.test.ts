@@ -11,8 +11,9 @@ import { act, createElement as h } from "react";
 import type { AssistantContent, Message, SessionMeta, Settings } from "@plume/core";
 import { LiveToolCard, ToolRun } from "../../src/features/conversation/runs.tsx";
 import { TurnWork } from "../../src/features/conversation/TurnWork.tsx";
-import { WorkStep, type DrawCall } from "../../src/features/conversation/WorkStep.tsx";
-import type { Call, Run, Step } from "../../src/features/conversation/grouping.ts";
+import { WorkStep } from "../../src/features/conversation/WorkStep.tsx";
+import type { Call, Run } from "../../src/features/conversation/grouping.ts";
+import type { Step } from "../../src/features/conversation/turn-blocks.ts";
 import { useApp } from "../../src/store/index.ts";
 import { HOLD_MS } from "../../src/ui/motion/held.ts";
 import { click, mount } from "../helpers/mount.ts";
@@ -51,7 +52,7 @@ const status = (next: Record<string, "running" | "done">) =>
 const wait = (ms: number) => act(() => new Promise<void>((done) => setTimeout(done, ms + 50)));
 
 /** 和 `Conversation` 递进去的是同一个。 */
-const drawCall: DrawCall = ({ block, stopReason }, line) => h(LiveToolCard, { block, stopReason, ...line });
+const drawCall = ({ block, stopReason }: Call) => h(LiveToolCard, { block, stopReason });
 
 /** 一段推理；`writing` 的还在写。 */
 const thought = (writing: boolean) =>
@@ -86,7 +87,7 @@ test("a turn with work draws every line in order, with no anchor and nothing fol
 test("several calls of one kind are one line saying what they did, with the calls inside", async () => {
 	const calls = [browse("b1", "browser_open", { url: "http://localhost:5173/todo.html" }), browse("b2", "browser_act"), browse("b3", "browser_act"), browse("b4", "browser_screenshot")];
 	const restore = withRuns(calls);
-	const view = await mount(h(WorkStep, { step: step(calls), live: false, draw: () => null, drawCall }));
+	const view = await mount(h(WorkStep, { step: step(calls), live: false, draw: () => null }));
 	try {
 		const row = view.find<HTMLButtonElement>("button[aria-expanded]");
 		assert.match(row.textContent ?? "", /^打开网页 todo\.html、操作网页 2 次、截取网页/, "做完说总的，用人话，前面不再挂「浏览器 ·」");
@@ -105,7 +106,7 @@ test("while it runs the line says the call that is running, holds each for a mom
 	const more = [...calls, browse("b3", "browser_act")];
 	const restore = withRuns(more);
 	await status({ b1: "running" });
-	const view = await mount(h(WorkStep, { step: step(calls), live: true, draw: () => null, drawCall }));
+	const view = await mount(h(WorkStep, { step: step(calls), live: true, draw: () => null }));
 	try {
 		const words = view.find(".ly-roll-words");
 		assert.equal(words.textContent, "打开网页 todo.html", "说的是还在跑的那一次，不是最后发出的那次");
@@ -113,7 +114,7 @@ test("while it runs the line says the call that is running, holds each for a mom
 
 		const said = words.firstElementChild;
 		await status({ b1: "done", b3: "running" });
-		await view.rerender(h(WorkStep, { step: step(more), live: true, draw: () => null, drawCall }));
+		await view.rerender(h(WorkStep, { step: step(more), live: true, draw: () => null }));
 		assert.equal(words.textContent, "打开网页 todo.html", "上一句还没挂满，先不换");
 		await wait(HOLD_MS);
 		assert.equal(view.find(".ly-roll-words"), words, "还是同一个框，宽度从旧的缓过去");
@@ -122,7 +123,7 @@ test("while it runs the line says the call that is running, holds each for a mom
 		assert.ok(words.firstElementChild?.classList.contains("ly-roll-soft"));
 
 		await status({ b3: "done" });
-		await view.rerender(h(WorkStep, { step: step(more), live: false, draw: () => null, drawCall }));
+		await view.rerender(h(WorkStep, { step: step(more), live: false, draw: () => null }));
 		assert.equal(words.textContent, "操作网页", "换成总的也要等这一句挂满");
 		await wait(HOLD_MS);
 		assert.equal(words.textContent, "打开网页 todo.html、截取网页、操作网页", "不再长了，滚成总的");
@@ -137,7 +138,7 @@ test("while it runs the line says the call that is running, holds each for a mom
 test("thinking before the calls is counted at the front of the line", async () => {
 	const calls = [browse("b1", "browser_open", { url: "todo.html" }), browse("b2", "browser_screenshot")];
 	const restore = withRuns(calls);
-	const view = await mount(h(WorkStep, { step: { ...step(calls), members: [{ kind: "thinking", run: thought(false) }, ...step(calls).members] }, live: false, draw: () => null, drawCall }));
+	const view = await mount(h(WorkStep, { step: { ...step(calls), members: [{ kind: "thinking", run: thought(false) }, ...step(calls).members] }, live: false, draw: () => null }));
 	try {
 		assert.equal(view.find(".ly-roll-words").textContent, "思考 1 次 · 打开网页 todo.html、截取网页");
 	} finally {
@@ -150,7 +151,7 @@ test("thinking still being written at the end of a stretch is said at the end of
 	// 另一个 id：同一会话里点开过的行会被记住，前面那条点开过 `step-b1`。
 	const calls = [browse("t1", "browser_open", { url: "todo.html" })];
 	const restore = withRuns(calls);
-	const view = await mount(h(WorkStep, { step: step(calls, [{ kind: "thinking", run: thought(true) }]), live: true, draw: () => h("div", { "data-probe": "thought" }), drawCall }));
+	const view = await mount(h(WorkStep, { step: step(calls, [{ kind: "thinking", run: thought(true) }]), live: true, draw: () => h("div", { "data-probe": "thought" }) }));
 	try {
 		assert.equal(view.all(".ly-flow-row").length, 1, "推理不另起一行");
 		assert.equal(view.find(".ly-roll-words").textContent, "打开网页 todo.html", "跑着时说的还是那一次调用，推理的次数等停下再算进去");
@@ -172,8 +173,6 @@ test("a read says its path from the workspace, a search says the model's words",
 		tool("d4", "ls", { path: "/repo/apps/api/src" }),
 		tool("d5", "ls", {}),
 		tool("d6", "grep", { pattern: "timeout|overtime", description: "找超时相关的处理" }),
-		// 没给 pattern：description 里是模型错放的式子，core 拿它当 pattern 搜，这里不当一句话说。
-		tool("d7", "grep", { description: "timeout|overtime" }),
 	];
 	const restore = withRuns(calls);
 	useApp.setState({ meta: { cwd: "/repo" } as SessionMeta });
@@ -188,7 +187,6 @@ test("a read says its path from the workspace, a search says the model's words",
 		assert.match(said[3], /^列出目录 apps\/api\/src\//, "目录带 /");
 		assert.match(said[4], /^列出目录 \.\//);
 		assert.match(said[5], /^找超时相关的处理/, "正则人读不出来，说明留着");
-		assert.match(said[6], /^搜索内容/);
 	} finally {
 		for (const row of rows) await row.unmount();
 		restore();
@@ -219,7 +217,7 @@ test("checking one background job three times in a row is one line that names th
 		settings: { appearance: {} } as Settings,
 		toolRuns: Object.fromEntries(calls.map(({ block }) => [block.id, { toolCallId: block.id, toolName: block.name, args: block.arguments, status: "done" as const, startedAt: Date.now() - 1000, ...results[block.id] }])),
 	});
-	const view = await mount(h(WorkStep, { step: { ...step(calls), category: "terminal" }, live: false, draw: () => null, drawCall }));
+	const view = await mount(h(WorkStep, { step: { ...step(calls), category: "terminal" }, live: false, draw: () => null }));
 	try {
 		const head = view.find(".ly-flow-row").textContent ?? "";
 		assert.match(head, /^执行命令 2 个/, "查输出是那条命令的一部分，不另记");
@@ -243,7 +241,7 @@ test("checking one background job three times in a row is one line that names th
 test("one call is the call's own row", async () => {
 	const calls = [browse("b1", "browser_open", { url: "https://example.com/" })];
 	const restore = withRuns(calls);
-	const view = await mount(h(WorkStep, { step: step(calls), live: false, draw: () => null, drawCall }));
+	const view = await mount(h(WorkStep, { step: step(calls), live: false, draw: () => null }));
 	try {
 		assert.equal(view.all("[data-ly-tool]").length, 1);
 		assert.match(view.text(), /打开网页 example\.com/, "没写 summarize 的工具不再露出 browser_open 这种名字");
@@ -263,7 +261,7 @@ test("a background command that came back failed marks its stretch, and hangs on
 	} as Extract<Run, { kind: "message" }>;
 	const restore = withRuns(calls);
 	const draw = (run: Run) => (run === back ? h("div", { "data-probe": "job" }, "后台命令失败") : null);
-	const view = await mount(h(WorkStep, { step: step(calls, [{ kind: "job", run: back }]), live: false, draw, drawCall }));
+	const view = await mount(h(WorkStep, { step: step(calls, [{ kind: "job", run: back }]), live: false, draw }));
 	try {
 		const row = view.find<HTMLButtonElement>("button[aria-expanded]");
 		assert.ok(row.querySelector(".text-danger\\/85"), "启动它的那次 bash 是跑完了的，失败只在回来的结果上");

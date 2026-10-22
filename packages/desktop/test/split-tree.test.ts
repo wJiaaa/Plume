@@ -6,7 +6,6 @@ import {
 	canSplit,
 	contains,
 	defaultTree,
-	evenSplit,
 	firstSession,
 	leafCount,
 	leafOf,
@@ -20,7 +19,8 @@ import {
 	splitLeaf,
 } from "../src/features/split/tree.ts";
 import { regionForSide, sideOf } from "../src/features/split/drop.ts";
-import { isOriginPane, isTopEndPane, layoutPanes, layoutSplitters, shareFromPointer } from "../src/features/split/layout.ts";
+import { isOriginPane, isTopEndPane, layoutPanes } from "../src/features/split/layout.ts";
+import { layoutSplitters, shareFromPointer } from "../src/lib/tiling.ts";
 
 function ids(node: ReturnType<typeof defaultTree>): string[] {
 	return sessionIds(node);
@@ -148,11 +148,6 @@ test("resize trades a pair of shares without touching the rest", () => {
 	if (moved.type === "split") {
 		assert.ok(Math.abs(moved.sizes[0]! + moved.sizes[1]! - 0.6) < 1e-6);
 		assert.equal(moved.sizes[2], 0.4);
-	}
-	const even = evenSplit(tree, [], 0);
-	if (even.type === "split") {
-		assert.equal(even.sizes[0], 0.3);
-		assert.equal(even.sizes[1], 0.3);
 	}
 });
 

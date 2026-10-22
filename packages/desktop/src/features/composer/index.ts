@@ -8,7 +8,7 @@
  */
 
 export { Composer } from "./Composer.tsx";
-export { ComposerSend, ComposerShell } from "./ComposerShell.tsx";
+export { ComposerSend, ComposerShell, landInField } from "./ComposerShell.tsx";
 export { ContextMeter } from "./ContextMeter.tsx";
 export { InputMenu } from "./InputMenu.tsx";
 /* 转录里那条消息也要按门类画附件图标——同一套门类，同一个图标，不该有第二份。 */
@@ -54,8 +54,8 @@ export type { DraftAttachment } from "./attachments/read.ts";
 /* 方向键往回翻自己说过的话——三个框同一套手感。 */
 export { useInputHistory } from "./useInputHistory.ts";
 /*
- * 忙的时候说出口的话排在哪儿、长什么样。主会话和侧边聊天是两条队、同一条条——见 `QueueSource`。
+ * 忙的时候说出口的话排在哪儿、长什么样。主会话和侧边聊天是两条队、同一条条——见 `QueuedMessages`。
  */
-export { QueueList } from "./QueuedMessages.tsx";
+export { QueuedMessages } from "./QueuedMessages.tsx";
 export { QuoteChip } from "./QuoteChip.tsx";
 export { queuePreview, queueThumbnail } from "./outgoing.ts";

@@ -35,7 +35,6 @@ import {
 	useDraft,
 	useInputHistory,
 } from "../composer/index.ts";
-import { Markdown } from "../markdown/index.ts";
 import { PanelEmpty } from "../../ui/layout/PanelEmpty.tsx";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { useFollowBottom } from "../../ui/scroll/useFollowBottom.ts";
@@ -45,18 +44,18 @@ import { stateOf } from "../../lib/dispatches.ts";
 import { AgentAvatar } from "../../ui/avatar/AgentAvatar.tsx";
 import { wayBack } from "./way-back.ts";
 import { SubAgentHeader } from "./SubAgentHeader.tsx";
-import { hasContent, StructuredOutput } from "./StructuredOutput.tsx";
+import { hasContent, Prose, StructuredOutput } from "./StructuredOutput.tsx";
 import { Button } from "../../ui/primitives/Button.tsx";
 import { fromParent, SubAgentTranscript } from "./SubAgentMessageRow.tsx";
 import { bridge } from "../../services/index.ts";
 import { openFilePane } from "../dock/index.ts";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
+import { useCopied } from "../../ui/hooks/useCopied.ts";
 
 const NO_MESSAGES: Message[] = [];
 
 /** 在应用里打开一个磁盘上的文件：开进旁边的文件面板，和主输入框、侧边聊天一样。 */
-type OpenFile = (path: string, name: string) => void;
-const openFile: OpenFile = (path) => void openFilePane(path);
+const openFile = (path: string) => void openFilePane(path);
 
 export function SubAgentPanel() {
 	const { t } = useI18n();
@@ -102,7 +101,7 @@ export function SubAgentPanel() {
 			 * delegate it is showing and gets the right position back, the same way the conversation
 			 * does when you switch sessions.
 			 */}
-			{current && <Transcript agent={current} agents={ordered} sessionId={sessionId} openFile={openFile} />}
+			{current && <Transcript agent={current} agents={ordered} sessionId={sessionId} />}
 		</div>
 	);
 }
@@ -120,11 +119,10 @@ function IdleCrew() {
 	);
 }
 
-function Transcript({ agent, agents, sessionId, openFile }: {
+function Transcript({ agent, agents, sessionId }: {
 	agent: SubAgentSummary;
 	agents: SubAgentSummary[];
 	sessionId: string | null;
-	openFile?: OpenFile;
 }) {
 	const { t } = useI18n();
 	const messages = useSubAgents((s) => s.transcripts[agent.id]);
@@ -216,9 +214,9 @@ function Transcript({ agent, agents, sessionId, openFile }: {
 			<BackToLatest show={follow.away} unread={follow.unread} onClick={follow.returnToBottom} />
 			</div>
 			{agent.status === "running" && sessionId ? (
-				<Steer agent={agent} sessionId={sessionId} openFile={openFile} />
+				<Steer agent={agent} sessionId={sessionId} />
 			) : (
-				<IdleComposer placeholder={t("subAgent.finishedSteer")} agent={agent} sessionId={sessionId} openFile={openFile} />
+				<IdleComposer placeholder={t("subAgent.finishedSteer")} agent={agent} sessionId={sessionId} />
 			)}
 		</>
 	);
@@ -249,7 +247,6 @@ function Report({ agent }: { agent: SubAgentSummary }) {
 	 * `answer` 一起消失，而标题只说了「没跑完」，没说是跑满了检查点、原地打转，还是服务出错。
 	 */
 	const note = agent.incomplete && structured ? answer.split(/\n{2,}/)[0].replace(/^⚠\s*/, "") : null;
-	const prose = (text: string) => <Markdown text={text} className="min-w-0 max-w-full break-words" />;
 	return (
 		<section
 			data-sub-report=""
@@ -266,7 +263,7 @@ function Report({ agent }: { agent: SubAgentSummary }) {
 				<CopyReport text={answer} />
 			</header>
 			{note && <p className="mb-3 text-detail leading-relaxed text-ink-muted" data-sub-report-note="">{note}</p>}
-			{structured ? <StructuredOutput output={structured} warnings={agent.warnings} prose={prose} /> : prose(answer)}
+			{structured ? <StructuredOutput output={structured} warnings={agent.warnings} /> : <Prose text={answer} />}
 		</section>
 	);
 }
@@ -274,19 +271,14 @@ function Report({ agent }: { agent: SubAgentSummary }) {
 /** 复制它交回来的全文——给模型读的那一份，带着每一条，贴到哪儿都能读。 */
 function CopyReport({ text }: { text: string }) {
 	const { t } = useI18n();
-	const [copied, setCopied] = useState(false);
-	useEffect(() => {
-		if (!copied) return;
-		const timer = setTimeout(() => setCopied(false), 1600);
-		return () => clearTimeout(timer);
-	}, [copied]);
+	const { copied, mark } = useCopied();
 	return (
 		<IconButton
 			size="sm"
 			data-ly-hover-reveal=""
 			label={copied ? t("common.copied") : t("common.copy")}
 			ariaLabel={t("subAgent.copyReport")}
-			onClick={() => void navigator.clipboard.writeText(text).then(() => setCopied(true))}
+			onClick={() => void navigator.clipboard.writeText(text).then(() => mark(true))}
 			className="opacity-0 transition group-hover/report:opacity-100 focus-visible:opacity-100"
 			icon={copied ? <Check size={12.5} strokeWidth={2.2} className="ly-pop text-ok" /> : <Copy size={12.5} strokeWidth={1.8} />}
 		/>
@@ -373,7 +365,7 @@ function Redispatch({ agent }: { agent: SubAgentSummary }) {
  * window's bottom became two, then one, and the remaining cards sat on a
  * different line. A disabled twin holds the slot.
  */
-function IdleComposer({ placeholder, agent, sessionId, openFile }: { placeholder: string; agent?: SubAgentSummary; sessionId?: string | null; openFile?: OpenFile }) {
+function IdleComposer({ placeholder, agent, sessionId }: { placeholder: string; agent?: SubAgentSummary; sessionId?: string | null }) {
 	const { t } = useI18n();
 	const avatarOf = useAgentAvatars();
 	return (
@@ -401,7 +393,7 @@ function IdleComposer({ placeholder, agent, sessionId, openFile }: { placeholder
 				}
 				right={
 					<>
-						{agent && sessionId && <SubAgentMeter agent={agent} sessionId={sessionId} openFile={openFile} />}
+						{agent && sessionId && <SubAgentMeter agent={agent} sessionId={sessionId} />}
 						<ComposerSend running={false} disabled onSend={() => undefined} onStop={() => undefined} />
 					</>
 				}
@@ -421,7 +413,7 @@ function IdleComposer({ placeholder, agent, sessionId, openFile }: { placeholder
  * 发送键就是发送键。它从前在「发送中」那一瞬变成停止键，而那颗停止停的是整个子智能体：连点两下
  * 回车，第二下就把它杀了。停止在面板顶上，写着字。
  */
-function Steer({ agent, sessionId, openFile }: { agent: SubAgentSummary; sessionId: string; openFile?: OpenFile }) {
+function Steer({ agent, sessionId }: { agent: SubAgentSummary; sessionId: string }) {
 	const { t } = useI18n();
 	const avatarOf = useAgentAvatars();
 	const { text, setText, attachments, setAttachments, clear } = useDraft<DraftAttachment>(`subagent:${sessionId}:${agent.id}`);
@@ -476,13 +468,7 @@ function Steer({ agent, sessionId, openFile }: { agent: SubAgentSummary; session
 			<ComposerShell
 				value={text}
 				fieldRef={field}
-				hint={
-					history.position ? (
-						<div data-ly-history="" className="ly-composer-hint text-caption text-ink-faint">
-							{t("composer.history", { current: history.position.current, total: history.position.total })}
-						</div>
-					) : undefined
-				}
+				historyPosition={history.position}
 				onChange={(next) => {
 					setText(next);
 					// 句子里那枚标记被删掉，附件跟着卸下来——删除是双向的。
@@ -493,22 +479,14 @@ function Steer({ agent, sessionId, openFile }: { agent: SubAgentSummary; session
 					if (marks.keyDown(event)) return;
 					history.keyDown(event);
 				}}
-				onContextMenu={kit.onContextMenu}
-				onAttachmentClick={kit.onAttachmentClick}
+				{...kit.shell}
 				decoration={{ attachments: marks.decorationFor(text) }}
 				onSubmit={() => void send()}
 				placeholder={t("subAgent.steerPlaceholder")}
-				onFiles={(picked) => void kit.addFiles(picked)}
-				attachments={
-					/* 和主输入框同一排：只有图片，文件在句子里那枚标记上；没有图就不撑开。 */
-					<div className="ly-reveal" data-open={kit.strip.length > 0 ? "true" : "false"}>
-						<div><div className="ly-composer-attachments">{kit.stripNode}</div></div>
-					</div>
-				}
+				attachments={kit.tray()}
 				left={
 					<>
-						<IconButton size="composer" emphasis label={t("composer.addAttachment")} onClick={kit.picker.open} icon={<Plus size={16} strokeWidth={1.9} />} />
-						{kit.picker.input}
+						{kit.addButton}
 						{/* 说给谁听：它的脸在这儿，字就不用再写一遍名字。 */}
 						<span className="flex h-7 min-w-0 items-center gap-1.5 px-2 text-label text-ink-faint">
 							<AgentAvatar avatar={avatarOf(agent.agent)} size={14} mood={stateOf(agent)} seed={agent.agent} interactive={false} />
@@ -518,7 +496,7 @@ function Steer({ agent, sessionId, openFile }: { agent: SubAgentSummary; session
 				}
 				right={
 					<>
-						<SubAgentMeter agent={agent} sessionId={sessionId} openFile={openFile} />
+						<SubAgentMeter agent={agent} sessionId={sessionId} />
 						<ComposerSend running={false} disabled={empty || sending} onSend={() => void send()} onStop={() => undefined} />
 					</>
 				}
@@ -529,7 +507,7 @@ function Steer({ agent, sessionId, openFile }: { agent: SubAgentSummary; session
 }
 
 /** 它自己的上下文窗口，和主输入框同一只表。模型只有运行时知道（派它时按定义选的），窗口随读数一起来。 */
-function SubAgentMeter({ agent, sessionId, openFile }: { agent: SubAgentSummary; sessionId: string; openFile?: OpenFile }) {
+function SubAgentMeter({ agent, sessionId }: { agent: SubAgentSummary; sessionId: string }) {
 	const settings = useApp((s) => s.settings);
 	const messages = useSubAgents((s) => s.transcripts[agent.id]) ?? NO_MESSAGES;
 	return <ContextMeter messages={messages} settings={settings} modelId={null} sessionId={sessionId} subAgentId={agent.id} running={agent.status === "running"} openFile={openFile} />;

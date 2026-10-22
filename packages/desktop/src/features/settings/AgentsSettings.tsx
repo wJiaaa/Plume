@@ -9,7 +9,7 @@ import type { AgentCapabilities } from "../../../electron/ipc-types.ts";
 import { useApp } from "../../store/index.ts";
 import { useAgentAvatars, type AvatarOf } from "../../store/agent-avatars.ts";
 import { AgentAvatar } from "../../ui/avatar/AgentAvatar.tsx";
-import { Card, InlineSelect, Notice } from "./controls.tsx";
+import { Card, InlineSelect, Notice, PageHeader } from "./controls.tsx";
 import { ModelSelect } from "../models/index.ts";
 import { AgentDefinitionEditor } from "./AgentDefinitionEditor.tsx";
 import { useAgentDefinitions } from "./useAgentDefinitions.ts";
@@ -17,7 +17,7 @@ import { ProjectScope } from "./ProjectScope.tsx";
 import type { AgentDefinitionRecord } from "@plume/core";
 import { bridge, hostPlatform } from "../../services/index.ts";
 import { systemWord } from "../../lib/system-words.ts";
-import { SearchField } from "../../ui/inputs/SearchField.tsx";
+import { DefinitionToolbar } from "./definition-page.tsx";
 import { ActionSpinner } from "../../ui/motion/loaders.tsx";
 import { Button } from "../../ui/primitives/Button.tsx";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
@@ -141,17 +141,9 @@ export function AgentsSettings() {
 
 	return (
 		<div data-agent-settings className="pt-2">
-			<h1 className="text-display leading-tight font-semibold tracking-tight text-ink">{t("agents.title")}</h1>
-			<p className="mt-2 text-label text-ink-muted">{t("agents.intro")}</p>
-			<div className="mt-6 flex min-w-0 flex-wrap items-center gap-3">
-				<ProjectScope value={project} projects={projects} onChange={setProjectPath} />
-				<div className="h-4 w-px bg-line" aria-hidden />
-				<div className="flex items-center gap-1 text-label font-medium text-ink">
-					{t("agents.title")}
-					<span className="text-detail font-normal text-ink-faint">{count}</span>
-				</div>
-				<SearchField size="comfortable" value={query} onChange={setQuery} placeholder={t("agents.search")} className="ml-auto max-w-[220px] flex-1 basis-[120px]" />
-			</div>
+			<PageHeader title={t("agents.title")} intro={t("agents.intro")} />
+			<DefinitionToolbar scope={<ProjectScope value={project} projects={projects} onChange={setProjectPath} />}
+				title={t("agents.title")} count={count} query={query} onQuery={setQuery} placeholder={t("agents.search")} />
 			<div className="@container">
 
 				{catalogue.error && <Banner action={<Button variant="subtle" size="sm" onClick={() => void catalogue.refresh()}>{t("common.retry")}</Button>}>{catalogue.error}</Banner>}

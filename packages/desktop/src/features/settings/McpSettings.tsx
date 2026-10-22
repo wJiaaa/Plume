@@ -37,7 +37,7 @@ import { translate, useI18n } from "../../i18n/index.ts";
 
 type Status = AgentCapabilities["mcp"][number];
 
-export function McpSettings({ filter = "", markOf }: { filter?: string; markOf?: (id?: string, name?: string) => MarketMark | undefined }) {
+export function McpSettings({ filter, markOf }: { filter: string; markOf: (id?: string, name?: string) => MarketMark | undefined }) {
 	const { t } = useI18n();
 	const settings = useApp((s) => s.settings);
 	const saveSettings = useApp((s) => s.saveSettings);
@@ -169,7 +169,7 @@ export function McpSettings({ filter = "", markOf }: { filter?: string; markOf?:
 							onUpdate={(patch) => update(server.id, patch)}
 							onRemove={() => remove(server)}
 							folder={server.origin ? bundles.get(server.origin.bundle)?.dir : undefined}
-							mark={markOf?.(server.origin?.bundle, server.name) ?? (server.origin ? bundles.get(server.origin.bundle)?.manifest.interface : undefined)}
+							mark={markOf(server.origin?.bundle, server.name) ?? (server.origin ? bundles.get(server.origin.bundle)?.manifest.interface : undefined)}
 							onOpenInMarket={
 								server.origin
 									? () => {

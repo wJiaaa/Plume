@@ -15,9 +15,10 @@
  * "new chat on the right of a wide pane".
  */
 
+import type { Axis } from "../../lib/tiling.ts";
+
 export const MAX_PANES = 4;
 
-export type Axis = "row" | "col";
 export type DropSide = "left" | "right" | "top" | "bottom";
 
 export interface SplitLeaf {
@@ -299,20 +300,6 @@ export function resize(
 		const sizes = [...node.sizes];
 		sizes[index] = nextNear;
 		sizes[index + 1] = nextFar;
-		return { ...node, sizes };
-	});
-}
-
-export function evenSplit(tree: SplitNode, path: number[], index: number): SplitNode {
-	return replaceAt(tree, path, (node) => {
-		if (node.type !== "split") return node;
-		const near = node.sizes[index];
-		const far = node.sizes[index + 1];
-		if (near === undefined || far === undefined) return node;
-		const pair = near + far;
-		const sizes = [...node.sizes];
-		sizes[index] = pair / 2;
-		sizes[index + 1] = pair / 2;
 		return { ...node, sizes };
 	});
 }

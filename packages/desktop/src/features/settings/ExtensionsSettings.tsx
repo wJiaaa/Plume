@@ -6,6 +6,7 @@ import { useLocalScan, useMarketMarks } from "../plugins/index.ts";
 
 import { MenuBody, MenuItem, Popover, usePopover } from "../../ui/overlay/Popover.tsx";
 import { RetainedViews } from "../../ui/layout/RetainedViews.tsx";
+import { PageHeader } from "./layout.tsx";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { SearchField } from "../../ui/inputs/SearchField.tsx";
 import { TabStrip } from "../../ui/primitives/TabStrip.tsx";
@@ -108,21 +109,14 @@ export function ExtensionsSettings() {
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col" data-ly-extensions-page="">
-			<header className={`mx-auto flex w-full max-w-[900px] shrink-0 items-start justify-between pt-2 pb-5 ${gutter}`}>
-				<div className="min-w-0">
-					<h1 className="text-display leading-tight font-semibold tracking-tight text-ink">{t("common.plugins")}</h1>
-					<p className="pt-1 text-label text-ink-muted">{t("extensions.intro")}</p>
-				</div>
-
-				<div className="flex shrink-0 items-center gap-2 pt-1">
-					<Button label={t("extensions.browseMarket")} onClick={browse} icon={<Store size={13} strokeWidth={1.8} />} />
-					{/* 同插件页那颗：开单子的入口留字，箭头跟着开合转身。 */}
-					<Button variant="primary" menu={add.open} onClick={add.toggle}>
-						{t("mcp.add")}
-						<Caret open={add.open} size={13} />
-					</Button>
-				</div>
-			</header>
+			<PageHeader className={`mx-auto w-full max-w-[900px] shrink-0 pt-2 ${gutter}`} title={t("common.plugins")} intro={t("extensions.intro")} actions={<>
+				<Button label={t("extensions.browseMarket")} onClick={browse} icon={<Store size={13} strokeWidth={1.8} />} />
+				{/* 同插件页那颗：开单子的入口留字，箭头跟着开合转身。 */}
+				<Button variant="primary" menu={add.open} onClick={add.toggle}>
+					{t("mcp.add")}
+					<Caret open={add.open} size={13} />
+				</Button>
+			</>} />
 
 			{add.open && (
 				<Popover anchor={add.anchor} onClose={add.close} placement="bottom" align="end" width="default">

@@ -13,6 +13,27 @@ import { ROLL_VALUE } from "../../ui/motion/RollingText.tsx";
 import { useI18n } from "../../i18n/index.ts";
 
 /**
+ * 外面送来的字落进框里之后：光标放到末尾——这是一份接着改的草稿，不是一段等着被覆盖的选中。
+ *
+ * `flash`：框自己动一下。被拿走的那一行在别处收掉、字落在这里，中间没有任何东西说这两件事是同一件，
+ * 闪一下的是接住它的这个框，人的眼睛才跟得过来。
+ */
+export function landInField(el: HTMLTextAreaElement | null, { flash = false, preventScroll = false } = {}) {
+	if (!el) return;
+	el.focus({ preventScroll });
+	// 等文本真的进去之后。
+	requestAnimationFrame(() => el.setSelectionRange(el.value.length, el.value.length));
+	if (!flash) return;
+	const shell = el.closest(".ly-composer");
+	if (!(shell instanceof HTMLElement)) return;
+	// 类先摘掉再挂上，中间强制一次布局：同一个动画连着放第二遍，不这样它根本不会重新开始。
+	shell.classList.remove("ly-composer-catch");
+	void shell.offsetWidth;
+	shell.classList.add("ly-composer-catch");
+	shell.addEventListener("animationend", () => shell.classList.remove("ly-composer-catch"), { once: true });
+}
+
+/**
  * The surface you type into, wherever you are typing.
  *
  * One component rather than two sets of matching class strings. The main composer and the side
@@ -30,17 +51,18 @@ export function ComposerShell({
   onSubmit,
   placeholder,
   disabled,
-  autoFocus,
   /** Rendered above the field, for image thumbnails. */
   attachments,
   /**
-   * 一行小字，贴在框内的最上沿。
+   * 方向键翻历史翻到了第几条，写成一行小字贴在框内的最上沿。
+   *
+   * 在框里而不是框外：翻出来的那句就落在它下面一行，两者说的是同一件事。不写又不行——翻出来的那句
+   * 和自己刚打的那句长得一模一样，按到哪儿了全凭记性，一旦记错，再按一下就走过头了。
    *
    * 和 `attachments` 分开，是因为它们说的不是一回事：附件是这条消息的一部分，会跟着发出去；这里
-   * 放的是关于输入框此刻状态的旁白（翻到第几条历史了），发出去的东西里没有它。挤进同一个槽，
-   * 「这条消息带了什么」就再也读不准了。
+   * 是关于输入框此刻状态的旁白，发出去的东西里没有它。
    */
-  hint,
+  historyPosition,
   left,
   right,
   onFiles,
@@ -74,9 +96,8 @@ export function ComposerShell({
   onSubmit: () => void;
   placeholder: string;
   disabled?: boolean;
-  autoFocus?: boolean;
   attachments?: React.ReactNode;
-  hint?: React.ReactNode;
+  historyPosition?: { current: number; total: number } | null;
   left?: React.ReactNode;
   right?: React.ReactNode;
   /**
@@ -226,7 +247,6 @@ export function ComposerShell({
 		};
 	}, [accepting, dropZone]);
 	const mirror = useRef<HTMLDivElement>(null);
-	const [composing, setComposing] = useState(false);
 	/*
 	 * 正在组字的那几个字母在哪儿。
 	 *
@@ -235,6 +255,7 @@ export function ComposerShell({
 	 * 始的地方（选中一段再打字的话，选区起点就是它）。往后每次 update 只有长度在变。
 	 */
 	const [composed, setComposed] = useState<{ start: number; end: number } | null>(null);
+	const composing = composed !== null;
 	/*
 	 * 有东西要画才铺镜像层。
 	 *
@@ -377,7 +398,11 @@ export function ComposerShell({
           </div>,
           document.body,
         )}
-      {hint}
+      {historyPosition && (
+        <div data-ly-history="" className="ly-composer-hint text-caption text-ink-faint">
+          {t("composer.history", { current: historyPosition.current, total: historyPosition.total })}
+        </div>
+      )}
       {attachments}
 
       {/*
@@ -391,7 +416,6 @@ export function ComposerShell({
           ref={field}
           value={value}
           disabled={disabled}
-          autoFocus={autoFocus}
 					onSelect={onSelect}
 					onFocus={onFocus}
 					onBlur={onBlur}
@@ -406,7 +430,6 @@ export function ComposerShell({
 						 * 才是真正管着它的人，这里只是把它提前到这一刻。
 						 */
 						e.currentTarget.dataset.composing = "";
-						setComposing(true);
 						const at = e.currentTarget.selectionStart;
 						setComposed({ start: at, end: at });
 					}}
@@ -418,7 +441,6 @@ export function ComposerShell({
 					}
 					onCompositionEnd={(e) => {
 						delete e.currentTarget.dataset.composing;
-						setComposing(false);
 						setComposed(null);
 					}}
 					data-highlighted={Boolean(highlighted)}

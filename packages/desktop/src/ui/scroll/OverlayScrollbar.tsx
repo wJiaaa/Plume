@@ -3,9 +3,10 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 /**
  * A scrollbar for a surface the app does not own the markup of.
  *
- * `Scroller` covers everything the app renders itself. This is for the two places it cannot
- * reach — CodeMirror's scroller and the diff's — where the element scrolls but its DOM belongs
- * to something else. Given a ref to that element, this draws the same thumb over it.
+ * `Scroller` covers everything the app renders itself. This is for the places it cannot reach —
+ * CodeMirror's scroller, a text area, a code block or table that scrolls sideways inside a reply,
+ * the diff — where the element scrolls but its DOM belongs to something else or cannot be wrapped.
+ * Given a ref to that element, this draws the same thumb over it.
  *
  * Native bars are not an option here. They are hidden globally so that every surface goes
  * through `Scroller`, and re-enabling them per element does not give the same control back: on
@@ -19,10 +20,12 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
  * so a thumb on hover is enough. A line that runs off to the right looks exactly like a line
  * that ended there, and nothing moves to say otherwise — so that one stays visible.
  *
- * Not shared with the diff's own sideways thumb, which needs `sticky` rather than `absolute`:
- * that one sits inside a much taller vertical scroller, where a bar pinned to the bottom of the
- * content would only come into view after you had scrolled past everything it was meant to help
- * with. Here the element being scrolled *is* the pane, so its bottom edge is the right place.
+ * Where the sideways track sits is the one thing that differs between those places, so it is a
+ * prop rather than a second component. Usually the element being scrolled *is* the pane, and its
+ * bottom edge is the right place (`overlay`). The diff sits inside a much taller vertical scroller,
+ * where a bar pinned to the bottom of the content would only come into view after you had scrolled
+ * past everything it was meant to help with — so there the track is `sticky` to the bottom of
+ * whatever scrolls vertically outside it.
  */
 /** 轨道的厚度，也是两条轨道交汇时彼此让开的距离。 */
 const THICKNESS = 10;
@@ -30,11 +33,20 @@ const THICKNESS = 10;
 export function OverlayScrollbar({
 	viewport,
 	orientation,
+	placement = "overlay",
 }: {
 	viewport: React.RefObject<HTMLElement | null>;
 	orientation: "vertical" | "horizontal";
+	/**
+	 * `sticky`: the track is laid out after the viewport and sticks to the bottom of the vertical
+	 * scroller outside it, sitting on a 10px strip the content reserves at its end. The viewport
+	 * gets `data-hscroll="on"` while it overflows so its stylesheet can reserve that strip — the
+	 * thumb must not cover the last line. Horizontal only.
+	 */
+	placement?: "overlay" | "sticky";
 }) {
 	const vertical = orientation === "vertical";
+	const sticky = !vertical && placement === "sticky";
 	const track = useRef<HTMLDivElement>(null);
 	const drag = useRef<{ start: number; from: number } | null>(null);
 	const [metrics, setMetrics] = useState({ offset: 0, size: 0, overflow: false, inset: 0 });
@@ -68,6 +80,7 @@ export function OverlayScrollbar({
 		const at = vertical ? el.scrollTop : el.scrollLeft;
 
 		const overflow = total - length > 1;
+		if (sticky) el.dataset.hscroll = overflow ? "on" : "off";
 		/*
 		 * 角落归谁。
 		 *
@@ -89,7 +102,7 @@ export function OverlayScrollbar({
 		const travel = rail - size;
 		const progress = total - length <= 0 ? 0 : at / (total - length);
 		setMetrics({ offset: travel * progress, size, overflow, inset });
-	}, [vertical, element]);
+	}, [vertical, sticky, element]);
 
 	useLayoutEffect(() => {
 		const el = element;
@@ -146,8 +159,13 @@ export function OverlayScrollbar({
 		<div
 			ref={track}
 			// 末端让开另一条轨道占的那 10px——见 `measure` 里的「角落归谁」。
-			style={vertical ? { bottom: metrics.inset } : { right: metrics.inset }}
-			className={`pointer-events-auto absolute z-[3] ${vertical ? "top-0 right-0 w-[10px]" : "bottom-0 left-0 h-[10px]"}`}
+			style={sticky ? undefined : vertical ? { bottom: metrics.inset } : { right: metrics.inset }}
+			className={
+				sticky
+					// The negative margin puts it on the strip the rows reserve rather than adding height of its own.
+					? "pointer-events-auto sticky bottom-0 z-[2] -mt-[10px] h-[10px]"
+					: `pointer-events-auto absolute z-[3] ${vertical ? "top-0 right-0 w-[10px]" : "bottom-0 left-0 h-[10px]"}`
+			}
 			onMouseDown={(event) => {
 				// Clicking the track jumps to that spot, then hands over to the drag.
 				if (event.target !== track.current) return;

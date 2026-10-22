@@ -4,7 +4,7 @@ import type { AppearanceSettings as Appearance } from "@plume/core";
 import { useEffect, useState } from "react";
 import { useApp } from "../../store/index.ts";
 import { bridge } from "../../services/index.ts";
-import { Card, InlineSelect, Row, SectionTitle, Segmented, TextInput, Toggle } from "./controls.tsx";
+import { Card, InlineSelect, PageHeader, Row, SectionTitle, Segmented, TextInput, Toggle } from "./controls.tsx";
 import { DialogAction } from "../../ui/overlay/Dialog.tsx";
 import { findCodeTheme, LIGHT_CODE_THEMES, DARK_CODE_THEMES } from "../../lib/code/themes.ts";
 import { CodeAppearancePreview } from "./CodeAppearancePreview.tsx";
@@ -82,7 +82,7 @@ export function AppearanceSettings() {
 
 	return (
 		<div className="pt-2">
-			<h1 className="pb-8 text-display leading-tight font-semibold tracking-tight text-ink">{t("appearance.title")}</h1>
+			<PageHeader title={t("appearance.title")} />
 
 			<SectionTitle>{t("appearance.theme")}</SectionTitle>
 			<div className="mb-8 grid grid-cols-3 gap-3">

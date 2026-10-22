@@ -4,7 +4,7 @@ import { ActionSpinner } from "../../ui/motion/loaders.tsx";
 import { useEffect, useState } from "react";
 import { useApp } from "../../store/index.ts";
 import { useRevealLabel } from "../../store/open-targets.ts";
-import { Card, Row, SectionTitle, TextInput, Toggle } from "./controls.tsx";
+import { Card, PageHeader, Row, SectionTitle, TextInput, Toggle } from "./controls.tsx";
 import { NumberField } from "./pickers.tsx";
 import { bridge } from "../../services/index.ts";
 import { useI18n } from "../../i18n/index.ts";
@@ -87,116 +87,113 @@ export function WorktreesSettings() {
 	}, [projects.length]);
 
 	return (
-		<div className="space-y-6 pt-2">
-			<div>
-				<h1 className="text-display leading-tight font-semibold tracking-tight text-ink">{t("settings.worktrees")}</h1>
-				<p className="mt-2 text-label text-ink-muted">
-					{translate("worktrees.intro")}
-				</p>
-			</div>
+		<div className="pt-2">
+			<PageHeader title={t("settings.worktrees")} intro={translate("worktrees.intro")} />
+			<div className="space-y-6">
 
-			<SectionTitle>{t("worktrees.config")}</SectionTitle>
-			<Card className="mb-6">
-				<Row
-					title={t("worktrees.root")}
-					detail={t("worktrees.rootDetail")}
-					control={
-						<TextInput
-							type="text"
-							value={rootDir}
-							placeholder="~/.plume/worktrees"
-							onChange={(next) => update({ rootDir: next })}
-							mono
-							className="w-72"
-						/>
-					}
-				/>
-				<Row
-					title={t("worktrees.autoCreate")}
-					detail={t("worktrees.autoCreateDetail")}
-					control={
-						<Toggle checked={autoCreate} onChange={(next) => update({ autoCreateOnNewSession: next })} />
-					}
-				/>
-				<Row
-					title={t("worktrees.fetchFirst")}
-					detail={t("worktrees.fetchFirstDetail")}
-					control={
-						<Toggle checked={fetchUpstream} onChange={(next) => update({ fetchUpstreamBeforeCreate: next })} />
-					}
-				/>
-				<Row
-					title={t("worktrees.autoPrune")}
-					detail={t("worktrees.autoPruneDetail")}
-					control={
-						<Toggle checked={autoClean} onChange={(next) => update({ autoCleanOld: next })} />
-					}
-				/>
-				<Row
-					title={t("worktrees.keepLimit")}
-					detail={t("worktrees.keepLimitDetail")}
-					control={
-						<NumberField
-							value={keepLimit}
-							min={1}
-							max={100}
-							label={t("worktrees.keepLimit")}
-							name="keepLimit"
-							width={80}
-							onChange={(next) => update({ keepLimit: next })}
-						/>
-					}
-				/>
-			</Card>
-
-			<div className="mb-3 flex items-center justify-between">
-				<SectionTitle>{t("worktrees.active")}</SectionTitle>
-				<IconButton
-					label={translate("common.refresh")}
-					onClick={() => void refreshList()}
-					disabled={refreshing}
-					icon={refreshing ? <ActionSpinner size={12} /> : <RefreshCw size={12} aria-hidden />}
-				/>
-			</div>
-			{worktrees.length === 0 ? (
-				<div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-line py-10 text-center">
-					<FolderGit2 size={24} className="text-ink-faint" />
-					<div className="mt-2 text-label text-ink-faint">{t("worktrees.empty")}</div>
-					<div className="mt-1 text-caption text-ink-faint">{t("worktrees.emptyDetail")}</div>
-				</div>
-			) : (
-				<Card className="divide-y divide-line/60">
-					{worktrees.map((tree) => (
-						<div key={tree.path} className="flex items-center justify-between px-3.5 py-2.5">
-							<div className="min-w-0 flex-1">
-								<div className="flex items-center gap-2">
-									<span className="truncate text-label font-medium text-ink">{tree.label}</span>
-									{tree.branch && (
-										<span className="rounded-sm bg-card-hover px-1.5 py-0.5 text-caption font-mono text-ink-muted">
-											{tree.branch}
-										</span>
-									)}
-								</div>
-								<div className="truncate text-caption text-ink-faint font-mono">{tree.path}</div>
-							</div>
-							<div className="flex items-center gap-2">
-								<IconButton
-									label={revealLabel}
-									onClick={() => void bridge.workspace.reveal(tree.path)}
-									icon={<FolderOpen size={13} strokeWidth={1.8} />}
-								/>
-								<IconButton
-									tone="danger"
-									label={t("worktrees.delete")}
-									disabled={deletingPath === tree.path}
-									onClick={() => void removeTree(tree.repoPath, tree.path)}
-									icon={<Trash2 size={14} />}
-								/>
-							</div>
-						</div>
-					))}
+				<SectionTitle>{t("worktrees.config")}</SectionTitle>
+				<Card className="mb-6">
+					<Row
+						title={t("worktrees.root")}
+						detail={t("worktrees.rootDetail")}
+						control={
+							<TextInput
+								type="text"
+								value={rootDir}
+								placeholder="~/.plume/worktrees"
+								onChange={(next) => update({ rootDir: next })}
+								mono
+								className="w-72"
+							/>
+						}
+					/>
+					<Row
+						title={t("worktrees.autoCreate")}
+						detail={t("worktrees.autoCreateDetail")}
+						control={
+							<Toggle checked={autoCreate} onChange={(next) => update({ autoCreateOnNewSession: next })} />
+						}
+					/>
+					<Row
+						title={t("worktrees.fetchFirst")}
+						detail={t("worktrees.fetchFirstDetail")}
+						control={
+							<Toggle checked={fetchUpstream} onChange={(next) => update({ fetchUpstreamBeforeCreate: next })} />
+						}
+					/>
+					<Row
+						title={t("worktrees.autoPrune")}
+						detail={t("worktrees.autoPruneDetail")}
+						control={
+							<Toggle checked={autoClean} onChange={(next) => update({ autoCleanOld: next })} />
+						}
+					/>
+					<Row
+						title={t("worktrees.keepLimit")}
+						detail={t("worktrees.keepLimitDetail")}
+						control={
+							<NumberField
+								value={keepLimit}
+								min={1}
+								max={100}
+								label={t("worktrees.keepLimit")}
+								name="keepLimit"
+								width={80}
+								onChange={(next) => update({ keepLimit: next })}
+							/>
+						}
+					/>
 				</Card>
-			)}
+
+				<div className="mb-3 flex items-center justify-between">
+					<SectionTitle>{t("worktrees.active")}</SectionTitle>
+					<IconButton
+						label={translate("common.refresh")}
+						onClick={() => void refreshList()}
+						disabled={refreshing}
+						icon={refreshing ? <ActionSpinner size={12} /> : <RefreshCw size={12} aria-hidden />}
+					/>
+				</div>
+				{worktrees.length === 0 ? (
+					<div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-line py-10 text-center">
+						<FolderGit2 size={24} className="text-ink-faint" />
+						<div className="mt-2 text-label text-ink-faint">{t("worktrees.empty")}</div>
+						<div className="mt-1 text-caption text-ink-faint">{t("worktrees.emptyDetail")}</div>
+					</div>
+				) : (
+					<Card className="divide-y divide-line/60">
+						{worktrees.map((tree) => (
+							<div key={tree.path} className="flex items-center justify-between px-3.5 py-2.5">
+								<div className="min-w-0 flex-1">
+									<div className="flex items-center gap-2">
+										<span className="truncate text-label font-medium text-ink">{tree.label}</span>
+										{tree.branch && (
+											<span className="rounded-sm bg-card-hover px-1.5 py-0.5 text-caption font-mono text-ink-muted">
+												{tree.branch}
+											</span>
+										)}
+									</div>
+									<div className="truncate text-caption text-ink-faint font-mono">{tree.path}</div>
+								</div>
+								<div className="flex items-center gap-2">
+									<IconButton
+										label={revealLabel}
+										onClick={() => void bridge.workspace.reveal(tree.path)}
+										icon={<FolderOpen size={13} strokeWidth={1.8} />}
+									/>
+									<IconButton
+										tone="danger"
+										label={t("worktrees.delete")}
+										disabled={deletingPath === tree.path}
+										onClick={() => void removeTree(tree.repoPath, tree.path)}
+										icon={<Trash2 size={14} />}
+									/>
+								</div>
+							</div>
+						))}
+					</Card>
+				)}
+			</div>
 		</div>
 	);
 }

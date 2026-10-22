@@ -11,6 +11,4 @@ export { UpdateBadge } from "./UpdateBadge.tsx";
 export { UpdateDialog } from "./UpdateDialog.tsx";
 export { notesForLocale } from "./notes-locale.ts";
 export { check, restartCheckTimer, useUpdate } from "./store.ts";
-export type { Info } from "./store.ts";
-export { confirmLabel, controlsFor, failureDetail, fractionOf, labelFor, mb, publishedOn, readyNote, versionNote } from "./view.ts";
-export type { Phase } from "./view.ts";
+export { labelFor } from "./view.ts";

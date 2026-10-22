@@ -5,6 +5,7 @@ import type { ApprovalDecision, QuestionFields } from "@plume/core";
 import { Input } from "../../ui/inputs/NativeField.tsx";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { Button } from "../../ui/primitives/Button.tsx";
+import { useOnceAnswer } from "./useOnceAnswer.ts";
 
 const EMPTY_OPTIONS: NonNullable<QuestionFields["options"]> = [];
 
@@ -26,12 +27,11 @@ export function QuestionChoices({ options = EMPTY_OPTIONS, allowCustomInput, sel
 	const [selected, setSelected] = useState<number[]>(defaultOptionIndex !== undefined ? [defaultOptionIndex] : []);
 	const [text, setText] = useState("");
 	const [otherOn, setOtherOn] = useState(options.length === 0);
-	const submitting = useRef(false);
 	const composing = useRef(false);
 	const formRef = useRef<HTMLFormElement>(null);
 	const customRef = useRef<HTMLInputElement>(null);
-	const [pending, setPending] = useState(false);
-	const [error, setError] = useState("");
+	const once = useOnceAnswer(answer);
+	const { pending, error } = once;
 	const values = [...selected.map(index => choices[index]?.label).filter((label): label is string => label !== undefined), ...(otherOn && text.trim() ? [text.trim()] : [])];
 	const canSubmit = values.length > 0 && (!otherOn || Boolean(text.trim()));
 	const kind = selectionMode === "multi" ? "checkbox" : "radio";
@@ -47,15 +47,8 @@ export function QuestionChoices({ options = EMPTY_OPTIONS, allowCustomInput, sel
 		if (selectionMode === "single") setSelected([]);
 	}
 	async function submit(decision: ApprovalDecision) {
-		if (submitting.current || composing.current) return;
-		submitting.current = true;
-		setPending(true); setError("");
-		try { await answer(decision); }
-		catch (failure) {
-			submitting.current = false;
-			setError(failure instanceof Error ? failure.message : String(failure));
-			setPending(false);
-		}
+		// 输入法还在组字时的回车是选字，不是答题。
+		if (!composing.current) await once.submit(decision);
 	}
 	function onFormKey(event: React.KeyboardEvent<HTMLFormElement>) {
 		if (event.nativeEvent.isComposing || composing.current) return;

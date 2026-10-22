@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 import { MAIN_WINDOW_ROW_OFFSET, WINDOW_HEADER_HEIGHT } from "../../../shared/window-chrome.ts";
 import { useLayout } from "../../app/layout.tsx";
 import { NavPane } from "../../app/panes.tsx";
-import { settingsGroups } from "./settings-navigation.ts";
+import { SETTINGS_GROUPS } from "./settings-navigation.ts";
 import { SettingsNav } from "./SettingsNav.tsx";
 import type { SettingsSection } from "../../store/index.ts";
 import { RetainedViews } from "../../ui/layout/RetainedViews.tsx";
@@ -22,20 +22,17 @@ import { CommandsSettings } from "./CommandsSettings.tsx";
 import { GeneralSettings } from "./GeneralSettings.tsx";
 import { MobileSettings } from "./MobileSettings.tsx";
 import { PersonalizationSettings } from "./PersonalizationSettings.tsx";
-import { McpSettings } from "./McpSettings.tsx";
 import { ModelSettings } from "./ModelSettings.tsx";
 import { ExtensionsSettings } from "./ExtensionsSettings.tsx";
 import { HooksSettings } from "./HooksSettings.tsx";
 import { IndexSettings } from "./IndexSettings.tsx";
 import { BrowserSettings } from "./BrowserSettings.tsx";
 import { ScreenshotSettings } from "./ScreenshotSettings.tsx";
-import { SkillsSettings } from "./SkillsSettings.tsx";
 import { ForgeSettings } from "./ForgeSettings.tsx";
 import { SearchSettings } from "./SearchSettings.tsx";
 import { StorageSettings } from "./StorageSettings.tsx";
 import { UsageSettings } from "./UsageSettings.tsx";
 import { WorktreesSettings } from "./WorktreesSettings.tsx";
-import { bridge } from "../../services/index.ts";
 import { useI18n } from "../../i18n/index.ts";
 
 /**
@@ -56,10 +53,7 @@ export function SettingsShell() {
 	const setSection = useApp((s) => s.setSettingsSection);
 	const setView = useApp((s) => s.setView);
 	const { compact, navOpen, headerBar, toggleNav, dismissNav, sidebarWidth, titlebar } = useLayout();
-	// Synchronous, from the preload: waiting for `system.platform()` drew the first frame as macOS.
-	const platform = bridge.platform ?? "darwin";
-
-	const groups = settingsGroups(platform);
+	const groups = SETTINGS_GROUPS;
 
 	useEffect(() => {
 		const onKey = (event: KeyboardEvent) => {
@@ -257,12 +251,8 @@ function SectionBody({ section }: { section: SettingsSection }) {
 			return <PersonalizationSettings />;
 		case "models":
 			return <ModelSettings />;
-		case "skills":
-			return <SkillsSettings />;
 		case "agents":
 			return <AgentsSettings />;
-		case "mcp":
-			return <McpSettings />;
 		case "plugins":
 			return <ExtensionsSettings />;
 		case "hooks":

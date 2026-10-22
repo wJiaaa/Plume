@@ -41,10 +41,6 @@ export function useProviders() {
 		[providers, selectedId],
 	);
 
-	useEffect(() => {
-		if (!selected && providers.length > 0) setSelectedId(providers[0].id);
-	}, [providers, selected]);
-
 	// 目录由 store 跟主进程对齐（`store/model-catalog.ts`）；订阅版本号，换了就按新目录重新渲染。
 	// 主进程每小时会自己更新目录，打开这一页时对齐一次，搜索和导入用的就是最新的；版本没变只是一次空问。
 	useApp((s) => s.catalogRevision);

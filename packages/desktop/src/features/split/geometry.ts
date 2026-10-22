@@ -7,7 +7,8 @@
  * asked of the pane under the pointer, not of the tree.
  */
 
-import { axisOf, MIN_FRACTION, sideFromBox, type Axis, type DropSide, type SplitNode } from "./tree.ts";
+import type { Axis } from "../../lib/tiling.ts";
+import { axisOf, MIN_FRACTION, sideFromBox, type DropSide, type SplitNode } from "./tree.ts";
 
 /** A screen must fit the same readable conversation as the standalone view. */
 export const SCREEN_MIN_WIDTH_PX = 420;

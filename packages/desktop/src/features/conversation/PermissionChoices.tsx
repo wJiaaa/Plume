@@ -1,6 +1,6 @@
 import { translate } from "../../i18n/translate.ts";
 import { Check, ShieldCheck, X } from "../../ui/icons/index.ts";
-import { useRef, useState } from "react";
+import { useOnceAnswer } from "./useOnceAnswer.ts";
 import { Button } from "../../ui/primitives/Button.tsx";
 
 export function PermissionChoices({ subject, onceOnly = false, answer }: {
@@ -9,19 +9,7 @@ export function PermissionChoices({ subject, onceOnly = false, answer }: {
 	onceOnly?: boolean;
 	answer(decision: "once" | "always" | "reject"): Promise<void>;
 }) {
-	const submitting = useRef(false);
-	const [pending, setPending] = useState(false);
-	const [error, setError] = useState("");
-	async function submit(decision: "once" | "always" | "reject") {
-		if (submitting.current) return;
-		submitting.current = true;
-		setPending(true); setError("");
-		try { await answer(decision); }
-		catch (failure) {
-			submitting.current = false; setPending(false);
-			setError(failure instanceof Error ? failure.message : String(failure));
-		}
-	}
+	const { pending, error, submit } = useOnceAnswer(answer);
 	/*
 	 * 字在按钮上，不在 tooltip 里。
 	 *

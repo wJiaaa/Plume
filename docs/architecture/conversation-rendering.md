@@ -5,6 +5,7 @@
 ## 行的身份
 
 `features/conversation/grouping.ts` 将消息转换为展示行，`runKey` 是主会话与子 agent 转录共同使用的身份规则。
+换轮与回合计时在 `turns.ts`，把展示行按回合收成「过程 + 回答」的 `turnBlocks` 在 `turn-blocks.ts`。
 一条回复拆成思考行与正文行时，两行必须有不同的 key。思考行属于当前回合，后续回复的思考替换它时保持身份；
 正文属于原消息；工具组属于第一个工具调用。主会话再加上 session ID，避免跨会话复用局部组件状态。
 

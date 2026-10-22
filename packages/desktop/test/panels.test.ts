@@ -1,7 +1,7 @@
 /**
  * The panel registry.
  *
- * The claim: a panel can be added or replaced without editing the side panel component.
+ * The claim: a panel can be added without editing the side panel component.
  */
 
 import assert from "node:assert/strict";
@@ -11,23 +11,14 @@ import { allPanels, registerPanels, type PanelDefinition } from "../src/features
 const stub = (kind: string, label: string): PanelDefinition =>
 	({ kind, label, icon: (() => null) as never, shortcut: "⌘0", render: () => null }) as unknown as PanelDefinition;
 
-test("a registered panel joins the list, and withdrawing removes it", () => {
-	const before = allPanels().length;
-	const remove = registerPanels([stub("notes", "笔记")]);
-	assert.equal(allPanels().length, before + 1);
-	assert.equal(allPanels().find((p) => p.kind === "notes")?.label, "笔记");
-	remove();
-	assert.equal(allPanels().length, before);
-});
-
-test("a later registration replaces one of the same kind", () => {
+test("a registered set is the list, and withdrawing puts the previous one back", () => {
 	const first = registerPanels([stub("notes", "笔记")]);
-	const second = registerPanels([stub("notes", "更好的笔记")]);
-	assert.equal(allPanels().filter((p) => p.kind === "notes").length, 1, "one panel per kind");
-	assert.equal(allPanels().find((p) => p.kind === "notes")?.label, "更好的笔记");
+	const second = registerPanels([stub("notes", "更好的笔记"), stub("todo", "待办")]);
+	assert.deepEqual(allPanels().map((p) => p.label), ["更好的笔记", "待办"]);
 	second();
-	assert.equal(allPanels().find((p) => p.kind === "notes")?.label, "笔记", "and the displaced one comes back");
+	assert.deepEqual(allPanels().map((p) => p.label), ["笔记"]);
 	first();
+	assert.equal(allPanels().length, 0);
 });
 
 test("availability is decided against the current state, not at registration", () => {

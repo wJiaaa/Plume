@@ -10,7 +10,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Message } from "@plume/core";
 
-import { runKey, turnBlocks, withoutThinking, type Run, type TurnBlock } from "../src/features/conversation/grouping.ts";
+import { runKey, type Run } from "../src/features/conversation/grouping.ts";
+import { turnBlocks, withoutThinking, type TurnBlock } from "../src/features/conversation/turn-blocks.ts";
 
 const ask = (text: string, index: number): Run => ({
 	kind: "message",

@@ -11,6 +11,7 @@ import { useApp } from "../../store/index.ts";
 import { bridge } from "../../services/index.ts";
 import {
 	Card,
+	PageHeader,
 	Row,
 	SectionTitle,
 	ShortcutRecorder,
@@ -55,9 +56,7 @@ export function ScreenshotSettings() {
 
 	return (
 		<div className="pt-2">
-			<h1 className="pb-8 text-display leading-tight font-semibold tracking-tight text-ink">
-				{t("screenshot.title")}
-			</h1>
+			<PageHeader title={t("screenshot.title")} />
 
 			<SectionTitle>{t("shot.shortcutSection")}</SectionTitle>
 			<Card className="mb-9">

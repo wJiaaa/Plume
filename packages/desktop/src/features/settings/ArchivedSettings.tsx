@@ -8,7 +8,7 @@ import { SearchField } from "../../ui/inputs/SearchField.tsx";
 import { ScrollText } from "../../ui/scroll/ScrollText.tsx";
 import { Caret } from "../../ui/primitives/Caret.tsx";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
-import { Card, InlineSelect } from "./controls.tsx";
+import { Card, InlineSelect, PageHeader } from "./controls.tsx";
 import { groupIsOpen, toggleOpened } from "./archived-groups.ts";
 import { useApp } from "../../store/index.ts";
 import { sessionTitle } from "../../lib/session-title.ts";
@@ -84,33 +84,24 @@ export function ArchivedSettings() {
 
 	return (
 		<div className="pt-2">
-			<header className="flex flex-wrap items-start justify-between gap-3 pb-6">
-				<div className="min-w-0">
-					<h1 className="text-display leading-tight font-semibold tracking-tight text-ink">{t("archived.title")}</h1>
-					<p className="mt-1.5 text-label leading-relaxed text-ink-muted">
-						{translate("archived.intro")}
-					</p>
-				</div>
-
-				{archived.length > 0 && (
-					<DialogAction
-						tone="danger"
-						onClick={() =>
-							confirm.ask({
-								title: t("archived.deleteAllConfirm", { n: archived.length }),
-								detail: t("archived.deleteAllDetail"),
-								confirmLabel: t("archived.deleteN", { n: archived.length }),
-								onConfirm: () => void deleteAll(),
-							})
-						}
-						label={t("archived.deleteAll", { n: archived.length })}
-						data-ly-delete-all-archived=""
-					>
-						<Trash2 size={13} strokeWidth={2} aria-hidden />
-						{t("archived.deleteAllAction")}
-					</DialogAction>
-				)}
-			</header>
+			<PageHeader title={t("archived.title")} intro={translate("archived.intro")} actions={archived.length > 0 && (
+				<DialogAction
+					tone="danger"
+					onClick={() =>
+						confirm.ask({
+							title: t("archived.deleteAllConfirm", { n: archived.length }),
+							detail: t("archived.deleteAllDetail"),
+							confirmLabel: t("archived.deleteN", { n: archived.length }),
+							onConfirm: () => void deleteAll(),
+						})
+					}
+					label={t("archived.deleteAll", { n: archived.length })}
+					data-ly-delete-all-archived=""
+				>
+					<Trash2 size={13} strokeWidth={2} aria-hidden />
+					{t("archived.deleteAllAction")}
+				</DialogAction>
+			)} />
 
 			{archived.length === 0 ? (
 				<div className="flex flex-col items-center rounded-lg border border-dashed border-line py-14">

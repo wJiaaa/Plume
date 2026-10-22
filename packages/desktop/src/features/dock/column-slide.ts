@@ -29,10 +29,9 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
 import { motionReduced } from "../../ui/motion/reduced.ts";
 import { DURATION } from "../../ui/motion/tokens.ts";
-import { pct } from "./css.ts";
+import { pct, type Box } from "../../lib/tiling.ts";
 import { PANE_INSET } from "./geometry.ts";
 import { closeNow, usePaneDock } from "./pane-store.ts";
-import type { Box } from "./layout.ts";
 import type { PaneKind } from "./tree.ts";
 
 /** `NavPane` 的 Tailwind `ease-out`：两边同一条曲线。 */

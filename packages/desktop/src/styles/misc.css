@@ -413,7 +413,7 @@
 }
 
 /*
- * The sideways scrollbar is drawn, not native — see HorizontalThumb in DiffView.
+ * The sideways scrollbar is drawn, not native — see the `sticky` placement of `OverlayScrollbar`.
  *
  * The native one here is an overlay that macOS hides until something moves, which on a diff is
  * backwards: a long line running off the edge with no visible bar reads as truncated. The

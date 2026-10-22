@@ -121,22 +121,8 @@ export function cardRoom(room: number): number {
 export const HEADER_PAD = 10;
 
 /**
- * The splitter's grab area, straddling the boundary between two panes.
- *
- * Same 9px as `ResizeHandle` uses on the sidebar, for the same reason: it is the smallest strip
- * that can be hit reliably without being a visible border.
- */
-export const SPLITTER_HIT = 9;
-
-/**
  * 分屏时标签栏浮在这一屏的卡片里，离屏卡边缘多远。
  *
  * 挨着对话的那一边只留一半：对话没有自己的卡片边，留满了只是一道看不出来源的空白。
  */
 export const PANEL_FLOAT = 6;
-
-/** Keyboard resizing, per press, as a share. Shift multiplies it. */
-export const SPLITTER_STEP = 0.02;
-
-/** How long the splitter's grip is: enough to read as a handle, short enough not to read as a border. */
-export const GRIP_SPAN = 30;

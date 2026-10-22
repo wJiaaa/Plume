@@ -25,6 +25,7 @@ import { translate } from "../../i18n/translate.ts";
 import type { MessageKey } from "../../i18n/messages/index.ts";
 import { Check, TriangleAlert, X } from "../../ui/icons/index.ts";
 import type { ReactNode } from "react";
+import { Markdown } from "../markdown/index.ts";
 import { parseInline, type Inline } from "../../lib/markdown/inline.ts";
 
 type Plain = Record<string, unknown>;
@@ -67,10 +68,10 @@ const SEVERITY_LABELS: Record<string, MessageKey> = {
 	note: "output.severity.note",
 };
 
-/** 一段文字怎么画，由用它的地方给——面板里是 Markdown。这个文件不去引对话域，免得多出一条依赖环。 */
-type Prose = (text: string) => ReactNode;
-
-const plainProse: Prose = (text) => <p className="whitespace-pre-wrap break-words">{text}</p>;
+/** 一段文字画成 Markdown：结论、报告这些是交付物，和它交回来的那一段正文同一个画法。 */
+export function Prose({ text }: { text: string }) {
+	return <Markdown text={text} className="min-w-0 max-w-full break-words" />;
+}
 
 function isPlain(value: unknown): value is Plain {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -111,7 +112,7 @@ function rank(severity: unknown): number {
 	return at === -1 ? SEVERITY_ORDER.length : at;
 }
 
-export function StructuredOutput({ output, prose = plainProse, warnings }: { output: Plain; prose?: Prose; warnings?: string[] }) {
+export function StructuredOutput({ output, warnings }: { output: Plain; warnings?: string[] }) {
 	const entries = Object.entries(output).filter(([, value]) => present(value));
 	const lead = typeof output.summary === "string" && output.summary.trim() ? output.summary.trim() : null;
 	const flags = entries.filter(([, value]) => typeof value === "boolean") as [string, boolean][];
@@ -127,11 +128,11 @@ export function StructuredOutput({ output, prose = plainProse, warnings }: { out
 			)}
 			{lead && (
 				<div data-field="summary" data-kind="lead" className="min-w-0 text-ink">
-					{prose(lead)}
+					<Prose text={lead} />
 				</div>
 			)}
 			{rest.map(([key, value]) => (
-				<Field key={key} name={key} value={value} prose={prose} />
+				<Field key={key} name={key} value={value} />
 			))}
 			{warnings && warnings.length > 0 && (
 				<div data-output-warnings="" className="rounded-lg bg-card-hover/60 px-2.5 py-2 text-caption text-ink-faint">
@@ -172,7 +173,7 @@ function Flag({ name, value }: { name: string; value: boolean }) {
 	);
 }
 
-function Field({ name, value, prose }: { name: string; value: unknown; prose: Prose }) {
+function Field({ name, value }: { name: string; value: unknown }) {
 	if (typeof value === "number") {
 		return (
 			<Row name={name} kind="number">
@@ -184,7 +185,7 @@ function Field({ name, value, prose }: { name: string; value: unknown; prose: Pr
 		if (value.length > SHORT_TEXT || value.includes("\n")) {
 			return (
 				<Section name={name} kind="long-text">
-					<div className="min-w-0 text-ink">{prose(value)}</div>
+					<div className="min-w-0 text-ink"><Prose text={value} /></div>
 				</Section>
 			);
 		}
@@ -217,7 +218,7 @@ function Field({ name, value, prose }: { name: string; value: unknown; prose: Pr
 						<li key={index} className="flex gap-2 text-label leading-relaxed text-ink">
 							<span aria-hidden className="mt-[0.7em] size-1 shrink-0 rounded-full bg-ink-faint" />
 							<span className={`min-w-0 flex-1 break-words ${looksLikePath(name, item) ? "font-mono text-detail [overflow-wrap:anywhere]" : ""}`}>
-								{isPlain(item) ? <StructuredOutput output={item} prose={prose} /> : looksLikePath(name, item) ? <PathText path={String(item)} /> : <Rich text={String(item)} />}
+								{isPlain(item) ? <StructuredOutput output={item} /> : looksLikePath(name, item) ? <PathText path={String(item)} /> : <Rich text={String(item)} />}
 							</span>
 						</li>
 					))}
@@ -229,7 +230,7 @@ function Field({ name, value, prose }: { name: string; value: unknown; prose: Pr
 		return (
 			<Section name={name} kind="object">
 				<div className="border-l-2 border-line-soft pl-3">
-					<StructuredOutput output={value} prose={prose} />
+					<StructuredOutput output={value} />
 				</div>
 			</Section>
 		);

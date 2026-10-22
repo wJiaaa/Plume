@@ -28,21 +28,50 @@ export interface Draft<T> {
 	/** 从对话里划下来的引文，画在框上方，不在字里。见 `lib/quote.ts`。 */
 	quotes: DraftQuote[];
 	setQuotes: Dispatch<SetStateAction<DraftQuote[]>>;
+	/** 引用的其他会话（`@` 一个会话）。只有主输入框收它，别的框一直是空的。 */
+	sessionRefs: SessionRef[];
+	setSessionRefs: Dispatch<SetStateAction<SessionRef[]>>;
 	/** 发出去了：框清空，存着的那份也扔掉。 */
 	clear: () => void;
+	/**
+	 * 退回来的一份（排着的那条、撤回的任务）接在框里已有的后面。追加，不是替换：框里可能已经打了别的字，
+	 * 那是手打的，丢掉比接得难看糟得多。隔一个空行——只隔一个换行，两段在 Markdown 里会并成同一段。
+	 */
+	append: (piece: { text: string; attachments?: readonly unknown[]; sessionRefs?: readonly SessionRef[]; quotes?: readonly DraftQuote[] }) => void;
+	/**
+	 * 此刻这个框里真正的内容——给 effect 和异步回调读的，它们手上那份渲染时的值可能已经过期。
+	 * `owner` 是此刻的键：一次异步发送回来时拿它判断人是不是已经换去了别的对话。
+	 */
+	peek: () => Held<T>;
 }
+
+type SessionRef = { id: string; title: string };
 
 interface Held<T> {
 	/** 这份字是谁的。 */
 	owner: string | null;
 	text: string;
 	attachments: T[];
+	sessionRefs: SessionRef[];
 	quotes: DraftQuote[];
 }
 
+const NONE: never[] = [];
+
 function stored<T>(key: string | null): Held<T> {
 	const saved = key ? useApp.getState().drafts[key] : undefined;
-	return { owner: key, text: saved?.text ?? "", attachments: (saved?.attachments as T[] | undefined) ?? [], quotes: saved?.quotes ?? [] };
+	return {
+		owner: key,
+		text: saved?.text ?? "",
+		attachments: (saved?.attachments as T[] | undefined) ?? NONE,
+		sessionRefs: saved?.sessionRefs ?? NONE,
+		quotes: saved?.quotes ?? NONE,
+	};
+}
+
+function save<T>(held: Held<T>): void {
+	if (!held.owner) return;
+	useApp.getState().setDraft(held.owner, { text: held.text, attachments: held.attachments as DraftAttachment[], sessionRefs: held.sessionRefs, quotes: held.quotes });
 }
 
 export function useDraft<T extends DraftAttachment>(key: string | null): Draft<T> {
@@ -54,18 +83,20 @@ export function useDraft<T extends DraftAttachment>(key: string | null): Draft<T
 	const shown = held.owner === key ? held : stored<T>(key);
 	const live = useRef(held);
 	live.current = held;
+	const keyRef = useRef(key);
+	keyRef.current = key;
 
 	/* 换了说话对象：手上这份存回它自己名下，再把新的这一个名下的取出来。 */
 	useEffect(() => {
 		const before = live.current;
 		if (before.owner === key) return;
-		if (before.owner) useApp.getState().setDraft(before.owner, { text: before.text, attachments: before.attachments, quotes: before.quotes });
+		save(before);
 		setHeld(stored<T>(key));
 	}, [key]);
 
 	/* 打一个字存一次——存到这份字的主人名下。还没换过来的那一帧不存：那是上一个人的字。 */
 	useEffect(() => {
-		if (held.owner && held.owner === key) useApp.getState().setDraft(held.owner, { text: held.text, attachments: held.attachments, quotes: held.quotes });
+		if (held.owner === key) save(held);
 	}, [key, held]);
 
 	const setText = useCallback<Dispatch<SetStateAction<string>>>(
@@ -81,10 +112,32 @@ export function useDraft<T extends DraftAttachment>(key: string | null): Draft<T
 		[],
 	);
 
+	const setSessionRefs = useCallback<Dispatch<SetStateAction<SessionRef[]>>>(
+		(next) => setHeld((was) => ({ ...was, sessionRefs: typeof next === "function" ? next(was.sessionRefs) : next })),
+		[],
+	);
+
 	const clear = () => {
-		setHeld((was) => ({ ...was, text: "", attachments: [], quotes: [] }));
+		setHeld((was) => ({ ...was, text: "", attachments: [], sessionRefs: [], quotes: [] }));
 		if (live.current.owner) useApp.getState().setDraft(live.current.owner, null);
 	};
 
-	return { text: shown.text, setText, attachments: shown.attachments, setAttachments, quotes: shown.quotes, setQuotes, clear };
+	const append: Draft<T>["append"] = useCallback((piece) => setHeld((was) => ({
+		...was,
+		text: !piece.text ? was.text : was.text.trim() ? `${was.text.trimEnd()}\n\n${piece.text}` : piece.text,
+		attachments: piece.attachments?.length ? [...was.attachments, ...(piece.attachments as T[])] : was.attachments,
+		sessionRefs: piece.sessionRefs?.length ? [...new Map([...was.sessionRefs, ...piece.sessionRefs].map((ref) => [ref.id, ref])).values()] : was.sessionRefs,
+		quotes: piece.quotes?.length ? [...was.quotes, ...piece.quotes] : was.quotes,
+	})), []);
+
+	// 换人那一帧 state 还是上一个的：和画的时候一样，取新键名下存着的。
+	const peek = useCallback(() => (live.current.owner === keyRef.current ? live.current : stored<T>(keyRef.current)), []);
+
+	return {
+		text: shown.text, setText,
+		attachments: shown.attachments, setAttachments,
+		sessionRefs: shown.sessionRefs, setSessionRefs,
+		quotes: shown.quotes, setQuotes,
+		clear, append, peek,
+	};
 }

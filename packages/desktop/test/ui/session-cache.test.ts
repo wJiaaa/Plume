@@ -8,7 +8,7 @@ import { prune, type Cache } from "../../src/store/derive.ts";
 import { afterPaint } from "../../src/lib/after-paint.ts";
 import { readSelectedSession } from "../../src/store/session-read.ts";
 import { applySessionChange } from "../../src/store/session-changes.ts";
-import { abandonSessionReveal, revealSession } from "../../src/features/split/actions.ts";
+import { revealSession } from "../../src/features/split/actions.ts";
 import type { PlumeApi } from "../../electron/ipc-types.ts";
 
 type Snapshot = Awaited<ReturnType<PlumeApi["sessions"]["transcript"]>>;
@@ -70,7 +70,6 @@ function reply(text: string): AssistantMessage {
 }
 
 beforeEach(() => {
-	abandonSessionReveal();
 	flushCoalesced();
 	readTranscript = async (id) => snapshot(id);
 	capabilityReads = [];
@@ -137,7 +136,6 @@ test("selecting a conversation clears its manual unread mark, including the one 
 	await Promise.resolve();
 	await Promise.resolve();
 	assert.deepEqual(useApp.getState().settings?.unreadSessionIds, ["a", "c"]);
-	abandonSessionReveal();
 	useApp.setState({ pendingSessionId: null });
 	useApp.getState().previewSession(meta("a"));
 	await Promise.resolve();

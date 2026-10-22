@@ -5,7 +5,7 @@ import { chatSurface } from "../../lib/chat-surface.ts";
 import { RetainedViews } from "../../ui/layout/RetainedViews.tsx";
 import { useApp } from "../../store/index.ts";
 import { DockView, type ScreenInsets } from "../dock/index.ts";
-import { pct } from "./layout.ts";
+import { pct } from "../../lib/tiling.ts";
 import type { PaneBox } from "./layout.ts";
 import { paneKey } from "./pane-key.ts";
 import { focusPane } from "./actions.ts";
@@ -69,7 +69,7 @@ const SplitScreen = memo(function SplitScreen({
 					pageClassName=""
 					render={(id) => (
 						<SessionScope.Provider value={id}>
-							<Conversation sessionId={id} />
+							<Conversation />
 						</SessionScope.Provider>
 					)}
 				/>

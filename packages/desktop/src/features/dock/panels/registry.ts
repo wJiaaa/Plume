@@ -140,26 +140,25 @@ export interface PanelDefinition {
 	actions?: ComponentType;
 }
 
-const registered: PanelDefinition[][] = [];
+let registered: readonly PanelDefinition[] = [];
 
-export function registerPanels(panels: PanelDefinition[]): () => void {
-	registered.push(panels);
+/**
+ * 装上这一组面板，返回的函数换回装之前的那一组。
+ *
+ * 只有壳在启动时装一次（`app/panels.tsx`）；测试拿它临时换一组自己的。从前这里能叠好几组、后装的按
+ * kind 盖掉先装的，留给「插件换掉内置的 Git 面板」——插件从来没有注册面板的路，这一层没人用过。
+ */
+export function registerPanels(panels: readonly PanelDefinition[]): () => void {
+	const previous = registered;
+	registered = panels;
 	return () => {
-		const at = registered.indexOf(panels);
-		if (at >= 0) registered.splice(at, 1);
+		if (registered === panels) registered = previous;
 	};
 }
 
-/**
- * Every panel, in registration order, later registrations replacing earlier ones by kind.
- *
- * Same rule as the tool registry: a plugin that wants its own Git panel registers under `review`
- * and displaces the built-in, rather than having to prevent it from loading.
- */
-export function allPanels(): PanelDefinition[] {
-	const byKind = new Map<PanelKind, PanelDefinition>();
-	for (const set of registered) for (const panel of set) byKind.set(panel.kind, panel);
-	return [...byKind.values()];
+/** Every panel, in registration order. */
+export function allPanels(): readonly PanelDefinition[] {
+	return registered;
 }
 
 /**

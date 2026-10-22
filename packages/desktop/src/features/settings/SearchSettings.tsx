@@ -14,7 +14,7 @@
 import { Check, ExternalLink, Search } from "../../ui/icons/index.ts";
 import { useEffect, useRef, useState } from "react";
 import { useApp } from "../../store/index.ts";
-import { Card, SectionTitle } from "./layout.tsx";
+import { Card, PageHeader, SectionTitle } from "./layout.tsx";
 import { SecretInput } from "./inputs.tsx";
 import { useI18n, type MessageKey } from "../../i18n/index.ts";
 
@@ -127,10 +127,7 @@ export function SearchSettings() {
 
 	return (
 		<div className="pt-2">
-			<h1 className="text-display leading-tight font-semibold tracking-tight text-ink">{t("search.title")}</h1>
-			<p className="mt-2 max-w-[600px] pb-7 text-label leading-relaxed text-ink-muted">
-				{intro(t("search.intro"), t("search.introStrong"))}
-			</p>
+			<PageHeader title={t("search.title")} intro={intro(t("search.intro"), t("search.introStrong"))} />
 
 			<SectionTitle>{t("search.which")}</SectionTitle>
 			<Card className="mb-6">

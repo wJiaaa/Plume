@@ -8,21 +8,15 @@ import { DiffView } from "./DiffView.tsx";
 import { iconColour, lookFor } from "../../ui/fileIcon.tsx";
 import { SkeletonBar } from "../../ui/primitives/Skeleton.tsx";
 import { ScrollText } from "../../ui/scroll/ScrollText.tsx";
+import { baseName } from "../../lib/paths.ts";
 import { Text } from "../../ui/primitives/Text.tsx";
 
 /**
- * The last meaningful segment of a path.
+ * True for the trailing-slash form git uses when a whole directory is untracked.
  *
- * `split("/").pop()` is not enough: git reports an untracked *directory* as `.claude/`, whose
- * final segment is the empty string — which showed up in the list as a row with an icon, a
- * status letter, and no name at all.
+ * Its name comes from `baseName`, which skips that slash: `split("/").pop()` gives the empty string,
+ * which showed up in the list as a row with an icon, a status letter, and no name at all.
  */
-function baseName(path: string): string {
-  const parts = path.split("/").filter(Boolean);
-  return parts[parts.length - 1] ?? path;
-}
-
-/** True for the trailing-slash form git uses when a whole directory is untracked. */
 function isDirectory(path: string): boolean {
   return path.endsWith("/");
 }

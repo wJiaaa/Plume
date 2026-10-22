@@ -2,10 +2,8 @@ import { useI18n } from "../../i18n/index.ts";
 import { SessionServices } from "./SessionServices.tsx";
 import { ListTodo } from "../../ui/icons/index.ts";
 import { memo, useDeferredValue, useMemo, useRef, useState } from "react";
-
 import { PanelEmpty } from "../../ui/layout/PanelEmpty.tsx";
-import { Mark, lastTurnFailed } from "./Mark.tsx";
-import { isUserPaused } from "./task-list-state.ts";
+import { Mark, useStepState } from "./Mark.tsx";
 import { SearchField } from "../../ui/inputs/SearchField.tsx";
 import { InlineSelect } from "../../ui/inputs/Select.tsx";
 import { filterRuns } from "./filter-runs.ts";
@@ -13,7 +11,7 @@ import { TaskRuns } from "./TaskRuns.tsx";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { ScrollText } from "../../ui/scroll/ScrollText.tsx";
 import { Text } from "../../ui/primitives/Text.tsx";
-import { useScopedMessages, useScopedRunning, useScopedSessionId, useScopedStopped, useScopedTodos, useScopedToolRuns } from "../../app/session-scope.tsx";
+import { useScopedSessionId, useScopedTodos, useScopedToolRuns } from "../../app/session-scope.tsx";
 
 /**
  * Everything this conversation set out to do and everything it actually did.
@@ -36,17 +34,8 @@ export const TaskPanel = memo(function TaskPanel() {
 	 */
 	const todos = useScopedTodos();
 	const toolRuns = useScopedToolRuns();
-	const running = useScopedRunning();
-	const stopped = useScopedStopped();
-	const messages = useScopedMessages();
-	/*
-	 * The same three answers the floating card gives, from the same evidence.
-	 *
-	 * A leftover `in_progress` after a clean `done` is not a pause. Only a user abort is.
-	 */
-	const failed = !running && lastTurnFailed(messages);
-	const paused = isUserPaused(running, stopped);
-	const idle = !running && !paused && !failed;
+	// The same three answers the floating card gives, from the same evidence.
+	const { paused, failed, idle } = useStepState();
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const sessionId = useScopedSessionId();
 	const runs = useMemo(() => Object.values(toolRuns).sort((a, b) => b.startedAt - a.startedAt), [toolRuns]);
@@ -55,7 +44,6 @@ export const TaskPanel = memo(function TaskPanel() {
 	const search = useDeferredValue(query);
 	const matched = useMemo(() => filterRuns(runs, search, status), [runs, search, status]);
 	const done = todos.filter((todo) => todo.status === "completed").length;
-
 
 	return (
 		<Scroller scrollRef={scrollRef} className="flex-1 pt-2" contentClassName="relative px-2 pb-3">

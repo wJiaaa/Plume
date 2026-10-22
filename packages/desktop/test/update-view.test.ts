@@ -26,7 +26,6 @@ import {
 	publishedOn,
 	readyNote,
 	shouldShow,
-	versionNote,
 	type Phase,
 } from "../src/features/update/view.ts";
 
@@ -206,51 +205,6 @@ test("an available update shows, and there is nothing that takes it away", () =>
  * function seven times and assert the same thing seven times: a test that looks thorough and
  * checks nothing. What replaced that rule is in the signature, where the compiler holds it.
  */
-
-/*
- * The line under 版本 in 设置 → 关于.
- *
- * The case worth having a test for is the third one, which for a while was not a case at all: a
- * check that could not reach GitHub returns the running version as the newest, so folding it in
- * with "up to date" produced an app that told someone with no network they had the latest release.
- */
-
-test("a failed check is not reported as being up to date", () => {
-	const offline = { current: "0.3.1", latest: "0.3.1", available: false, checked: false };
-	const note = versionNote(offline, { at: "idle" });
-	assert.doesNotMatch(note, /最新/, `离线时说了：${note}`);
-	assert.match(note, /网络/);
-});
-
-test("a successful check on the newest version says so", () => {
-	const current = { current: "0.3.2", latest: "0.3.2", available: false, checked: true };
-	assert.match(versionNote(current, { at: "idle" }), /已经是最新版本/);
-});
-
-test("an available update carries the phase, so the row means something mid-download", () => {
-	const update = { current: "0.3.1", latest: "0.3.2", available: true, checked: true };
-	assert.match(versionNote(update, { at: "idle" }), /新版本 0\.3\.2/);
-	assert.match(versionNote(update, { at: "downloading", received: 45, total: 100 }), /下载中 45%/);
-	assert.match(versionNote(update, { at: "paused", received: 45, total: 100 }), /已暂停 45%/);
-});
-
-test("the version is named in every phase, and never as NaN or undefined", () => {
-	for (const phase of PHASES) {
-		for (const info of [
-			{ current: "0.3.1", latest: "0.3.2", available: true, checked: true },
-			{ current: "0.3.2", latest: "0.3.2", available: false, checked: true },
-			{ current: "0.3.2", latest: "0.3.2", available: false, checked: false },
-		]) {
-			const note = versionNote(info, phase);
-			assert.match(note, /当前 0\.3\./, `${phase.at} 没有说当前版本：${note}`);
-			assert.doesNotMatch(note, /NaN|undefined|Infinity/, `${phase.at} 的文案是：${note}`);
-		}
-	}
-});
-
-test("before the first answer arrives it says so, rather than inventing a version", () => {
-	assert.equal(versionNote(null, { at: "idle" }), "正在读取版本…");
-});
 
 test("bytes are rendered as something a person reads", () => {
 	assert.equal(mb(0), "0.0MB");

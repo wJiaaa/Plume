@@ -10,6 +10,32 @@ import type { LucideIcon } from "../../ui/icons/index.ts";
 import { ScrollText } from "../../ui/scroll/ScrollText.tsx";
 import { Text } from "../../ui/primitives/Text.tsx";
 
+/**
+ * 一个设置页顶上那一块：标题、一句介绍，右边可能有一两颗按钮；`children` 接在介绍下面（模型页那行目录版本）。
+ *
+ * 二十来个页面从前各写一份，标题下到正文的距离漂成了 20、24、28、32 四种，介绍的行宽有 580、600 和不限
+ * 三种——相邻两页切过去，正文的第一行上下跳。距离和行宽都在这里定一次。
+ */
+export function PageHeader({ title, intro, actions, children, className = "" }: {
+	title: React.ReactNode;
+	intro?: React.ReactNode;
+	actions?: React.ReactNode;
+	children?: React.ReactNode;
+	/** 位置和宽度，不是间距：标题下面那一段由这里给。 */
+	className?: string;
+}) {
+	return (
+		<header className={`flex flex-wrap items-start justify-between gap-3 pb-7 ${className}`}>
+			<div className="min-w-0">
+				<h1 className="text-display leading-tight font-semibold tracking-tight text-ink">{title}</h1>
+				{intro && <p className="mt-2 max-w-[600px] text-label leading-relaxed text-ink-muted">{intro}</p>}
+				{children}
+			</div>
+			{actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+		</header>
+	);
+}
+
 /** Section heading above a card group, as used by the reference settings pages. */
 export function SectionTitle({ children }: { children: React.ReactNode }) {
 	return (

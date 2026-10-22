@@ -17,10 +17,7 @@ export interface BoxSize {
 	height: number;
 }
 
-export function useBoxSize(
-	ref: React.RefObject<HTMLElement | null>,
-	expectedWidth?: number,
-): BoxSize | null {
+export function useBoxSize(ref: React.RefObject<HTMLElement | null>): BoxSize | null {
 	const [measured, setMeasured] = useState<BoxSize | null>(null);
 
 	useLayoutEffect(() => {
@@ -49,10 +46,6 @@ export function useBoxSize(
 			if (frame) cancelAnimationFrame(frame);
 		};
 	}, [ref]);
-
-	if (expectedWidth !== undefined && measured && measured.width !== expectedWidth && expectedWidth > 0) {
-		return { width: expectedWidth, height: measured.height };
-	}
 
 	return measured;
 }

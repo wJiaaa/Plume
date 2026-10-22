@@ -8,10 +8,8 @@
  */
 
 import { useI18n } from "../../i18n/index.ts";
-import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import type { Message, SessionMeta } from "@plume/core";
 import type { QueuedMessage } from "../../store/queue-slice.ts";
-import { Plus } from "../../ui/icons/index.ts";
 import { useEffect, useRef } from "react";
 import { findModel } from "../models/index.ts";
 import { askSide, openFilePane, setSideModel, setSideThinking, sideKey, useSide } from "../dock/index.ts";
@@ -24,10 +22,11 @@ import {
 	ComposerSend,
 	ComposerShell,
 	ContextMeter,
+	landInField,
 	attachmentMeta,
 	spellDraft,
 	type DraftAttachment,
-	QueueList,
+	QueuedMessages,
 	QuoteChip,
 	queuePreview,
 	queueThumbnail,
@@ -38,7 +37,6 @@ import {
 import { EffortTrigger, ModelTrigger } from "../models/index.ts";
 
 const NO_MESSAGES: Message[] = [];
-const NO_QUEUE: QueuedMessage[] = [];
 
 export function SideComposer({
 	side,
@@ -72,13 +70,13 @@ export function SideComposer({
 	const loading = useApp((s) => sideId_ !== null && !s.sessionCache[sideId_]);
 	const running = useApp((s) => (sideId_ ? (s.sessionCache[sideId_]?.state?.running ?? false) : false));
 	const messages = useApp((s) => (sideId_ ? (s.sessionCache[sideId_]?.messages ?? NO_MESSAGES) : NO_MESSAGES));
-	const queued = useApp((s) => (sideId_ ? (s.queued[sideId_] ?? NO_QUEUE) : NO_QUEUE));
+	const queuedCount = useApp((s) => (sideId_ ? (s.queued[sideId_]?.length ?? 0) : 0));
 	/*
 	 * 草稿按侧边聊天存，和主输入框同一个仓库——换个会话再回来，打了一半的话还在。关掉面板就是不要
 	 * 这个侧边聊天了，草稿跟着扔，见 `closeSideChat`。
 	 */
 	const draftKey = sessionId ? sideDraftKey(sessionId, sideId) : null;
-	const { text, setText, attachments, setAttachments, quotes, setQuotes, clear } = useDraft<DraftAttachment>(draftKey);
+	const { text, setText, attachments, setAttachments, quotes, setQuotes, clear, append } = useDraft<DraftAttachment>(draftKey);
 	const field = useRef<HTMLTextAreaElement>(null);
 	/*
 	 * 收附件的那一整套，和主输入框是同一份：八个的上限、PDF 抽字、上方只摆图片（文件在句子里那枚
@@ -117,17 +115,11 @@ export function SideComposer({
 		const seed = useSide.getState().draftSeeds[sideKey(sessionId, sideId)];
 		if (!seed) return;
 		useSide.getState().clearDraftSeed(sessionId, sideId);
-		const { text: handed, quotes: quoted } = seed;
-		// 只隔一个换行，两段在 Markdown 里会并成同一段：和主输入框接一段进来时一样空一行。
-		if (handed) setText((was) => (was.trim() ? `${was.replace(/\s+$/, "")}\n\n${handed}` : handed));
-		if (quoted.length) setQuotes((was) => [...was, ...quoted]);
-		// 送来的是半句话（退回的任务）或要问的材料（划下的一段），下一步总是接着写：光标放到末尾。
-		const el = field.current;
-		if (!el) return;
+		append(seed);
+		// 送来的是半句话（退回的任务）或要问的材料（划下的一段），下一步总是接着写。
 		// 面板还在从右侧滑入，默认聚焦会滚动外层容器、抵消滑入位移。
-		el.focus({ preventScroll: true });
-		requestAnimationFrame(() => el.setSelectionRange(el.value.length, el.value.length));
-	}, [draftSeed, sessionId, sideId, setText, setQuotes]);
+		landInField(field.current, { preventScroll: true });
+	}, [draftSeed, sessionId, sideId, append]);
 
 	const empty = !text.trim() && attachments.length === 0 && quotes.length === 0;
 
@@ -150,7 +142,7 @@ export function SideComposer({
 		 * 排在输入框上方那条上，这一轮答完自己发出去；条上改得了、删得掉、排得出先后。队里还压着
 		 * 别的时候也排——不然新说的这句会越过前面那几句先到。
 		 */
-		if (sideId_ && (running || queued.length > 0)) {
+		if (sideId_ && (running || queuedCount > 0)) {
 			const composed = { text: trimmed, attachments, sessionRefs: [], quotes };
 			const thumbnail = queueThumbnail(composed);
 			const app = useApp.getState();
@@ -175,15 +167,10 @@ export function SideComposer({
 		if (sideId_) void useApp.getState().abort(sideId_);
 	};
 
-	/** 排着的那一条退回来：整份草稿——字和附件——接在框里已有的后面。 */
-	const restoreQueued = (entry: { draft: { text: string; attachments: unknown[]; quotes?: typeof quotes } }) => {
-		setText((current) => (current.trim() ? `${current.trimEnd()}\n\n${entry.draft.text}` : entry.draft.text));
-		setAttachments((current) => [...current, ...(entry.draft.attachments as DraftAttachment[])]);
-		if (entry.draft.quotes?.length) setQuotes((current) => [...current, ...entry.draft.quotes!]);
-		const el = field.current;
-		if (!el) return;
-		el.focus();
-		requestAnimationFrame(() => el.setSelectionRange(el.value.length, el.value.length));
+	/** 排着的那一条退回来：整份草稿——字和附件——接在框里已有的后面，和主输入框接住它的样子一样。 */
+	const restoreQueued = (entry: QueuedMessage) => {
+		append(entry.draft);
+		landInField(field.current, { flash: true });
 	};
 
 	// Inheritance stays a policy; the trigger names the model used by the next request.
@@ -197,27 +184,11 @@ export function SideComposer({
 	return (
 		// Same cap as the transcript above it, so the field stays under the messages it answers.
 		<div className="ly-composer-pad mx-auto w-full max-w-[var(--ly-content)] shrink-0">
-			{sideId_ && (
-				<QueueList
-					source={{
-						items: queued,
-						drop: (id) => useApp.getState().dropQueued(sideId_, id),
-						move: (id, targetId, placement) => void useApp.getState().moveQueued(sideId_, id, targetId, placement),
-					}}
-					running={running}
-					onEdit={restoreQueued}
-				/>
-			)}
+			{sideId_ && <QueuedMessages sessionId={sideId_} running={running} onEdit={restoreQueued} sendNow={false} />}
 			<ComposerShell
 				value={text}
 				fieldRef={field}
-				hint={
-					history.position ? (
-						<div data-ly-history="" className="ly-composer-hint text-caption text-ink-faint">
-							{t("composer.history", { current: history.position.current, total: history.position.total })}
-						</div>
-					) : undefined
-				}
+				historyPosition={history.position}
 				onChange={(next) => {
 					setText(next);
 					// 句子里那枚标记被删掉，附件跟着卸下来——删除是双向的。
@@ -228,31 +199,16 @@ export function SideComposer({
 					if (marks.keyDown(event)) return;
 					history.keyDown(event);
 				}}
-				onContextMenu={kit.onContextMenu}
-				onAttachmentClick={kit.onAttachmentClick}
+				{...kit.shell}
 				decoration={{ attachments: marks.decorationFor(text) }}
 				onSubmit={submit}
 				disabled={disabled}
 				placeholder={t(disabled ? "sideChat.noSession" : "sideChat.placeholder")}
-				onFiles={(picked) => void kit.addFiles(picked)}
-				attachments={
-					/*
-					 * 和主输入框同一排：只有图片，文件在句子里那枚标记上。只在真有图时展开，不然贴进来一个
-					 * 文件，输入框上沿平白高出一道空的内衬。
-					 */
-					<div className="ly-reveal" data-open={kit.strip.length > 0 || quotes.length > 0 ? "true" : "false"}>
-						<div><div className="ly-composer-attachments">
-							{quotes.length > 0 && <QuoteChip quotes={quotes} onRemove={(id) => setQuotes((was) => was.filter((quote) => quote.id !== id))} />}
-							{kit.stripNode}
-						</div></div>
-					</div>
-				}
-				left={
-					<>
-						<IconButton size="composer" emphasis label={t("composer.addAttachment")} onClick={kit.picker.open} icon={<Plus size={16} strokeWidth={1.9} />} />
-						{kit.picker.input}
-					</>
-				}
+				attachments={kit.tray(
+					quotes.length > 0 && <QuoteChip quotes={quotes} onRemove={(id) => setQuotes((was) => was.filter((quote) => quote.id !== id))} />,
+					quotes.length > 0,
+				)}
+				left={kit.addButton}
 				right={
 					<>
 						{/* 和主输入框同一只表，量的是这一格自己的会话：跟着主会话时，窗口也是主会话那个模型的。 */}
