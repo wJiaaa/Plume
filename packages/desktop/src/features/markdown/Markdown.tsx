@@ -131,15 +131,13 @@ export const Markdown = memo(function Markdown({
 	// Memoised because a new object here re-renders every picture in the document on every keystroke
 	// of a streaming reply — which for a remote one means dropping and re-requesting it.
 	const doc = useMemo(() => ({ baseDir, remoteImages, localImages }), [baseDir, remoteImages, localImages]);
-	// 减弱动效时 `active` 不会亮起：淡入的时长会被压成零，可还没轮到的字仍要等 `animation-delay`。
-	const fade = active;
 	/*
 	 * 新挂上的一段字按位置分辨哪些字是刚放出来的（见 `FadeText`）：`clean` 从 `from` 起是最近淡入时长内
 	 * 放出来的。改同一个对象，不换引用，否则每个 `FadeText` 每帧都跟着重画。补尾巴、去表情让 `clean`
 	 * 和放出来的原文差几个字，边界也就差几个字——肉眼看不出。
 	 */
 	const scope = useRef({ from: Number.POSITIVE_INFINITY }).current;
-	scope.from = fade ? Math.max(0, clean.length - recent) : Number.POSITIVE_INFINITY;
+	scope.from = active ? Math.max(0, clean.length - recent) : Number.POSITIVE_INFINITY;
 	const blocks = useMemo(() => {
 		// 每一块的原文在 `clean` 里从哪开始：块的原文就是源文的一段，依次找过去。
 		let cursor = 0;
@@ -147,9 +145,9 @@ export const Markdown = memo(function Markdown({
 			const found = clean.indexOf(raw, cursor);
 			const start = found < 0 ? cursor : found;
 			cursor = start + raw.length;
-			return <BlockView key={index} block={block} raw={raw} start={start} fade={fade} />;
+			return <BlockView key={index} block={block} raw={raw} start={start} fade={active} />;
 		});
-	}, [clean, fade]);
+	}, [clean, active]);
 
 	return (
 		<Doc.Provider value={doc}>

@@ -26,6 +26,13 @@ export interface TextContent {
 	 * 界面两段都画、看上去整段重复。回放时也要原样带回去，模型靠它认出自己哪些话是播报。见 `restated`。
 	 */
 	phase?: "commentary" | "final_answer";
+	/**
+	 * 这段正文写完了（适配器发了 `text_end`）。只出现在流式的 `message_update` 里，不进最终存下的消息。
+	 *
+	 * 界面靠它分清「写完了、在等这条回复收尾」和「写到一半停住了」：有的网关在最后一个字和收尾事件之间
+	 * 要空一两秒，两者光看正文长得一样。见 `agent/stream-turn.ts`。
+	 */
+	ended?: true;
 }
 
 export interface ThinkingContent {

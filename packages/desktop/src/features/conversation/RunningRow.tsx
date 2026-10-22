@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useState } from "react";
 
 import { motionReduced } from "../../ui/motion/reduced.ts";
 import { RunningIndicator } from "./RunningIndicator.tsx";
@@ -27,9 +27,10 @@ export const STALL_MS = 2000;
  * 看不见是当帧的，不淡出：淡出的那 150ms 里，人看到的是字底下冒出来一行，又跟着转录往上滑着消失。
  * 工具调用接上来、它重新出现时照旧淡入。
  *
- * 结论停住了（`written` 有 `STALL_MS` 没长）它也回来：藏它是怕它跟着字跳，字不动就没什么可跳的；
+ * 结论停住了（`grewAt` 起有 `STALL_MS` 没长）它也回来：藏它是怕它跟着字跳，字不动就没什么可跳的；
  * 而一直藏着的话，一段写得慢的结论从第一段末尾到写完，屏幕上不说耗时、不说速度，也看不出是在写还是
- * 卡住了。字一接着长，当帧又藏回去。
+ * 卡住了。字一接着长，当帧又藏回去。正文已经写完、在等这条回复收尾的那一两秒不算停住（`grewAt` 是空的），
+ * 不然它在结尾冒一下、接着被页脚顶掉。
  *
  * 回答写完（`answered`）以后它先只是看不见，等 `running` 落下那一次提交才当帧收起，不走过渡：
  * 回答底下那一行时间和复制按钮也是等 `running` 落下才长出来的（一轮没结束谁是最后一句还没定，
@@ -39,17 +40,18 @@ export const STALL_MS = 2000;
  * 在 `answered` 那一次就收的话，中间隔着一次提交，贴底的转录同样先掉下去一行、再被操作行顶回来；
  * 慢慢收的话，刚读完的那段话会先被操作行顶上去、再随着这一行变矮往下沉。
  */
-export function RunningRow({ running, answering, written, answered, compacting }: {
+// 按 props 记住：它和转录挂在同一个组件里，转录流式输出时每一拍都重画。
+export const RunningRow = memo(function RunningRow({ running, answering, grewAt, answered, compacting }: {
 	running: boolean;
 	answering: boolean;
-	/** 正在流的这条回复写到了多少字，只用来看它停没停。 */
-	written: number;
+	/** 末尾那段正文上一次变长的时刻（`proseGrewAt`）；没在写、或者已经写完，是 `undefined`。 */
+	grewAt: number | undefined;
 	/** 最后一条是一段正常写完的回答。收尾时消息先定稿，`running` 晚一次提交才落下。 */
 	answered: boolean;
 	compacting: boolean;
 }) {
 	const open = running && !compacting;
-	const stalled = useStalled(written, open && answering);
+	const stalled = useStalled(grewAt, open && answering);
 	/*
 	 * 收起时沿用收起前那一刻的隐/显。结论写到一半被停下（或开始压缩）时这一行正隐着，`open` 一落、
 	 * 只按 `open && …` 算的话它就不再隐，于是在往下收的那 300ms 里把「Thinking…」淡入回来——
@@ -86,21 +88,22 @@ export function RunningRow({ running, answering, written, answered, compacting }
 			</div>
 		</div>
 	);
-}
+});
 
 /**
- * `written` 在 `watching` 期间有 `STALL_MS` 没变过。
+ * 从 `grewAt` 起已经过了 `STALL_MS`。
  *
- * 记的是停在哪个值上，不是一个开关：字一长，同一次渲染里就不再算停，不用等 effect 再提交一次——
- * 那一次提交里新的字已经画出来，运行行还挂在它底下。
+ * 判断在渲染时现读时钟：字一长，`grewAt` 换成新的时刻，同一次渲染里就不再算停，不用等 effect 再提交一次——
+ * 那一次提交里新的字已经画出来，运行行还挂在它底下。停住那一刻 store 里什么都不变，所以由计时器叫醒一次。
  */
-function useStalled(written: number, watching: boolean): boolean {
-	const [stalledAt, setStalledAt] = useState<number | null>(null);
-	if (!watching && stalledAt !== null) setStalledAt(null);
+function useStalled(grewAt: number | undefined, watching: boolean): boolean {
+	const [, wake] = useState(0);
 	useEffect(() => {
-		if (!watching) return;
-		const timer = setTimeout(() => setStalledAt(written), STALL_MS);
+		if (!watching || grewAt === undefined) return;
+		const left = STALL_MS - (Date.now() - grewAt);
+		if (left <= 0) return;
+		const timer = setTimeout(() => wake((n) => n + 1), left);
 		return () => clearTimeout(timer);
-	}, [written, watching]);
-	return watching && stalledAt === written;
+	}, [grewAt, watching]);
+	return watching && grewAt !== undefined && Date.now() - grewAt >= STALL_MS;
 }

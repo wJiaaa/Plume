@@ -111,6 +111,8 @@ test("切走期间写下的字，切回来那一帧就在；之后来的字照�
 		const away = `${burst}${"离开期间写下的字。".repeat(40)}`;
 		await view.rerender(h(Page, { text: away }));
 		assert.equal(view.text(), away, "回来那一帧就是离开期间写下的全文，不停在离开时那一截");
+		// 离开期间写下的字接在挂着的那段字后面，是让它变长，不是新挂上一段：从前那一截整段从透明淡入。
+		assert.equal(view.all(".ly-fade-char").length, 0, "离开期间写下的字回来时是实的，不从透明淡入");
 
 		await frames(60);
 		const more = `${away}${"回来以后才到的字。".repeat(20)}`;

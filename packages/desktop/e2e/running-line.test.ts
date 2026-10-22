@@ -72,6 +72,31 @@ function startModel(): Server {
 			sse(res, { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: PROSE } });
 
 			/*
+			 * 第四条：结论写完、正文块收了（`content_block_stop`），过 3 秒才收尾——会话 a931dccf 里
+			 * magpie 在最后一个字和收尾之间就空了这么一段。
+			 */
+			if (turn === 3) {
+				let sent = 0;
+				const writing = setInterval(() => {
+					if (res.writableEnded) return clearInterval(writing);
+					if (sent++ < 4) {
+						sse(res, { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: `\n\n收尾前第 ${sent} 段：写完以后要等一会儿才收尾。` } });
+						return;
+					}
+					clearInterval(writing);
+					sse(res, { type: "content_block_stop", index: 0 });
+					const closing = setTimeout(() => {
+						sse(res, { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 200 } });
+						sse(res, { type: "message_stop" });
+						res.end();
+					}, 3_000);
+					res.on("close", () => clearTimeout(closing));
+				}, 500);
+				res.on("close", () => clearInterval(writing));
+				return;
+			}
+
+			/*
 			 * The second reply keeps writing on one line; the third writes paragraphs. Slowly, so
 			 * each can be read many times while it does.
 			 */
@@ -199,6 +224,8 @@ interface Claim {
 	paragraphs: boolean;
 	/** The third reply's last paragraph is on screen: after it the stream stays open and says nothing. */
 	lastParagraph: boolean;
+	/** The fourth reply has written its last paragraph. */
+	closingDone: boolean;
 	/** In the tree at all, as against folded to nothing — the two are worth telling apart in a failure. */
 	mounted: boolean;
 	/** The fold's measured height, so a failure says how shut it was rather than only that it was. */
@@ -228,6 +255,7 @@ const READ_CLAIM = `(() => {
 		prose: text.includes(${JSON.stringify(PROSE)}),
 		paragraphs: text.includes("第 1 段："),
 		lastParagraph: text.includes("第 10 段："),
+		closingDone: text.includes("收尾前第 4 段："),
 		toolCard: Boolean(document.querySelector("main [data-ly-tool]")),
 		mounted: Boolean(line),
 		foldHeight: fold ? Math.round(fold.getBoundingClientRect().height) : -1,
@@ -367,4 +395,35 @@ test("while a conclusion in paragraphs streams, the line stays out of the way", 
 	assert.equal(back.stopButton, true, "the turn ended before the stall could be read");
 	assert.equal(back.line, true, `the running line stayed hidden under a conclusion that had stopped: ${JSON.stringify(back)}`);
 	assert.ok(waited >= 1_000, `the running line came back ${waited}ms after the last words, before they had stopped long enough`);
+});
+
+// ---------------------------------------------------------------------------
+// 4. A conclusion written out, then a wait before the reply closes
+// ---------------------------------------------------------------------------
+
+test("a conclusion that is written out stays without the line while the reply waits to close", async () => {
+	await app.evaluate(`(() => {
+		[...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "新对话")?.click();
+		return true;
+	})()`);
+	await new Promise((resolve) => setTimeout(resolve, 800));
+
+	await ask("写完再收尾");
+	await until((c) => c.closingDone);
+
+	/*
+	 * 正文块已经收了，回复还要 3 秒才收尾：比 `STALL_MS` 长。这段时间按「停住」把运行行放回来的话，
+	 * 它在结论底下冒一下，接着就被回答底下的页脚顶掉。一直读到这一轮结束。
+	 */
+	const readings: Claim[] = [];
+	for (;;) {
+		const reading = await claim();
+		readings.push(reading);
+		if (!reading.stopButton) break;
+		await new Promise((resolve) => setTimeout(resolve, 100));
+	}
+	const waiting = readings.filter((c) => c.stopButton);
+	assert.ok(waiting.length >= 20, `the reply closed too soon to prove anything: ${waiting.length} readings`);
+	const shown = waiting.filter((c) => c.line);
+	assert.equal(shown.length, 0, `the running line came back while a written-out conclusion waited to close: ${shown.length} of ${waiting.length}`);
 });

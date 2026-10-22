@@ -141,6 +141,21 @@ export async function streamTurn(modelConfig: AgentModelContext, context: LlmCon
 	let started = false;
 
 	/*
+	 * 写完了的正文块，和最近一份流式快照。
+	 *
+	 * `text_end` 不带快照，也从来没转发过：正文写完到这条回复收尾之间，界面收不到任何东西，分不清是写完了
+	 * 还是停住了（有的网关在这里空一两秒）。所以拿最近那份快照转发一次，之后每次转发都给这些块标上
+	 * `ended`。只标在发出去的副本上：适配器原地改块、快照是浅拷贝，块的身份一路不变，用它认；
+	 * 适配器手里那份和最终消息不带这个标记，存盘、回放都照旧。
+	 */
+	const ended = new WeakSet<object>();
+	let latest: AssistantMessage | undefined;
+	const marked = (message: AssistantMessage): AssistantMessage =>
+		message.content.some((block) => ended.has(block))
+			? { ...message, content: message.content.map((block) => (block.type === "text" && ended.has(block) ? { ...block, ended: true as const } : block)) }
+			: message;
+
+	/*
 	 * How the interruption ended. Only a clean first-try success has nothing to say — a failure
 	 * that was never retried (bad key, wrong model name) must still be reported, or the window is
 	 * left silent with no record of what happened.
@@ -190,8 +205,17 @@ export async function streamTurn(modelConfig: AgentModelContext, context: LlmCon
 			case "toolcall_delta":
 			case "toolcall_end":
 				said = true;
-				await emit({ type: "message_update", message: event.partial, delta: event });
+				latest = event.partial;
+				await emit({ type: "message_update", message: marked(event.partial), delta: event });
 				break;
+			case "text_end": {
+				// 同一时刻只有一段正文在写，写完的就是最后那段。
+				const block = latest?.content.findLast((candidate) => candidate.type === "text");
+				if (!latest || !block) break;
+				ended.add(block);
+				await emit({ type: "message_update", message: marked(latest), delta: event });
+				break;
+			}
 			case "done":
 			case "error": {
 				const message = event.message;

@@ -15,7 +15,7 @@
  * 刚收口的加粗、一行变成表格的那一刻。挂上时它身上的字有的早就在屏幕上（表格的表头在变成表格之前
  * 是一段普通的字），有的是刚放出来的。全淡一遍，老字会闪一下；全不淡，新段的头几个字会蹦出来。
  * 所以按位置分：`Markdown` 说原文从第几个字起是最近 `FADE` 内放出来的（`FadeScope`），这段字在
- * 块的原文里找到自己（`BlockScan`），落在那之后的淡入，之前的当作淡完。
+ * 块的原文里找到自己（`BlockScan`），落在那之后的淡入，之前的当作淡完。已经挂着的一段字变长时也按这条，见 `useFade`。
  */
 
 import { createContext, type HTMLAttributes, type ReactNode, useContext, useEffect, useReducer, useRef } from "react";
@@ -75,30 +75,25 @@ export function useFade(text: string, length: number): { settled: number; group:
 	// 每次画都找一遍、把块的游标往后挪：后面新挂上的一段字要从这里往后找，不然会找到前面某个同样的字。
 	const end = locate(scan, text);
 
-	if (!state.current) {
-		const fresh = end === null ? 0 : Math.min(text.length, Math.max(0, end - scope.from));
-		// `fresh` 是 UTF-16 单元数，换成码点数：从尾巴往回数这么多个单元。
-		let tail = text.length - fresh;
-		const code = text.charCodeAt(tail);
-		if (code >= 0xdc00 && code <= 0xdfff) tail--;
-		const settledChars = Array.from(text.slice(0, tail)).length;
-		const births: number[] = [];
-		const groups: number[] = [];
-		for (let at = 0; at < length; at++) {
-			births.push(at < settledChars ? now - FADE : now);
-			groups.push(at < settledChars ? at : settledChars);
-		}
-		state.current = { births, groups };
-	}
+	/*
+	 * 落在 `scope.from` 之前的字早就放出来了，当作淡完。挂上和变长都按这一条：切回一段正在写的会话时，
+	 * 离开期间写下的字是让挂着的这段字变长，而不是新挂上一段——只在挂上时看位置，那一截会整段从透明淡入。
+	 * 找不到位置时，挂上那一刻已有的字算淡完，之后长出来的算新字。
+	 */
+	const first = !state.current;
+	state.current ??= { births: [], groups: [] };
 	const { births, groups } = state.current;
 	if (length < births.length) {
 		births.length = length;
 		groups.length = length;
 	}
-	const head = births.length;
+	const old = end === null ? (first ? length : 0) : settledCount(text, end - scope.from);
+	// 新字合成一组，组头是第一个新字。
+	const head = Math.max(births.length, old);
 	while (births.length < length) {
-		births.push(now);
-		groups.push(head);
+		const at = births.length;
+		births.push(at < old ? now - FADE : now);
+		groups.push(at < old ? at : head);
 	}
 
 	// 出现时刻是递增的，所以淡完的字总是连成开头那一段。
@@ -149,6 +144,14 @@ function useRedrawWhileFading(fading: boolean, restart: number, latestBirth: () 
 function fadeAlpha(age: number): number {
 	const t = Math.min(1, Math.max(0, age / FADE));
 	return Math.round(t * t * (3 - 2 * t) * 100) / 100;
+}
+
+/** `text` 末尾有 `fresh` 个 UTF-16 单元是新的，前面那些旧字有几个码点。不从代理对中间切开。 */
+function settledCount(text: string, fresh: number): number {
+	let tail = text.length - Math.min(text.length, Math.max(0, fresh));
+	const code = text.charCodeAt(tail);
+	if (code >= 0xdc00 && code <= 0xdfff) tail--;
+	return Array.from(text.slice(0, tail)).length;
 }
 
 /**
