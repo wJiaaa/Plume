@@ -5,7 +5,7 @@ import { useState } from "react";
 import type { WorkspaceDiffFile } from "../../../electron/ipc-types.ts";
 import { BinaryDiff } from "./BinaryDiff.tsx";
 import { DiffView } from "./DiffView.tsx";
-import { iconColour, lookFor } from "../files/index.ts";
+import { iconColour, lookFor } from "../../ui/fileIcon.tsx";
 import { SkeletonBar } from "../../ui/primitives/Skeleton.tsx";
 import { ScrollText } from "../../ui/scroll/ScrollText.tsx";
 import { Text } from "../../ui/primitives/Text.tsx";

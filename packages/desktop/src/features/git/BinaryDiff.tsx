@@ -12,7 +12,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { WorkspaceDiffFile } from "../../../electron/ipc-types.ts";
-import { iconColour, lookFor } from "../files/index.ts";
+import { iconColour, lookFor } from "../../ui/fileIcon.tsx";
 import { Text } from "../../ui/primitives/Text.tsx";
 import { bridge } from "../../services/index.ts";
 import { useI18n, type MessageKey } from "../../i18n/index.ts";
