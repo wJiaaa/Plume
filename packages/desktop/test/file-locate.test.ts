@@ -9,8 +9,35 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { registerHooks } from "node:module";
 import { after, before, test } from "node:test";
 import { locateInProject } from "../electron/files/file-locate.ts";
+
+/*
+ * 同一个模块再载一份，git 换成「全量清单超出输出上限」：几十万个文件的仓库，在测试里造不出 32MB 的清单。
+ * 只有不带 pathspec 的全量列举会溢出，按名字问的照常交给真 git。
+ */
+const overflowing = new URL("../electron/files/file-locate.ts?overflow", import.meta.url).href;
+const fakeGit = `data:text/javascript,${encodeURIComponent(`
+import { git as real } from ${JSON.stringify(new URL("../electron/git/git-exec.ts", import.meta.url).href)};
+export const overflows = { count: 0 };
+export const git = async (cwd, args, options) => {
+	if (args.at(-1) === "--exclude-standard") {
+		overflows.count++;
+		throw Object.assign(new Error("stdout maxBuffer length exceeded"), { code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" });
+	}
+	return real(cwd, args, options);
+};
+`)}`;
+const hooks = registerHooks({
+	resolve(specifier, context, nextResolve) {
+		if (context.parentURL === overflowing && specifier === "../git/index.ts") return { url: fakeGit, shortCircuit: true };
+		return nextResolve(specifier, context);
+	},
+});
+const { locateInProject: locateOverflowing } = (await import(overflowing)) as typeof import("../electron/files/file-locate.ts");
+const { overflows } = (await import(fakeGit)) as { overflows: { count: number } };
+hooks.deregister();
 
 let repo: string;
 
@@ -26,7 +53,8 @@ before(() => {
 	file("packages/core/src/agent/tool-run.ts");
 	file("packages/desktop/src/store/tool-run.ts");
 	file("node_modules/pkg/approvals.ts");
-	file(".gitignore", "node_modules/\n");
+	file("generated/approvals.ts");
+	file(".gitignore", "node_modules/\ngenerated/\n");
 	execFileSync("git", ["init", "-q"], { cwd: repo, stdio: "pipe" });
 });
 
@@ -46,6 +74,14 @@ test("相对子包写的路径，按结尾找到它", async () => {
 
 test("同名的有两个，两个都列出来，由调用方决定不猜", async () => {
 	assert.equal((await locateInProject(repo, "tool-run.ts")).length, 2);
+});
+
+test("仓库大到全量清单溢出时，按名字去问 git，不退回不认 .gitignore 的走目录", async () => {
+	// `generated/` 不在 `SKIP_DIRS` 里：退回走目录的话，被忽略的那一个会混进来。
+	assert.deepEqual(await locateOverflowing(repo, "approvals.ts"), ["packages/core/src/runtime/approvals.ts"]);
+	assert.equal((await locateOverflowing(repo, "tool-run.ts")).length, 2);
+	assert.deepEqual(await locateOverflowing(repo, "nowhere.ts"), []);
+	assert.ok(overflows.count > 0, "the listing really overflowed");
 });
 
 test("走出项目的、带通配符的、不存在的，都是空", async () => {

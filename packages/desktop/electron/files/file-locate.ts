@@ -33,6 +33,11 @@ export async function locateInProject(root: string, relative: string): Promise<s
 	if ((await stat(join(root, clean)).catch(() => null))?.isFile()) return [clean];
 
 	const files = await projectFiles(root);
+	if (files === null) {
+		// 仓库大到列不完：退回只问这一个名字，让 git 按 pathspec 找，仍然认 .gitignore。
+		const listed = await git(root, ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", `:(glob)**/${clean}`]).catch(() => "");
+		return [...new Set(listed.split("\0").filter(Boolean))].sort().slice(0, LIMIT);
+	}
 	return [...new Set(files.filter((path) => path === clean || path.endsWith(`/${clean}`)))].sort().slice(0, LIMIT);
 }
 
@@ -41,9 +46,9 @@ export async function locateInProject(root: string, relative: string): Promise<s
  * glob 的 `git ls-files`，而每个 glob 都要扫一遍整个索引，和列一遍全部文件一样贵——打开一个会话起过
  * 44 个 git。走完就丢，不留缓存：文件可能是回复提到之后才写出来的，记住旧清单就再也找不到它。
  */
-const listing = new Map<string, Promise<string[]>>();
+const listing = new Map<string, Promise<string[] | null>>();
 
-function projectFiles(root: string): Promise<string[]> {
+function projectFiles(root: string): Promise<string[] | null> {
 	let list = listing.get(root);
 	if (!list) {
 		list = listFiles(root).finally(() => listing.delete(root));
@@ -56,10 +61,16 @@ function projectFiles(root: string): Promise<string[]> {
  * 交给 git 列：它认 .gitignore，`node_modules` 和构建产物里的同名文件不会混进来。不是 git 仓库（git 报错）
  * 时自己走目录，规矩和 core 的 `glob` 兜底一样，见 `SKIP_DIRS`。只靠 git 时，这种项目里只写文件名的链接
  * 一律拼到项目根上，点开就是「读不到」。
+ *
+ * `null`：清单超出了 `git()` 的输出上限（32MB，几十万个文件）。这时不能退回走目录——那不认 .gitignore，
+ * 会把 `node_modules` 里的同名文件找回来——由调用方逐个名字去问 git。
  */
-async function listFiles(root: string): Promise<string[]> {
-	const listed = await git(root, ["ls-files", "-z", "--cached", "--others", "--exclude-standard"]).catch(() => null);
-	return listed === null ? walkFiles(root) : listed.split("\0").filter(Boolean);
+async function listFiles(root: string): Promise<string[] | null> {
+	try {
+		return (await git(root, ["ls-files", "-z", "--cached", "--others", "--exclude-standard"])).split("\0").filter(Boolean);
+	} catch (error) {
+		return (error as { code?: unknown }).code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" ? null : walkFiles(root);
+	}
 }
 
 /** `root` 之下的文件，相对 `root`、用 `/` 分隔。不跟软链：一个指回上层的链接会让它绕不出来。 */
