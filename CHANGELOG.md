@@ -2,6 +2,29 @@
 
 这个文件由 `pnpm release` 生成，条目来自提交信息。写得含糊的提交在这里也含糊，所以值得在提交时就写清楚。
 
+## [0.9.47](https://github.com/wJiaaa/Plume/releases/tag/v0.9.47) - 2026-10-22
+
+<!-- plume:notes en -->
+
+### Fixes
+
+- **The 0.9.46 download for Apple Silicon Macs did nothing when opened.** No window and no error appeared, and opening it again did nothing either, because the first copy was still running in the background. The package had been corrupted during the build: one file was edited while the archive was being written, and every file after it was read 210 bytes off. This version is built cleanly. If you installed 0.9.46 on an Apple Silicon Mac, the app can't update itself, so download this version and install it over the old one. Intel Macs and Windows were not affected.
+- **Links to folders in a reply now open the folder.** Models often link to where they saved something, such as the `source-images/` folder. Clicking it used to say the path couldn't be read, even though the folder was there. It now opens in Finder or Explorer. The same applies to folder paths clicked in the terminal. A link ending in `/` shows a folder icon.
+- **A file name on its own in a reply now opens in projects that are not git repositories.** In such a project, a reply mentioning `ink_splat_06.png` opened `<project root>/ink_splat_06.png` and said it couldn't be read, because the file was looked up only through git. Plume now searches the project folder itself and skips dependencies, build output and hidden folders. A 20,000-file Unity project takes about 35ms.
+
+<!-- plume:notes zh-CN -->
+
+<details>
+<summary>中文（简体）</summary>
+
+### 修复
+
+- **0.9.46 的 Apple Silicon 安装包打开没有反应。** 不出窗口也不报错，再点一次还是没反应——第一次打开的那个一直挂在后台。这个包在打包时被弄坏了：写归档的同时有一个文件被改了，后面所有文件读出来都错开 210 个字节。这一版是干净重打的。在 Apple Silicon 的 Mac 上装了 0.9.46 的，应用没法自己更新，需要手动下载这一版覆盖安装。Intel Mac 和 Windows 不受影响。
+- **回复里链到文件夹，点开就是那个文件夹。** 模型常把保存位置写成指向 `素材原图/` 这类文件夹的链接，以前点开弹「读不到 …/素材原图」，而文件夹明明就在那里。现在交给访达或资源管理器打开，终端里点到文件夹路径也一样。以 `/` 结尾的链接显示文件夹图标。
+- **不是 git 仓库的项目里，回复只写文件名也能点开。** 这类项目里回复写 `ink_splat_06.png`，点开会拼成「项目根/ink_splat_06.png」然后读不到，因为找文件只问 git。现在改为自己在项目目录里找，跳过依赖、构建产物和隐藏目录，两万个文件的 Unity 工程找一遍约 35ms。
+
+</details>
+
 ## [0.9.46](https://github.com/wJiaaa/Plume/releases/tag/v0.9.46) - 2026-10-21
 
 <!-- plume:notes en -->
