@@ -636,16 +636,30 @@ function bindScreenshotShortcut(): void {
 	registerDefaultSearchProviders(() => getSettings()?.searchApiKeys);
 
 	registerIpc();
-	createWindow();
-	getWindow()?.webContents.once("did-finish-load", firstWindowLoaded);
 	/*
-	 * The dock icon once the window is on screen. `setIcon` hands the 1024px image to the Dock
+	 * The dock icon once a window is on screen. `setIcon` hands the 1024px image to the Dock
 	 * synchronously — about 50ms on this thread, and a pre-decoded image is no faster — and this is
 	 * also the thread that starts the renderer and shows the window. Ahead of `createWindow`, or just
 	 * after it, the window appeared that much later on every launch. By `show` the theme is applied,
 	 * so the first icon set is already the right one.
+	 *
+	 * Whichever window shows first, not the first one made: that one can be closed or crash before
+	 * `ready-to-show`, and the icon and its theme listener were then never set for the whole process.
+	 * Once only — `followThemeWithDockIcon` registers a theme listener each time it runs.
 	 */
-	getWindow()?.once("show", () => setImmediate(followThemeWithDockIcon));
+	let dockIconSet = false;
+	const dockIconOnFirstShow = (_event: unknown, window: BrowserWindow) => {
+		window.once("show", () => {
+			// Every window made before then carries one of these; only the first to show counts.
+			if (dockIconSet) return;
+			dockIconSet = true;
+			app.off("browser-window-created", dockIconOnFirstShow);
+			setImmediate(followThemeWithDockIcon);
+		});
+	};
+	app.on("browser-window-created", dockIconOnFirstShow);
+	createWindow();
+	getWindow()?.webContents.once("did-finish-load", firstWindowLoaded);
 	bindScreenshotShortcut();
 	/*
 	 * Build the capture overlay now, while nothing is waiting on it.
