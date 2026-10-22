@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { DEFAULT_SETTINGS, type Settings } from "../src/config/settings.ts";
-import { AgentSession } from "../src/runtime/session.ts";
+import { AgentSession } from "../src/runtime/agent-session/session.ts";
 import { SessionStore, type SessionMeta } from "../src/session/store.ts";
 import { forkSession } from "../src/trajectory/fork.ts";
 import type { AssistantMessage, ModelConfig, ProviderConfig, ThinkingLevel } from "../src/types.ts";

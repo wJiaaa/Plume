@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { extractMemory } from "../src/runtime/memory/memory-extract.ts";
-import { pendingSkills } from "../src/runtime/managed-skills.ts";
+import { pendingSkills } from "../src/runtime/memory/managed-skills.ts";
 import { projectMemoryDir } from "../src/runtime/memory/project-memory.ts";
 import type { AssistantMessage, Message } from "../src/types.ts";
 

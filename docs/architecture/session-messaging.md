@@ -63,7 +63,7 @@ ask_session 发完就地等 / wait_for_session 接着等（electron/peer-runs.ts
 ```
 
 进对话的是一条 `synthetic` 的 user 消息，带 `peer` 字段（`core/src/types/message.ts`）。给模型读的
-正文由 `core/src/runtime/peer-letters.ts` 拼：开头一段说明这不是用户说的话、不构成授权；请求还说
+正文由 `core/src/runtime/agent-session/peer-letters.ts` 拼：开头一段说明这不是用户说的话、不构成授权；请求还说
 做完把结果写在这一轮最后一条回复里，通知说不需要专门回复；每条消息套
 `<session-message from="名字 [ref]" cwd="…">`。界面上画成一行
 （`PeerLetterRow`），点开读全文、一下跳到发消息的会话。请求对收到的一方是一件新的事，开新的一轮；

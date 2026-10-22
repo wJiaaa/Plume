@@ -11,6 +11,21 @@
  * the same reason `knip` runs with `--no-exit-code` in CI.
  */
 
+/**
+ * One rule per layer of `core/src/runtime/`: nothing below a layer may import it. Generated so the
+ * order is written once — four hand-written rules would each repeat "everything below me", and the
+ * lists drift the first time a group is added.
+ */
+function runtimeLayers(layers) {
+	const dir = (groups) => `^packages/core/src/runtime/(${groups.join("|")})/`;
+	return layers.slice(0, -1).map((groups, i) => ({
+		name: `runtime-layer-${groups.join("-")}`,
+		severity: "error",
+		from: { path: dir(layers.slice(i + 1).flat()) },
+		to: { path: dir(groups) },
+	}));
+}
+
 /** @type {import('dependency-cruiser').IConfiguration} */
 module.exports = {
 	forbidden: [
@@ -107,6 +122,28 @@ module.exports = {
 			to: { path: "^packages/core/src/(runtime|session|kernel)/" },
 		},
 
+		/*
+		 * `runtime/` 内部的分层，从上到下。每一层只往下引，同层之间随意；类型也算，理由同上一条。
+		 *
+		 *   agent-session   会话驱动：`AgentSession` 和从它身上拆出来的部件，只有它开回合
+		 *   sub-agent       被会话驱动的另两种运行；它们借会话的记录和能力，但不认识会话本身
+		 *   side-chat
+		 *   record          会话记下了什么（`SessionLog`），以及从记录里读出来的东西：状态、上下文分布、缓存诊断
+		 *   setup           会话装上了什么：工具、技能、插件、MCP、子智能体定义，以及据此拼的提示词上下文
+		 *   policy …        叶子：每种运行共用的规矩、计划模式、压缩、记忆、任务队列、标题、摘要与一次性旁路请求
+		 *
+		 * 子代理派发要的 `scratchDir`、`buildRouter` 和上下文分布住在 record / setup，所以这两层在
+		 * sub-agent 之下；`dispatch-guard` 是提示词也要读的上限，所以在叶子层而不在 sub-agent。
+		 * 理由与分组见 ARCHITECTURE.md 的「core 的 runtime」。
+		 */
+		...runtimeLayers([
+			["agent-session"],
+			["sub-agent", "side-chat"],
+			["record"],
+			["setup"],
+			["policy", "plan", "compaction", "memory", "queue", "summary"],
+		]),
+
 		{
 			name: "renderer-imports-core-types-only",
 			comment:
@@ -132,7 +169,7 @@ module.exports = {
 				"`mcp/form` 一个 import 都没有：MCP 表单哪一格没填对，窗口画提示、闸门收答案，两处必须是同一个判断。" +
 				"`ui-language/` 整个目录一个 import 都不出去：界面块的解析、检查与组件表，模型在提示词里读到的、" +
 				"运行时回报给它的、桌面端画出来的，必须是同一份规则——两处各写一遍，就是模型学的属性被渲染器悄悄丢掉。" +
-				"`runtime/plan-view` 只有一个 `import type`：计划长什么样、会话里眼下是哪一份，审批卡、压缩快照和右栏计划面板" +
+				"`runtime/plan/plan-view` 只有一个 `import type`：计划长什么样、会话里眼下是哪一份，审批卡、压缩快照和右栏计划面板" +
 				"必须是同一个答案——面板自己从历史里另找一遍，迟早和模型手上那份对不上。" +
 				"`tools/shell-split` 一个 import 都没有：命令行怎么切成命令和词，审批判风险时用它，任务面板说「输出写进了哪个文件」" +
 				"也用它——引号、`2>&1`、粘在 `>` 上的路径，两处各写一遍就会对同一行命令给出两种读法。" +
@@ -149,7 +186,7 @@ module.exports = {
 				path: "^packages/core/src",
 				pathNot:
 					"^packages/core/src/(types|tokens|activity|trajectory-view|commands-view|model-catalog|agents-builtin|platform|reply-text|followups)\\.ts$" +
-					"|^packages/core/src/(config/schedule|config/model-choice|config/models|config/image-models|config/project-folders|config/retry-policy|session/usage-parts|commands/builtin|plugins/install-record|mcp/placeholders|mcp/form|ai/thinking-options|runtime/delegation|runtime/plan-view|tools/shell-split)\\.ts$" +
+					"|^packages/core/src/(config/schedule|config/model-choice|config/models|config/image-models|config/project-folders|config/retry-policy|session/usage-parts|commands/builtin|plugins/install-record|mcp/placeholders|mcp/form|ai/thinking-options|runtime/delegation|runtime/plan/plan-view|tools/shell-split)\\.ts$" +
 					"|^packages/core/src/ui-language/(index|catalog|chart|check|expression|parse)\\.ts$",
 				dependencyTypesNot: ["type-only"],
 			},

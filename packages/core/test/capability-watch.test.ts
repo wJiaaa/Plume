@@ -13,7 +13,7 @@ import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
-import { CapabilityWatcher } from "../src/runtime/capability-watch.ts";
+import { CapabilityWatcher } from "../src/runtime/setup/capability-watch.ts";
 
 let root: string;
 

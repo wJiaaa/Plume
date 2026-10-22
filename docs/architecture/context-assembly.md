@@ -1,7 +1,7 @@
 # 上下文组装与统计
 
-主会话的组装入口是 `runtime/session-turn.ts`。项目指令、技能、记忆、环境和可用能力经
-`runtime/prompt-context.ts` 加载，由 `prompt/system.ts` 产出一份提示词和段落来源。
+主会话的组装入口是 `runtime/agent-session/session-turn.ts`。项目指令、技能、记忆、环境和可用能力经
+`runtime/setup/prompt-context.ts` 加载，由 `prompt/system.ts` 产出一份提示词和段落来源。
 每段记录来源、字符范围，以及适用时的文件路径和截断标记。
 段落用字符范围引用同一份字符串，日志不重复保存正文。
 
@@ -77,7 +77,7 @@ provider 接口。provider 缓存由各适配器处理。
   或者回了空，丢掉这次结果、走独立请求。
 - **摘要的是整段**，包括之后原样保留的尾部；重复的那几条比整段原价重读便宜。剪枝、清理被覆盖的
   结果只作用在保留下来的尾部上，不改摘要请求的输入。
-- **一轮收尾后趁热压**（`runtime/compaction/idle-compaction.ts`）：越线常常发生在一轮最后一次回复上，下一次
+- **一轮收尾后趁热压**（`runtime/agent-session/idle-compaction.ts`）：越线常常发生在一轮最后一次回复上，下一次
   请求要等人再开口，那时缓存多半已过期。宿主打开 `compactWhenIdle`（桌面端主会话开，侧聊和命令行
   不开）后，一轮正常结束、会话闲下来，就在热缓存上分叉压一次；凉了或用不了分叉就什么也不做，留给
   下一轮开头。和手动压缩同一把锁：期间来的消息排在后面，停止按钮能停下它。
@@ -99,7 +99,7 @@ provider 接口。provider 缓存由各适配器处理。
 
 ## 缓存未命中诊断
 
-`runtime/cache-diagnostics.ts` 的 `diagnoseCache` 对一条请求序列逐次算出本该命中而没命中的
+`runtime/record/cache-diagnostics.ts` 的 `diagnoseCache` 对一条请求序列逐次算出本该命中而没命中的
 token 和多花的钱，用来验收上面这些前缀修复、并定位前缀在哪一次请求被打断。主会话与每个子代理
 各是一条序列，缓存前缀互不相干。`pnpm audit:sessions` 第 10 节在本机真实会话上汇总它；设置页
 「用量」的「缓存未命中」一节按页面上的区间和筛选汇总同样的结果：扫描器（`electron/usage-scan.ts`）

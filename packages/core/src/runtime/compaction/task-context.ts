@@ -1,5 +1,5 @@
 import type { CompactionContext, Message } from "../../types/message.ts";
-import { renderPlan, SUBMIT_PLAN_TOOL_NAME } from "../plan-view.ts";
+import { renderPlan, SUBMIT_PLAN_TOOL_NAME } from "../plan/plan-view.ts";
 
 const REQUEST_CHARS = 2000;
 const REQUEST_SOURCES = 20;

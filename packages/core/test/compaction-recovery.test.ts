@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SessionStore } from "../src/session/store.ts";
-import { SessionLog } from "../src/runtime/session-log.ts";
+import { SessionLog } from "../src/runtime/record/session-log.ts";
 import type { AgentEvent, CommandRun } from "../src/agent/events.ts";
 
 const command: CommandRun = { id: "compact-1", name: "compact", input: "/compact", timestamp: 1, at: 0, status: "running", detail: "正在压缩会话…" };

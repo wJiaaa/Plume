@@ -11,7 +11,7 @@ import { test } from "node:test";
 import type { AgentRunResult } from "../src/agent/loop.ts";
 import { runAgent } from "../src/agent/loop.ts";
 import { runConfig } from "./run-config.ts";
-import { continueWhileWorkRemains } from "../src/runtime/continuation.ts";
+import { continueWhileWorkRemains } from "../src/runtime/policy/continuation.ts";
 import { toAnthropicMessages } from "../src/ai/anthropic-messages-request.ts";
 import { TODOS_KEY, type TodoItem } from "../src/tools/todo.ts";
 import type { AssistantMessage, ModelConfig, ProviderConfig } from "../src/types.ts";

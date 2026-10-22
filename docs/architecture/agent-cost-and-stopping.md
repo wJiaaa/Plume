@@ -365,9 +365,9 @@ pnpm audit:sessions --json   # 机读，用于前后对照
 | 重复检测（`REPEAT_WARN` / `REPEAT_STOP` / `INTENT_WARN`） | [packages/core/src/agent/repetition.ts](../../packages/core/src/agent/repetition.ts) |
 | 超大结果裁剪（`pruneToolResults` / `stripOversizedToolResults`） | [packages/core/src/agent/prune.ts](../../packages/core/src/agent/prune.ts) |
 | 压缩（`THRESHOLD` 等 5 个常量）；摘要头（`filesSeen`） | [packages/core/src/runtime/compaction/compaction.ts](../../packages/core/src/runtime/compaction/compaction.ts)、[compaction-head.ts](../../packages/core/src/runtime/compaction/compaction-head.ts) |
-| 续跑（`MAX_CONTINUATIONS` / `STALLED_CONTINUATIONS`） | [packages/core/src/runtime/continuation.ts](../../packages/core/src/runtime/continuation.ts) |
-| 整条续跑链共用的那只重复计数表 | [packages/core/src/runtime/turn-config.ts](../../packages/core/src/runtime/turn-config.ts) |
-| 终止时写给用户的话 | [packages/core/src/runtime/session-turn.ts](../../packages/core/src/runtime/session-turn.ts) |
+| 续跑（`MAX_CONTINUATIONS` / `STALLED_CONTINUATIONS`） | [packages/core/src/runtime/policy/continuation.ts](../../packages/core/src/runtime/policy/continuation.ts) |
+| 整条续跑链共用的那只重复计数表 | [packages/core/src/runtime/agent-session/turn-config.ts](../../packages/core/src/runtime/agent-session/turn-config.ts) |
+| 终止时写给用户的话 | [packages/core/src/runtime/agent-session/session-turn.ts](../../packages/core/src/runtime/agent-session/session-turn.ts) |
 | 三个大头工具的输出闸门 | [grep.ts](../../packages/core/src/tools/grep.ts) / [bash.ts](../../packages/core/src/tools/bash.ts) / [read.ts](../../packages/core/src/tools/read.ts) |
 | 界面怎么解释终止原因 | [packages/desktop/src/store/apply-event.ts](../../packages/desktop/src/store/apply-event.ts) |
 | 本文所有数字的来源 | [scripts/session-audit.ts](../../scripts/session-audit.ts) |
@@ -693,7 +693,7 @@ A1 省 50.6% 的携带量，换算成钱约 25%。
       **【回滚方案】**：仅涉及注释说明，无需回滚。
 - [ ] **B2. `RepetitionWatch` 的三张表永不重置**
       **证据**：`counts` / `intents` / `warned` 只增不减，而
-      [turn-config.ts:143](../../packages/core/src/runtime/turn-config.ts) 让整条续跑链（最多 10 次
+      [turn-config.ts:143](../../packages/core/src/runtime/agent-session/turn-config.ts) 让整条续跑链（最多 10 次
       续跑 × 200 轮）共用一只表。
       **当前无害**（够不到线），**但语义是错的**：一个跑了 1,500 轮的会话，早期攒下的计数会一直
       压在后面的正常工作上。
@@ -711,9 +711,9 @@ A1 省 50.6% 的携带量，换算成钱约 25%。
       现补事件分布、历史覆盖率与五种原因落盘测试。旧日志没有事件时明确报缺失，不猜测补齐。
 
 - [ ] **C2. `max_turns` 静默收尾**
-      **证据**：[continuation.ts](../../packages/core/src/runtime/continuation.ts) 的 `max_turns` 分支
+      **证据**：[continuation.ts](../../packages/core/src/runtime/policy/continuation.ts) 的 `max_turns` 分支
       里，`unfinished.length === 0` 直接 `break`，**这一路没有任何 notify**。
-      对比：`stalled` 有提示（[session-turn.ts:162](../../packages/core/src/runtime/session-turn.ts)），
+      对比：`stalled` 有提示（[session-turn.ts:162](../../packages/core/src/runtime/agent-session/session-turn.ts)），
       「步数用尽继续执行」有提示，「连着两轮没推进」有提示。
       **注意**：清单为空时 break 通常是**正确**的（活干完了）。所以这里不是改逻辑，是**补一句话**。
       **不要做的**：不要因为"可能还有活"就无条件续跑——那会把一次正常结束变成一次空转。

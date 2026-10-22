@@ -219,7 +219,7 @@
 ## 计划模式：同一张工具表，开关开着时不改文件
 
 `submit_plan` 每一轮都在工具表里，不在计划模式时它自己拒绝，所以中途开关计划模式不换表。
-`SessionMeta.planMode` 开着的那一轮，`assembleTurn` 把工具表交给 `planModeTools` 包一层（`runtime/plan-mode.ts`）。
+`SessionMeta.planMode` 开着的那一轮，`assembleTurn` 把工具表交给 `planModeTools` 包一层（`runtime/plan/plan-mode.ts`）。
 schema 一个字节不变，只有 `execute` 在开关开着时拒绝写文件的调用（`write`、`edit`、
 `lsp` 的 `rename`），其余放行；`bash` 不按命令文本认，一律压进只读沙箱。`submit_plan` 走 `interactive` 审批卡片，批准那一刻
 把状态图里的开关关掉（计划不写进清单，拆步由模型自己 `todo_write`）——同一轮里下一次调用就直接放行，不用换表、不用等下一轮。

@@ -8,7 +8,7 @@
  *
  * Besides calls, the table holds the two places a request prefix is rewritten on purpose —
  * compaction and rewind — because cache diagnosis reads each request sequence in order and needs to
- * know where it was broken deliberately. See `runtime/cache-diagnostics.ts`.
+ * know where it was broken deliberately. See `runtime/record/cache-diagnostics.ts`.
  */
 
 import type { AssistantMessage, Usage } from "../types.ts";

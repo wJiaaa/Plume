@@ -18,7 +18,7 @@ import { readFileChange } from "../../tools/file-changes.ts";
 import type { Message, ModelConfig, Tool } from "../../types.ts";
 import { controlMainTool, dispatchTaskTool } from "./sidechat-controls.ts";
 import { mainChatExcerpt, readMainChatTool } from "./sidechat-history.ts";
-import type { PromptProfile } from "../prompt-context.ts";
+import type { PromptProfile } from "../setup/prompt-context.ts";
 import type { MainSession } from "./side-main.ts";
 
 /**

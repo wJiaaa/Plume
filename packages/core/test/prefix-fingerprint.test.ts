@@ -11,7 +11,7 @@ import { after, before, test } from "node:test";
 import { runAgent } from "../src/agent/loop.ts";
 import { runConfig } from "./run-config.ts";
 import { comparePrefix, payloadSegments } from "../src/ai/prefix-fingerprint.ts";
-import { diagnoseCache } from "../src/runtime/cache-diagnostics.ts";
+import { diagnoseCache } from "../src/runtime/record/cache-diagnostics.ts";
 import { emptyUsage, type AssistantMessage, type Message, type ModelConfig, type ProviderConfig } from "../src/types.ts";
 
 test("只追加消息时没有变化；改了中间一条，变化落在那一条上", () => {

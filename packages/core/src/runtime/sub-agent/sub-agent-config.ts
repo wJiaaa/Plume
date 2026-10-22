@@ -14,7 +14,7 @@ import { textTokens, toolTokens } from "../../tokens.ts";
 import { toolTable } from "../../tools/mcp-search.ts";
 import type { ApprovalDecision, ApprovalRequest, Message } from "../../types.ts";
 import { compactWith } from "../compaction/compaction.ts";
-import { inheritedToolEnv, loadTurnHooks, toolHooks } from "../run-policy.ts";
+import { inheritedToolEnv, loadTurnHooks, toolHooks } from "../policy/run-policy.ts";
 import type { SubAgentOptions } from "./sub-agent-options.ts";
 import type { Dispatched } from "./sub-agent-dispatch.ts";
 

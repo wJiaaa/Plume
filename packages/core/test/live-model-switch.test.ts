@@ -21,7 +21,7 @@ import { runAgent, type LiveModel } from "../src/agent/loop.ts";
 import { runConfig } from "./run-config.ts";
 import type { AgentEvent } from "../src/agent/events.ts";
 import { DEFAULT_SETTINGS } from "../src/config/settings.ts";
-import { AgentSession } from "../src/runtime/session.ts";
+import { AgentSession } from "../src/runtime/agent-session/session.ts";
 import { SessionStore } from "../src/session/store.ts";
 import type { AssistantMessage, Message, ModelConfig, ProviderConfig, Tool } from "../src/types.ts";
 import { emptyUsage } from "../src/types.ts";

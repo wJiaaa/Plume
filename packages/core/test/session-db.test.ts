@@ -13,7 +13,7 @@ import { DatabaseSync } from "node:sqlite";
 import { mock, test } from "node:test";
 import { pathToFileURL } from "node:url";
 import type { AgentEvent } from "../src/agent/events.ts";
-import { SessionLog } from "../src/runtime/session-log.ts";
+import { SessionLog } from "../src/runtime/record/session-log.ts";
 import { sessionDb, SessionDbUnavailable } from "../src/session/db.ts";
 import { assemblePartial, mergePieces, PartialDiff, PartialWriter, type PartialPiece } from "../src/session/partial.ts";
 import { SessionStore } from "../src/session/store.ts";

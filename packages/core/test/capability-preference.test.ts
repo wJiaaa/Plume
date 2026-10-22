@@ -17,7 +17,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { CapabilityRegistry } from "../src/capability/registry.ts";
 import type { CapabilityId, CapabilityProvider, DiscoveryContext, Sourced } from "../src/capability/types.ts";
-import { collectSkills } from "../src/runtime/session-setup.ts";
+import { collectSkills } from "../src/runtime/setup/session-setup.ts";
 import type { Settings } from "../src/types.ts";
 
 interface Named {

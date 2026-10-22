@@ -31,8 +31,8 @@ import {
 import { matchesHookMatcher, sanitizeHookDisplayText } from "../src/hooks/output.ts";
 import { createHookRunner, HookRunner } from "../src/hooks/runner.ts";
 import { trustHookDigests } from "../src/hooks/trust.ts";
-import { loadHookRunner, makeAfterToolCall, makeBeforeToolCall, makeOnStop, makePermissionRequest, type TurnHooks } from "../src/runtime/hooks.ts";
-import { AgentSession } from "../src/runtime/session.ts";
+import { loadHookRunner, makeAfterToolCall, makeBeforeToolCall, makeOnStop, makePermissionRequest, type TurnHooks } from "../src/runtime/policy/hooks.ts";
+import { AgentSession } from "../src/runtime/agent-session/session.ts";
 import { SessionStore } from "../src/session/store.ts";
 import { emptyUsage, type Message, type Tool } from "../src/types.ts";
 import { runConfig } from "./run-config.ts";

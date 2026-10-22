@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { builtinCommandsFor, BUILTIN_COMMANDS } from "../src/commands/builtin.ts";
 import { loadCommands } from "../src/commands/loader.ts";
-import { AgentSession } from "../src/runtime/session.ts";
+import { AgentSession } from "../src/runtime/agent-session/session.ts";
 import { DEFAULT_SETTINGS, type Settings } from "../src/config/settings.ts";
 import type { AssistantMessage, ModelConfig, ProviderConfig } from "../src/types.ts";
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { cleanSessionSummary, summarizeSession, summaryMaterial, SUMMARY_MAX_CHARS } from "../src/runtime/session-summary.ts";
+import { cleanSessionSummary, summarizeSession, summaryMaterial, SUMMARY_MAX_CHARS } from "../src/runtime/summary/session-summary.ts";
 import type { AssistantMessage, Message, ModelConfig, ProviderConfig } from "../src/types.ts";
 import { emptyUsage } from "../src/types.ts";
 

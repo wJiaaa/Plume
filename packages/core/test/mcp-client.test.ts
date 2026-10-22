@@ -19,7 +19,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import { DEFAULT_SETTINGS } from "../src/config/settings.ts";
 import { McpManager, qualifiedToolName, type McpStdioServer } from "../src/mcp/client.ts";
-import { SessionCapabilities } from "../src/runtime/session-capabilities.ts";
+import { SessionCapabilities } from "../src/runtime/setup/session-capabilities.ts";
 import { forgetCommandPath, primeCommandPath } from "../src/sandbox/login-path.ts";
 
 /**

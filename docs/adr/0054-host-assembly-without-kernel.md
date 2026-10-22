@@ -4,7 +4,7 @@
 - 日期：2026-10-22
 - 相关：[ADR-0039](0039-agent-core-boundaries.md)（进程级的缝为什么暂不改注入）、[ADR-0030](0030-plugin-market-keys-and-live-updates.md)
   （`capability.js` 的来历）；core `kernel/host.ts`、`skills/registry.ts`、`sandbox/types.ts`、`search/defaults.ts`、
-  `runtime/session-setup.ts`（`loadCapabilities`、`sessionRegistry`）、`runtime/session.ts`（`AgentSessionOptions.extraTools`）；
+  `runtime/setup/session-setup.ts`（`loadCapabilities`、`sessionRegistry`）、`runtime/agent-session/session.ts`（`AgentSessionOptions.extraTools`）；
   `.dependency-cruiser.cjs`（`core-does-not-reach-the-host-assembly`）
 
 ## 背景
@@ -37,8 +37,8 @@
    工具调用在 `agent/tool-run.ts` 里直接 `tool.execute`，不再经 `runTool`/`useToolPipeline`；一轮的组装不再经
    `prepareTurn`/`useTurnPipeline`（没有中间件时它是恒等，`reconcilePrompt` 在这条路径上也随之恒等）。
 2. **接口回到实现它的模块。** `Sandbox`/`SandboxProcess` → `sandbox/types.ts`；`ApprovalPolicy`/`ApprovalVerdict`
-   → `runtime/approval-policy.ts`；`CompactionRequest`/`CompactionStrategy` → `runtime/compaction/compaction.ts`；
-   `TaskScheduler` → `runtime/scheduling.ts`；`SkillRegistry` 连同实现（同名后注册者胜）→ `skills/registry.ts`。
+   → `runtime/policy/approval-policy.ts`；`CompactionRequest`/`CompactionStrategy` → `runtime/compaction/compaction.ts`；
+   `TaskScheduler` → `runtime/queue/scheduling.ts`；`SkillRegistry` 连同实现（同名后注册者胜）→ `skills/registry.ts`。
    `LlmRegistry`、`ToolRegistry` 收窄成缝真正读的那一个方法（`get`、`all`），放在 `ai/index.ts`、`tools/index.ts`
    ——原来的 `register`/`list`/`byName` 只有被删的内核注册表实现过。
 3. **其余 `useX` 缝保留，默认值不变。** 它们是测试和脚本真在用的替换点（`market-verify-probe.ts` 用

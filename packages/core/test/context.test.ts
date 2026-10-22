@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildContextBreakdown } from "../src/runtime/context.ts";
+import { buildContextBreakdown } from "../src/runtime/record/context.ts";
 import type { AssistantMessage, Message, ModelConfig, Tool } from "../src/types.ts";
 
 const model = { contextWindow: 100_000 } as ModelConfig;

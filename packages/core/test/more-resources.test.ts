@@ -25,8 +25,8 @@ import {
 	type Artifact,
 } from "../src/resources/more-handlers.ts";
 import { ResourceRouter } from "../src/resources/router.ts";
-import { AgentSession } from "../src/runtime/session.ts";
-import { SessionCapabilities } from "../src/runtime/session-capabilities.ts";
+import { AgentSession } from "../src/runtime/agent-session/session.ts";
+import { SessionCapabilities } from "../src/runtime/setup/session-capabilities.ts";
 import { FRESH_RESULT_MAX_CHARS, pruneToolResults } from "../src/agent/prune.ts";
 import { readTool } from "../src/tools/read.ts";
 import type { Message } from "../src/types.ts";

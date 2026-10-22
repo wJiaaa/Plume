@@ -35,7 +35,7 @@ import type {
  *
  * A builder has to say what it gives, even when that is nothing: an optional field that one builder
  * forgot is how a sub-agent once ran outside the session's sandbox without a word
- * (`runtime/tool-policy.ts`). Mapped over `Required<T>` because `-?` would also strip the `undefined`.
+ * (`runtime/policy/tool-policy.ts`). Mapped over `Required<T>` because `-?` would also strip the `undefined`.
  */
 type Stated<T> = { [K in keyof Required<T>]: Required<T>[K] | undefined };
 
@@ -126,7 +126,7 @@ export interface AgentControlContext {
 	drainSteering: (() => Message[]) | undefined;
 	onStop: StopHook | undefined;
 	/**
-	 * Shared across a whole continuation chain (`runtime/continuation.ts`), so the count survives
+	 * Shared across a whole continuation chain (`runtime/policy/continuation.ts`), so the count survives
 	 * each restart — a fresh watch per call never accumulates enough to notice anything.
 	 * `undefined` for single calls (sub-agents, evals, tests), which have no previous segment.
 	 */

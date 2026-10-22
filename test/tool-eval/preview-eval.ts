@@ -23,7 +23,7 @@ import { promisify } from "node:util";
 import { runAgent } from "../../packages/core/src/agent/loop.ts";
 import { loadSettings, resolveModel } from "../../packages/core/src/config/settings.ts";
 import { buildSystemPrompt } from "../../packages/core/src/prompt/system.ts";
-import { writePreview } from "../../packages/core/src/runtime/previews.ts";
+import { writePreview } from "../../packages/core/src/runtime/policy/previews.ts";
 import { builtinToolGroups } from "../../packages/core/src/tools/groups.ts";
 import { interfaceBlocks, unfencedComponents } from "../../packages/core/src/ui-language/notes.ts";
 import { usePreviewInspector as bindInspector, type PreviewInspection } from "../../packages/core/src/tools/preview.ts";

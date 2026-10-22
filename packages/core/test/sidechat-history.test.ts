@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { AgentSession } from "../src/runtime/session.ts";
+import type { AgentSession } from "../src/runtime/agent-session/session.ts";
 import { mainChatExcerpt, mainMessageText, readMainChatTool as bind } from "../src/runtime/side-chat/sidechat-history.ts";
 import { emptyUsage, type Message, type ModelConfig, type ToolResult } from "../src/types.ts";
 

@@ -241,7 +241,7 @@ export interface CompactionContext {
 	/** Ordered excerpts of real user messages; rendering has its own window budget. */
 	requests?: { ordinal: number; text: string; timestamp: number }[];
 	todos?: { content: string; status: "pending" | "in_progress" | "completed" }[];
-	/** 人批准过的计划；摘要可以忘，它不能。见 `runtime/plan-mode.ts`。 */
+	/** 人批准过的计划；摘要可以忘，它不能。见 `runtime/plan/plan-mode.ts`。 */
 	plan?: ApprovedPlan;
 }
 
@@ -328,7 +328,7 @@ export interface UserMessage {
 	 * 另一个会话的模型发来的消息——不是看着这个面板的人说的话。
 	 *
 	 * `content` 是给模型读的那份（外面套着 `<session-message>`）；这一项给界面画成「来自 X」，
-	 * 并让回信的那一方接上同一条链（见 `runtime/peer-letters.ts`）。
+	 * 并让回信的那一方接上同一条链（见 `runtime/agent-session/peer-letters.ts`）。
 	 */
 	peer?: PeerLetter[];
 	/**

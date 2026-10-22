@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { SessionInbox } from "../src/runtime/session-inbox.ts";
-import { lettersOnly, peerMessage } from "../src/runtime/peer-letters.ts";
+import { SessionInbox } from "../src/runtime/agent-session/session-inbox.ts";
+import { lettersOnly, peerMessage } from "../src/runtime/agent-session/peer-letters.ts";
 import type { Message, PeerLetter } from "../src/types.ts";
 
 const said = (text: string): Message => ({ role: "user", content: [{ type: "text", text }], timestamp: 1 });

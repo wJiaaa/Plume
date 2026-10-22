@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/p
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { previewsHome, pruneSessionArtifacts, readPreview, removeSessionArtifacts, scratchHome, writePreview } from "../src/runtime/previews.ts";
+import { previewsHome, pruneSessionArtifacts, readPreview, removeSessionArtifacts, scratchHome, writePreview } from "../src/runtime/policy/previews.ts";
 
 async function sandbox(t: { after: (fn: () => unknown) => void }): Promise<string> {
 	const home = await mkdtemp(join(tmpdir(), "ly-previews-"));

@@ -168,7 +168,7 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 		// Deletion has no replacement text, so `str_replace` needs an empty `new_string` — which
 		// models frequently get wrong by leaving a blank line behind.
 		id: "05-delete",
-		origin: "packages/core/src/runtime/hooks.ts",
+		origin: "packages/core/src/runtime/policy/hooks.ts",
 		scenario: "delete",
 		path: "src/hooks.ts",
 		before: `			const child = spawn(hook.command, {

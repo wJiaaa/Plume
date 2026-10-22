@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { diagnoseCache, summarizeCacheDiagnoses } from "../src/runtime/cache-diagnostics.ts";
+import { diagnoseCache, summarizeCacheDiagnoses } from "../src/runtime/record/cache-diagnostics.ts";
 import { emptyUsage, type AssistantMessage, type Message, type Usage } from "../src/types/message.ts";
 
 const MINUTE = 60_000;

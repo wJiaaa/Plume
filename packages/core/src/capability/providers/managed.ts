@@ -6,11 +6,11 @@
  * 反过来（自动生成的赢）意味着一个人写好的技能会在某天被一段自己没写过的文字取代。
  *
  * 供应的东西本身也是被点过头的：候选先进 `.pending`，人批准之后才搬进这里。见
- * `runtime/managed-skills.ts`。
+ * `runtime/memory/managed-skills.ts`。
  */
 
 import { loadSkills, type Skill } from "../../skills/loader.ts";
-import { managedSkillsDir } from "../../runtime/managed-skills.ts";
+import { managedSkillsDir } from "../../runtime/memory/managed-skills.ts";
 import type { CapabilityId, CapabilityProvider, DiscoveryContext, ProviderResult, SourceMeta, Sourced } from "../types.ts";
 
 const ID = "managed";

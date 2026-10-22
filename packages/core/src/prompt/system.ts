@@ -12,7 +12,7 @@ import { homedir } from "node:os";
 import { createRegistry } from "../capability/index.ts";
 import type { ContextFile } from "../capability/types.ts";
 import { plumeHome } from "../session/store.ts";
-import { concurrencyNote } from "../runtime/sub-agent/dispatch-guard.ts";
+import { concurrencyNote } from "../runtime/policy/dispatch-guard.ts";
 import { deferredCatalog, MCP_CALL, MCP_SEARCH, type CatalogEntry } from "../tools/mcp-search.ts";
 import { parseGuidelines } from "./overrides.ts";
 import type { Skill } from "../skills/loader.ts";
@@ -81,7 +81,7 @@ export interface SystemPromptInput {
 	 *
 	 * 省略按「不是副本」算，而且这个缺省方向是刻意的——两个方向的代价差得很远：少判一次最多让它多开
 	 * 一个副本、白费几秒；多判一次会让它以为可以随便改，然后直接动用户的工作树。所以老会话、拿不准的
-	 * 调用点、检测失败，一律落在安全的那一边。怎么测的见 `runtime/workspace.ts`。
+	 * 调用点、检测失败，一律落在安全的那一边。怎么测的见 `runtime/setup/workspace.ts`。
 	 */
 	isolatedWorktree?: boolean;
 	/** Appended verbatim after the built-in prompt. */
@@ -204,7 +204,7 @@ const BOUNDARIES = [
 ];
 
 /**
- * 计划模式的规矩。规矩在提示词里，拦截在执行期（`runtime/plan-mode.ts`）：提示词让它少撞墙，
+ * 计划模式的规矩。规矩在提示词里，拦截在执行期（`runtime/plan/plan-mode.ts`）：提示词让它少撞墙，
  * 墙本身不靠提示词。
  *
  * 提问那一段必须明说通用准则（「有合理理解就照做」）在这里不适用：不说的话两条一起读，模型照准则

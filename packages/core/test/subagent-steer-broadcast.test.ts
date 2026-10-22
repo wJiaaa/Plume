@@ -16,7 +16,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { AgentSession } from "../src/runtime/session.ts";
+import { AgentSession } from "../src/runtime/agent-session/session.ts";
 import type { AgentEvent } from "../src/agent/events.ts";
 import type { SessionMeta } from "../src/types.ts";
 

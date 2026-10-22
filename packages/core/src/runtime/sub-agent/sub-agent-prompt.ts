@@ -16,7 +16,7 @@ import { sandboxModeFor } from "../../sandbox/mode-for.ts";
 import type { Message } from "../../types.ts";
 import type { SubAgentOptions } from "./sub-agent-options.ts";
 import type { Dispatched } from "./sub-agent-dispatch.ts";
-import { isIsolatedWorktree } from "../workspace.ts";
+import { isIsolatedWorktree } from "../setup/workspace.ts";
 import { yieldInstruction } from "./yield-tool.ts";
 
 async function pathExists(path: string): Promise<boolean> {

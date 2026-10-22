@@ -13,7 +13,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
-import { AgentSession } from "../src/runtime/session.ts";
+import { AgentSession } from "../src/runtime/agent-session/session.ts";
 import { DEFAULT_SETTINGS, type Settings } from "../src/config/settings.ts";
 import type { AgentEvent } from "../src/agent/events.ts";
 import type { SessionMeta } from "../src/session/store.ts";

@@ -7,7 +7,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { TaskQueue } from "../src/runtime/task-queue.ts";
+import { TaskQueue } from "../src/runtime/queue/task-queue.ts";
 import type { QueuedTask } from "../src/agent/events.ts";
 
 function queue() {

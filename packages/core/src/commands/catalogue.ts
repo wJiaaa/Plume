@@ -8,7 +8,7 @@
 import { join } from "node:path";
 import type { Settings } from "../config/settings.ts";
 import { loadPlugins } from "../plugins/loader.ts";
-import { collectAgents, collectSkills, withoutDisabledSkills } from "../runtime/session-setup.ts";
+import { collectAgents, collectSkills, withoutDisabledSkills } from "../runtime/setup/session-setup.ts";
 import { plumeHome } from "../session/store.ts";
 import { builtinCommandsFor, type BuiltinCommand, type CommandAction } from "./builtin.ts";
 import { commandSources, loadCommands, type SlashCommand } from "./loader.ts";

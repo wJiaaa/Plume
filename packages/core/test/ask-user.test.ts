@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ApprovalGate } from "../src/runtime/approvals.ts";
+import { ApprovalGate } from "../src/runtime/policy/approvals.ts";
 import { askUserTool } from "../src/tools/ask-user.ts";
 import type { PermissionMode } from "../src/config/settings.ts";
 import type { ToolContext } from "../src/types.ts";

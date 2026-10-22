@@ -8,8 +8,8 @@ import { magpieInstructions, withMagpieMcp } from "../src/config/magpie-library.
 import { putSecrets, resetVault, secret } from "../src/config/vault.ts";
 import { McpManager } from "../src/mcp/client.ts";
 import { MCP_OAUTH_PREFIX } from "../src/mcp/oauth.ts";
-import { loadPromptContext } from "../src/runtime/prompt-context.ts";
-import { collectSkills, loadCapabilities } from "../src/runtime/session-setup.ts";
+import { loadPromptContext } from "../src/runtime/setup/prompt-context.ts";
+import { collectSkills, loadCapabilities } from "../src/runtime/setup/session-setup.ts";
 import { startMcpHttpFixture } from "./mcp-http-fixture.ts";
 
 let home: string;

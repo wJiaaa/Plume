@@ -1,0 +1,293 @@
+/**
+ * Deciding whether an action needs a person.
+ *
+ * Holds the pending questions and the "always allow" answers for this process. Separate from the
+ * session because the policy question — is this safe to do unattended — has nothing to do with the
+ * conversation it happens to arise in, and because a prompt that fires constantly is not a
+ * safeguard but something you learn to click through.
+ */
+
+import { randomUUID } from "node:crypto";
+import type { PermissionMode } from "../../config/settings.ts";
+import { checkFormValues } from "../../mcp/form.ts";
+import { riskReason } from "../../tools/risk-reasons.ts";
+import type { ApprovalDecision, ApprovalRequest, ApprovalRisk } from "../../types.ts";
+import { approvalPolicy, type ApprovalVerdict } from "./approval-policy.ts";
+
+export interface PendingApproval {
+	id: string;
+	request: ApprovalRequest;
+	/**
+	 * When this stops waiting, as an instant rather than the delay it was born as.
+	 *
+	 * The window has to draw a countdown, and a duration measured from an event that has already
+	 * been emitted, sent across a process boundary and rendered is stale before anything can read
+	 * it. `retrying` in the desktop store carries its deadline the same way, for the same reason.
+	 */
+	expiresAt: number;
+	resolve: (decision: ApprovalDecision) => void;
+}
+
+/** How long a permission request waits for a person before it is treated as refused. */
+const UNATTENDED_TIMEOUT_MS = 5 * 60_000;
+/**
+ * A question is not a permission request, and five minutes was the wrong answer for it.
+ *
+ * Refusing an unanswered *permission* request is coherent: it grants nothing that was not already
+ * granted, and five minutes of silence is decent evidence that nobody is at the keyboard to grant
+ * it. A question has neither property. `ask_user` is the model asking the person a question it
+ * cannot answer itself — there is nothing to refuse, and "no answer" is not an answer, it is a
+ * person who went to a meeting.
+ *
+ * It bit exactly that way: a run that rewrote 941 commits stopped to ask whether to push them,
+ * the person was away for six minutes, and the question expired into a refusal. The turn ended
+ * cleanly, the work was left undone, and nothing on screen said a question had ever been asked.
+ *
+ * Still finite, because the original worry is real — an unattended run that hangs on its first
+ * prompt is not deference either. Thirty minutes is long enough to come back from lunch, and the
+ * card now shows the time it has left, so the deadline is something you can see rather than
+ * something you discover afterwards.
+ */
+const QUESTION_TIMEOUT_MS = 30 * 60_000;
+
+export interface ApprovalGateOptions {
+	mode(): PermissionMode;
+	cwd(): string;
+	/** Ask the user. The gate does not know what a window is. */
+	ask(pending: PendingApproval): Promise<void>;
+	/** Remember an "always" answer beyond this process. */
+	remember(subject: string): void;
+	/** 一个待决的问题收场了（答了、超时、被收回），窗口据此把那张卡拿走。 */
+	settled?(id: string): void;
+	/** Overridable so a test does not have to wait five minutes to see the timeout work. */
+	unattendedTimeoutMs?: number;
+	/** The same, for the longer wait a question gets. */
+	questionTimeoutMs?: number;
+}
+
+export class ApprovalGate {
+	private readonly pending = new Map<string, PendingApproval>();
+	/** Subjects the user chose "always allow" for, within this process. */
+	private readonly allowList = new Set<string>();
+	private readonly options: ApprovalGateOptions;
+
+	constructor(options: ApprovalGateOptions, alwaysAllow: Iterable<string> = []) {
+		this.options = options;
+		for (const subject of alwaysAllow) this.allowList.add(subject);
+	}
+
+	allow(subject: string): void {
+		this.allowList.add(subject);
+	}
+
+	list(): { id: string; request: ApprovalRequest; expiresAt: number }[] {
+		return [...this.pending.values()].map(({ id, request, expiresAt }) => ({ id, request, expiresAt }));
+	}
+
+	resolve(requestId: string, decision: unknown): boolean {
+		const entry = this.pending.get(requestId);
+		if (!entry) return false;
+		if (entry.request.kind === "form") {
+			// 交上来的值在这里再对一遍：窗口里的检查拦得住手误，拦不住一个不照着表单答的客户端。
+			if (decision === "reject" || decision === "cancel") entry.resolve(decision);
+			else if (typeof decision === "object" && decision !== null && "values" in decision) {
+				const checked = checkFormValues(entry.request.fields ?? [], decision.values);
+				if (!checked.ok) return false;
+				entry.resolve({ values: checked.values });
+			} else return false;
+		} else if (entry.request.kind === "interactive") {
+			const labels = (entry.request.options ?? []).map((option) => typeof option === "string" ? option : option.label);
+			if (decision === "reject") entry.resolve(decision);
+			else if (decision === "skip" && entry.request.allowSkip === true) {
+				const index = entry.request.defaultOptionIndex;
+				const fallback = index !== undefined ? labels[index] : undefined;
+				entry.resolve(fallback === undefined ? "skip" : { answer: fallback, skipped: true });
+			} else if (typeof decision === "object" && decision !== null && "answer" in decision) {
+				const value = decision.answer;
+				if (typeof value !== "string" && (!Array.isArray(value) || !value.every((item: unknown) => typeof item === "string"))) return false;
+				if (Array.isArray(value) && entry.request.selectionMode !== "multi") return false;
+				const answers = (typeof value === "string" ? [value] : value).map((item: string) => item.trim());
+				if (!answers.length || new Set(answers).size !== answers.length || answers.some((answer: string) => !answer || (!entry.request.allowCustomInput && !labels.includes(answer)))) return false;
+				// 附言另走一个字段，不和选项混在一起：批准计划时附上注意事项，答的仍然是「批准」。
+				const said = "note" in decision ? decision.note : undefined;
+				if (said !== undefined && typeof said !== "string") return false;
+				const note = said?.trim();
+				entry.resolve({ answer: typeof value === "string" ? answers[0] : answers, ...(note ? { note } : {}) });
+			} else return false;
+		} else {
+			if (decision !== "once" && decision !== "always" && decision !== "reject") return false;
+			entry.resolve(decision);
+		}
+		return true;
+	}
+
+	/**
+	 * Decide whether one action may proceed, asking the user if it may not.
+	 *
+	 * For permissions, `full` never asks; `auto` asks only about what cannot be taken back, judged by the
+	 * approval policy rather than here — that judgement is a matter of where the agent is running,
+	 * and a plugin can replace it. An escalation is never that policy's to judge, nor the allow
+	 * list's; a PreToolUse hook's "ask" (`byHook`) is not the policy's either. Anything else asks.
+	 */
+	async request(request: ApprovalRequest, signal?: AbortSignal): Promise<ApprovalDecision> {
+		const mode = this.options.mode();
+		const escalation = request.escalation !== undefined;
+		const question = asksPerson(request);
+		// A permission grant cannot answer a question, even in unattended/full-access mode.
+		if (!question) {
+			if (mode === "full") return "once";
+			if (!escalation && this.allowList.has(request.subject)) return "once";
+
+			/*
+			 * An escalation skips the policy and goes to a person.
+			 *
+			 * `auto` can let the policy wave commands through because they still run confined. An
+			 * escalation asks to run one without that, so the policy's guess cannot be what answers
+			 * it: that left a blacklist as the only thing between the model and an unconfined run.
+			 * It was not even judging the command — to `assessCommand` the subject
+			 * `escalate:danger-full-access:rm -rf ~` names a program called
+			 * `escalate:danger-full-access:rm`, and that ran with nobody asked. Here rather than in
+			 * the policy, because a plugin can replace the policy and this has to hold whichever one
+			 * is loaded. The allow-list is skipped for the same reason `approveEscalation` keeps a
+			 * grant to one call.
+			 */
+			if (mode === "auto" && !escalation && request.byHook !== true) {
+				const verdict = approvalPolicy().assess(request.kind, request.subject, this.options.cwd(), request);
+				if (!verdict.risky) return "once";
+				/*
+				 * Beside `detail`, not written into it. Written in, the finding reached the card as
+				 * the Chinese sentence it was composed in, whatever language the window was in; as a
+				 * code the card can say it in the window's language. See `ApprovalRequest.risk`.
+				 */
+				const risk = findingOf(verdict);
+				if (risk) request.risk = risk;
+			}
+		}
+
+		const id = randomUUID();
+		if (signal?.aborted) return unanswered(request);
+		return new Promise<ApprovalDecision>((resolve) => {
+			/*
+			 * Nobody there is an answer too — and the answer is no.
+			 *
+			 * A question with no one to read it used to stop a run indefinitely: the agent waited,
+			 * the window showed a spinner, and an overnight task was still on its first prompt in
+			 * the morning. Expiring into a rejection is the only safe direction — it grants
+			 * nothing that was not granted — and it lets the agent find another way, which is
+			 * usually what it does with a refusal.
+			 *
+			 * How long depends on what is being asked; see `QUESTION_TIMEOUT_MS` for why a question
+			 * gets its own, much longer wait than a permission request does.
+			 */
+			const timeoutMs = question
+				? this.options.questionTimeoutMs ?? QUESTION_TIMEOUT_MS
+				: this.options.unattendedTimeoutMs ?? UNATTENDED_TIMEOUT_MS;
+			let timer: ReturnType<typeof setTimeout> | undefined;
+			/*
+			 * 问的那一方不等了（MCP 服务器发来 `notifications/cancelled`），卡片跟着收走——留着它，
+			 * 人填完点交，交给的是一个早就不在等的请求。
+			 */
+			const withdraw = () => entry.resolve(unanswered(request));
+			const entry: PendingApproval = {
+				id,
+				request,
+				expiresAt: Date.now() + timeoutMs,
+				resolve: (decision) => {
+					if (timer) clearTimeout(timer);
+					signal?.removeEventListener("abort", withdraw);
+					if (!this.pending.delete(id)) return;
+					this.options.settled?.(id);
+					// An escalation's "always" still covers only this call; see above.
+					if (decision === "always" && !escalation) {
+						this.allowList.add(request.subject);
+						this.options.remember(request.subject);
+					}
+					// "always" is an answer about the future; this call still just proceeds.
+					resolve(decision === "always" ? "once" : decision);
+				},
+			};
+			timer = setTimeout(() => entry.resolve(unanswered(request)), timeoutMs);
+			signal?.addEventListener("abort", withdraw, { once: true });
+			this.pending.set(id, entry);
+			void this.options.ask(entry);
+		});
+	}
+
+	/** Reject everything still waiting. Called when a run ends, so nothing hangs forever. */
+	rejectAll(): void {
+		this.rejectWhere(() => true);
+	}
+
+	/**
+	 * 只收回一部分。
+	 *
+	 * 主会话一轮收尾时，它自己的问题不可能还有人等（循环是等到回答才往下走的），收掉是兜底；
+	 * 后台子代理的问题却正是在主会话收尾之后问出来的，一并收掉就等于替人答了「不行」。
+	 */
+	rejectWhere(match: (request: ApprovalRequest) => boolean): void {
+		// 边走边删是安全的：Map 的迭代会跳过已经删掉的项，不会漏掉还没走到的。
+		for (const entry of this.pending.values()) if (match(entry.request)) entry.resolve(unanswered(entry.request));
+	}
+}
+
+/** 问的是人而不是许可：任何权限模式、任何「总是允许」都不能替人答。 */
+function asksPerson(request: ApprovalRequest): boolean {
+	return request.kind === "interactive" || request.kind === "form";
+}
+
+/**
+ * 没人答就收场时，算作什么。
+ *
+ * 许可和提问照旧是拒绝。表单是取消：协议把「人明确说不」（decline）和「没有给出选择就关掉了」
+ * （cancel）分成两种，服务器据此决定要不要换个方式再问——超时、撤回都不是人说了不。
+ */
+function unanswered(request: ApprovalRequest): ApprovalDecision {
+	return request.kind === "form" ? "cancel" : "reject";
+}
+
+/**
+ * A risky verdict as the card receives it, or nothing when it gave no reason.
+ *
+ * `text` is always filled: a policy that names a rule without a sentence gets the rule's own
+ * wording, so whatever cannot translate the code still has something to show.
+ */
+function findingOf(verdict: ApprovalVerdict): ApprovalRisk | undefined {
+	const text = verdict.reason || (verdict.code ? riskReason(verdict.code, verdict.params) : "");
+	if (!text) return undefined;
+	return { text, ...(verdict.code ? { code: verdict.code } : {}), ...(verdict.params ? { params: verdict.params } : {}) };
+}
+
+/**
+ * The gate a session uses, wired to it.
+ *
+ * The wiring is here rather than in the session's constructor because it is about approvals, not
+ * about sessions: what a request looks like on the way out, and that "always" is remembered by the
+ * settings rather than by this process. A caller supplies the two things only it can know — the
+ * current mode and directory — and where to send the question.
+ */
+export function sessionApprovalGate(deps: {
+	mode(): PermissionMode;
+	cwd(): string;
+	emit(event: Extract<import("../../agent/events.ts").AgentEvent, { type: "approval_request" | "approval_settled" }>): Promise<void>;
+	alwaysAllow: Iterable<string>;
+}): ApprovalGate {
+	return new ApprovalGate(
+		{
+			mode: deps.mode,
+			cwd: deps.cwd,
+			ask: (pending) =>
+				deps.emit({
+					type: "approval_request",
+					requestId: pending.id,
+					toolCallId: pending.id,
+					...pending.request,
+					// The deadline travels with the question so the card can show what it has left.
+					expiresAt: pending.expiresAt,
+				}),
+			// Persisting an "always" answer is the host's job; the settings are not ours to write.
+			remember: () => {},
+			settled: (id) => void deps.emit({ type: "approval_settled", requestId: id }),
+		},
+		deps.alwaysAllow,
+	);
+}

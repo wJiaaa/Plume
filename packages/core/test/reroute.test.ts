@@ -13,7 +13,7 @@ import { after, before, test } from "node:test";
 import { DEFAULT_SETTINGS } from "../src/config/settings.ts";
 import { rerouteShellCommand, TOOL_NAMES_KEY } from "../src/tools/reroute.ts";
 import { bashTool } from "../src/tools/bash.ts";
-import { SessionCapabilities } from "../src/runtime/session-capabilities.ts";
+import { SessionCapabilities } from "../src/runtime/setup/session-capabilities.ts";
 import type { ToolResult } from "../src/types.ts";
 
 let root: string;

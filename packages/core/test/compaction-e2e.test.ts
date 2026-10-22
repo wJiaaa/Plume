@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import type { AgentEvent } from "../src/agent/events.ts";
 import { DEFAULT_SETTINGS, type Settings } from "../src/config/settings.ts";
-import { AgentSession } from "../src/runtime/session.ts";
+import { AgentSession } from "../src/runtime/agent-session/session.ts";
 import { SessionStore } from "../src/session/store.ts";
 import type { AssistantMessage, Message, ModelConfig, ProviderConfig } from "../src/types.ts";
 import { emptyUsage } from "../src/types.ts";

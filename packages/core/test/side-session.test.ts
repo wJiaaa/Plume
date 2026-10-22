@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 import type { StreamFn } from "../src/agent/run-config.ts";
 import { DEFAULT_SETTINGS, type Settings } from "../src/config/settings.ts";
-import { AgentSession } from "../src/runtime/session.ts";
+import { AgentSession } from "../src/runtime/agent-session/session.ts";
 import { SessionStore } from "../src/session/store.ts";
 import { emptyUsage, type AssistantMessage, type LlmContext, type ModelConfig, type ProviderConfig } from "../src/types.ts";
 

@@ -11,7 +11,7 @@ import { compactWith } from "../src/runtime/compaction/compaction.ts";
 import { compactionTriggerTokens } from "../src/runtime/compaction/compaction-budget.ts";
 import { estimateTokens } from "../src/tokens.ts";
 import { completedCompaction } from "../src/agent/compaction-lifecycle.ts";
-import { SessionLog } from "../src/runtime/session-log.ts";
+import { SessionLog } from "../src/runtime/record/session-log.ts";
 import { SessionStore } from "../src/session/store.ts";
 import { projectTrajectory } from "../src/trajectory/project.ts";
 import { classifyFailure, FailureError } from "../src/ai/failure.ts";

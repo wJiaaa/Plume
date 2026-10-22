@@ -16,7 +16,7 @@ import { useCompaction } from "../src/runtime/compaction/compaction.ts";
 import { runSubAgent } from "../src/runtime/sub-agent/sub-agent.ts";
 import { restoreSubAgents, type Rebuild } from "../src/runtime/sub-agent/sub-agent-restore.ts";
 import { SubAgentRegistry } from "../src/runtime/sub-agent/sub-agents.ts";
-import { historyFrom } from "../src/runtime/session-turn.ts";
+import { historyFrom } from "../src/runtime/agent-session/session-turn.ts";
 import type { SessionRecord } from "../src/session/types.ts";
 import { TODOS_KEY } from "../src/tools/todo.ts";
 import { emptyUsage, type AssistantMessage, type Message, type ModelConfig, type ProviderConfig, type Tool, type ToolResultMessage } from "../src/types.ts";

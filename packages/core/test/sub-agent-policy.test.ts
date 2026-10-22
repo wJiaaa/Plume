@@ -16,9 +16,9 @@ import { test } from "node:test";
 
 
 import { runSubAgent } from "../src/runtime/sub-agent/sub-agent.ts";
-import { inheritedToolEnv } from "../src/runtime/run-policy.ts";
-import { toolPolicy } from "../src/runtime/tool-policy.ts";
-import { buildTurnConfig } from "../src/runtime/turn-config.ts";
+import { inheritedToolEnv } from "../src/runtime/policy/run-policy.ts";
+import { toolPolicy } from "../src/runtime/policy/tool-policy.ts";
+import { buildTurnConfig } from "../src/runtime/agent-session/turn-config.ts";
 import { normalizeSettings } from "../src/config/settings.ts";
 import type { AssistantMessage, LlmContext, ModelConfig, ProviderConfig, Settings, Tool, ToolContext } from "../src/types.ts";
 import { emptyUsage } from "../src/types.ts";

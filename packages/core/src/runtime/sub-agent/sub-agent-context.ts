@@ -10,7 +10,7 @@ import type { AgentEvent } from "../../agent/events.ts";
 import type { Settings } from "../../config/settings.ts";
 import type { SessionRecord } from "../../session/types.ts";
 import type { ModelConfig, ToolSpec } from "../../types.ts";
-import { buildContextBreakdown, type ContextBreakdown } from "../context.ts";
+import { buildContextBreakdown, type ContextBreakdown } from "../record/context.ts";
 import type { SubAgentDetail } from "./sub-agents.ts";
 
 type ContextEvent = Extract<AgentEvent, { type: "context" }>;

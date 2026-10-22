@@ -8,8 +8,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { runAgent } from "../src/agent/loop.ts";
-import { PLAN_MODE_KEY, planModeTools, UNSUBMITTED_PLAN_NOTE, unsubmittedPlanCheck } from "../src/runtime/plan-mode.ts";
-import { submitPlanTool } from "../src/runtime/plan-tool.ts";
+import { PLAN_MODE_KEY, planModeTools, UNSUBMITTED_PLAN_NOTE, unsubmittedPlanCheck } from "../src/runtime/plan/plan-mode.ts";
+import { submitPlanTool } from "../src/runtime/plan/plan-tool.ts";
 import { emptyUsage, type AssistantMessage, type Message, type ModelConfig, type ProviderConfig, type Tool } from "../src/types.ts";
 import { runConfig } from "./run-config.ts";
 

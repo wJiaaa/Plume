@@ -15,7 +15,7 @@ import type { QueuedTask } from "../src/agent/events.ts";
 import { useAgentLoop, runTurn, type AgentLoop } from "../src/agent/runner.ts";
 import { runConfig } from "./run-config.ts";
 import { streamAssistant, useLlmRegistry } from "../src/ai/index.ts";
-import { nextTask, useScheduler, type TaskScheduler } from "../src/runtime/scheduling.ts";
+import { nextTask, useScheduler, type TaskScheduler } from "../src/runtime/queue/scheduling.ts";
 import type { Skill } from "../src/skills/loader.ts";
 import { createSkillRegistry, registeredSkills, useSkillRegistry } from "../src/skills/registry.ts";
 import type { SessionStorage } from "../src/session/storage.ts";

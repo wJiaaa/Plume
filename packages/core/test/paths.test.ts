@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
-import { scratchHome } from "../src/runtime/previews.ts";
+import { scratchHome } from "../src/runtime/policy/previews.ts";
 import { readTool } from "../src/tools/read.ts";
 import { resolveWorkspacePath } from "../src/tools/paths.ts";
 

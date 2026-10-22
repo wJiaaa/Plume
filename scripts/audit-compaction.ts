@@ -8,7 +8,7 @@
  * 第 14 节给分叉的「缓存还热」那条线（`FORK_HOT_MS`）找依据：同一前缀隔了多久，服务商还读得到。
  */
 
-import { CACHE_NOISE_FLOOR_TOKENS, type CacheRequestDiagnosis } from "../packages/core/src/runtime/cache-diagnostics.ts";
+import { CACHE_NOISE_FLOOR_TOKENS, type CacheRequestDiagnosis } from "../packages/core/src/runtime/record/cache-diagnostics.ts";
 import { KEEP_MIN } from "../packages/core/src/runtime/compaction/compaction-budget.ts";
 import { estimateTokens } from "../packages/core/src/tokens.ts";
 import type { Message } from "../packages/core/src/types.ts";

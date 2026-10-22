@@ -14,7 +14,7 @@ export type CommandAction =
 	| "manage-commands"
 	/** 另开一个侧边聊天问这句话。没有侧边聊天的宿主不实现它。 */
 	| "aside"
-	/** 切换计划模式：先只读调查、交一份计划，批准后再动手。见 `runtime/plan-mode.ts`。 */
+	/** 切换计划模式：先只读调查、交一份计划，批准后再动手。见 `runtime/plan/plan-mode.ts`。 */
 	| "plan";
 
 export interface BuiltinCommand {

@@ -19,7 +19,7 @@ const CAUSES: { cause: keyof RequestTotals["cacheMiss"]["byCause"]; label: Messa
 	{ cause: "model", label: "usage.cacheMissModel" },
 ];
 
-/** 本该从缓存读到、却按全价重算的输入，以及各是为什么。算法见 core 的 `runtime/cache-diagnostics.ts`。 */
+/** 本该从缓存读到、却按全价重算的输入，以及各是为什么。算法见 core 的 `runtime/record/cache-diagnostics.ts`。 */
 export function CacheMissCard({ totals }: { totals: RequestTotals }) {
 	const { t } = useI18n();
 	const miss = totals.cacheMiss;

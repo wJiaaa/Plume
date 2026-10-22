@@ -12,7 +12,7 @@ import { test } from "node:test";
 import { DEFAULT_SETTINGS, type Settings } from "../src/config/settings.ts";
 import type { AgentEvent } from "../src/agent/events.ts";
 import { textResult } from "../src/agent/tool-run.ts";
-import { AgentSession } from "../src/runtime/session.ts";
+import { AgentSession } from "../src/runtime/agent-session/session.ts";
 import { SessionStore } from "../src/session/store.ts";
 import { emptyUsage, type AssistantMessage, type LlmContext, type Message, type ModelConfig, type PeerLetter, type ProviderConfig, type Tool } from "../src/types.ts";
 

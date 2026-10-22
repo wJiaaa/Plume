@@ -1,7 +1,7 @@
 import { realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
-import { scratchHome } from "../runtime/previews.ts";
+import { scratchHome } from "../runtime/policy/previews.ts";
 import { plumeHome } from "../session/store.ts";
 import { home, withinOrIs } from "../platform.ts";
 

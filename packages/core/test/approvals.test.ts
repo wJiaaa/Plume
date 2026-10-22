@@ -12,7 +12,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ApprovalGate, type PendingApproval } from "../src/runtime/approvals.ts";
+import { ApprovalGate, type PendingApproval } from "../src/runtime/policy/approvals.ts";
 import type { ApprovalRequest } from "../src/types.ts";
 
 const request: ApprovalRequest = {

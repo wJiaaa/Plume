@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { DEFAULT_SETTINGS, type Settings } from "../src/config/settings.ts";
 import type { AgentEvent } from "../src/agent/events.ts";
-import { AgentSession } from "../src/runtime/session.ts";
+import { AgentSession } from "../src/runtime/agent-session/session.ts";
 import { SessionStore } from "../src/session/store.ts";
 import { useSandbox } from "../src/sandbox/index.ts";
 import { backgroundJobs } from "../src/tools/background-jobs.ts";

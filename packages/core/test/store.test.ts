@@ -83,7 +83,7 @@ test("reopening a session continues numbering instead of restarting", async (t) 
 });
 
 test("a rewind to exactly the compaction boundary keeps it, running and after a restart alike", async (t) => {
-	const { SessionLog } = await import("../src/runtime/session-log.ts");
+	const { SessionLog } = await import("../src/runtime/record/session-log.ts");
 	const root = await mkdtemp(join(tmpdir(), "ly-store-"));
 	t.after(() => rm(root, { recursive: true, force: true }));
 	const store = new SessionStore(root);

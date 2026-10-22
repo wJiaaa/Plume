@@ -1,0 +1,157 @@
+/**
+ * Carrying on when a turn runs out of rounds before the work does.
+ *
+ * A turn is capped so that one runaway cannot spin forever, and a big piece of work legitimately
+ * exceeds that cap — a full-stack project reaches it around the point the frontend starts. What
+ * used to happen was that the run stopped and waited for someone to press "continue", which is
+ * exactly the human intervention an unattended run exists to avoid.
+ *
+ * So it starts another turn. That is all "continuing from where it stopped" needs to be: the
+ * history is the progress, every finished reply and tool result is already committed to it, and a
+ * fresh turn over that history resumes at the next step rather than the first one. Nothing is
+ * replayed and nothing is re-run.
+ *
+ * 断线不在这里接：请求那一层已经按设置页的重试策略重试过（`failure.ts` 覆盖每一种失败），再在外面
+ * 整轮重来只会把「重试 10 次」放大成几十次。重试用完还没接上，就停下来让人点「继续」。
+ *
+ * The cap used to be bounded loosely, on the reasoning that the two ways a run can be genuinely
+ * stuck are caught elsewhere: repetition ends a turn with `stalled`, and a model that has stopped
+ * calling tools is nudged a few times and then left alone. **That reasoning was wrong, and it cost
+ * five hours and $10.72 to find out.**
+ *
+ * Measured on the session that did it (2026-09-15, `86ff1d52`): 396 rounds over 5.32 hours,
+ * 36.9M tokens — and of the 396 tool calls, **384 had distinct fingerprints**. The repetition watch
+ * never fired once, and it was right not to: nothing repeated. A model reading a different file and
+ * grepping a different word every round is not looping by any measure that watch can take, and it
+ * can do that until the money runs out. The safety net named above simply has no thread across this
+ * particular hole.
+ *
+ * So the cap now checks the one thing that actually distinguishes a long task from a stuck one:
+ * whether the last two hundred rounds finished anything. See `STALLED_CONTINUATIONS`.
+ *
+ * A policy, not a mechanism — hence a module of its own, and a set of questions it asks rather than
+ * a session it reaches into.
+ */
+
+import type { NoticeCode, NoticeParams } from "../../agent/events.ts";
+import type { AgentRunResult } from "../../agent/loop.ts";
+import type { TodoItem } from "../../tools/todo.ts";
+import type { Message } from "../../types.ts";
+
+/**
+ * How many times a turn may run out of rounds and be restarted.
+ *
+ * Loose on purpose: a backstop against a bug in the conditions below, not a judgement about how
+ * much work is reasonable. Ten is two thousand rounds — far past anything a real task needs, and
+ * long before it the repetition watch would have called a genuine loop.
+ */
+const MAX_CONTINUATIONS = 10;
+
+/**
+ * How many times in a row the rounds may run out with nothing on the list finished.
+ *
+ * This is the condition that was missing. Continuing used to ask only "is there anything left to
+ * do?", and the list is written by the model — an exploring model adds to it, so the answer is
+ * always yes and the loop is unbounded in everything except the backstop above.
+ *
+ * "Did anything get *done*?" is the question that separates the two cases the old comment ran
+ * together. A real long task finishes items as it goes: the frontend half of a full-stack build
+ * reaches the cap having ticked several boxes. A stuck one reaches it having ticked none — which is
+ * exactly what the 2026-09-15 session did, twice over, while its plan sat at 0 of 4.
+ *
+ * One is allowed, not zero, because a single item can legitimately be larger than two hundred
+ * rounds and the first stretch of a hard task is often all reading. Two in a row is four hundred
+ * rounds with nothing to show, and at that point the useful thing to do is stop and let a person
+ * look — the work is on disk, and continuing has already been proven to cost more than it returns.
+ */
+const STALLED_CONTINUATIONS = 1;
+
+/** 清单上打了勾的有几项。 */
+const completed = (todos: TodoItem[]): number => todos.filter((todo) => todo.status === "completed").length;
+
+export interface ContinuationDeps {
+	/** Start another turn with the accumulated history. */
+	run(messages: Message[]): Promise<AgentRunResult>;
+	messages(): Message[];
+	todos(): TodoItem[];
+	aborted(): boolean;
+	notify(notice: { message: string; code: NoticeCode; params?: NoticeParams }): Promise<void> | void;
+	/**
+	 * 步数用尽、手上又没有清单时，再给一段，并用这句话开头。
+	 *
+	 * 主会话不给：没有清单的两百轮本身就是一个答案，停下来让人看是对的。子代理不一样——它的一段
+	 * 只有六十轮，一个没写清单的审查者跑到那里，多半正读到一半（2026-09-26 那三个 review 就是这样
+	 * 停在检查点上的，交回的全是「阶段性交接」）。于是给它一次：这句话让它把剩下的步骤列进清单、
+	 * 或者现在收尾；之后的检查点就按清单有没有往前推来判断——跟主会话同一条判据，不另起一个
+	 * 「它是不是在瞎忙」的猜测。
+	 *
+	 * 只给一次。给过之后还是没有清单，就照常停下交接。
+	 */
+	planless?: () => Message;
+}
+
+export async function continueWhileWorkRemains(
+	first: AgentRunResult,
+	deps: ContinuationDeps,
+): Promise<AgentRunResult> {
+	let result = first;
+	/*
+	 * 打了勾的项数，和「连着几轮一项都没打上」。
+	 *
+	 * 起点取 `first` 跑完时的状态，所以下面第一次比较问的是「这一轮 200 步推进了什么」，而不是拿
+	 * 一个空清单当基线——后者会让第一次续跑无条件算作有进展。
+	 */
+	let done = completed(deps.todos());
+	let stalled = 0;
+	/** 「没有清单」的那一次宽限给过没有——见 `planless`。 */
+	let graced = false;
+
+	let extra = 0;
+	for (; extra < MAX_CONTINUATIONS; extra++) {
+		if (deps.aborted() || result.reason !== "max_turns") break;
+
+		const todos = deps.todos();
+		const unfinished = todos.filter((todo) => todo.status !== "completed");
+		if (unfinished.length === 0) {
+			/*
+			 * 清单是空的，和清单做完了，是两件事。
+			 *
+			 * 做完了还撞上限，说明它在清单之外还在忙——停下是对的。一份清单都没写过，只说明
+			 * 它没记账，不说明它没事可做；给了宽限的调用方（子代理）在这里再跑一段。
+			 */
+			if (todos.length === 0 && deps.planless && !graced) {
+				graced = true;
+				await deps.notify({ message: "这一段的轮数用完了，还没写清单——让它把剩下的步骤列出来，接着做。", code: "continue-planless" });
+				result = await deps.run([...deps.messages(), deps.planless()]);
+				continue;
+			}
+			await deps.notify({ message: "本轮已达到步数上限，已停下。执行记录已保留，需要时可继续。", code: "step-limit" });
+			break;
+		}
+
+		/*
+		 * 这一轮把清单往前推了没有。
+		 *
+		 * 只看打勾数变多没有，不看它怎么变的：模型重写整张清单时打勾数会掉回去，那按「没推进」
+		 * 算——一个把自己的计划推翻重来的回合，正是最不该无条件再给它两百步的那种。
+		 */
+		const nowDone = completed(todos);
+		stalled = nowDone > done ? 0 : stalled + 1;
+		done = nowDone;
+		if (stalled > STALLED_CONTINUATIONS) {
+			await deps.notify({
+				message: `连着 ${stalled} 轮步数用尽，清单里的 ${unfinished.length} 项一项都没完成——先停下来，做过的都在记录里。`,
+				code: "plan-stalled",
+				params: { rounds: stalled, n: unfinished.length },
+			});
+			break;
+		}
+
+		await deps.notify({ message: `本轮步数用尽，清单里还有 ${unfinished.length} 项，继续执行。`, code: "continue-plan", params: { n: unfinished.length } });
+		result = await deps.run(deps.messages());
+	}
+	if (extra === MAX_CONTINUATIONS && result.reason === "max_turns" && !deps.aborted()) {
+		await deps.notify({ message: "已达到自动续跑次数上限，已停下。执行记录已保留，需要时可继续。", code: "continue-limit" });
+	}
+	return result;
+}

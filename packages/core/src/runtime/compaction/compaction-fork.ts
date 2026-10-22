@@ -25,7 +25,7 @@ import type { CompactionFault, CompactionLineage, CompactionObserver } from "../
 import type { AssistantMessage, LlmContext, Message, ModelConfig, ProviderConfig, RequestPrefix, StreamEvent } from "../../types.ts";
 import { forkInstruction, hasSummary } from "./compaction-prompts.ts";
 import { summaryReplyTokens } from "./compaction-budget.ts";
-import { replyText } from "../one-shot.ts";
+import { replyText } from "../summary/one-shot.ts";
 
 /**
  * 离上一次请求开始多久以内算缓存还热，没有厂商规则时的默认值。

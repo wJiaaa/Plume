@@ -16,7 +16,7 @@ import { DEFAULT_SETTINGS } from "../src/config/settings.ts";
 import { projectFolders } from "../src/config/project-folders.ts";
 import { projectRootsFor } from "../src/config/project-roots.ts";
 import { buildSystemPrompt } from "../src/prompt/system.ts";
-import { buildTurnConfig } from "../src/runtime/turn-config.ts";
+import { buildTurnConfig } from "../src/runtime/agent-session/turn-config.ts";
 import { assessRead } from "../src/tools/read-access.ts";
 
 const HOME = homedir();

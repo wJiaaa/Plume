@@ -11,7 +11,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { ApprovalGate, type PendingApproval } from "../src/runtime/approvals.ts";
+import { ApprovalGate, type PendingApproval } from "../src/runtime/policy/approvals.ts";
 import { assessCommand, assessNetwork, assessWrite } from "../src/tools/risk.ts";
 import { RISK_REASONS, riskReason, type RiskCode } from "../src/tools/risk-reasons.ts";
 import { NEVER_UNATTENDED, RISKY_SUBCOMMANDS } from "../src/tools/risk-tables.ts";

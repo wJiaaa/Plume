@@ -1,0 +1,1296 @@
+/**
+ * The runtime that turns settings + a workspace into a running agent.
+ *
+ * Everything user-facing goes through here: the desktop main process and the CLI all drive the
+ * same `AgentSession`, so they cannot drift.
+ *
+ * What is left in this file is the driving: take a prompt, run a turn, stop, queue, approve. What
+ * the session *has done* is `SessionLog` — the transcript and the append-only log kept as one
+ * thing — and what it *can do* is `SessionCapabilities`. Both are held rather than inherited, so
+ * the boundary is visible at every call site.
+ *
+ * Who holds the history right now (a prompt, a turn, a manual compaction) is `SessionActivity`;
+ * gathering background results and delivering them is `SessionDeliveries`; `session://` lookups are
+ * `session-lookup.ts`. Manual compaction, the cut behind undo and edit-and-resend, recording the
+ * model and thinking level, and what waits to get in while busy are `manual-compaction.ts`,
+ * `session-rewind.ts`, `session-model.ts` and `session-inbox.ts`.
+ * What stays is how a turn starts, queues and stops — which borrows a dozen pieces of session state
+ * at once. Why it is split this way: ADR-0039.
+ */
+
+import type { AgentEvent, AgentEventSink, QueuedTask } from "../../agent/events.ts";
+import type { LiveModel, StreamFn } from "../../agent/run-config.ts";
+import type { Settings } from "../../config/settings.ts";
+import type { SessionEndReason } from "../../hooks/config.ts";
+import { describeSettingsProblem, layerProjectSettings, resolveModel, settingsProblem, withProjectLayer } from "../../config/settings.ts";
+import { SESSIONS_KEY } from "../../resources/more-handlers.ts";
+import type { Boundary, SessionMeta } from "../../session/store.ts";
+import type { SessionStorage } from "../../session/storage.ts";
+import type { ApprovalDecision, ApprovalRequest, Message, MessageAttachment, PeerLetter, ThinkingLevel, Tool, UserContent } from "../../types.ts";
+import { ApprovalGate, sessionApprovalGate } from "../policy/approvals.ts";
+import type { ContextBreakdown } from "../record/context.ts";
+import { describeContext, describeSession, type SessionFacts, type SessionStatus } from "../record/reporting.ts";
+import { CapabilityWatcher } from "../setup/capability-watch.ts";
+import { mcpFailureNotice, SessionCapabilities } from "../setup/session-capabilities.ts";
+import { scratchDir, sessionFacts } from "../record/session-facts.ts";
+import { SessionLog } from "../record/session-log.ts";
+import { PROJECT_MEMORY_ENABLED_KEY, projectMemoryEnabled } from "../memory/project-memory.ts";
+import { sessionPruner } from "../../agent/aged-prune.ts";
+import { driveTurn, historyFrom, modelHistory, SESSION_START_KEY } from "./session-turn.ts";
+import { loadHookRunner, runSessionEndHooks } from "../policy/hooks.ts";
+import { restoreSubAgents, type Rebuild } from "../sub-agent/sub-agent-restore.ts";
+import { exitCutDelivery } from "../sub-agent/exit-cut.ts";
+import { rehydrateMessages } from "../../session/payload.ts";
+import { SubAgentRegistry, type SteerDisplay } from "../sub-agent/sub-agents.ts";
+import { describeSubAgentContext, SubAgentContexts } from "../sub-agent/sub-agent-context.ts";
+import { DelegationWaits, type FinishedSession } from "../sub-agent/delegation-waits.ts";
+import { backgroundJobs } from "../../tools/background-jobs.ts";
+import { SessionActivity, type CompactOutcome } from "./session-activity.ts";
+import { SessionDeliveries } from "./session-deliveries.ts";
+import { addressed, SessionInbox } from "./session-inbox.ts";
+import { sessionLookup } from "./session-lookup.ts";
+import { refreshDispatchGate } from "./turn-config.ts";
+import { sessionTaskQueue, type TaskQueue } from "../queue/task-queue.ts";
+import { stripStaleHandles } from "../../agent/model-switch.ts";
+import { streamAssistant } from "../../ai/index.ts";
+import { SessionTitle } from "../summary/session-title.ts";
+import { TODOS_KEY } from "../../tools/todo.ts";
+import { manualCompaction, type CompactionParts } from "./manual-compaction.ts";
+import { idleCompaction } from "./idle-compaction.ts";
+import { adoptModelSwitch, recordModel, recordPlanMode, recordThinking } from "./session-model.ts";
+import { PLAN_MODE_KEY } from "../plan/plan-mode.ts";
+import { rewind, type RewindParts } from "./session-rewind.ts";
+import { changedPaths, mainChatContext, SIDE_CHAT_PROFILE, sideChangesNote, sideChatTools } from "../side-chat/side-session.ts";
+import { peerMessage } from "./peer-letters.ts";
+
+export interface AgentSessionOptions {
+	cwd: string;
+	settings: Settings;
+	store: SessionStorage;
+	meta?: SessionMeta;
+	emit: AgentEventSink;
+	/**
+	 * Tools that only exist on a particular host — the desktop app contributes browser
+	 * automation backed by a real BrowserWindow, which the platform-agnostic core cannot build.
+	 */
+	extraTools?: Tool[];
+	/**
+	 * Replaces the provider call, exactly as `AgentModelContext.streamFn` does one layer down.
+	 *
+	 * Exposed here so behaviour that lives in the session rather than the loop — the task
+	 * queue, in particular — can be exercised without a network round trip.
+	 */
+	streamFn?: StreamFn;
+	/** A turn override suppresses title requests unless this separate stream is supplied. */
+	titleSummaryStream?: typeof streamAssistant;
+	/**
+	 * 这是哪个会话的侧边聊天。给了它，这个会话就带上侧边聊天的提示词和三件工具，每次提问前读到
+	 * 父会话的进展，模型和思考强度没定时跟着父会话。见 `side-session.ts`。
+	 *
+	 * 是活的对象而不是 id：工具要能当场让父会话停下、排活。宿主保证父会话比它活得久。
+	 */
+	parent?: AgentSession;
+	/**
+	 * 一轮收尾后、缓存还热时，把越过触发线的历史先压掉（`idle-compaction.ts`）。
+	 *
+	 * 要宿主点名打开：人多半还会接着说的对话才值得——命令行跑完一个任务就退出，评测里提前压的那一次
+	 * 只是白花的钱。
+	 */
+	compactWhenIdle?: boolean;
+	/**
+	 * 让模型在回复末尾写下一步建议（`followups.ts`），当输入框的灰字；设置里开着才在提示词里说。
+	 *
+	 * 和 `compactWhenIdle` 一样要宿主点名：命令行没有输入框，侧边聊天的输入框也不放这一句。
+	 */
+	suggestFollowups?: boolean;
+	/**
+	 * 有没有人能回答 MCP 服务器中途要填的表单（elicitation）。默认有——桌面端。命令行没有人可问，
+	 * 传 false：不向服务器声明这项能力，服务器硬发来就回 decline。
+	 */
+	elicitation?: boolean;
+}
+
+export class AgentSession {
+	readonly store: SessionStorage;
+	readonly log: SessionLog;
+	readonly can: SessionCapabilities;
+	cwd: string;
+	/** 侧边聊天挂在哪个会话旁边；普通会话是 null。见 `AgentSessionOptions.parent`。 */
+	readonly parent: AgentSession | null;
+	private readonly compactWhenIdle: boolean;
+	private readonly suggestFollowups: boolean;
+	private disposed = false;
+
+	private settings: Settings;
+	/**
+	 * 应用给的那一份，没有叠过项目层。
+	 *
+	 * 留着它，是因为项目层要能重新叠：设置一变，主进程推下来的是全局的那一份，
+	 * 拿已经叠过的结果再叠一次，项目的值会被当成全局的值固化下来。
+	 */
+	private globalSettings: Settings;
+	/** `.plume/config.json` as last read, laid over new global settings until the next read lands. */
+	private projectLayer: Record<string, unknown> = {};
+	/** Bumped by every read of the project layer, so a slower, older read cannot land over a newer one. */
+	private projectReads = 0;
+	/** 盯着技能和子智能体目录的那个，没有可听的目录时是 null。 */
+	private watcher: CapabilityWatcher | null = null;
+	private streamFn?: StreamFn;
+	/**
+	 * 标题那件事的全部，在 `session-title.ts` 里。
+	 *
+	 * 和 `tasks`/`approvals`/`subAgents` 一样是协作者。轮次、控制器、后台任务都在它自己那边——
+	 * 这个类里从此看不到「摘要跑到哪一步了」这种东西。
+	 */
+	private title: SessionTitle;
+	/**
+	 * 最近一次 `agent_end` 的原因；收尾后的自动压缩只在干净收尾后才做。
+	 *
+	 * 在 log 的出口上记，不在 `Session.emit` 里：循环自己的 `agent_end` 走 `recordTurnEvent` 直接进
+	 * `log.emit`，记在 `emit` 里就一次也记不到——服务商报错、被停下的那一轮都会被当成 done。
+	 */
+	private lastEnd: Extract<AgentEvent, { type: "agent_end" }>["reason"] = "done";
+	/** 谁此刻占着历史、怎么停下它。见 `session-activity.ts`。 */
+	private readonly activity = new SessionActivity();
+	/** 忙着的时候进来的话：插话或排队。见 `session-inbox.ts`。 */
+	private readonly inbox = new SessionInbox();
+	/**
+	 * Every sub-agent this session has dispatched, live and finished.
+	 *
+	 * Owned by the session rather than by the turn that spawned one: a delegated run is worth
+	 * reading after the turn that asked for it has ended, and the pane showing it outlives both.
+	 * Emitting on change is what keeps a window in step without polling.
+	 */
+	readonly subAgents = new SubAgentRegistry(
+		() => {
+			void this.emit({ type: "subagents", agents: this.subAgents.list() });
+		},
+		/*
+		 * 一个子代理停下了，它还挂着的授权也就没人等了——收回，卡片跟着下来。
+		 *
+		 * 被按停的那一刻它可能正停在一次授权上：循环不再等那个回答，可问题还挂在闸门里，卡片要在
+		 * 屏幕上一直留到五分钟超时，点了也没人接。
+		 */
+		(id) => this.approvals.rejectWhere((request) => request.from?.subAgentId === id),
+	);
+	/** 子代理最近一次发出去的系统提示词和工具表，它的上下文用量按这个算。 */
+	private readonly subAgentContexts = new SubAgentContexts();
+	/** 主会话派出去的子代理：派出即放手，跑完一个送回一个。见 `delegation-waits.ts`。 */
+	private readonly delegations = new DelegationWaits({
+		spoken: () => this.inbox.spoken || (this.running && this.notices.length > 0),
+		detached: (id) => this.subAgents.background(id),
+		settled: (report) => this.deliveries.report(report),
+	});
+	/** 跑完了、还没送回主会话的后台结果；攒一小会儿再送。见 `session-deliveries.ts`。 */
+	private readonly deliveries: SessionDeliveries;
+	/** 剪枝器最后一次从日志放回视图时对着的那份历史；见 `preparePruner`。 */
+	private viewsSeededFor: Message[] | null = null;
+	/** 上一个进程退出时还在后台跑的子代理，等人下一次开口时一起告诉主会话。见 `exit-cut.ts`。 */
+	private exitCut: Message | null = null;
+	/** Whether the previous process's sub-agents are back on the roster; see `restoreSubAgents`. */
+	private subAgentsRestored = false;
+	/** 等着这个会话闲下来的人；见 `whenIdle`。 */
+	private readonly idleWaiters: Array<() => void> = [];
+	/** 正在跑的那一轮对「模型换了」的订阅；见 `liveModel`。 */
+	private readonly modelListeners = new Set<() => void>();
+	/**
+	 * 这场对话此刻的模型，交给正在跑的那一轮。
+	 *
+	 * 人中途换了模型，它从下一个请求起就换；旧的上游坏了、请求正卡在重试上的，当场放手换人。
+	 * 见 `AgentModelContext.liveModel`。
+	 */
+	private readonly liveModel: LiveModel = {
+		current: () => resolveModel(this.settings, this.modelIdInEffect()),
+		onChange: (listener) => {
+			this.modelListeners.add(listener);
+			return () => this.modelListeners.delete(listener);
+		},
+		adopted: () => adoptModelSwitch(this.log),
+	};
+	private readonly approvals: ApprovalGate;
+	private readonly tasks: TaskQueue = sessionTaskQueue({
+		run: (task) => this.prompt([{ type: "text", text: task.text }], { origin: task.origin }),
+		busy: () => this.running,
+		changed: (tasks) => this.emit({ type: "tasks", tasks }),
+	});
+	/** 侧边聊天改过、这个会话还没被告知的文件；下一轮开头说一次。见 `noteSideChanges`。 */
+	private readonly sideChanges = new Set<string>();
+	/** 其他会话发来、还没读到的通知：下一个空档读到，从不为它开一轮。见 `receive`。 */
+	private notices: PeerLetter[] = [];
+
+	constructor(options: AgentSessionOptions) {
+		this.cwd = options.cwd;
+		this.parent = options.parent ?? null;
+		this.compactWhenIdle = options.compactWhenIdle === true;
+		this.suggestFollowups = options.suggestFollowups === true;
+		this.settings = options.settings;
+		this.globalSettings = options.settings;
+		this.store = options.store;
+		this.streamFn = options.streamFn;
+		this.title = new SessionTitle({
+			settings: () => this.settings,
+			append: (record) => this.log.append(record),
+			emitTitle: (title) => this.emit({ type: "title", title }),
+			titleSetByUser: () => Boolean(this.log.meta.titleSetByUser),
+			modelId: () => this.log.meta.modelId,
+			stream: options.titleSummaryStream,
+			// 见 `TitleDeps.stream` 那段：这两个要一起看，少看一个会在测试里真的发请求。
+			sessionStreamInjected: Boolean(options.streamFn),
+		});
+		/*
+		 * 每一个出门的事件都先过这里翻牌，然后才交给宿主。
+		 *
+		 * 翻的是 `activity.steerable`，看 loop 此刻在不在。必须挂在 log 的出口上：loop 自己
+		 * 的事件走 `session-turn.ts` 的 `recordTurnEvent` 直接进 `log.emit`，根本不经过
+		 * `Session.emit`——翻在那里的话 `agent_start` 一次都翻不到，`steerable` 永远是 false，
+		 * 于是插话悄悄退化成了「这一轮做完再说」，而测试照样是绿的。
+		 *
+		 * 在 `sink` 之前翻，所以窗口看到 `agent_end` 的那一刻，这边已经不收插话了——那正是
+		 * 排队出队要抢的那一拍。
+		 */
+		this.log = new SessionLog(options.store, (event) => {
+			if (event.type === "agent_end") this.lastEnd = event.reason;
+			this.activity.observe(event);
+			this.subAgentContexts.observe(event);
+			return options.emit(event);
+		}, options.meta);
+		const sideTools = options.parent ? sideChatTools(options.parent, () => this.modelInEffect()) : [];
+		this.can = new SessionCapabilities(
+			[...(options.extraTools ?? []), ...sideTools],
+			{
+				// 表单和提问、授权在同一张卡片通道上问；没有人可问的宿主不给，MCP 那边也就不声明这项能力。
+				...(options.elicitation === false ? {} : { ask: (request, signal) => this.approvals.request(request, signal) }),
+				// 服务器在后台连，不挡会话打开；连不上的在对话里说一声，原因在设置页的那张卡片上。
+				mcpWait: 0,
+				onMcpFailure: (status) => void this.emit(mcpFailureNotice(status)).catch(() => {}),
+			},
+		);
+		this.deliveries = new SessionDeliveries({
+			activity: this.activity,
+			jobs: () => backgroundJobs(this.can.state),
+			detail: (id) => this.subAgents.detail(id),
+			outstanding: () => this.subAgents.list().filter((one) => one.background && (one.status === "running" || one.status === "queued")),
+			submit: (message, deliver) => this.submit(message, { fromPerson: false, deliver }),
+			settled: () => this.checkIdle(),
+		});
+		backgroundJobs(this.can.state).onFinished((job) => this.deliveries.jobFinished(job));
+		this.approvals = sessionApprovalGate({
+			mode: () => this.settings.permissionMode,
+			cwd: () => this.cwd,
+			emit: (event) => this.emit(event),
+			alwaysAllow: options.settings.alwaysAllow,
+		});
+	}
+
+	/** The history, as callers have always read it. */
+	get meta(): SessionMeta {
+		return this.log.meta;
+	}
+
+	get messages(): Message[] {
+		return this.log.messages;
+	}
+
+	/**
+	 * Adopt a transcript read back from disk, and where the model's view of it begins.
+	 *
+	 * Both, because they are two halves of one fact. Restoring the messages without the boundary
+	 * reopens a compacted session on its full history: correct on screen, and back over the context
+	 * window on the first prompt — which then compacts again, from scratch, having thrown away the
+	 * summary it paid for last time.
+	 */
+	restore(messages: Message[], compaction: Boundary | null = null, compactions: number[] = []): void {
+		/*
+		 * Handles from before a model change are dropped on the way in, not at the point of use.
+		 *
+		 * The log on disk is append-only, so a switch cannot edit what is already written — which
+		 * means the stale handles come back every time the session is opened. Cleaning here covers
+		 * both ways in, from the session hub and from sync, and leaves the encoders unchanged.
+		 */
+		this.log.restore(stripStaleHandles(messages, this.log.meta?.modelSwitchedAt), compaction, compactions);
+	}
+
+	get running(): boolean {
+		return this.activity.running;
+	}
+
+	/** 这一刻真正生效的设置：应用的那一份叠上项目层。宿主要按它判断模式，而不是按全局那份。 */
+	get settingsInEffect(): Settings {
+		return this.settings;
+	}
+
+	/**
+	 * 手上什么都没有了：不在跑、没有在后台跑的子代理、没有攒着待送的结果、任务队列里没有等着的。
+	 *
+	 * 比 `running` 宽。一轮刚收尾时 `running` 已经为假，可排队的任务马上就要开下一轮，攒着的
+	 * 后台结果四百毫秒后也要开一轮——那时候告诉别人「它闲了」，对方接过手去，两边就同时在动。
+	 * 派完子代理的那一轮收尾时更是这样：活才刚开始，结果回来还要一轮一轮地接着做。
+	 */
+	get idle(): boolean {
+		return (
+			!this.running &&
+			this.delegations.outstanding === 0 &&
+			this.deliveries.empty &&
+			!this.tasks.list().some((task) => task.status === "queued" || task.status === "running")
+		);
+	}
+
+	/** 下一次 `idle` 成立时兑现；此刻就闲着则立刻兑现。会话被处置时随之兑现，等的人自己再看它还在不在。 */
+	whenIdle(): Promise<void> {
+		return new Promise((resolve) => {
+			this.idleWaiters.push(resolve);
+			this.checkIdle();
+		});
+	}
+
+	/**
+	 * 另一个会话发来的一条消息。不是人开口，所以不清技能限制——见 `submit` 的 `fromPerson`。
+	 *
+	 * - 请求：和后台结果走同一条路，攒一小会儿；闲着就开一轮，忙着排到这一轮做完之后，单独一轮。
+	 *   发件方等的就是这一轮最后说的话。
+	 * - 通知：不开轮。在跑就在下一步之前读到，闲着就等下一次开轮时排在最前面读到（照 codex 的
+	 *   `trigger_turn = false`）。「我要改 config.ts」这种话不值得对方为它花一整轮。在跑时和人插话
+	 *   一样放开正在等的事，不然它要等那件事等完才读得到。
+	 */
+	receive(letter: PeerLetter, kind: "request" | "notice"): void {
+		if (kind === "request") {
+			this.deliveries.letter(letter);
+			return;
+		}
+		this.notices.push(letter);
+		if (this.running) this.delegations.release();
+	}
+
+	/** 攒着的通知，作为这一轮里的一条消息交出去；没有就是空的。 */
+	private takeNotices(): Message[] {
+		if (this.notices.length === 0) return [];
+		const message = peerMessage(this.notices, "notice");
+		this.notices = [];
+		// 它是这一轮的输入，不是新开的一轮：界面据此不把它画成一轮的开头（`grouping.ts` 的 `opensTurn`）。
+		if (message.role === "user") message.steered = true;
+		return [message];
+	}
+
+	/** 从这里的建议开出来的会话交回了第一轮的回复：和子代理的结果走同一条送达。宿主决定交不交。 */
+	receiveSessionReport(report: FinishedSession): void {
+		this.deliveries.sessionFinished(report);
+	}
+
+	/**
+	 * 隔一拍再看。
+	 *
+	 * 回合收尾时排队的任务是 `void this.tasks.drain()` 拉起来的，同一拍里它还没来得及占住会话；
+	 * 当场判断会把「下一件马上开始」看成「闲了」。
+	 */
+	private checkIdle(): void {
+		if (this.idleWaiters.length === 0) return;
+		setTimeout(() => {
+			if (!this.idle) return;
+			for (const resolve of this.idleWaiters.splice(0, this.idleWaiters.length)) resolve();
+		}, 0);
+	}
+
+	/** Load skills, agents and MCP tools. Safe to call again after settings change. */
+	async initialize(): Promise<void> {
+		if (!this.log.meta) {
+			this.log.meta = await this.store.create(this.cwd, this.settings.defaultModelId ?? "", undefined, { thinking: this.settings.thinking });
+		}
+		await this.applyProjectConfig();
+		/*
+		 * The global settings file could not be read, so this runs on defaults: no providers, no MCP
+		 * servers, no hooks. Said in the session because this is where it shows — an empty model list
+		 * reads as the app having lost everything, not as one file that would not parse.
+		 */
+		const damaged = settingsProblem();
+		if (damaged) {
+			await this.emit({
+				type: "notice",
+				level: "error",
+				message: describeSettingsProblem(damaged),
+				code: damaged.keptAt ? "settings-unreadable-kept" : "settings-unreadable",
+				params: { path: damaged.path, reason: damaged.reason, ...(damaged.keptAt ? { keptAt: damaged.keptAt } : {}) },
+			});
+		}
+		await this.can.load(this.cwd, this.settings);
+		/*
+		 * `session://` 的数据源。
+		 *
+		 * 在这里而不是 `SessionCapabilities` 里，因为它要的是 store——而能力层刻意不知道会话
+		 * 是怎么存的。
+		 */
+		this.can.state.set(SESSIONS_KEY, sessionLookup(this.store));
+		await this.restoreSubAgents();
+		this.startWatching();
+	}
+
+	/**
+	 * 盯着那些真的放了东西的目录，改了就重读。
+	 *
+	 * 编辑技能是这套系统里最高频的动作之一：写一条、试一句、再改一版。要求每一版都重启
+	 * 窗口，等于要求每一版都重新加载全部插件、重连全部 MCP、丢掉正在看的那个对话。
+	 *
+	 * `watched` 这份名单一直被收集着——每个 provider 都老实报了，注册表也合并了——只是从来
+	 * 没有人接。
+	 */
+	private startWatching(): void {
+		this.watcher?.close();
+		if (this.can.watched.length === 0) return;
+		this.watcher = new CapabilityWatcher({
+			dirs: this.can.watched,
+			// 一轮跑到一半绝不换：模型正按当前那份清单做决策。
+			idle: () => !this.running,
+			reload: () => this.reloadCapabilities(),
+		});
+	}
+
+	/**
+	 * 重读一遍，然后说清楚变了什么。
+	 *
+	 * 「能力已更新」对着一次 `git checkout` 说了等于没说——那会换掉半个目录。所以报的是数量差
+	 * 和新出现的名字。两个数都是 0 也是一个诚实的答案：有人改了某个技能的正文，而名单没变。
+	 */
+	/**
+	 * 重新发现能力，并把变化说出来。
+	 *
+	 * 公开的，因为它是监听器的动作本身——而测试要验的是「重载会更新 `can` 并且发出通知」，
+	 * 不是「`fs.watch` 在这台机器上多久发一次事件」。后者是 Node 的事，在负载高时要等十几秒，
+	 * 而一条等它的测试是在赌延迟：`capability-watch.test.ts` 为此把超时调大过三次。
+	 */
+	async reloadCapabilities(): Promise<void> {
+		const before = {
+			skills: this.can.skills.length,
+			agents: this.can.agents.length,
+			names: new Set([...this.can.skills.map((s) => s.name), ...this.can.agents.map((a) => a.name)]),
+		};
+
+		await this.can.load(this.cwd, this.settings);
+		// 目录名单本身也会变——新建了 `.plume/skills/` 之后，它才第一次出现在 `watched` 里。
+		this.startWatching();
+
+		await this.emit({
+			type: "capabilities_changed",
+			skills: this.can.skills.length - before.skills,
+			agents: this.can.agents.length - before.agents,
+			added: [...this.can.skills.map((s) => s.name), ...this.can.agents.map((a) => a.name)]
+				.filter((name) => !before.names.has(name))
+				.slice(0, 4),
+		});
+	}
+
+	/**
+	 * 把 `<cwd>/.plume/config.json` 叠到全局设置上。
+	 *
+	 * 这一层以前只有一个模块和一份测试，产品里没有任何东西读那个文件——「A 项目用便宜模型加
+	 * 严格审批、B 项目用强模型加宽松审批」在这个分支上一直只是一段注释。
+	 *
+	 * 在会话上叠而不是在应用上叠，是因为项目本来就是会话的属性：一个窗口可以同时开着两个项目的
+	 * 对话，而设置页只有一个。
+	 */
+	private async applyProjectConfig(): Promise<void> {
+		const read = ++this.projectReads;
+		const layered = await layerProjectSettings(this.globalSettings, this.cwd).catch(() => null);
+		// A settings change after this read started has started its own; this one is stale.
+		if (!layered || read !== this.projectReads) return;
+		this.projectLayer = layered.layer;
+		this.settings = layered.settings;
+		this.can.state.set(PROJECT_MEMORY_ENABLED_KEY, projectMemoryEnabled(this.settings));
+
+		/*
+		 * 被拒的键要说出来，而且要说得像一次拒绝。
+		 *
+		 * `.plume/config.json` 是要提交进仓库的，落在里面的凭证就是已公开的凭证。安静地忽略它，
+		 * 写的人会以为它生效了——那正是「能正常工作、只是把密钥共享了」的那种错误。
+		 */
+		if (layered.refused.length > 0) {
+			await this.emit({
+				type: "notice",
+				level: "warn",
+				message: `.plume/config.json 里的 ${layered.refused.join("、")} 被忽略了——这个文件会进仓库，凭证和供应商只能写在全局设置里。`,
+				code: "project-config-refused",
+				params: { keys: layered.refused.join(", ") },
+			});
+		}
+		if (layered.error) {
+			const problem = layered.problem;
+			await this.emit({
+				type: "notice",
+				level: "warn",
+				message: layered.error,
+				...(problem?.kind === "not-object" ? { code: "project-config-not-object", params: { path: problem.path } } : {}),
+				...(problem?.kind === "invalid-json" ? { code: "project-config-invalid-json", params: { path: problem.path, error: problem.detail } } : {}),
+			});
+		}
+		// 项目层可能改了并发上限：闸门要跟上叠好的那一份，不是全局那一份。
+		refreshDispatchGate(this.can.state, this.settings);
+	}
+
+	async status(): Promise<SessionStatus> {
+		return describeSession(this.facts());
+	}
+
+	async contextBreakdown(): Promise<ContextBreakdown | null> {
+		// 侧边聊天没选模型时跟着主会话，量的窗口也得是那一个。
+		const resolved = resolveModel(this.settings, this.modelIdInEffect());
+		if (!resolved) return null;
+		return describeContext({ ...this.facts(), messages: modelHistory(this.log, resolved.provider, resolved.model) }, resolved);
+	}
+
+	async subAgentContextBreakdown(id: string): Promise<ContextBreakdown | null> {
+		const detail = this.subAgents.detail(id);
+		if (!detail) return null;
+		const seen = await this.subAgentContexts.get(id, () => this.store.read(this.log.meta.id));
+		return describeSubAgentContext({
+			detail, seen, settings: this.settings,
+			fallback: resolveModel(this.settings, this.modelIdInEffect())?.model,
+			mcpNames: this.can.mcpToolNames(),
+		});
+	}
+
+	private facts(): SessionFacts {
+		const { log, can, cwd, settings, running } = this;
+		return sessionFacts({ log, can, cwd, settings, running });
+	}
+
+	/**
+	 * Summarise the conversation now, rather than when it runs out of room.
+	 *
+	 * What `/compact` calls. The boundary is stored exactly as it is when compaction happens on its
+	 * own — there is one way a session's history gets shortened, and this only changes what starts
+	 * it.
+	 *
+	 * Refused mid-turn: the running loop is holding its own copy of the history and would write its
+	 * own boundary at the end of the turn, over this one.
+	 */
+	compact(instructions = ""): Promise<CompactOutcome> {
+		const pending = this.activity.compaction;
+		if (pending) return pending;
+		if (this.running) return Promise.resolve({ ok: false, reason: "对话正在进行中，等它结束再压缩。", code: "busy" });
+		const task = this.activity.compact((signal) => manualCompaction(this.compactionParts(), instructions, signal));
+		void task.finally(() => {
+			void this.watcher?.resume();
+			void this.tasks.drain();
+		}).catch(() => {});
+		return task;
+	}
+
+	private compactionParts(): CompactionParts {
+		return {
+			log: this.log,
+			can: this.can,
+			settings: () => this.settings,
+			streamFn: this.streamFn,
+			emit: (event) => this.emit(event),
+			preparePruner: () => this.preparePruner(),
+		};
+	}
+
+	/**
+	 * 会话的剪枝器接上日志：压缩采纳的视图写下来；历史换过一份（载入、撤回、换模型）之后，
+	 * 第一次用它之前把日志里记下的放回去。读不出来就照旧从原文走，不挡这一轮。
+	 */
+	private async preparePruner(): Promise<void> {
+		const pruner = sessionPruner(this.can.state);
+		pruner.onAdopt ??= (views) => this.log.recordViews(views);
+		const history = this.log.messages;
+		if (this.viewsSeededFor === history) return;
+		this.viewsSeededFor = history;
+		const views = await this.log.restoredViews().catch(() => []);
+		for (const { source, view } of views) pruner.remember(source, view);
+	}
+
+	/**
+	 * 上一个进程派出去的子代理，放回名单——停下了，但能续跑。见 `sub-agent-restore.ts`。
+	 *
+	 * 只在打开时做一次：`initialize` 改设置时还会再调，而那时名单上的已经是这个进程自己的。读不出来
+	 * 就算了，名单空着和从前一样，不挡打开对话。
+	 */
+	private async restoreSubAgents(): Promise<void> {
+		if (this.subAgentsRestored) return;
+		this.subAgentsRestored = true;
+		// `then` rather than a bare call: a store that cannot answer at all throws before there is a promise to catch.
+		const records = await Promise.resolve()
+			.then(() => this.store.subAgentRecords(this.log.meta.id))
+			.catch(() => []);
+		if (records.length === 0) return;
+		// 落盘时挪出去的图片接回来，跟主会话的消息同一条路（`store.load`）。
+		const said = records.flatMap((record) => (record.type === "event" && record.event.type === "subagent_message" && record.event.message ? [record.event.message] : []));
+		const hydrated = await rehydrateMessages(said).catch(() => said);
+		const back = new Map(said.map((message, index) => [message, hydrated[index] ?? message]));
+		const readable = records.map((record) =>
+			record.type === "event" && record.event.type === "subagent_message" && back.has(record.event.message)
+				? { ...record, event: { ...record.event, message: back.get(record.event.message)! } }
+				: record,
+		);
+		const fallback = resolveModel(this.settings, this.log.meta.modelId || this.settings.defaultModelId);
+		const rebuild: Rebuild = (ran) => {
+			// The model it ran on, so the prefix is the one it sent. Gone from settings: the session's, under no id, so `runSubAgent` strips the old handles.
+			const provider = this.settings.providers.find((one) => one.enabled && one.id === ran.provider);
+			const model = provider?.models.find((one) => one.modelId === ran.model);
+			const using = provider && model ? { provider, model } : fallback;
+			return using ? { model: provider && model ? model.id : "", history: (messages, boundary) => historyFrom(messages, boundary, using.provider, using.model) } : undefined;
+		};
+		const restored = restoreSubAgents(readable, rebuild);
+		this.subAgents.restore(restored);
+		this.exitCut = exitCutDelivery(restored, this.log.messages);
+	}
+
+	/** Drop the cached symbol index so the next `symbol` lookup re-reads it from disk. */
+	invalidateSymbolIndex(): void {
+		this.can.invalidateSymbolIndex();
+	}
+
+
+	updateSettings(settings: Settings): void {
+		if (settings.autoSummarizeTitle === false) void this.title.cancel();
+		this.globalSettings = settings;
+		// The project layer stays on while it is re-read; dropping it here ran stricter project
+		// settings (approval mode, concurrency) on global ones for the length of a disk read.
+		this.settings = withProjectLayer(settings, this.projectLayer);
+		this.can.state.set(PROJECT_MEMORY_ENABLED_KEY, projectMemoryEnabled(this.settings));
+		for (const subject of settings.alwaysAllow) this.approvals.allow(subject);
+		/*
+		 * 并发上限当场生效，不等下一轮。
+		 *
+		 * 主会话派了四个、闸门只放一个的时候，这一轮要等四个依次跑完才结束；人这时候去设置页把
+		 * 并发调大，排着的那几个应该马上开跑，而不是等一个永远轮不到的「下一轮」。
+		 */
+		refreshDispatchGate(this.can.state, this.settings);
+		this.can.pinMcp(this.settings);
+		/*
+		 * 项目层重新叠一遍，不等这次调用。
+		 *
+		 * 它要读一次盘，而这个方法是同步的（每一个改设置的路径都在调它）。不重新叠的话，
+		 * 在设置页改任何一项，都会把这个会话的项目配置默默清掉——而屏幕上没有任何东西说这件事。
+		 */
+		void this.applyProjectConfig();
+	}
+
+	/**
+	 * 这一轮该用的模型：自己定了就用自己的；侧边聊天没定，跟着父会话；再没有就是应用默认。
+	 *
+	 * 「跟着父会话」是每次现取，不是开出来时抄一份——父会话中途换了模型，侧边聊天下一问就跟上。
+	 */
+	private modelIdInEffect(): string {
+		return this.log.meta.modelId || this.parent?.meta.modelId || this.settings.defaultModelId || "";
+	}
+
+	private modelInEffect() {
+		const resolved = resolveModel(this.settings, this.modelIdInEffect());
+		if (!resolved) throw new Error("No model is configured.");
+		return resolved.model;
+	}
+
+	/** Pick or change the model this session runs on, at any point. See `recordModel`. */
+	async setModel(modelId: string): Promise<boolean> {
+		const changed = await recordModel(this.log, modelId);
+		/*
+		 * 正在跑的那一轮也要听到。
+		 *
+		 * 从前它听不到：一轮开始时拿到的模型用到这一轮结束。旧模型的上游坏了、请求在一遍遍重试时，
+		 * 人换了模型——界面上写着新的，服务器收到的一直是旧的，直到人按停止、再编辑重发。见
+		 * `AgentModelContext.liveModel`。
+		 */
+		if (changed) for (const listener of this.modelListeners) listener();
+		return true;
+	}
+
+	/** How hard this conversation asks the model to think, from here on. See `recordThinking`. */
+	async setThinking(thinking: ThinkingLevel | null): Promise<void> {
+		await recordThinking(this.log, thinking);
+	}
+
+	/**
+	 * 进出计划模式。写进元数据，下一轮按它装工具表；状态图里的开关也同步，这样跑到一半关掉时
+	 * 包着的工具立刻放行。跑到一半打开则要等下一轮——这一轮的工具表没包过，开关对它没有作用。
+	 */
+	async setPlanMode(on: boolean): Promise<void> {
+		await recordPlanMode(this.log, on);
+		this.can.state.set(PLAN_MODE_KEY, on);
+	}
+
+	// -------------------------------------------------------------------------
+	// Running a turn
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Send a prompt. If the agent is already running, the message is queued as steering and
+	 * picked up between turns instead of starting a second concurrent run.
+	 */
+	/**
+	 * Say something to a sub-agent that is still running.
+	 *
+	 * Not a second conversation: the message is spliced between its turns, so it finishes the step
+	 * it is on, reads this with its context intact, and carries on. False when there is no such
+	 * sub-agent or it has already finished — the caller decides whether that is worth saying.
+	 *
+	 * The effect on the parent is indirect and that is the whole design. One executor per
+	 * workspace: steering changes what the sub-agent reports back, and the parent acts on the
+	 * report. Two agents writing to one working tree is a conflict waiting to happen.
+	 */
+	async steerSubAgent(id: string, said: string | UserContent[], display?: SteerDisplay): Promise<boolean> {
+		const message = this.subAgents.steer(id, said, display);
+		if (!message) return false;
+		/*
+		 * Announced, or a window watching this sub-agent would not see what was said to it.
+		 *
+		 * The roster event that `steer` triggers carries summaries and no transcripts, so without
+		 * this the message sat in the sub-agent's history unseen until something re-read the whole
+		 * thing — and the reply, when it came, would arrive as an answer to a question that was
+		 * never on screen.
+		 */
+		await this.emit({ type: "subagent_message", id, message });
+		return true;
+	}
+
+	/** Stop one sub-agent. The parent and its siblings carry on. */
+	abortSubAgent(id: string): boolean {
+		return this.subAgents.abort(id);
+	}
+
+	/**
+	 * Take one off the roster — stopping it first if it is still going.
+	 *
+	 * A running sub-agent that was merely un-listed would go on running with nothing able to reach
+	 * it, so this never silently orphans one; see `SubAgentRegistry.dismiss`.
+	 */
+	async dismissSubAgent(id: string): Promise<"removed" | "stopping" | "unknown"> {
+		const outcome = this.subAgents.dismiss(id);
+		// Written down, or the next process reads it back from the log and lists it again.
+		if (outcome === "removed") await this.emit({ type: "subagent_dismissed", id });
+		return outcome;
+	}
+
+	/** Consume a durable opening message once, without appending a second copy. */
+	resumePendingPrompt(): Promise<void> {
+		const pending = this.activity.holding("resume");
+		if (pending) return pending;
+		if (!this.log.meta.pendingPrompt) return Promise.resolve();
+		const mark = this.activity.mark();
+		const resume = async () => {
+			await this.cancelPendingPrompt();
+			if (this.activity.stoppedSince(mark)) { await this.emit({ type: "agent_end", reason: "aborted" }); return; }
+			/*
+			 * A fresh session restored with pendingPrompt (e.g. from the desktop new session flow)
+			 * has its first prompt already written to disk before the session object exists. Trigger
+			 * title summarisation here if the user has not explicitly provided a custom title.
+			 */
+			if (!this.log.meta.titleSetByUser) {
+				const userMessages = this.log.messages.filter((m) => m.role === "user");
+				if (userMessages.length === 1) {
+					const first = userMessages[0];
+					await this.title.fromPrompt(first.content, first.displayText === "" ? first.skillRef?.name ?? first.sessionRefs?.[0]?.title ?? "" : first.displayText);
+				}
+			}
+			if (this.activity.stoppedSince(mark)) { await this.emit({ type: "agent_end", reason: "aborted" }); return; }
+			await this.run();
+			await this.drainPending();
+		};
+		const held = this.activity.hold("resume", resume);
+		void held.finally(() => {
+			void this.tasks.drain();
+			this.checkIdle();
+		}).catch(() => {});
+		return held;
+	}
+
+	async cancelPendingPrompt(): Promise<void> {
+		if (!this.log.meta.pendingPrompt) return;
+		this.log.meta = { ...this.log.meta, pendingPrompt: undefined };
+		await this.log.append({ type: "meta", meta: this.log.meta });
+	}
+
+	async prompt(
+		content: UserContent[],
+		options: {
+			thinking?: ThinkingLevel;
+			origin?: "side-chat";
+			/**
+			 * The message is the app asking on the user's behalf, not the user typing.
+			 *
+			 * 「继续」 is the case: it says the same thing the user would have typed, and it is not
+			 * something they wrote. Marked so the transcript does not put words in their mouth, and
+			 * so the three places that look for "the last thing actually asked for" — retrying,
+			 * compaction's standing instruction, whether a conversation has any real content — all
+			 * see past it to the request it is continuing.
+			 */
+			synthetic?: boolean;
+			/**
+			 * 会话正忙时怎么办。默认 `steer`——插进正在跑的那一轮。
+			 *
+			 * `followUp` 是另一种意思：**不打断，排到这一轮后面**。「跑完之后顺手把测试也跑一遍」
+			 * 属于后者，而现在说出来跟等五分钟再说出来的区别，是要不要一直守在这儿。
+			 *
+			 * 空闲时两者一样，都是开一个新回合——差别只存在于有东西正在跑的时候，而这正是它
+			 * 唯一需要被区分的时候。
+			 *
+			 * `interrupt` 是第三种：停下这一轮，拿这句话重新开始。空闲时同样就是开一个新回合。
+			 */
+			deliver?: "steer" | "followUp" | "interrupt";
+			displayText?: string;
+			skillRef?: { name: string; path?: string; pluginId?: string };
+			sessionRefs?: Array<{ id: string; title: string }>;
+			attachments?: MessageAttachment[];
+		} = {},
+	): Promise<void> {
+		/*
+		 * `interrupt`：停下正在跑的，等它把半截回复和工具结果都落了盘，再拿这句开新的一轮。
+		 *
+		 * 插话要等模型写完手上这一步——一次思考加一大段输出可以是好几分钟，按下去之后什么也没发生。
+		 * 停止用的就是停止按钮那一套（`abort`），半截回复怎么留、没跑完的工具怎么答，和按停一样。
+		 * 等到会话完全放手才提交，不然这句话会落在被停掉那一轮的回复前面，或者被当成插话收进去又
+		 * 随停止一起清掉。
+		 */
+		let interrupting = false;
+		if (options.deliver === "interrupt" && this.running) {
+			this.abort();
+			await this.activity.quiet();
+			interrupting = true;
+		}
+		// A prompt waits for the manual boundary before creating a turn against that history.
+		const compaction = this.activity.compaction;
+		if (compaction) await compaction;
+		const message: Message = {
+			role: "user",
+			content,
+			timestamp: Date.now(),
+			...(options.origin ? { origin: options.origin } : {}),
+			...(options.synthetic ? { synthetic: true } : {}),
+			...(options.displayText !== undefined ? { displayText: options.displayText } : {}),
+			...(options.skillRef ? { skillRef: options.skillRef } : {}),
+			...(options.sessionRefs?.length ? { sessionRefs: options.sessionRefs } : {}),
+			...(options.attachments?.length ? { attachments: options.attachments } : {}),
+			...(interrupting ? { interrupting: true as const } : {}),
+		};
+
+		return this.submit(message, {
+			thinking: options.thinking,
+			deliver: options.deliver === "interrupt" ? undefined : options.deliver,
+			fromPerson: true,
+			// Names the conversation after its opening line — unless it already has a name someone
+			// chose, which this must not overwrite. See `SessionMeta.titleSetByUser`. A side chat's tab
+			// is labelled with its first question as asked, so it does not pay for a summary.
+			title: this.parent ? () => this.nameAfterQuestion(content, options.displayText) : async () => {
+				if (!this.log.meta.titleSetByUser && this.log.messages.filter((m) => m.role === "user").length === 1) {
+					await this.title.fromPrompt(content, options.displayText === "" ? options.skillRef?.name ?? options.sessionRefs?.[0]?.title ?? "" : options.displayText);
+				}
+			},
+		});
+	}
+
+	/**
+	 * 一条消息进会话：忙着就插话或排队，闲着就开一个回合。
+	 *
+	 * 人说的话和运行时替后台子代理递回来的结果都走这里，差别在 `fromPerson`。人开口、或另一个
+	 * 会话的信插进来时，父会话不再干等它派出去的子代理（见 `delegation-waits.ts`）；后台结果的
+	 * 送达不是在找人，它只是排进去，不打断任何人。
+	 */
+	private async submit(
+		message: Message,
+		options: { thinking?: ThinkingLevel; deliver?: "steer" | "followUp"; fromPerson: boolean; title?: () => Promise<void> },
+	): Promise<void> {
+		if (this.running) {
+			const went = this.inbox.accept({ message, thinking: options.thinking }, options.deliver, this.activity.steerable);
+			if (went === "steer") {
+				/*
+				 * 有人找它了（人开口，或另一个会话插进来一封信），父会话别再干等子代理。
+				 *
+				 * 插话只在两轮之间才有人取，而父会话正卡在一个 `task` 上的时候，「两轮之间」要等到
+				 * 子代理全部跑完——十几分钟。放手之后这一轮当场往下走，下一个回合开头就读到这句话；
+				 * 子代理留在后台接着跑，跑完的结果另外送回来。谁算「有人找」见 `addressed`。
+				 */
+				if (options.fromPerson || addressed(message)) this.delegations.release();
+			}
+			return;
+		}
+
+		// Reserve the turn before the first disk write; another submission must queue during it.
+		const mark = this.activity.mark();
+		// 上一个进程没送回来的那几个，排在人这句话前面，同一轮里读到。见 `exit-cut.ts`。
+		const cut = options.fromPerson ? this.exitCut : null;
+		if (cut) this.exitCut = null;
+		const accept = async () => {
+			await this.cancelPendingPrompt();
+			for (const one of cut ? [cut, message] : [message]) {
+				await this.log.commit(one);
+				await this.emit({ type: "message_start", message: one });
+				await this.emit({ type: "message_end", message: one });
+			}
+			await options.title?.();
+
+			if (this.activity.stoppedSince(mark)) { await this.emit({ type: "agent_end", reason: "aborted" }); return; }
+			await this.run(options.thinking);
+			await this.drainPending();
+		};
+		try { await this.activity.hold("prompt", accept); }
+		finally {
+			void this.tasks.drain();
+			this.checkIdle();
+		}
+	}
+
+	/**
+	 * 排在这一轮后面的那些，按进来的顺序发。
+	 *
+	 * 一条 `followUp` 跑完可能又带出下一条，所以是循环而不是一次——而 `run` 本身在跑的时候
+	 * `this.running` 为真，所以循环里不会有第二个回合同时开始。
+	 */
+	private async drainPending(): Promise<void> {
+		while (!this.inbox.empty) {
+			// Orphaned steering comes out first; see `SessionInbox.next`.
+			const next = this.inbox.next();
+			if (!next) break;
+			if (this.activity.stopping) break;
+			const mark = this.activity.mark();
+			await this.log.commit(next.message);
+			await this.emit({ type: "message_start", message: next.message });
+			await this.emit({ type: "message_end", message: next.message });
+			if (this.activity.stoppedSince(mark)) break;
+			await this.run(next.thinking);
+		}
+	}
+
+	/**
+	 * What this turn asks for: the caller's word, then the conversation's, then the app's.
+	 *
+	 * Resolved here rather than at each entry point so every way of starting a turn — the desktop,
+	 * a scheduled task, 「继续」 — reads the conversation's own level
+	 * without each of them having to remember to.
+	 */
+	private thinkingFor(requested?: ThinkingLevel): ThinkingLevel | undefined {
+		return requested ?? this.log.meta.thinking ?? this.parent?.meta.thinking ?? undefined;
+	}
+
+	private async run(requested?: ThinkingLevel): Promise<void> {
+		const thinking = this.thinkingFor(requested);
+		const resolved = resolveModel(this.settings, this.modelIdInEffect());
+		if (!resolved) {
+			await this.emit({
+				type: "notice",
+				level: "error",
+				message: "No model is configured. Add a provider in Settings → Models first.",
+				code: "no-model",
+			});
+			await this.emit({ type: "agent_end", reason: "error", error: "no_model" });
+			return;
+		}
+
+		const parent = this.parent;
+		/*
+		 * 跟着父会话的侧边聊天换模型不经过 `setModel`，切换点没人记。上一条回复不是这个模型写的，
+		 * 就在这里记下——它带着的推理句柄换一家就会被整个拒收。见 `stripStaleHandles`。
+		 */
+		const last = parent ? this.log.messages.findLast((message) => message.role === "assistant") : undefined;
+		if (last?.role === "assistant" && (last.provider !== resolved.provider.id || last.api !== resolved.provider.api || last.model !== resolved.model.modelId)) adoptModelSwitch(this.log);
+		const start = this.log.messages.length;
+
+		const signal = this.activity.beginTurn();
+		try {
+			await this.preparePruner();
+			const turn = driveTurn({
+				cwd: this.cwd,
+				settings: this.settings,
+				getSettings: () => this.settings,
+				log: this.log,
+				can: this.can,
+				provider: resolved.provider,
+				model: resolved.model,
+				signal,
+				thinking,
+				streamFn: this.streamFn,
+				scratchDir: scratchDir(this.log.meta.id),
+				requestApproval: (request) => this.requestApproval(request),
+				emit: (event) => this.emit(event),
+				drainSteering: () => [...this.inbox.takeSteering(), ...this.takeNotices()],
+				subAgents: this.subAgents,
+				delegations: this.delegations,
+				liveModel: this.liveModel,
+				profile: parent ? SIDE_CHAT_PROFILE : undefined,
+				planMode: this.log.meta.planMode === true,
+				followups: !parent && this.suggestFollowups && this.settings.nextPromptSuggestions === true,
+				context: async () => parent ? [mainChatContext(this.log.messages, parent, resolved.model)] : [...this.takeSideChanges(), ...this.takeNotices()],
+			});
+			this.activity.trackTurn(turn);
+			await turn;
+		} finally {
+			// Whatever the turn's own error was, it is the one that propagates.
+			await this.log.settleOrphan().catch(() => {});
+			this.activity.endTurn();
+			/*
+			 * Anything still waiting for approval would hang forever once the run is over.
+			 *
+			 * 后台子代理问的除外：它们的问题本来就是在主会话收尾之后问出来的，人还没看见，这里一并
+			 * 收掉就等于替人答了「不行」。它们停下时由登记簿那一头收回（见 `subAgents` 的 `onFinish`）。
+			 */
+			this.approvals.rejectWhere((request) => !request.from);
+		}
+
+		if (parent) {
+			const paths = await changedPaths(this.log.meta.id, this.log.messages.slice(start)).catch(() => []);
+			if (paths.length > 0) parent.noteSideChanges(paths);
+		}
+
+		/*
+		 * 这一轮跑的时候磁盘上改过的东西，现在换进来。
+		 *
+		 * 「流式中不替换」那条约束的另一半：排了队就得有人放出来，否则那次改动会一直等到下一次
+		 * 文件事件——而人保存完文件就等着看效果，不会再去动它一次。
+		 */
+		void this.watcher?.resume();
+
+		// The queue moves the moment the workspace is free again. Skipped while draining,
+		// because that loop is already the thing calling us.
+		void this.tasks.drain();
+		// 越线的那次回复刚落地、缓存还热：趁人还没开口先压掉。也等会话真闲下来，排着的先跑。
+		if (this.compactWhenIdle && this.lastEnd === "done") void this.whenIdle().then(() => this.compactIdle());
+	}
+
+	/** 见 `idle-compaction.ts`。和手动压缩同一把锁；有人先一步占住了会话就算了，下一轮开头照常会看。 */
+	private async compactIdle(): Promise<void> {
+		if (this.disposed || !this.idle || this.activity.compaction) return;
+		let task: Promise<CompactOutcome>;
+		try {
+			task = this.activity.compact(async (signal) => ({ ok: await idleCompaction(this.compactionParts(), signal) }));
+		} catch {
+			return;
+		}
+		await task.catch(() => {});
+		void this.watcher?.resume();
+		void this.tasks.drain();
+	}
+
+	abort(): void {
+		void this.title.cancel();
+		// The prompt owner records a cancelled startup before resolving, so disposal cannot race
+		// an unawaited append after the caller has already finished the opening submission.
+		this.activity.stop();
+		// Steering and the queue both go: see `SessionInbox.clear`.
+		this.inbox.clear();
+		/*
+		 * Explicitly, as well as through the chain.
+		 *
+		 * Each sub-agent's controller is chained to this one, so aborting here already reaches them
+		 * — but "stop means stop" is worth stating rather than inferring from a listener two files
+		 * away, and a sub-agent left running past the session it belongs to has nothing that could
+		 * ever reach it again.
+		 */
+		this.subAgents.abortAll();
+		this.approvals.rejectAll();
+		// 放了手的、攒着没送的都不再送回来；后台命令照跑，只是结束时不再叫醒会话。见 `SessionDeliveries.clear`。
+		this.delegations.forget();
+		this.deliveries.clear();
+		backgroundJobs(this.can.state).mute();
+		// Stop means stop. Letting the queue carry on after the button was pressed would be
+		// the opposite of what pressing it asks for.
+		void this.tasks.cancelAll();
+		// 闲着时按停，攒着的来信被清掉了，没有哪个回合收尾会再替等的人看一眼。
+		this.checkIdle();
+	}
+
+	/** Wait for in-flight tools before discarding a plan so a late todo_write cannot restore it. */
+	async discardTaskPlan(): Promise<void> {
+		this.abort();
+		await this.activity.settled();
+		await this.tasks.discardPlan();
+		this.can.state.delete(TODOS_KEY);
+		const message: Message = {
+			role: "user", synthetic: true, clearsTaskPlan: true, timestamp: Date.now(),
+			content: [{ type: "text", text: "用户已取消旧任务清单。不要继续旧清单；等待新的指令。" }],
+		};
+		await this.log.commit(message);
+		await this.emit({ type: "message_end", message });
+	}
+
+	/** 侧边聊天的标签写它问的第一句话，原样取第一行，不请模型概括。 */
+	private async nameAfterQuestion(content: UserContent[], displayText?: string): Promise<void> {
+		if (this.log.meta.title || this.log.messages.filter((message) => message.role === "user" && !message.synthetic).length !== 1) return;
+		const said = displayText || content.map((block) => (block.type === "text" ? block.text : "")).join("");
+		const title = said.trim().split("\n")[0]?.trim().slice(0, 80);
+		if (!title) return;
+		await this.log.append({ type: "title", title, source: "auto" });
+		await this.emit({ type: "title", title });
+	}
+
+	/**
+	 * 一个侧边聊天改了这些文件。不开新的一轮、也不插进正在跑的那一轮：下一轮开头说一次。
+	 *
+	 * 防覆盖靠的不是这句话，是 `edit`/`write` 的读取哈希——读过之后被改过的文件写不进去。这句话管的
+	 * 是另一件事：它对那几个文件的印象已经过时了，接着往下推之前该重读。
+	 */
+	noteSideChanges(paths: string[]): void {
+		for (const path of paths) this.sideChanges.add(path);
+	}
+
+	private takeSideChanges(): Message[] {
+		if (this.sideChanges.size === 0) return [];
+		const note = sideChangesNote([...this.sideChanges]);
+		this.sideChanges.clear();
+		return [note];
+	}
+
+	// -------------------------------------------------------------------------
+	// Dispatched work
+	// -------------------------------------------------------------------------
+
+	get taskQueue(): QueuedTask[] {
+		return this.tasks.list();
+	}
+
+	async enqueueTask(text: string, origin: QueuedTask["origin"] = "side-chat"): Promise<QueuedTask> {
+		return this.tasks.enqueue(text, origin);
+	}
+
+	async cancelTask(taskId: string): Promise<boolean> {
+		return this.tasks.cancel(taskId);
+	}
+
+	/** Take a finished task off the receipt list. The transcript keeps what happened. */
+	async dismissTask(taskId: string): Promise<boolean> {
+		return this.tasks.dismiss(taskId);
+	}
+
+	/** Put an interrupted or failed task back in the queue. See `TaskQueue.resume`. */
+	async resumeTask(taskId: string): Promise<boolean> {
+		return this.tasks.resume(taskId);
+	}
+
+	/**
+	 * The task this session was working on when it stopped, if there is one.
+	 *
+	 * What makes 「继续」 in the main conversation mean the right thing. Pausing a session that was
+	 * running a dispatched task cancels the task too, and continuing afterwards used to resume only
+	 * the conversation — the task stayed cancelled, the side panel went on saying so, and the work
+	 * the panel had dispatched was simply not done. Newest first: if several were interrupted, the
+	 * one that was running is the one to pick up.
+	 */
+	interruptedTask(): QueuedTask | null {
+		return this.tasks.list().findLast((task) => task.status === "cancelled" && task.cancelledBy === "stop") ?? null;
+	}
+
+	private emit(event: AgentEvent): Promise<void> {
+		return this.log.emit(event);
+	}
+
+	// -------------------------------------------------------------------------
+	// Approvals
+	// -------------------------------------------------------------------------
+
+	private requestApproval(request: ApprovalRequest): Promise<ApprovalDecision> {
+		return this.approvals.request(request);
+	}
+
+	resolveApproval(requestId: string, decision: unknown): boolean {
+		return this.approvals.resolve(requestId, decision);
+	}
+
+	listPendingApprovals(): { id: string; request: ApprovalRequest; expiresAt: number }[] {
+		return this.approvals.list();
+	}
+
+	// -------------------------------------------------------------------------
+	// Misc
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Replace a message and run again from there.
+	 *
+	 * Editing what you asked invalidates the answer and everything built on it, so the tail is
+	 * discarded rather than left dangling above a contradictory reply.
+	 */
+	async editAndResend(
+		messageIndex: number,
+		content: UserContent[],
+		options: {
+			thinking?: ThinkingLevel;
+			/**
+			 * 改的是措辞，不是这条消息是什么。
+			 *
+			 * 这两样从前没跟过来，于是编辑一次就把它们清空了：`attachments` 一没，界面上那排附件
+			 * 整个消失——文件其实还在 `content` 里，模型照样看得见，只有人看不见了；`displayText`
+			 * 一没，气泡退回原文，一份上千行的附件正文重新整个铺进自己发出的那条消息里，而那正
+			 * 是 `displayText` 存在的全部理由。
+			 */
+			displayText?: string;
+			attachments?: MessageAttachment[];
+		} = {},
+	): Promise<void> {
+		await this.title.cancel();
+		if (this.running) {
+			this.abort();
+			// Acceptance writes and follow-up draining also own the history, before/after driveTurn.
+			await (this.activity.holding("prompt") ?? this.activity.holding("resume"))?.catch(() => {});
+		}
+		await rewind(this.rewindParts(), messageIndex);
+		await this.prompt(content, options);
+	}
+
+	/**
+	 * Take a user message back without asking again.
+	 *
+	 * Edit-and-resend throws the tail away and immediately spends another turn. Undo is the other
+	 * half of that: the same cut, then stop, so the wording can land in the composer instead of
+	 * going back to the model. A running turn still owns the log, so this refuses rather than
+	 * aborting — abort-then-cut is what edit does, and mixing the two is how a tool write and a
+	 * rewind race.
+	 */
+	async revert(messageIndex: number): Promise<void> {
+		if (this.running) {
+			throw new Error("Cannot revert while a turn is running");
+		}
+		await this.title.cancel();
+		await rewind(this.rewindParts(), messageIndex);
+		// 撤掉的派发不再送回来，等着它们的人这时才可能等到「闲了」。
+		this.checkIdle();
+	}
+
+	private rewindParts(): RewindParts {
+		const { log, deliveries, delegations, subAgents } = this;
+		return { log, state: this.can.state, deliveries, delegations, subAgents, emit: (event) => this.emit(event) };
+	}
+
+	/**
+	 * Name the conversation by hand, and have it stay named.
+	 *
+	 * The title record is what the store already understands, so this is only the writing half.
+	 * The other half is `titleSetByUser`: without it the first prompt renames the session after
+	 * itself and the name typed a moment earlier is gone. Title and ownership share one record so
+	 * cold-session renames and late automatic writes are ordered at the store boundary too.
+	 */
+	async rename(title: string): Promise<void> {
+		const cleanTitle = title.trim();
+		if (!cleanTitle) return;
+		await this.title.cancel();
+		await this.log.append({ type: "title", title: cleanTitle, source: "user" });
+		await this.emit({ type: "title", title: cleanTitle });
+	}
+
+	/**
+	 * SessionEnd 钩子：这个会话不再活着了。只在 SessionStart 跑过时跑，跑一次。
+	 *
+	 * 先停、再等这一轮收完尾才跑：被停下的那一轮还有 StopFailure 要发，它要排在 SessionEnd 前面——
+	 * 外面的看板先收到「结束」再收到「这一轮失败了」，会把刚撤掉的卡片又建出来。没配这个钩子就什么
+	 * 都不动，不替调用方停下一个正在跑的会话。
+	 */
+	async end(reason: SessionEndReason): Promise<void> {
+		if (!this.can.state.get(SESSION_START_KEY)) return;
+		this.can.state.delete(SESSION_START_KEY);
+		const runner = await loadHookRunner({ settings: this.settings, cwd: this.cwd });
+		if (!runner.has("SessionEnd")) return;
+		this.abort();
+		await this.activity.quiet().catch(() => {});
+		await runSessionEndHooks({ runner, cwd: this.cwd, sessionId: this.log.meta.id, permissionMode: this.settings.permissionMode }, reason);
+	}
+
+	async dispose(reason: SessionEndReason = "other"): Promise<void> {
+		this.disposed = true;
+		this.abort();
+		// 收尾后的自动压缩不是人发起的，处置时多半还在跑：等它停下再往下走，免得宿主删了日志它还在写。
+		await this.activity.compaction?.catch(() => {});
+		await this.end(reason).catch(() => {});
+		// A host may delete the log as soon as disposal returns; finish any title write first.
+		await this.title.pending();
+		// 没人关的 fs.watch 会一直拿着描述符，而一天里会开关几十个会话。
+		this.watcher?.close();
+		this.watcher = null;
+		await this.can.dispose();
+	}
+}

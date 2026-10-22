@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { SessionActivity } from "../src/runtime/session-activity.ts";
+import { SessionActivity } from "../src/runtime/agent-session/session-activity.ts";
 
 /** A promise and the hand that settles it. */
 function gate() {

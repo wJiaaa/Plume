@@ -18,9 +18,9 @@ import { DEFAULT_SETTINGS } from "../src/config/settings.ts";
 import { FRESH_RESULT_MAX_CHARS, pruneToolResults } from "../src/agent/prune.ts";
 import { McpManager, type McpManagerOptions, type McpServerStatus, type McpStdioServer } from "../src/mcp/client.ts";
 import { MCP_RESULT_CHARS } from "../src/mcp/result.ts";
-import { builtInApprovalPolicy } from "../src/runtime/approval-policy.ts";
-import { ApprovalGate } from "../src/runtime/approvals.ts";
-import { mcpFailureNotice, SessionCapabilities } from "../src/runtime/session-capabilities.ts";
+import { builtInApprovalPolicy } from "../src/runtime/policy/approval-policy.ts";
+import { ApprovalGate } from "../src/runtime/policy/approvals.ts";
+import { mcpFailureNotice, SessionCapabilities } from "../src/runtime/setup/session-capabilities.ts";
 import type { ApprovalRequest, Message, Tool, ToolContext, ToolResult } from "../src/types.ts";
 
 const SCRIPT = fileURLToPath(new URL("./mcp-stress-server.ts", import.meta.url));

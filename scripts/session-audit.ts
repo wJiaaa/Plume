@@ -46,7 +46,7 @@ import {
 	type CacheBoundary,
 	type CacheCause,
 	type CacheRequestDiagnosis,
-} from "../packages/core/src/runtime/cache-diagnostics.ts";
+} from "../packages/core/src/runtime/record/cache-diagnostics.ts";
 import { afterCompaction, cacheLifetime, LIFETIME_BUCKETS, type AuditBoundary } from "./audit-compaction.ts";
 import { KEEP_MIN } from "../packages/core/src/runtime/compaction/compaction-budget.ts";
 import type { Message } from "../packages/core/src/types.ts";

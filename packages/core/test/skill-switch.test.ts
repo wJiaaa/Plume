@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { listCommands } from "../src/commands/catalogue.ts";
 import { DEFAULT_SETTINGS, type Settings } from "../src/config/settings.ts";
-import { AgentSession } from "../src/runtime/session.ts";
+import { AgentSession } from "../src/runtime/agent-session/session.ts";
 import type { SessionMeta } from "../src/session/store.ts";
 import type { SessionStorage } from "../src/session/storage.ts";
 

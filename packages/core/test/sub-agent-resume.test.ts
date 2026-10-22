@@ -21,7 +21,7 @@ import { SubAgentRegistry } from "../src/runtime/sub-agent/sub-agents.ts";
 import { useCompaction } from "../src/runtime/compaction/compaction.ts";
 import { taskTool } from "../src/tools/task.ts";
 import { runTools } from "../src/agent/tool-run.ts";
-import { DispatchGate } from "../src/runtime/sub-agent/dispatch-guard.ts";
+import { DispatchGate } from "../src/runtime/policy/dispatch-guard.ts";
 import { TODOS_KEY, todoTool, type TodoItem } from "../src/tools/todo.ts";
 import { SUBAGENTS_KEY } from "../src/resources/handlers.ts";
 import type { AgentDefinition } from "../src/agents-builtin.ts";

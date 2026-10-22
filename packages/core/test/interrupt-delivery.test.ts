@@ -10,7 +10,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
-import { AgentSession } from "../src/runtime/session.ts";
+import { AgentSession } from "../src/runtime/agent-session/session.ts";
 import { DEFAULT_SETTINGS, type Settings } from "../src/config/settings.ts";
 import type { AssistantMessage, LlmContext, ModelConfig, ProviderConfig } from "../src/types.ts";
 

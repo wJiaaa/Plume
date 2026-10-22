@@ -11,7 +11,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { McpManager } from "../src/mcp/client.ts";
 import { elicitResult } from "../src/mcp/elicitation.ts";
 import { checkFormValues, formFields, initialValues, UnsupportedFormError } from "../src/mcp/form.ts";
-import { ApprovalGate, type PendingApproval } from "../src/runtime/approvals.ts";
+import { ApprovalGate, type PendingApproval } from "../src/runtime/policy/approvals.ts";
 import type { ApprovalDecision, ApprovalRequest } from "../src/types.ts";
 import { FORM_SCHEMA, startMcpHttpFixture } from "./mcp-http-fixture.ts";
 

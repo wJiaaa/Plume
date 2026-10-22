@@ -248,7 +248,7 @@ test("ordinary image work without measuring is not a probe loop", () => {
 test("one watch spans a whole continuation chain", async () => {
 	// 续跑是拿同一份 config 再调一次 `runAgent`；表建在 config 上，计数才不会在续跑的瞬间归零。
 	const { readFile } = await import("node:fs/promises");
-	const source = await readFile(new URL("../src/runtime/turn-config.ts", import.meta.url), "utf8");
+	const source = await readFile(new URL("../src/runtime/agent-session/turn-config.ts", import.meta.url), "utf8");
 
 	assert.match(source, /repetition: new RepetitionWatch\(\)/, "整条续跑链共用一只表");
 });

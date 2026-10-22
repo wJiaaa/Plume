@@ -7,11 +7,11 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { ApprovalGate } from "../src/runtime/approvals.ts";
+import { ApprovalGate } from "../src/runtime/policy/approvals.ts";
 import { formatTaskContext } from "../src/runtime/compaction/task-context.ts";
-import { inPlanMode, PLAN_MODE_KEY } from "../src/runtime/plan-mode.ts";
-import { PLAN_APPROVE, PLAN_REVISE, submitPlanTool } from "../src/runtime/plan-tool.ts";
-import { PLAN_HANDOFF, planSummary } from "../src/runtime/plan-view.ts";
+import { inPlanMode, PLAN_MODE_KEY } from "../src/runtime/plan/plan-mode.ts";
+import { PLAN_APPROVE, PLAN_REVISE, submitPlanTool } from "../src/runtime/plan/plan-tool.ts";
+import { PLAN_HANDOFF, planSummary } from "../src/runtime/plan/plan-view.ts";
 import type { ApprovedPlan, ToolContext } from "../src/types.ts";
 
 const textOf = (result: { content: { type: string; text?: string }[] }) => result.content.map((c) => c.text ?? "").join("");

@@ -2,7 +2,7 @@
 
 - 状态：已采纳
 - 日期：2026-10-02
-- 相关：[ADR-0034](0034-run-config-in-four-groups.md)（循环的拆分与四组配置）；`packages/core/src/agent/`；`packages/core/src/runtime/{session,session-activity,session-deliveries,session-lookup,session-model,session-rewind,session-inbox,manual-compaction}.ts`；`packages/core/src/tokens.ts`；`.dependency-cruiser.cjs`（`loop-sits-below-the-session`）
+- 相关：[ADR-0034](0034-run-config-in-four-groups.md)（循环的拆分与四组配置）；`packages/core/src/agent/`；`packages/core/src/runtime/agent-session/{session,session-activity,session-deliveries,session-lookup,session-model,session-rewind,session-inbox,manual-compaction}.ts`；`packages/core/src/tokens.ts`；`.dependency-cruiser.cjs`（`loop-sits-below-the-session`）
 
 ## 背景
 

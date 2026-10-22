@@ -14,7 +14,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { QueuedTask } from "@plume/core";
-import { isResumable, TaskQueue } from "../../core/src/runtime/task-queue.ts";
+import { isResumable, TaskQueue } from "../../core/src/runtime/queue/task-queue.ts";
 
 const ran: string[] = [];
 function queue(): TaskQueue {

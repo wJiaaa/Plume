@@ -12,7 +12,7 @@ import type { CompactionFault, CompactionObserver } from "../../types/compaction
 import type { AssistantMessage, LlmContext, Message, ModelConfig, ProviderConfig } from "../../types.ts";
 import { FIRST_SUMMARY, focusNote, hasSummary, SUMMARY_SYSTEM, UPDATE_SUMMARY } from "./compaction-prompts.ts";
 import { SUMMARY_INPUT, summaryReplyTokens } from "./compaction-budget.ts";
-import { replyText } from "../one-shot.ts";
+import { replyText } from "../summary/one-shot.ts";
 
 export async function summarize(
 	messages: Message[],

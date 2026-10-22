@@ -8,7 +8,7 @@ import { test } from "node:test";
 import type { AgentToolContext } from "../src/agent/run-config.ts";
 import { coerceArguments, resolveTool, withParameterHint } from "../src/agent/tool-args.ts";
 import { batches, runTools } from "../src/agent/tool-run.ts";
-import { approvalPolicy, builtInApprovalPolicy } from "../src/runtime/approval-policy.ts";
+import { approvalPolicy, builtInApprovalPolicy } from "../src/runtime/policy/approval-policy.ts";
 import { bashTool } from "../src/tools/bash.ts";
 import type { Tool, ToolResult } from "../src/types.ts";
 import { parseToolArguments } from "../src/utils/sse.ts";

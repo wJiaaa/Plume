@@ -224,7 +224,7 @@ test("project memory is visible in usage and its settings switch stops injection
 	await click('[data-project-switch]');
 	await until(app, `document.querySelector('[data-project-switch]').getAttribute('aria-checked') === 'false'`);
 	const after = await app.evaluate<{used:number;projectMemory:string}>(`window.plume.sessions.contextBreakdown('qa-long')`);
-	// Absent rather than empty: the breakdown leaves out a section the prompt does not have (`runtime/context.ts`).
+	// Absent rather than empty: the breakdown leaves out a section the prompt does not have (`runtime/record/context.ts`).
 	assert.equal(after.projectMemory ?? "", "");
 	assert.match(await app.evaluate<string>(`window.plume.projectMemory.list(${JSON.stringify(join(app.home,"project"))}).then(r=>r.extracted.text)`), /核对当前仓库/);
 	await click('[data-project-switch]'); await frames(app);

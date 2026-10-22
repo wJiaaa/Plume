@@ -19,7 +19,7 @@ import { DEFAULT_SETTINGS, loadSettings, saveSettings, settingsPath, settingsPro
 import { readConfigFile } from "../src/config/layers.ts";
 import { resetVault } from "../src/config/vault.ts";
 import { loadPlugins } from "../src/plugins/loader.ts";
-import { AgentSession } from "../src/runtime/session.ts";
+import { AgentSession } from "../src/runtime/agent-session/session.ts";
 import type { SessionMeta } from "../src/session/store.ts";
 import type { SessionStorage } from "../src/session/storage.ts";
 import { loadSkills } from "../src/skills/loader.ts";

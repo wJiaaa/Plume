@@ -1,5 +1,5 @@
 import { DEFAULT_RETRY_POLICY, normalizeRetryPolicy, type RetryPolicy } from "./retry-policy.ts";
-import { normalizeMaxConcurrentSubAgents } from "../runtime/sub-agent/dispatch-guard.ts";
+import { normalizeMaxConcurrentSubAgents } from "../runtime/policy/dispatch-guard.ts";
 import { normalizeSubAgentProfiles, type SubAgentProfile } from "./sub-agent-profiles.ts";
 import { constants, copyFile, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -474,7 +474,7 @@ export interface Settings {
 	 * calls. The number reaches the prompt too: a queue is invisible from the inside, and a model
 	 * that reads the wait as slowness responds by dispatching more.
 	 *
-	 * 设置页不再展示它，只在配置文件里可调。见 `runtime/sub-agent/dispatch-guard.ts`。
+	 * 设置页不再展示它，只在配置文件里可调。见 `runtime/policy/dispatch-guard.ts`。
 	 */
 	maxConcurrentSubAgents: number;
 	/**

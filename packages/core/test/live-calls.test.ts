@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import type { AgentEvent } from "../src/agent/events.ts";
 import { runTools } from "../src/agent/tool-run.ts";
-import { SessionLog } from "../src/runtime/session-log.ts";
+import { SessionLog } from "../src/runtime/record/session-log.ts";
 import { sessionDb } from "../src/session/db.ts";
 import { KEPT_OUTPUT_CHARS } from "../src/session/live-calls.ts";
 import { SessionStore } from "../src/session/store.ts";

@@ -12,7 +12,7 @@ import { test } from "node:test";
 import { anthropicMessagesProvider } from "../src/ai/anthropic-messages.ts";
 import { openaiChatCompletionsProvider } from "../src/ai/openai-chat-completions.ts";
 import { openaiResponsesProvider } from "../src/ai/openai-responses.ts";
-import { diagnoseCache } from "../src/runtime/cache-diagnostics.ts";
+import { diagnoseCache } from "../src/runtime/record/cache-diagnostics.ts";
 import { measureTotal } from "../src/tokens.ts";
 import type { AssistantMessage, Message, ModelConfig, Provider, ProviderConfig } from "../src/types.ts";
 

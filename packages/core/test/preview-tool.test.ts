@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { inspectionNotes, previewTool, usePreviewInspector, type PreviewInspector } from "../src/tools/preview.ts";
-import { writePreview } from "../src/runtime/previews.ts";
+import { writePreview } from "../src/runtime/policy/previews.ts";
 import type { ToolContext } from "../src/types.ts";
 
 async function context(t: { after: (fn: () => unknown) => void }): Promise<ToolContext> {

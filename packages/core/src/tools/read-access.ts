@@ -33,7 +33,7 @@ import { existsSync, statSync } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { basename, join, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
-import { scratchHome } from "../runtime/previews.ts";
+import { scratchHome } from "../runtime/policy/previews.ts";
 import { plumeHome } from "../session/store.ts";
 import { commandDialects, commandShell, dialectsOf, home, withinOrIs } from "../platform.ts";
 import type { ToolContext } from "../types/tool.ts";

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { gatherMemory } from "../src/runtime/memory/memory-inject.ts";
 import { forgetLesson, readLessons, recordLesson } from "../src/runtime/memory/project-memory.ts";
-import { SessionLog } from "../src/runtime/session-log.ts";
+import { SessionLog } from "../src/runtime/record/session-log.ts";
 import { SessionStore } from "../src/session/store.ts";
 
 let home: string;

@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { imageModelRows, isImageModel, isImageModelId, resolveImageModel } from "../src/config/image-models.ts";
 import { DEFAULT_SETTINGS } from "../src/config/settings.ts";
-import { promptCapabilities } from "../src/runtime/prompt-context.ts";
+import { promptCapabilities } from "../src/runtime/setup/prompt-context.ts";
 import { imageTool } from "../src/tools/image.ts";
 import type { Tool } from "../src/types.ts";
 import type { ModelConfig, ProviderConfig } from "../src/types/provider.ts";

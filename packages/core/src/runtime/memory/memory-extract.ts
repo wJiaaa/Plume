@@ -24,8 +24,8 @@ import { join, relative } from "node:path";
 import type { Message, ModelConfig, ProviderConfig, Usage } from "../../types.ts";
 import type { SessionStorage } from "../../session/storage.ts";
 import type { streamAssistant } from "../../ai/index.ts";
-import { proposeSkill, type SkillCandidate } from "../managed-skills.ts";
-import { readReply, replyText } from "../one-shot.ts";
+import { proposeSkill, type SkillCandidate } from "./managed-skills.ts";
+import { readReply, replyText } from "../summary/one-shot.ts";
 import { projectMemoryDir, redactSecrets } from "./project-memory.ts";
 import { loadProjectInstructions } from "../../prompt/system.ts";
 

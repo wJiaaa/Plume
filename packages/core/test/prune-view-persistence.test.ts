@@ -85,7 +85,7 @@ test("a result cut by compaction is sent cut again after a restart, not rebuilt 
 	const { tmpdir } = await import("node:os");
 	const { join } = await import("node:path");
 	const { DEFAULT_SETTINGS } = await import("../src/config/settings.ts");
-	const { AgentSession } = await import("../src/runtime/session.ts");
+	const { AgentSession } = await import("../src/runtime/agent-session/session.ts");
 	const { SessionStore } = await import("../src/session/store.ts");
 	const root = await mkdtemp(join(tmpdir(), "ly-views-"));
 	await mkdir(join(root, "home"), { recursive: true });

@@ -10,7 +10,7 @@ import { BackgroundJobs, backgroundJobs, type BackgroundJob } from "../src/tools
 import type { SandboxProcess } from "../src/sandbox/types.ts";
 import { useSandbox } from "../src/sandbox/index.ts";
 import { bashOutputTool, bashTool } from "../src/tools/bash.ts";
-import { SessionCapabilities } from "../src/runtime/session-capabilities.ts";
+import { SessionCapabilities } from "../src/runtime/setup/session-capabilities.ts";
 import { systemShell } from "../src/platform.ts";
 test("a session can stop only its own process handle, and a terminated job cannot target a reused PID", () => {
 	const a=new BackgroundJobs(),b=new BackgroundJobs(),signals:string[]=[];

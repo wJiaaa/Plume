@@ -16,7 +16,7 @@ import { errorResult } from "../../tools/result.ts";
 import { toolTable } from "../../tools/mcp-search.ts";
 import { TODOS_KEY, type TodoItem } from "../../tools/todo.ts";
 import type { Message, Tool } from "../../types.ts";
-import { continueWhileWorkRemains, type ContinuationDeps } from "../continuation.ts";
+import { continueWhileWorkRemains, type ContinuationDeps } from "../policy/continuation.ts";
 import type { SubAgentOptions } from "./sub-agent-options.ts";
 import { subAgentRunConfig } from "./sub-agent-config.ts";
 import type { Dispatched } from "./sub-agent-dispatch.ts";

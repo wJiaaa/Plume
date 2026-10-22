@@ -94,7 +94,7 @@ test("both places that rebuild a compaction head pass the list", async () => {
 	 * 会话重新打开后凭空消失——而那正是最需要它的时刻。参数是可选的，漏掉不会报错。
 	 */
 	const { readFile } = await import("node:fs/promises");
-	for (const file of ["../src/runtime/compaction/compaction.ts", "../src/runtime/session-turn.ts"]) {
+	for (const file of ["../src/runtime/compaction/compaction.ts", "../src/runtime/agent-session/session-turn.ts"]) {
 		const source = await readFile(new URL(file, import.meta.url), "utf8");
 		// 按行找，不用正则啃括号——`lastRequest(older)` 那层嵌套会把 `[^)]*` 提前截断。
 		const heads = source

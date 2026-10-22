@@ -107,7 +107,7 @@ export {
 	loadMemory,
 	removeMemoryEntry,
 } from "./runtime/memory/memory.ts";
-export type { ContextBreakdown, ContextSegmentKey } from "./runtime/context.ts";
+export type { ContextBreakdown, ContextSegmentKey } from "./runtime/record/context.ts";
 export { restated } from "./reply-text.ts";
 export { costAtRates, selectPricingRates, type SelectedPricingRates } from "./utils/pricing.ts";
 export {
@@ -116,7 +116,7 @@ export {
 	newCacheDiagnosisState,
 	type CacheCause,
 	type CacheDiagnosisState,
-} from "./runtime/cache-diagnostics.ts";
+} from "./runtime/record/cache-diagnostics.ts";
 export {
 	addHook,
 	hookEntries,
@@ -133,8 +133,8 @@ export {
 	type SessionEndReason,
 } from "./hooks/config.ts";
 export { trustHookDigests, trustedHookDigests } from "./hooks/trust.ts";
-export { AgentSession, type AgentSessionOptions } from "./runtime/session.ts";
-export { summarizeSession } from "./runtime/session-summary.ts";
+export { AgentSession, type AgentSessionOptions } from "./runtime/agent-session/session.ts";
+export { summarizeSession } from "./runtime/summary/session-summary.ts";
 export {
 	plumeHome,
 	projectIdFor,
@@ -202,17 +202,17 @@ export {
 	previewsHome,
 	removeSessionArtifacts,
 	writePreview,
-} from "./runtime/previews.ts";
+} from "./runtime/policy/previews.ts";
 
 export type { SubAgentDetail } from "./runtime/sub-agent/sub-agents.ts";
 export type { SubAgentStatus, SubAgentSummary } from "./types/sub-agent.ts";
-export { collectSkills, disabledSkillMatcher } from "./runtime/session-setup.ts";
+export { collectSkills, disabledSkillMatcher } from "./runtime/setup/session-setup.ts";
 export {
 	approveSkill,
 	pendingSkills,
 	rejectSkill,
 	type SkillCandidate,
-} from "./runtime/managed-skills.ts";
+} from "./runtime/memory/managed-skills.ts";
 export {
 	thinkingOptionsFor,
 	THINKING_LEVELS,

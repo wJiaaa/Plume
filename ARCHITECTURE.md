@@ -60,6 +60,23 @@ src/
 
 前两条由 `pnpm arch` 与 oxlint 强制。
 
+## core 的 runtime
+
+`packages/core/src/runtime/` 是驱动 agent 循环的那一层。它按职责分组，组与组之间从上往下引，
+由 `.dependency-cruiser.cjs` 里的 `runtime-layer-*` 规则守（类型也算）：
+
+| 层 | 目录 | 是什么 |
+| --- | --- | --- |
+| 会话驱动 | `agent-session/` | `AgentSession`（`session.ts`）和从它身上拆出来的部件：回合怎么开（`session-turn.ts`、`turn-config.ts`）、谁占着历史、后台结果送回、插话、撤回、换模型、手动与空闲压缩 |
+| 被驱动的运行 | `sub-agent/`、`side-chat/` | 子代理与侧边聊天。借会话的记录和能力，不认识会话本身 |
+| 记录 | `record/` | 会话记下了什么（`SessionLog`），以及从记录里读出来的东西：只读的会话事实、状态与上下文分布、缓存诊断 |
+| 装配 | `setup/` | 会话装上了什么：工具、技能、插件、MCP、子智能体定义，变化时重装，以及据此拼的提示词上下文 |
+| 叶子 | `policy/`、`plan/`、`compaction/`、`memory/`、`queue/`、`summary/` | 每种运行共用的规矩（审批、钩子、工具策略与环境、续跑、委派上限）、计划模式、压缩、记忆与沉淀的技能、任务队列、标题与摘要（连同三处共用的一次性旁路请求读取 `one-shot.ts`） |
+
+同层之间随意引，叶子之间也一样（压缩读计划快照）。新文件放进它真正依赖的那一层；哪一层都放
+不下、放哪儿都要往上引，说明它的边界不对，先拆它而不是给规则开口子。顶层的 `src/session/` 是
+会话**存储**，和这里的 `agent-session/` 不是一回事。
+
 ## 边界
 
 由 `.dependency-cruiser.cjs` 与 `.oxlintrc.json` 执行，`pnpm arch` 与 `pnpm lint` 检查，
@@ -84,6 +101,8 @@ pre-push 里都是必过项：
 10. **agent 循环不 import `runtime/`、`session/`、`kernel/`。** 会话、子代理、侧聊驱动循环，循环不认识
    它们；压缩、审批、钩子、中途换模型都经 `AgentRunConfig` 交进来。循环自己做的历史剪枝在 `agent/`，
    token 估算在 `tokens.ts`。类型也算——从 `runtime/` 拿一个类型，下一次就是拿一个值。
+11. **`runtime/` 内部只往下引。** 会话驱动在最上面，子代理与侧聊、记录、装配、叶子依次往下，
+   见上一节「core 的 runtime」。
 
 循环依赖是 error，垫着一份已有的 21 条的基线（`.dependency-cruiser-known-violations.json`，
 连同第 8 条那两处有理由的破例共 23 条）：新加一条会让 `pnpm arch` 变红，已有那些照旧通过。

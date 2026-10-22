@@ -15,7 +15,7 @@ import { beforeEach, test } from "node:test";
 import type { AgentRunConfig } from "../src/agent/loop.ts";
 import { runTools } from "../src/agent/tool-run.ts";
 import { DEFAULT_SETTINGS, type Settings } from "../src/config/settings.ts";
-import { buildTurnConfig } from "../src/runtime/turn-config.ts";
+import { buildTurnConfig } from "../src/runtime/agent-session/turn-config.ts";
 import { registerSearchProvider, resetSearchProviders, type SearchProvider, type SearchRequest } from "../src/search/index.ts";
 import { webSearchTool } from "../src/tools/search.ts";
 import type { AssistantContent, Tool, ToolContext } from "../src/types.ts";

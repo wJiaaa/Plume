@@ -164,7 +164,7 @@ test("read and edit work cleanly on explicitly allowed paths outside workspace",
 	/*
 	 * 改它要先问人——附件不替人答这一问。
 	 *
-	 * 那份集合是用户拖进输入框的附件（`runtime/session-turn.ts` 的 `collectAllowedPaths`），拖进来
+	 * 那份集合是用户拖进输入框的附件（`runtime/agent-session/session-turn.ts` 的 `collectAllowedPaths`），拖进来
 	 * 的意思是让模型看它。原来 `write`/`edit` 也吃同一份许可，于是一次「你看看我的 ~/.zshrc」就换来
 	 * 了对它的写权限，不再问第二次；而 `MessageAttachment.path` 自己的类型注释写着它只是展示用元数据，
 	 * 从没按权限凭证设计过。

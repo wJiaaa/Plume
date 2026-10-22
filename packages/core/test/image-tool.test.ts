@@ -15,7 +15,7 @@ import { DEFAULT_SETTINGS, type Settings } from "../src/config/settings.ts";
 import { resetImageRoutes } from "../src/images/generate.ts";
 import { buildSystemPrompt } from "../src/prompt/system.ts";
 import { RECENT_IMAGES_KEY } from "../src/images/recent.ts";
-import { toolPolicy } from "../src/runtime/tool-policy.ts";
+import { toolPolicy } from "../src/runtime/policy/tool-policy.ts";
 import { sessionMediaPath } from "../src/session/payload.ts";
 import { imageTool } from "../src/tools/image.ts";
 import type { Message, ModelConfig, ProviderConfig, Tool, ToolContext, ToolResult } from "../src/types.ts";
