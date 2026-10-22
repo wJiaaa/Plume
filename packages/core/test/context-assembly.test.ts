@@ -169,3 +169,29 @@ test("runtime statistics reuse filtered requests and recorded sources through re
 		await rm(root, { recursive: true, force: true });
 	}
 });
+
+test("a side chat that is not running answers its context from the log, on its parent's model", async () => {
+	const root = await mkdtemp(join(tmpdir(), "plume-context-"));
+	const previous = { HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE, PLUME_HOME: process.env.PLUME_HOME };
+	Object.assign(process.env, { HOME: root, USERPROFILE: root, PLUME_HOME: join(root, "home") });
+	// 父会话的模型窗口和默认模型不同，读数的 limit 能看出用的是哪一个。
+	const wide: ModelConfig = { ...model, id: "fixture/wide", modelId: "wide", contextWindow: 500_000 };
+	const settings = { ...DEFAULT_SETTINGS, providers: [{ ...provider, models: [model, wide] }], defaultModelId: model.id, mcpServers: [] };
+	const store = new SessionStore(join(root, "sessions"));
+	try {
+		const parent = await store.create(root, wide.id);
+		const side = await store.create(root, "", "", { parentId: parent.id, sideId: "side-1" });
+		const log = new SessionLog(store, () => {}, side);
+		assert.equal(await storedContextBreakdown(store, side.id, settings), undefined, "nothing recorded yet: still has to be started");
+		await log.recordContext("SIDE_PROMPT", [], [], [], { sections: [], mcpTools: [] });
+		await log.commit({ role: "user", content: [{ type: "text", text: "what is this" }], timestamp: 1 });
+		await log.commit(reply());
+		const breakdown = await storedContextBreakdown(store, side.id, settings);
+		assert.ok(breakdown, "answered from the log instead of handing back to a start that drags the parent up too");
+		assert.equal(breakdown.limit, wide.contextWindow, "its own model unset: the parent's, as a running side chat would use");
+		assert.ok(breakdown.used >= textTokens("SIDE_PROMPT"));
+	} finally {
+		for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+		await rm(root, { recursive: true, force: true });
+	}
+});

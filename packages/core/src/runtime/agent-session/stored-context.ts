@@ -7,8 +7,11 @@
  * （`describeContext`），再配上从日志还原的历史就够了。
  *
  * `undefined` 是「日志答不了」，交给调用方照旧把会话拉起来：从没发出过请求的（没有记录，只能现拼
- * 一份预览）和侧边聊天（模型跟着父会话走）。`null` 是「拉起来也量不出」：会话没了，或者当前设置里
- * 解析不出它那个模型——活着的会话这时也只会答 null，不值得为它起一套 agent。
+ * 一份预览）。`null` 是「拉起来也量不出」：会话没了，或者当前设置里解析不出它那个模型——活着的会话
+ * 这时也只会答 null，不值得为它起一套 agent。
+ *
+ * 侧边聊天也从日志答：它自己没选模型时跟着父会话走，和 `AgentSession.modelInEffect` 一样从父会话的
+ * 元数据取。拉起侧边聊天要先把父会话也拉起来，只为看一眼读数不值得。
  */
 
 import { layerProjectSettings, resolveModel, type Settings } from "../../config/settings.ts";
@@ -27,7 +30,6 @@ export async function storedContextBreakdown(
 ): Promise<ContextBreakdown | null | undefined> {
 	const meta = await store.get(sessionId);
 	if (!meta) return null;
-	if (meta.parentId) return undefined;
 	// 先找记录：只读 `context` 那几条，没有就不必把整份历史解析一遍。
 	const recorded = await new SessionLog(store, () => {}, meta).readContext();
 	if (!recorded) return undefined;
@@ -35,7 +37,8 @@ export async function storedContextBreakdown(
 	if (!loaded) return null;
 	// 和 `AgentSession` 一样叠上项目层：项目可以有自己的模型清单。
 	const { settings } = await layerProjectSettings(globalSettings, loaded.meta.cwd);
-	const resolved = resolveModel(settings, loaded.meta.modelId || settings.defaultModelId || "");
+	const parent = loaded.meta.parentId ? await store.get(loaded.meta.parentId) : null;
+	const resolved = resolveModel(settings, loaded.meta.modelId || parent?.modelId || settings.defaultModelId || "");
 	if (!resolved) return null;
 	const messages = historyFrom(loaded.messages, loaded.compaction, resolved.provider, resolved.model);
 	return describeRecordedContext(recorded, messages, resolved.model);
