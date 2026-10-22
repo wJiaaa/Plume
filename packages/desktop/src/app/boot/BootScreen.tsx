@@ -27,7 +27,7 @@ import { useEffect, useState } from "react";
 import mark from "../../assets/plume-mark.png?inline";
 
 /**
- * Short, now that the screen is guaranteed a couple of seconds.
+ * Short, now that the screen is guaranteed its floor (`MIN_BOOT_MS`).
  *
  * It used to be 500ms and existed to keep a fast launch from flashing — nothing was drawn until the
  * boot had probably already finished. The effect was that the screen was almost never seen at all,
@@ -42,8 +42,13 @@ const QUIET_MS = 120;
  * Not a delay for its own sake: the window opens, the theme paints, and the mark is on screen long
  * enough to be read as the app starting rather than as a stutter. Boot itself is usually done well
  * inside it, so this is what decides the length of a normal launch.
+ *
+ * It was 2000ms, and measured on a real profile (147 sessions) the sidebar's data was ready about
+ * 300ms after the window opened — every launch and every reload sat on a finished boot for 1.7s.
+ * What the floor has to cover is the mark arriving: `QUIET_MS` plus the 520ms fade is 640ms, and the
+ * rest is the moment it holds fully drawn. Past that the wait is only waiting.
  */
-export const MIN_BOOT_MS = 2000;
+export const MIN_BOOT_MS = 900;
 
 export function BootScreen() {
 	const [shown, setShown] = useState(false);
