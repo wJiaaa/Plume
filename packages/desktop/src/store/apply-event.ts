@@ -15,7 +15,7 @@ import { nextActivity } from "@plume/core/activity";
 import { recordReadEvent } from "./read-events.ts";
 import { cachedEvent } from "./cached-event.ts";
 import { messageEvent } from "./message-event.ts";
-import { coalesce, flushCoalesced } from "./coalesce.ts";
+import { coalesce, flushCoalesced, flushCoalescedUnder } from "./coalesce.ts";
 import { applyToolEvent } from "./apply-tool.ts";
 import { howItStopped } from "./derive.ts";
 import { freeze, relight, saveCarried } from "./turn-meter.ts";
@@ -303,18 +303,21 @@ export function applyAgentEvent(sessionId: string, event: AgentEvent, set: Set, 
 			const who = target ? translate("applyEvent.named", { title: sessionTitle(target.title) }) : translate("applyEvent.task");
 			get().notify(`${who}${completion.text}`, completion.level, sessionId);
 		}
-    if (event.type === "message_update") {
-      // Once a frame, like the conversation on screen: see `coalesce`. Read at flush time, so it
-      // applies to whatever the cache holds by then.
+    // 这个会话自己暂存的那几格都以它开头；末尾的冒号让 `a` 不会冲掉 `ab` 的。
+    const held = `cache:${sessionId}:`;
+    if (event.type === "message_update" || event.type === "tool_update") {
+      // Once a tick, like the conversation on screen: see `coalesce`. Read at flush time, so it
+      // applies to whatever the cache holds by then. Each tool call holds its own newest update.
       coalesce(() => {
         const cached = get().sessionCache[sessionId];
         if (!cached) return;
         const next = cachedEvent(cached, event);
         if (next !== cached) set({ sessionCache: { ...get().sessionCache, [sessionId]: next } });
-      }, `cache:${sessionId}`);
+      }, event.type === "message_update" ? `${held}message` : `${held}tool:${event.toolCallId}`);
     } else {
-      // A held update lands before anything that comes after it — same rule as below.
-      flushCoalesced();
+      // A held update lands before anything that comes after it — same rule as below, but only this
+      // conversation's: see `flushCoalescedUnder`.
+      flushCoalescedUnder(held);
       const cached = get().sessionCache[sessionId];
       if (cached) {
         const settled = cachedEvent(cached, event);

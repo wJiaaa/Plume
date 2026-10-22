@@ -46,7 +46,6 @@ export interface SessionServices { jobs: SessionService[]; discoveryError?: stri
 export interface ServiceOutput { text: string; next: number; done: boolean; replace?: boolean }
 
 type StreamedReply = Extract<AgentEvent, { type: "message_update" }>;
-type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
 /**
  * 一步改动：路径、`a` 追加（`at` 是追加前的长度）、`s` 换成新值、`d` 删掉这个键。
@@ -72,8 +71,6 @@ export interface MessagePatch {
 	timestamp: number;
 	seq: number;
 	ops: PatchOp[];
-	/** 原事件的 `delta`，去掉了 `partial`——那就是整条消息，还原时接回去。 */
-	delta: DistributiveOmit<StreamedReply["delta"], "partial">;
 }
 
 /** 主进程发给窗口的事件：`message_update` 换成了 `MessagePatch`，其余原样。 */

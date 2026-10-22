@@ -26,7 +26,7 @@ scope.window = {
 	clearTimeout,
 	plume: { sessions: { read: () => new Promise<string>((resolve) => { reply = resolve; }) } },
 };
-const { inFrame, flushPushes } = await import("../src/services/pushes.ts");
+const { afterPushes, inFrame, flushPushes } = await import("../src/services/pushes.ts");
 const { bridge } = await import("../src/services/bridge.ts");
 
 test("pushes that arrive before a frame are applied together, in arrival order", () => {
@@ -87,4 +87,13 @@ test("one push throwing does not drop the ones behind it", () => {
 	flushPushes();
 	assert.deepEqual(seen, ["next"]);
 	assert.equal((reported.at(-1) as Error).message, "bad event");
+});
+
+test("what is held for the batch lands with it, in the same tick", () => {
+	const seen: string[] = [];
+	afterPushes(() => seen.push("settled"));
+	inFrame(() => seen.push("message_update"));
+	tick();
+	assert.deepEqual(seen, ["message_update", "settled"], "not a tick later");
+	assert.equal(frames.length, 0, "nothing left waiting for another frame");
 });

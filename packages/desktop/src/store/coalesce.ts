@@ -60,3 +60,16 @@ export function flushCoalesced(): void {
 	}
 	runPending();
 }
+
+/**
+ * Apply only what is waiting under keys that start with `prefix`. A background conversation's event
+ * has to land after its own held updates, not after everyone's: flushing all of them there put the
+ * conversation on screen back to a store write per event whenever another one ran a chatty command.
+ */
+export function flushCoalescedUnder(prefix: string): void {
+	for (const [key, work] of pending) {
+		if (!key.startsWith(prefix)) continue;
+		pending.delete(key);
+		work();
+	}
+}

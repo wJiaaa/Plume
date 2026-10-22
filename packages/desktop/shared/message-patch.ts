@@ -96,16 +96,10 @@ function diff(prev: unknown, next: unknown, path: Path, ops: PatchOp[]): unknown
 	return next;
 }
 
-function withoutPartial(delta: StreamedReply["delta"]): MessagePatch["delta"] {
-	const { partial: _partial, ...rest } = delta as StreamedReply["delta"] & { partial?: unknown };
-	return rest as MessagePatch["delta"];
-}
-
 interface Sent {
 	timestamp: number;
 	seq: number;
 	shadow: unknown;
-	delta: MessagePatch["delta"];
 }
 
 /** 主进程这一端：每个会话记着上一次发出去的样子，把 `message_update` 换成补丁。 */
@@ -115,7 +109,7 @@ export class MessagePatcher {
 	wire(sessionId: string, event: AgentEvent): WireAgentEvent {
 		if (event.type === "message_update") return this.patch(sessionId, event);
 		if (event.type === "message_start" && event.message.role === "assistant") {
-			this.sent.set(sessionId, { timestamp: event.message.timestamp, seq: 0, shadow: copy(event.message), delta: { type: "text_delta", index: 0, delta: "" } });
+			this.sent.set(sessionId, { timestamp: event.message.timestamp, seq: 0, shadow: copy(event.message) });
 		} else if ((event.type === "message_end" && event.message.role === "assistant") || event.type === "message_discarded" || event.type === "agent_end") {
 			this.sent.delete(sessionId);
 		}
@@ -126,23 +120,21 @@ export class MessagePatcher {
 	keyframe(sessionId: string): MessagePatch | null {
 		const sent = this.sent.get(sessionId);
 		if (!sent) return null;
-		return { type: "message_patch", timestamp: sent.timestamp, seq: sent.seq, ops: [[[], "s", sent.shadow]], delta: sent.delta };
+		return { type: "message_patch", timestamp: sent.timestamp, seq: sent.seq, ops: [[[], "s", sent.shadow]] };
 	}
 
 	private patch(sessionId: string, event: StreamedReply): MessagePatch {
 		const message = event.message;
-		const delta = withoutPartial(event.delta);
 		const sent = this.sent.get(sessionId);
 		// 没见过开头的回复（不该有，但不能因此发出一条谁也接不上的补丁）：从关键帧起。
 		if (!sent || sent.timestamp !== message.timestamp) {
-			this.sent.set(sessionId, { timestamp: message.timestamp, seq: 0, shadow: copy(message), delta });
-			return { type: "message_patch", timestamp: message.timestamp, seq: 0, ops: [[[], "s", message]], delta };
+			this.sent.set(sessionId, { timestamp: message.timestamp, seq: 0, shadow: copy(message) });
+			return { type: "message_patch", timestamp: message.timestamp, seq: 0, ops: [[[], "s", message]] };
 		}
 		const ops: PatchOp[] = [];
 		sent.shadow = diff(sent.shadow, message, [], ops);
 		sent.seq += 1;
-		sent.delta = delta;
-		return { type: "message_patch", timestamp: message.timestamp, seq: sent.seq, ops, delta };
+		return { type: "message_patch", timestamp: message.timestamp, seq: sent.seq, ops };
 	}
 }
 
@@ -191,11 +183,11 @@ export function applyPatch(base: Reply | null, patch: MessagePatch): Reply | nul
 	return root as Reply | null;
 }
 
-const toUpdate = (message: Reply, patch: MessagePatch): StreamedReply => ({
-	type: "message_update",
-	message,
-	delta: { ...patch.delta, partial: message } as StreamedReply["delta"],
-});
+/**
+ * 还原出来的 `delta` 只是占位：窗口里没有谁读它，过 IPC 带着原来那份，新长的字就要发两遍
+ * （补丁里一遍、`delta` 里一遍），占补丁字节的四分之一。`start` 是唯一只带整条消息的那种。
+ */
+const toUpdate = (message: Reply): StreamedReply => ({ type: "message_update", message, delta: { type: "start", partial: message } });
 
 interface Open {
 	timestamp: number;
@@ -212,7 +204,7 @@ interface Open {
  */
 export class PatchReader {
 	private readonly open = new Map<string, Open>();
-	private readonly waiting = new Map<string, { token: object; held: MessagePatch[] }>();
+	private readonly waiting = new Map<string, { held: MessagePatch[] }>();
 	private readonly resync: (sessionId: string) => Promise<MessagePatch | null>;
 	private readonly deliver: (sessionId: string, event: AgentEvent) => void;
 
@@ -221,7 +213,7 @@ export class PatchReader {
 		this.deliver = deliver;
 	}
 
-	read(sessionId: string, event: WireAgentEvent | AgentEvent): void {
+	read(sessionId: string, event: WireAgentEvent): void {
 		if (event.type === "message_patch") return this.take(sessionId, event);
 		if (event.type === "message_start" && event.message.role === "assistant") {
 			this.waiting.delete(sessionId);
@@ -231,12 +223,6 @@ export class PatchReader {
 			this.open.delete(sessionId);
 		}
 		this.deliver(sessionId, event);
-	}
-
-	/** 连接断过：手里的都不可信了，下一条补丁会去要关键帧。 */
-	reset(): void {
-		this.open.clear();
-		this.waiting.clear();
 	}
 
 	private take(sessionId: string, patch: MessagePatch): void {
@@ -250,17 +236,16 @@ export class PatchReader {
 		const message = fits ? applyPatch(open?.message ?? null, patch) : null;
 		if (!message) return this.ask(sessionId, [patch]);
 		this.open.set(sessionId, { timestamp: patch.timestamp, seq: patch.seq, message });
-		this.deliver(sessionId, toUpdate(message, patch));
+		this.deliver(sessionId, toUpdate(message));
 	}
 
 	private ask(sessionId: string, held: MessagePatch[]): void {
 		this.open.delete(sessionId);
-		const token = {};
-		this.waiting.set(sessionId, { token, held });
+		const waiting = { held };
+		this.waiting.set(sessionId, waiting);
 		const settle = (keyframe: MessagePatch | null) => {
-			const waiting = this.waiting.get(sessionId);
 			// 等的这段时间回复已经收尾或换了一条：这帧关键帧过时了。
-			if (waiting?.token !== token) return;
+			if (this.waiting.get(sessionId) !== waiting) return;
 			this.waiting.delete(sessionId);
 			const start = keyframe ? applyPatch(null, keyframe) : null;
 			// 回复已经流完（`message_end` 正在路上或已经到了）：它会带着整条消息来，不用补。
@@ -275,7 +260,7 @@ export class PatchReader {
 				last = patch;
 			}
 			this.open.set(sessionId, { timestamp: keyframe.timestamp, seq: last.seq, message });
-			this.deliver(sessionId, toUpdate(message, last));
+			this.deliver(sessionId, toUpdate(message));
 		};
 		this.resync(sessionId).then(settle, () => settle(null));
 	}

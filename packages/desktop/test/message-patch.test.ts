@@ -91,8 +91,10 @@ async function record(body: string, sessionId = "s", patcher = new MessagePatche
 }
 
 const messageOf = (event: AgentEvent | undefined) => (event?.type === "message_update" ? event.message : undefined);
+/** 窗口不读 `delta`，补丁也不带它：比到消息为止。 */
+const withoutDelta = (event: AgentEvent) => (event.type === "message_update" ? { type: event.type, message: event.message } : event);
 
-test("真流：每一步还原出来的消息与主进程那一刻的逐字段一致，delta 也一样", async () => {
+test("真流：每一步还原出来的消息与主进程那一刻的逐字段一致", async () => {
 	const frames = await record(anthropicReply());
 	const got: AgentEvent[] = [];
 	const reader = new PatchReader(async () => assert.fail("全程接得上，不该要关键帧"), (_id, event) => got.push(event));
@@ -103,8 +105,6 @@ test("真流：每一步还原出来的消息与主进程那一刻的逐字段�
 		if (sent.type !== "message_update") return assert.deepStrictEqual(event, sent);
 		assert.equal(event.type, "message_update");
 		assert.deepStrictEqual(messageOf(event), sent.message, `第 ${i} 条`);
-		// 原 delta 的 `partial` 就是那条消息，所以整条事件逐字段相同。
-		assert.deepStrictEqual(event, sent, `第 ${i} 条的 delta`);
 	});
 	const final = messageOf(got.findLast((event) => event.type === "message_update"))!;
 	assert.equal(final.content.find((block) => block.type === "thinking")?.thinking, "先想一想，再动手。");
@@ -117,7 +117,7 @@ test("另一条链（Chat Completions，并行工具调用交错）也逐字一�
 	const got: AgentEvent[] = [];
 	const reader = new PatchReader(async () => assert.fail("全程接得上，不该要关键帧"), (_id, event) => got.push(event));
 	for (const frame of frames) reader.read("s", frame.wire);
-	assert.deepStrictEqual(got, frames.map((frame) => frame.event));
+	assert.deepStrictEqual(got.map(withoutDelta), frames.map((frame) => withoutDelta(frame.event)));
 	const final = messageOf(got.findLast((event) => event.type === "message_update"))!;
 	assert.equal(final.content.filter((block) => block.type === "toolCall").length, 2);
 });
@@ -169,7 +169,7 @@ test("中途才开始听（窗口重载、后台会话没收到开头）：要�
 	assert.equal(asked, 1);
 	// 第一条交出去的是关键帧加上它之后攒着的两条，之后每一条都对得上。
 	assert.deepStrictEqual(messageOf(got[0]), messageOf(frames[cut + 3].event));
-	got.slice(1).forEach((event, k) => assert.deepStrictEqual(event, frames[cut + 4 + k].event, `第 ${cut + 4 + k} 条`));
+	got.slice(1).forEach((event, k) => assert.deepStrictEqual(withoutDelta(event), withoutDelta(frames[cut + 4 + k].event), `第 ${cut + 4 + k} 条`));
 	assert.equal(got.at(-1)!.type, "message_end");
 });
 
@@ -216,8 +216,8 @@ test("切换会话、几个会话同时流：各自的补丁只接在自己那�
 		if (a[i]) reader.read("a", a[i].wire);
 		if (b[i]) reader.read("b", b[i].wire);
 	}
-	assert.deepStrictEqual(got.a, a.map((frame) => frame.event));
-	assert.deepStrictEqual(got.b, b.map((frame) => frame.event));
+	assert.deepStrictEqual(got.a.map(withoutDelta), a.map((frame) => withoutDelta(frame.event)));
+	assert.deepStrictEqual(got.b.map(withoutDelta), b.map((frame) => withoutDelta(frame.event)));
 });
 
 test("重试把内容清空重来、字段被删：整段换掉，照样一致", () => {
@@ -246,4 +246,23 @@ test("没见过开头的回复，主进程直接发关键帧，窗口不需要�
 	const got: AgentEvent[] = [];
 	new PatchReader(async () => assert.fail("关键帧不用再要"), (_id, event) => got.push(event)).read("s", patch);
 	assert.deepStrictEqual((got[0] as { message: Reply }).message, message);
+});
+
+test("关键帧回来后攒着的补丁中间又断了一条：再要一次，接上之后照样一字不差", async () => {
+	const frames = await record(anthropicReply());
+	const cut = 40;
+	const answers: Array<(keyframe: MessagePatch | null) => void> = [];
+	const got: AgentEvent[] = [];
+	const reader = new PatchReader(() => new Promise((resolve) => answers.push(resolve)), (_id, event) => got.push(event));
+	// cut+2 这一条丢了：关键帧（停在 cut）之后能接上 cut+1，到 cut+3 就接不上了。
+	for (const i of [cut, cut + 1, cut + 3]) reader.read("s", frames[i].wire);
+	answers[0](frames[cut].keyframe);
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.equal(answers.length, 2, "断档处再要一帧");
+	answers[1](frames[cut + 3].keyframe);
+	await new Promise((resolve) => setImmediate(resolve));
+	for (let i = cut + 4; i < frames.length; i++) reader.read("s", frames[i].wire);
+	assert.equal(answers.length, 2, "接上以后不再要");
+	assert.deepStrictEqual(messageOf(got.findLast((event) => event.type === "message_update")), messageOf(frames.findLast((frame) => frame.event.type === "message_update")!.event));
+	assert.equal(got.at(-1)!.type, "message_end");
 });

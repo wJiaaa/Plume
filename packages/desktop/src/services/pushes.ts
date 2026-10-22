@@ -28,7 +28,17 @@
 import { cancelTick, requestTick } from "../ui/motion/ticker.ts";
 
 const queue: Array<() => void> = [];
+const settles: Array<() => void> = [];
 let tick = 0;
+
+/**
+ * Run `settle` after every batch of pushes. The store's held streaming updates (`coalesce.ts`) land
+ * here: the batch is already one per tick, and waiting for a tick of their own put every update a
+ * tick behind — requested from inside this tick, it could only be the next one.
+ */
+export function afterPushes(settle: () => void): void {
+	settles.push(settle);
+}
 
 /** Apply `push` with the others that arrive before the next tick, in arrival order. */
 export function inFrame(push: () => void): void {
@@ -52,6 +62,7 @@ export function flushPushes(): void {
 	}
 	if (queue.length === 0) return;
 	for (const push of queue.splice(0)) apply(push);
+	for (const settle of settles) apply(settle);
 }
 
 // One push failing must not drop the ones queued behind it; each was its own listener before.

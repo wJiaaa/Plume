@@ -334,6 +334,32 @@ test("a conversation streaming in the background writes its cache once per frame
 	}
 });
 
+test("a busy background command neither writes per chunk nor drags the conversation on screen along", () => {
+	const shown = reply("a");
+	useApp.setState({ activeSessionId: "a", meta: meta("a"), messages: [shown], sessionCache: { b: { meta: meta("b"), messages: [reply("b")], toolRuns: {} } } });
+	const writes: unknown[] = [];
+	const stop = useApp.subscribe((state, previous) => {
+		if (state.sessionCache !== previous.sessionCache) writes.push(state.sessionCache);
+	});
+	try {
+		const streaming = { ...reply("a streaming"), stopReason: "pending" as const };
+		applyAgentEvent("a", { type: "message_update", message: streaming, delta: { type: "text_delta", index: 0, delta: "x", partial: streaming } }, useApp.setState, useApp.getState);
+		applyAgentEvent("b", { type: "tool_start", toolCallId: "t", toolName: "bash", args: {}, summary: "pnpm test" }, useApp.setState, useApp.getState);
+		const startWrites = writes.length;
+		for (const text of ["1", "12", "123"]) {
+			applyAgentEvent("b", { type: "tool_update", toolCallId: "t", partial: { content: [{ type: "text", text }] } as never }, useApp.setState, useApp.getState);
+		}
+		assert.equal(writes.length, startWrites, "the chunks wait for the tick instead of each writing the cache");
+		applyAgentEvent("b", { type: "tool_end", toolCallId: "t", toolName: "bash", result: { content: [{ type: "text", text: "1234" }] } as never, isError: false }, useApp.setState, useApp.getState);
+		assert.equal(writes.length, startWrites + 2, "the newest chunk lands before the ending, then the ending");
+		assert.equal(useApp.getState().messages[0], shown, "the reply on screen still waits for its own tick");
+		flushCoalesced();
+		assert.deepEqual(useApp.getState().messages[0].content, streaming.content);
+	} finally {
+		stop();
+	}
+});
+
 test("pruning always respects the limit even when the oldest entry is active", () => {
 	const cache: Cache = {};
 	for (let i = 0; i < 15; i++) cache[`s-${i}`] = { meta: meta(`s-${i}`), messages: [], toolRuns: {} };

@@ -35,8 +35,9 @@ import { create } from "zustand";
 import { useSide } from "../features/dock/sideStore.ts";
 import { sideChatRunning, sideSessionIds } from "../lib/row-activity.ts";
 import { delegating, useSubAgents } from "./subAgents.ts";
-import { bridge, inFrame } from "../services/index.ts";
+import { afterPushes, bridge, inFrame } from "../services/index.ts";
 import { PatchReader } from "../../shared/message-patch.ts";
+import { flushCoalesced } from "./coalesce.ts";
 import { activeModelCatalog } from "@plume/core/model-catalog";
 import { pullModelCatalog } from "./model-catalog.ts";
 import type { ToolRun } from "./tool-run.ts";
@@ -731,13 +732,13 @@ export const useApp = create<AppState>((set, get) => ({
 			(sessionId, event) => inFrame(() => get().applyEvent(sessionId, event)),
 		);
 		bridge.agent.onEvent(({ sessionId, event }) => replies.read(sessionId, event));
+		// 推送本来就按拍成批，暂存的流式更新跟着这一批落下，不再另等一拍。
+		afterPushes(flushCoalesced);
 		if (typeof window !== "undefined") {
 			window.addEventListener("plume:connection", (event) => {
 				const status = event instanceof CustomEvent ? event.detail : null;
 				if (status === "reconnecting" || status === "offline") {
 					connectionInterrupted = true;
-					// 断开期间的补丁可能丢了，手里那份接不上；下一条补丁会去要关键帧。
-					replies.reset();
 					return;
 				}
 				if (status !== "connected" || !connectionInterrupted || !initialComplete) return;
