@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { compactIfNeeded, compactionTriggerTokens, COMPACTION_BUFFER_TOKENS, COMPACTION_RATIO, summaryHeadroom } from "../src/runtime/compaction/compaction.ts";
+import { compactIfNeeded } from "../src/runtime/compaction/compaction.ts";
+import { compactionTriggerTokens, COMPACTION_BUFFER_TOKENS, COMPACTION_RATIO, summaryHeadroom } from "../src/runtime/compaction/compaction-budget.ts";
 import { summaryMessages } from "../src/runtime/compaction/compaction-head.ts";
 import { PRUNE_THRESHOLD_CHARS, pruneText, pruneToolResults } from "../src/agent/prune.ts";
 import { measureTotal } from "../src/tokens.ts";
@@ -692,6 +693,25 @@ test("a bigger overhead leaves less room, and the result reflects that", async (
 		estimateTokens(heavy) <= estimateTokens(light),
 		`the heavier request keeps less history (${estimateTokens(heavy)} vs ${estimateTokens(light)})`,
 	);
+});
+
+test("the recent tail survives a summary even when the prompt and schemas take a large share of the window", async () => {
+	/*
+	 * 64k 窗口、17k 开销（本机日志里首个请求的平均输入）。从前尾部要删到「三成窗口减开销」以下，
+	 * 这里只剩 2k 出头，一份正常的摘要就占满了，尾部被删到只剩最后一条——正在改的文件跟着没了。
+	 * 落在触发线下一成就够了：再越线还要好几步。
+	 */
+	const model: ModelConfig = { ...MODEL, contextWindow: 64_000, maxOutputTokens: 8000 };
+	const overhead = 17_000;
+	const tail = Array.from({ length: 4 }, (_, i) => reply(`current ${i} ${"y".repeat(6000)}`));
+	const messages = [...conversation(14, 6000), ...tail];
+	assert.ok(estimateTokens(messages) + overhead > compactionTriggerTokens(model.contextWindow), "precondition: over the line");
+
+	const result = await compactIfNeeded({ messages, model, provider: PROVIDER, streamFn: fakeStream("s".repeat(28_000)) as never, overhead });
+	assert.ok(result?.summary, "it summarised");
+	assert.equal(result.kept, tail.length, "the whole recent tail is kept");
+	assert.deepEqual(result.messages.slice(-tail.length), tail);
+	assert.ok(estimateTokens(result.messages) + overhead < compactionTriggerTokens(model.contextWindow) - model.contextWindow * 0.1, "and it lands clear of the line");
 });
 
 test("a summariser that throws does not take the turn down with it", async () => {

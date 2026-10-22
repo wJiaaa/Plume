@@ -34,69 +34,7 @@ import type { Message, ModelConfig, RequestPrefix } from "../../types.ts";
 import { forkable, forkSummary } from "./compaction-fork.ts";
 import { droppedMessage, filesSeen, lastRequest, summaryMessages } from "./compaction-head.ts";
 import { fallbackSummary, summarize } from "./compaction-summary.ts";
-
-/**
- * Start compacting at this fraction of the context window.
- *
- * 从 80% 提到 90%：一次压缩要付摘要输出、还要整段重写缓存，线靠后压得少。代价是线上方只剩一成——
- * 200k 窗口剩 20k，一步里几个大工具结果就可能越过窗口，那时走超长恢复（`loop.ts`），而超长恢复不分叉。
- */
-export const COMPACTION_RATIO = 0.9;
-/**
- * OpenCode's leftover-token buffer. Kept as documentation of the A5 decision, not as a trigger.
- *
- * A 20k leftover fires at 37% of a 32k window and spends the rest of a short-context model on
- * summaries. The ratio stays a constant fraction of whatever window the model actually has.
- */
-export const COMPACTION_BUFFER_TOKENS = 20_000;
-
-/**
- * 触发线还得给摘要请求留出位置：分叉请求是完整历史加一条指令，摘要要写在窗口剩下的地方。
- *
- * 大窗口上 90% 留下的比这多，这一项不起作用；只在小窗口上把线往前挪——32k 的 90% 只剩 3.2k，
- * 放不下一份 8k 的摘要，分叉请求必然超长，每次都白发一遍再退回独立请求。
- *
- * 大窗口不再往后推到「窗口减固定预留」（opencode、pi 的做法）：每一轮都要按缓存价重读整段前缀，
- * 线越靠后，两次压缩之间的每一轮越贵。推导见 docs/architecture/agent-cost-and-stopping.md 的 A5。
- */
-export function summaryHeadroom(contextWindow: number): number {
-	return Math.min(8000, Math.floor(contextWindow / 4)) + Math.min(2000, Math.floor(contextWindow / 20));
-}
-
-export function compactionTriggerTokens(contextWindow: number): number {
-	return Math.max(0, Math.floor(Math.min(contextWindow * COMPACTION_RATIO, contextWindow - summaryHeadroom(contextWindow))));
-}
-/**
- * How far under the threshold pruning alone has to land before summarising is skipped.
- *
- * The number being compared is a product of two estimates and the failure it guards against is
- * silent: a turn that believes it is inside the window, is not, and arrives at the next turn no
- * smaller than before.
- */
-const PRUNE_MARGIN = 0.1;
-/**
- * How much of the window the verbatim recent tail may occupy.
- *
- * By size rather than by count, because six messages is a small tail in a conversation of short
- * replies and an enormous one when a single tool result is a whole file.
- *
- * This is the number that decides whether recent work survives compaction intact, so it is not
- * pushed lower to win compression: the summary can describe what happened three hours ago, but the
- * file being edited right now has to be there in full or the next turn re-reads it. Everything
- * older is recoverable through `recall`; the current task is what must not need recovering.
- */
-const KEEP_BUDGET = 0.12;
-/** Never fewer than this, however big they are: the agent cannot work without its last exchange. */
-const KEEP_MIN = 4;
-/**
- * What the conversation must weigh once compaction is done.
- *
- * Well under the threshold that triggers it, and that gap is the point: landing just below the
- * trigger means the next few messages cross it again, so a long run spends its time summarising
- * instead of working. A summary of a few thousand tokens beside a tail of at most `KEEP_BUDGET`
- * normally lands far below this — the ceiling exists for the case where it does not.
- */
-const SAFE_AFTER = 0.3;
+import { compactionBudget, KEEP_MIN, type CompactionBudget } from "./compaction-budget.ts";
 
 /**
  * Which strategy is in force.
@@ -151,7 +89,8 @@ export async function compactIfNeeded(request: CompactionRequest): Promise<Compa
 	const originalMessages = messages;
 	// Before the first measured reply (and after compaction), schemas and instructions still count.
 	const used = measured.tokens + (measured.measured ? 0 : overhead);
-	if (!force && used < compactionTriggerTokens(model.contextWindow)) return null;
+	const budget = compactionBudget(model.contextWindow, overhead, force ? Math.max(0, used - overhead) : undefined);
+	if (!force && used < budget.trigger) return null;
 
 	/*
 	 * Cut the oversized tool results first, and see whether that was enough.
@@ -198,7 +137,7 @@ export async function compactIfNeeded(request: CompactionRequest): Promise<Compa
 		 */
 		const sent = estimateTokens(messages);
 		const calibration = measured.measured && sent > 0 ? Math.max(0, used - overhead) / sent : 1;
-		const next = estimateTokens(pruned) * calibration + overhead;
+		const next = estimateTokens(pruned) * calibration;
 		/*
 		 * And it has to clear the line by a margin, because both sides of that product are estimates
 		 * and being wrong in the eager direction sends a turn that does not fit — which comes back
@@ -209,7 +148,7 @@ export async function compactIfNeeded(request: CompactionRequest): Promise<Compa
 		 * and it leaves the conversation itself untouched — which is precisely what someone typing
 		 * `/compact` wants dealt with.
 		 */
-		if (!force && next < compactionTriggerTokens(model.contextWindow) - model.contextWindow * PRUNE_MARGIN) {
+		if (!force && next < budget.settled) {
 			return { messages: pruned, summary: "" };
 		}
 		// Not enough on its own, but everything below now works on the smaller conversation.
@@ -240,13 +179,12 @@ export async function compactIfNeeded(request: CompactionRequest): Promise<Compa
 
 	// Keep recent turns until their budget is spent, then cut — never between an assistant
 	// message and the tool results answering it, which both APIs reject.
-	// A manual request retires completed work even when it fits comfortably in a large window.
-	const keepBudget = force ? Math.min(model.contextWindow * KEEP_BUDGET, conversation * KEEP_BUDGET) : model.contextWindow * KEEP_BUDGET;
+	// A manual request retires completed work even when it fits comfortably in a large window (`budget.keep`).
 	let cut = messages.length;
 	let kept = 0;
 	while (cut > 1) {
 		const next = estimateTokens([messages[cut - 1]]) * scale;
-		if (messages.length - cut >= KEEP_MIN && kept + next > keepBudget) break;
+		if (messages.length - cut >= KEEP_MIN && kept + next > budget.keep) break;
 		kept += next;
 		cut--;
 	}
@@ -289,7 +227,7 @@ export async function compactIfNeeded(request: CompactionRequest): Promise<Compa
 		via = "fallback";
 	}
 	const tagged = (result: Compaction | null): Compaction | null => (result && prefix ? { ...result, prefix } : result);
-	if (!summary) return tagged(dropOldest(messages, model, overhead, scale));
+	if (!summary) return tagged(dropOldest(messages, model, budget, scale));
 	const text = summary;
 
 	/*
@@ -303,8 +241,12 @@ export async function compactIfNeeded(request: CompactionRequest): Promise<Compa
 	 * afterwards is how much of the recent tail is kept beside it, which costs nothing to
 	 * reconsider. Tool results are dropped with the call they answer, since sending one without the
 	 * other is rejected outright.
+	 *
+	 * Trimmed to `settled`, not to where dropping aims: the tail is the current work its budget chose,
+	 * and beside a summary it normally lands far below the line anyway. Aiming lower only hurt
+	 * windows where the prompt and schemas are a large share — see `SAFE_AFTER`.
 	 */
-	const target = Math.max(0, model.contextWindow * SAFE_AFTER - overhead);
+	const target = budget.settled;
 	const scaled = (list: Message[]) => estimateTokens(list) * scale;
 	let tail = recent;
 	const withHead = () => {
@@ -333,9 +275,9 @@ export async function compactIfNeeded(request: CompactionRequest): Promise<Compa
 	 * 下一轮只会原样超长。比的是触发线而不是 `target`：后者是想落到的位置，落不到那里但已在线下的结果
 	 * 照样能用。光开销就占满触发线时什么历史都放不下，丢弃也救不了，不走这一步。
 	 */
-	const room = compactionTriggerTokens(model.contextWindow) - overhead;
+	const { room } = budget;
 	if (room > 0 && scaled(compacted) >= room) {
-		const dropped = dropOldest(messages, model, overhead, scale);
+		const dropped = dropOldest(messages, model, budget, scale);
 		if (dropped && scaled(dropped.messages) < room) return tagged(dropped);
 		if (dropped && scaled(dropped.messages) < scaled(result?.messages ?? messages)) result = dropped;
 		if (result && scaled(result.messages) + overhead > model.contextWindow) return null;
@@ -357,8 +299,8 @@ export async function compactIfNeeded(request: CompactionRequest): Promise<Compa
  *
  * Cuts on whole units. A tool result whose call has been dropped is rejected by both APIs.
  */
-function dropOldest(messages: Message[], model: ModelConfig, overhead: number, scale: number): Compaction | null {
-	const target = Math.max(0, model.contextWindow * SAFE_AFTER - overhead);
+function dropOldest(messages: Message[], model: ModelConfig, budget: CompactionBudget, scale: number): Compaction | null {
+	const target = budget.dropped;
 	const weight = (list: Message[]) => estimateTokens(list) * scale;
 
 	// 预算的是交出去的整份：前面那条说明带着最新请求和任务上下文，中文下能有好几千 token。

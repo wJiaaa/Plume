@@ -110,6 +110,8 @@ test("the built-in strategy honours overhead the same way an unbound call does",
 	 * threshold is checked against the provider's own count of the request that already happened —
 	 * it decides how much tail can be afforded afterwards. So the observable consequence of losing
 	 * it is a result that is too big, and next turn compacts again, and the turn after that.
+	 * The tail only gives way once prompt and history together would crowd the line, so the heavy
+	 * case is heavy enough to do that.
 	 *
 	 * The same conversation through the seam twice, once with the prompt and schemas accounted for
 	 * and once without. Dropping the field makes the two identical, which is the failure.
@@ -128,11 +130,11 @@ test("the built-in strategy honours overhead the same way an unbound call does",
 	try {
 		useCompaction(ctx.require<CompactionStrategy>(COMPACTION));
 		const light = await compactWith({ messages: conversation, model: MODEL, provider: PROVIDER, streamFn: stream as never, overhead: 0 });
-		const heavy = await compactWith({ messages: conversation, model: MODEL, provider: PROVIDER, streamFn: stream as never, overhead: 4000 });
+		const heavy = await compactWith({ messages: conversation, model: MODEL, provider: PROVIDER, streamFn: stream as never, overhead: 5000 });
 		assert.ok(light && heavy, "both compacted");
 		assert.ok(
 			estimateTokens(heavy.messages) < estimateTokens(light.messages),
-			`a 4000-token prompt leaves less room for history (${estimateTokens(heavy.messages)} vs ${estimateTokens(light.messages)})`,
+			`a 5000-token prompt leaves less room for history (${estimateTokens(heavy.messages)} vs ${estimateTokens(light.messages)})`,
 		);
 	} finally {
 		useCompaction(null);

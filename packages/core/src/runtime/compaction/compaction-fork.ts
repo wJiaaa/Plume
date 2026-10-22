@@ -23,6 +23,7 @@ import { contextMaxTokens, measureTotal, textTokens, toolTokens } from "../../to
 import type { CompactionFault, CompactionLineage, CompactionObserver } from "../../types/compaction.ts";
 import type { AssistantMessage, LlmContext, Message, ModelConfig, ProviderConfig, RequestPrefix, StreamEvent } from "../../types.ts";
 import { forkInstruction, hasSummary } from "./compaction-prompts.ts";
+import { summaryReplyTokens } from "./compaction-budget.ts";
 
 /**
  * 离上一次请求开始多久以内算缓存还热。
@@ -96,7 +97,7 @@ export async function forkSummary(
 	 */
 	const total = measureTotal(context.messages);
 	const input = total.tokens + (total.measured ? 0 : textTokens(context.systemPrompt) + toolTokens(context.tools));
-	const reply = Math.min(8000, model.maxOutputTokens, Math.floor(model.contextWindow * 0.25));
+	const reply = summaryReplyTokens(model);
 	if (model.contextWindow - input < reply) return { summary: null };
 
 	// 输出上限照主循环的算法折算（`streamTurn`）：thinking 的预算跟着它走，算法不同前缀就不同。

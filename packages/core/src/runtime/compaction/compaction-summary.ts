@@ -11,16 +11,7 @@ import { estimateTokens, textTokens } from "../../tokens.ts";
 import type { CompactionFault, CompactionObserver } from "../../types/compaction.ts";
 import type { AssistantMessage, LlmContext, Message, ModelConfig, ProviderConfig } from "../../types.ts";
 import { FIRST_SUMMARY, focusNote, hasSummary, SUMMARY_SYSTEM, UPDATE_SUMMARY } from "./compaction-prompts.ts";
-
-/**
- * How much of the window the summary request itself may occupy.
- *
- * The history being summarised is by definition close to the window — sending it whole asks the
- * model to read more than it can hold, and the request fails. It fails silently, too: a failed
- * summary means "do not compact", so the one mechanism for staying inside the window switched
- * itself off exactly when it was needed. The older turns are condensed to fit this budget first.
- */
-const SUMMARY_INPUT = 0.4;
+import { SUMMARY_INPUT, summaryReplyTokens } from "./compaction-budget.ts";
 
 export async function summarize(
 	messages: Message[],
@@ -56,9 +47,8 @@ export async function summarize(
 	 */
 	const inflate = Math.max(1, scale);
 	// Room kept for the summary itself, and exactly what the request asks for: sized again from the
-	// uncalibrated estimate, it overran what the pre-send check below had priced in. A quarter of the
-	// window is more than a handover needs, and a small summariser cannot give up more.
-	const reply = Math.min(8000, model.maxOutputTokens, Math.floor(model.contextWindow * 0.25));
+	// uncalibrated estimate, it overran what the pre-send check below had priced in.
+	const reply = summaryReplyTokens(model);
 	const fixed = textTokens(SUMMARY_SYSTEM) + estimateTokens([instruction]);
 	const history = condense(messages, Math.min(model.contextWindow * SUMMARY_INPUT / inflate, (model.contextWindow - reply) / inflate - fixed));
 	const context: LlmContext = { systemPrompt: SUMMARY_SYSTEM, messages: [...history, instruction], tools: [] };
