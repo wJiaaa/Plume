@@ -99,7 +99,7 @@ export const SubAgentTranscript = memo(function SubAgentTranscript({
 					return (
 						<div key={runKey(run)} className="group/msg ly-enter flex flex-col items-end">
 							{/* 和侧边聊天同一个气泡——见 `SpokenBubble`。 */}
-							<SpokenBubble message={message} renderText={(plain) => <Markdown text={plain} />} />
+							<SpokenBubble message={message} />
 							<MessageActions timestamp={message.timestamp} text={spokenText(message)} className="mt-1 pr-1" />
 						</div>
 					);

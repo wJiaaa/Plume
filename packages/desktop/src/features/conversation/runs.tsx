@@ -7,7 +7,7 @@
 
 import { memo, useMemo } from "react";
 import type { AssistantContent, AssistantMessage } from "@plume/core";
-import { PreviewCall, PreviewCard, type PreviewInfo } from "../files/index.ts";
+import { PreviewCall, type PreviewInfo } from "../files/index.ts";
 import { ToolCard } from "./ToolCard.tsx";
 import { DispatchFaces, useDelegation, useDispatches } from "./DelegationCard.tsx";
 import { SessionSuggestionCard } from "./SessionSuggestionCard.tsx";
@@ -187,7 +187,7 @@ function PlainToolCard({ block, run: own, stopReason, runs, turnRunning, thinkin
   const preview = ((publishedBy ? publisher : run)?.result?.details as { preview?: PreviewInfo } | undefined)?.preview;
   // Checked and not yet on screen as itself: the draft stays until it is published or the turn ends.
   const waiting = turnRunning && !runs && !preview && Boolean(page && ("waiting" in page || publishedBy));
-  return <PreviewCall block={block} served={Boolean(preview)} page={(handover) => preview && <PreviewCard preview={preview} {...handover} />} live={status === "running"} written={Boolean(run)} waiting={waiting} fallback={card} />;
+  return <PreviewCall block={block} preview={preview} live={status === "running"} written={Boolean(run)} waiting={waiting} fallback={card} />;
 }
 
 

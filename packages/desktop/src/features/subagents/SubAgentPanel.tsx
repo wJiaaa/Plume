@@ -49,14 +49,16 @@ import { hasContent, StructuredOutput } from "./StructuredOutput.tsx";
 import { Button } from "../../ui/primitives/Button.tsx";
 import { fromParent, SubAgentTranscript } from "./SubAgentMessageRow.tsx";
 import { bridge } from "../../services/index.ts";
+import { openFilePane } from "../dock/index.ts";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 
 const NO_MESSAGES: Message[] = [];
 
-/** 在应用里打开一个磁盘上的文件——由挂这个面板的那一层给，见 `app/panels.tsx`。 */
+/** 在应用里打开一个磁盘上的文件：开进旁边的文件面板，和主输入框、侧边聊天一样。 */
 type OpenFile = (path: string, name: string) => void;
+const openFile: OpenFile = (path) => void openFilePane(path);
 
-export function SubAgentPanel({ openFile }: { openFile?: OpenFile } = {}) {
+export function SubAgentPanel() {
 	const { t } = useI18n();
 	// The conversation of the screen this panel is in, and its delegated work.
 	const sessionId = useScopedSessionId();

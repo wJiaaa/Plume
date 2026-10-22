@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { useI18n } from "../../i18n/index.ts";
 import type { MessageKey } from "../../i18n/messages/index.ts";
 import { translate } from "../../i18n/translate.ts";
@@ -62,10 +62,9 @@ function Expiry({ at }: { at: number }) {
 /**
  * Keep the transcript readable while a decision blocks only the composer.
  *
- * 计划模式交上来的计划（core 的 `submit_plan`）是另一张卡，见 `PlanApproval`。`renderPlan` 画它的正文，由
- * `Conversation` 交进来而不是这里 import `Markdown`，理由见 `rows.tsx` 的 `planMarkdown`。
+ * 计划模式交上来的计划（core 的 `submit_plan`）是另一张卡，见 `PlanApproval`。
  */
-export function ApprovalOverlay({ renderPlan }: { renderPlan: (text: string) => ReactNode }) {
+export function ApprovalOverlay() {
 	const sessionId = useScopedSessionId();
 	const approvals = useScopedApprovals();
 	const respond = useApp(s => s.respondToApproval);
@@ -93,7 +92,7 @@ export function ApprovalOverlay({ renderPlan }: { renderPlan: (text: string) => 
 	const gutter = `flex shrink-0 justify-center pb-2 ${compact ? "ly-content-gutter-compact" : "ly-content-gutter"}`;
 	const expiry = request.expiresAt !== undefined && <Expiry at={request.expiresAt} />;
 	if (planId) return <div data-approval-region className={gutter}>
-		<PlanApproval key={planId} request={request} sessionId={sessionId} compact={compact} renderPlan={renderPlan} openPlan={() => openPlanInScreen(screen ?? undefined)} tags={expiry} />
+		<PlanApproval key={planId} request={request} sessionId={sessionId} compact={compact} openPlan={() => openPlanInScreen(screen ?? undefined)} tags={expiry} />
 	</div>;
 	const collapsed = collapsedId === request.id;
 	const interactive = request.kind === "interactive";

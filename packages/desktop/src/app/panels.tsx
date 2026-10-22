@@ -23,7 +23,7 @@ import { SideChat, SideChatTitle, closeSideChat, confirmCloseSideChat } from "..
 import { TaskPanel } from "../features/task/index.ts";
 import { TerminalPane, TerminalTitle, closeTerminal, confirmCloseTerminal } from "../features/terminal/index.ts";
 import { announceUndo, TrajectoryPanel, useDeliveryReview, useDeliveryUndos, useSharedDeliveryTarget } from "../features/conversation/index.ts";
-import { Markdown, usePathMenu } from "../features/markdown/index.ts";
+import { usePathMenu } from "../features/markdown/index.ts";
 import type { DeliveryFile, TurnDelivery } from "../../electron/delivery-record.ts";
 import { useI18n } from "../i18n/index.ts";
 import { relativeTo } from "../lib/paths.ts";
@@ -33,29 +33,10 @@ import { useConfirmer } from "../ui/overlay/Confirm.tsx";
 import { PanelEmpty } from "../ui/layout/PanelEmpty.tsx";
 import { IconButton } from "../ui/primitives/IconButton.tsx";
 import { Scroller } from "../ui/scroll/Scroller.tsx";
-import { closeNow, openFilePane } from "../features/dock/index.ts";
+import { closeNow } from "../features/dock/index.ts";
 import { useDockScope, useScopedProjectPath, useScopedSessionId } from "./session-scope.tsx";
 import { registerPanels, type PanelDefinition } from "../features/dock/panels/registry.ts";
 import { PlanPanel } from "../features/dock/panels/PlanPanel.tsx";
-
-/**
- * 子智能体面板，带着「把一份文件打开到旁边」这件事。
- *
- * 操控框里点开一枚文件标记，该去的正是旁边的文件面板——和主输入框、侧边聊天一样。
- * 面板在这里组装，`openFilePane` 也就由这一层交给它。
- */
-function SubAgentPane() {
-	return (
-		<SubAgentPanel
-			openFile={(path) => void openFilePane(path)}
-		/>
-	);
-}
-
-/** 计划面板，正文的 `Markdown` 由这里交给它，理由见 `PlanPanel` 顶上。 */
-function PlanPane() {
-	return <PlanPanel renderPlan={(text) => <Markdown text={text} className="min-w-0 max-w-full break-words" />} />;
-}
 
 const needsWorkspace = (state: { workspace: boolean }) => (state.workspace ? undefined : "dock.needProject");
 const needsSession = (state: { session: boolean }) => (state.session ? undefined : "dock.needSession");
@@ -243,7 +224,7 @@ const BUILTIN_PANELS: PanelDefinition[] = [
 		icon: Bot,
 		shortcut: "⌥⌘U",
 		unavailable: needsSession,
-		render: SubAgentPane,
+		render: SubAgentPanel,
 	},
 	{
 		kind: "chat",
@@ -329,7 +310,7 @@ const BUILTIN_PANELS: PanelDefinition[] = [
 		shortcut: "",
 		unavailable: (state) => needsSession(state) ?? (state.plan ? undefined : "plan.none"),
 		detach: "none",
-		render: PlanPane,
+		render: PlanPanel,
 	},
 ];
 

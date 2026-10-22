@@ -23,6 +23,7 @@ import { Button } from "../../ui/primitives/Button.tsx";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import { MarkNumber } from "../../ui/primitives/MarkNumber.tsx";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
+import { Markdown } from "../markdown/index.ts";
 
 /*
  * 一个键一枚键帽，照参考的样子：「⇧ ⌘ ↩」挤在一个框里读不出是三个键。边框取字色的三成，主按钮反色底上
@@ -38,11 +39,10 @@ function Keys({ keys }: { keys: string[] }) {
 	return <span className="ml-0.5 flex items-center gap-[3px] opacity-70" aria-hidden>{caps.map((key) => <kbd key={key} className={CAP}>{key}</kbd>)}</span>;
 }
 
-export function PlanApproval({ request, sessionId, compact, renderPlan, openPlan, tags }: {
+export function PlanApproval({ request, sessionId, compact, openPlan, tags }: {
 	request: AppState["approvals"][number];
 	sessionId: string | null;
 	compact: boolean;
-	renderPlan: (text: string) => ReactNode;
 	openPlan: () => void;
 	/** 剩多少时间失效，由 `ApprovalOverlay` 画好交进来。 */
 	tags?: ReactNode;
@@ -129,7 +129,7 @@ export function PlanApproval({ request, sessionId, compact, renderPlan, openPlan
 				{/* 一段可点的字，不是按钮的形状：标题行右端的链接，`Button` 没有强调色的字。 */}
 				<button type="button" onClick={openPlan} className="shrink-0 cursor-pointer rounded text-detail text-accent hover:underline focus-visible:underline" data-approval-open-plan="">{t("plan.open")}</button>
 			</div>
-			{compact && <Scroller className="ly-approval-scroll -mx-2 min-h-0" contentClassName="px-2">{renderPlan(request.detail)}</Scroller>}
+			{compact && <Scroller className="ly-approval-scroll -mx-2 min-h-0" contentClassName="px-2"><Markdown text={request.detail} className="min-w-0 max-w-full break-words text-label" /></Scroller>}
 			{editing ? (
 				<form className="flex min-h-0 flex-col gap-[var(--ly-composer-in)]" onSubmit={(event) => { event.preventDefault(); revise(); }}>
 					{comments.length > 0 && (

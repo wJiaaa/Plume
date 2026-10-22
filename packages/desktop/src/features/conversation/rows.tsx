@@ -28,15 +28,6 @@ import { useApp } from "../../store/index.ts";
 import { isNudge, type TurnStats } from "./grouping.ts";
 import { LiveToolCard, segments, ToolRun as ToolRunGroup } from "./runs.tsx";
 
-/*
- * 审批卡片上的计划正文。放在这里而不是让 `ApprovalOverlay` 自己 import `Markdown`：`Markdown` 经
- * `dock` 绕回 `conversation/index`，卡片再加这一条边就是一条新的循环依赖（`pnpm arch` 的基线只降不升）。
- * `Conversation` 本来就经这个文件用着 `Markdown`，由它把这个函数交给卡片，不多一条边。
- */
-export function planMarkdown(text: string) {
-  return <Markdown text={text} className="min-w-0 max-w-full break-words text-label" />;
-}
-
 /**
  * Whether this message is where the reply stopped, rather than a pause inside it.
  *
@@ -132,7 +123,7 @@ export const MessageRow = memo(function MessageRow({
     // 后台子智能体的结果送回来了：一行说明，不是人说的话。见 `DeliveryRow`。
     // 另一个会话发来的消息：一行，不是人说的话。见 `PeerLetterRow`。和送达合在一条里时两样都画。
     // 一条里的几行（来信、子智能体、后台命令）之间和转录里的行一样隔 10px，不然挤成一串。
-    if (message.peer || message.delivery) return <div className="flex flex-col gap-2.5">{message.peer && <PeerLetterRow letters={message.peer} renderText={(text) => <Markdown text={text} className="text-label text-ink-muted" />} />}{message.delivery && <DeliveryRow delivery={message.delivery} />}</div>;
+    if (message.peer || message.delivery) return <div className="flex flex-col gap-2.5">{message.peer && <PeerLetterRow letters={message.peer} />}{message.delivery && <DeliveryRow delivery={message.delivery} />}</div>;
     if (message.synthetic || isNudge(message)) return null;
     return <>{showTime && <ConversationTime timestamp={message.timestamp} />}<UserMessage message={message} index={index} /></>;
   }

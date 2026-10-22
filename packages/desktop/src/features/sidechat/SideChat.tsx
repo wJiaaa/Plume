@@ -130,10 +130,7 @@ export function closeSideChat(scope: string, kind: string): void {
 }
 
 /**
- * 关之前问一句，只在里面有东西时问——见 `close-guard.ts`。
- *
- * 写在这里而不是 `close-guard.ts`：量「有没有东西」要读 `dock` 的大门，那个文件 import 它会成环
- * （`scope.ts` 开头那段）。这个文件本来就读它，`closeSideChat` 也在这里。
+ * 关之前问一句，只在里面有东西时问——见 `close-guard.ts`。和 `closeSideChat` 放在一起。
  */
 export function confirmCloseSideChat(scope: string, kind: string): Promise<boolean> {
 	const sideId = sideIdOfPanel(kind);

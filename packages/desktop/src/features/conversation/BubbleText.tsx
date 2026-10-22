@@ -13,18 +13,16 @@
  *   会切成「段落、胶囊、段落」三块竖着排，一句话被拆成三行。胶囊本身就是这句话的一部分，
  *   把它挤到单独一行，比不支持 markdown 更糟。带附件的消息几乎都是短句，这一支够用。
  *
- * 两个渲染器都由调用方给，这个文件自己什么都不画。不是为了灵活——是因为 `Markdown` 经
- * `dock/index.ts` 绕回 `conversation/index.ts`，在这里直接 import 它会连出一个新的环
- * （`pnpm arch` 当场报出来）。切分在这里，画什么在外面，两边都干净。
+ * 标记画成什么由调用方给：点了之后做什么，两边并不一样。
  */
 
 import { useMemo } from "react";
 import { placeAttachments } from "../../lib/attachment-placeholders.ts";
+import { Markdown } from "../markdown/index.ts";
 
 export function BubbleText<File extends { name: string; label?: string }>({
 	text,
 	files,
-	renderText,
 	renderFile,
 	className = "",
 }: {
@@ -32,8 +30,6 @@ export function BubbleText<File extends { name: string; label?: string }>({
 	text: string;
 	/** 这条消息带的附件，用来认出文中的标记。 */
 	files: File[];
-	/** 没有标记时，整段怎么画——通常是 `<Markdown/>`。 */
-	renderText: (text: string) => React.ReactNode;
 	/** 一枚标记画成什么。点它之后做什么两边并不一样，所以也由调用方给。 */
 	renderFile: (file: File, at: number) => React.ReactNode;
 	className?: string;
@@ -41,7 +37,7 @@ export function BubbleText<File extends { name: string; label?: string }>({
 	const segments = useMemo(() => placeAttachments(text, files).segments, [text, files]);
 	const hasFiles = segments.some((segment) => segment.kind === "file");
 
-	if (!hasFiles) return <div className={className}>{renderText(text)}</div>;
+	if (!hasFiles) return <div className={className}><Markdown text={text} /></div>;
 
 	return (
 		<p className={`whitespace-pre-wrap break-words ${className}`}>

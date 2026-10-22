@@ -46,8 +46,7 @@ export function sideHasTranscript(app: Pick<AppState, "sessionCache">, side: Ses
 /**
  * `true` 就关，`false` 留着。`key` 是 `sideKey(会话, 侧边聊天)`。
  *
- * 里面有没有东西由调用方量好传进来：量它要读 `dock` 的大门，而这个文件不能 import 它——
- * 理由同 `scope.ts`，见 `confirmCloseSideChat`。
+ * 里面有没有东西由调用方量好传进来，见 `confirmCloseSideChat`。
  */
 export function askBeforeClosing(key: string, hasContent: boolean): Promise<boolean> {
 	if (!hasContent || !shown.has(key) || localStorage.getItem(SKIP_KEY) === "1") return Promise.resolve(true);

@@ -12,33 +12,22 @@
  * Only a call seen being written gets a draft. Opening a conversation shows its finished pages as
  * they are; building each one again out of its arguments would be a second frame and a flash for
  * every page in the history.
- *
- * The finished page is drawn by the caller (`page`), not imported here: `PreviewCard` reaches the
- * side panel through `dock/index.ts`, which leads back to this domain's index, and importing it here
- * as well closed a new cycle (`pnpm arch`). Same split as `BubbleText`.
  */
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useScopedFromMessages } from "../../app/session-scope.tsx";
 import { argumentsSoFar } from "../../lib/streamed-arguments.ts";
+import { PreviewCard, type PreviewInfo } from "./PreviewCard.tsx";
 import { PreviewDraft } from "./PreviewDraft.tsx";
 import { draftArguments, draftDocument } from "./preview-draft.ts";
 
 /** How long the page is left fading in over the draft before the draft goes — the page's own fade. */
 const HANDOVER_MS = 260;
 
-/** What the finished page needs from the call: where to start, and a word once it is on screen. */
-export interface PreviewHandover {
-	startHeight?: number;
-	onShown?: () => void;
-}
-
-export function PreviewCall({ block, served, page: drawPage, live, written, waiting, fallback }: {
+export function PreviewCall({ block, preview, live, written, waiting, fallback }: {
 	block: { id: string; arguments: Record<string, unknown>; argumentsText?: string };
-	/** The page has been checked and served: there is a finished page to draw. */
-	served: boolean;
-	/** Draws the served page: a `PreviewCard`. */
-	page: (handover: PreviewHandover) => ReactNode;
+	/** The page, once it has been checked and served. */
+	preview: PreviewInfo | undefined;
 	/** Still being written or checked: the only time a draft means anything. */
 	live: boolean;
 	/** The arguments are all in and the call is running: what is left is the app checking the page. */
@@ -52,6 +41,7 @@ export function PreviewCall({ block, served, page: drawPage, live, written, wait
 	 */
 	fallback: (title?: string) => ReactNode;
 }) {
+	const served = Boolean(preview);
 	const [streamed] = useState(() => !served && (live || waiting));
 	const raw = useScopedFromMessages((messages) => (streamed ? argumentsSoFar(messages, block.id) : null)) ?? block.argumentsText;
 	const [landed, setLanded] = useState(false);
@@ -63,7 +53,7 @@ export function PreviewCall({ block, served, page: drawPage, live, written, wait
 		return () => clearTimeout(timer);
 	}, [landed]);
 
-	if (!streamed) return <>{served ? drawPage({}) : fallback()}</>;
+	if (!streamed) return <>{preview ? <PreviewCard preview={preview} /> : fallback()}</>;
 	const args = draftArguments(block.arguments, raw);
 	const row = fallback(typeof args.title === "string" && args.title.trim() ? args.title.trim() : undefined);
 	/*
@@ -80,9 +70,9 @@ export function PreviewCall({ block, served, page: drawPage, live, written, wait
 	return (
 		<div className="relative">
 			{page && <PreviewDraft document={page} placeholder={row} complete={written} checked={args.check === true && written && !live} onHeight={setHeight} />}
-			{served && (
+			{preview && (
 				<div className={page ? "pointer-events-none absolute inset-x-0 top-0" : undefined}>
-					{drawPage({ startHeight: height, onShown: () => setLanded(true) })}
+					<PreviewCard preview={preview} startHeight={height} onShown={() => setLanded(true)} />
 				</div>
 			)}
 			{!page && !served && row}

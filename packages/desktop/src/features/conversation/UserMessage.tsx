@@ -13,7 +13,6 @@ import { isAttachmentBody } from "../../lib/attachment-placeholders.ts";
 import { useMemo, useRef, useState } from "react";
 import { BubbleText } from "./BubbleText.tsx";
 import { jumpToSession } from "./jump-to-session.ts";
-import { Markdown } from "../markdown/index.ts";
 import { MessageActions } from "./MessageActions.tsx";
 import { ForkAction } from "./ForkAction.tsx";
 import { MessageEditor } from "./message/MessageEditor.tsx";
@@ -487,7 +486,6 @@ export function UserMessage({
             text={text}
             files={spokenFiles}
             className="text-label leading-6 text-ink"
-            renderText={(plain) => <Markdown text={plain} />}
             renderFile={(file, at) => {
               const segment = { file };
               const look = tokenLook(segment.file.name, segment.file.kind);

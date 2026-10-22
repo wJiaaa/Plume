@@ -5,12 +5,8 @@
  * 只是「这句话 + 它带的附件」，而它们从前各画各的：侧边聊天认得 `displayText`、会把附件画成行内
  * 标签；子智能体那边把所有文本块直接拼起来摊开——给它发一份文件，气泡里就是整篇文件正文，前面还顶
  * 着一行写给模型看的 `### Attached file: …`。
- *
- * 字怎么画由调用方给（通常是 `<Markdown/>`），理由同 `BubbleText`：`Markdown` 经 `dock/index.ts`
- * 绕回这个域，在这里直接 import 会连出一个新的环。
  */
 
-import type { ReactNode } from "react";
 import type { UserContent, UserMessage } from "@plume/core";
 
 import { translate } from "../../i18n/translate.ts";
@@ -38,7 +34,7 @@ export function spokenText(message: UserMessage): string {
 	);
 }
 
-export function SpokenBubble({ message, renderText, className = "" }: { message: UserMessage; renderText: (text: string) => ReactNode; className?: string }) {
+export function SpokenBubble({ message, className = "" }: { message: UserMessage; className?: string }) {
 	const text = spokenText(message);
 	const images = message.content.filter((block): block is ImageBlock => block.type === "image");
 	return (
@@ -48,7 +44,6 @@ export function SpokenBubble({ message, renderText, className = "" }: { message:
 					text={text}
 					files={message.attachments ?? []}
 					className="text-body leading-relaxed"
-					renderText={renderText}
 					/*
 					 * 这里的标签只认名字，不带动作：这两个面板没有能承接「打开」的地方（文件面板属于主窗口），
 					 * 先认出它、画成一枚标签，不给一条点了没反应的路。

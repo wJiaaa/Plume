@@ -8,7 +8,7 @@
  * 跳转放在这一行上，不放在展开的正文底下：要去那个会话的人不必先把整封信读完才找得到入口。
  */
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import type { PeerLetter } from "@plume/core";
 import { useI18n } from "../../i18n/index.ts";
 import { ArrowUpRight, MessagesSquare } from "../../ui/icons/index.ts";
@@ -16,20 +16,20 @@ import { Collapse } from "../../ui/layout/Collapse.tsx";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import { useApp } from "../../store/index.ts";
 import { useScopedSessionId } from "../../app/session-scope.tsx";
+import { Markdown } from "../markdown/index.ts";
 import { FlowRow } from "./FlowRow.tsx";
 import { jumpToSession } from "./jump-to-session.ts";
 import { peerName } from "./call-words.ts";
 
-/** 正文怎么排版由行那一层给：`Markdown` 在这里直接引会连成一个环（见 `.dependency-cruiser.cjs`）。 */
-export function PeerLetterRow({ letters, renderText }: { letters: PeerLetter[]; renderText: (text: string) => ReactNode }) {
+export function PeerLetterRow({ letters }: { letters: PeerLetter[] }) {
 	return (
 		<div className="my-1" data-peer-row="">
-			{letters.map((letter, index) => <Letter key={index} letter={letter} renderText={renderText} />)}
+			{letters.map((letter, index) => <Letter key={index} letter={letter} />)}
 		</div>
 	);
 }
 
-function Letter({ letter, renderText }: { letter: PeerLetter; renderText: (text: string) => ReactNode }) {
+function Letter({ letter }: { letter: PeerLetter }) {
 	const { t } = useI18n();
 	const [open, setOpen] = useState(false);
 	const sessionId = useScopedSessionId();
@@ -53,7 +53,7 @@ function Letter({ letter, renderText }: { letter: PeerLetter; renderText: (text:
 				<IconButton size="xs" icon={<ArrowUpRight size={12} strokeWidth={1.8} />} label={t("peers.open")} onClick={jump} tipSide="top" data-peer-open="" />
 			</div>
 			<Collapse open={open} bodyClassName="mt-1.5 border-l-2 border-line pl-3">
-				{renderText(text)}
+				<Markdown text={text} className="text-label text-ink-muted" />
 			</Collapse>
 		</div>
 	);

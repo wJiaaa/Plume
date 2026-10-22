@@ -1,8 +1,7 @@
 /**
  * 右栏的计划面板：把计划摊开读，划一段字就地留评论。
  *
- * 计划交上来时由审批卡替人打开（见 `ApprovalOverlay`）。正文由 `app/panels.tsx` 交进来（`renderPlan`），
- * 不在这里 import `Markdown`：那会让这个文件也落进对话域与 dock 之间那个环，`pnpm arch` 的基线只降不升。等审批的时候能评论：
+ * 计划交上来时由审批卡替人打开（见 `ApprovalOverlay`）。等审批的时候能评论：
  * 这里只管划线和写，评论本身列在审批卡上（`PlanApproval`），由那里修订或带着接受；面板上那段字画下划线、
  * 末尾挂一枚和卡上同号的序号。批准或打回以后面板只读，那份计划留着看。
  *
@@ -10,7 +9,7 @@
  */
 
 import { currentPlan, renderPlan as planMarkdown } from "@plume/core/plan-view";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useScopedApprovals, useScopedFromMessages, useScopedSessionId } from "../../../app/session-scope.tsx";
 import { useI18n } from "../../../i18n/index.ts";
 import { ArrowUp, ListOrdered, MessageSquare } from "../../../ui/icons/index.ts";
@@ -22,6 +21,7 @@ import { MarkNumber } from "../../../ui/primitives/MarkNumber.tsx";
 import { Scroller } from "../../../ui/scroll/Scroller.tsx";
 import { selectedText } from "../../../lib/selection.ts";
 import { usePlanReview } from "../../../store/plan-review.ts";
+import { Markdown } from "../../markdown/index.ts";
 import { offsetIn, paint, rangeIn } from "./plan-anchor.ts";
 
 interface Draft {
@@ -59,7 +59,7 @@ function atOf(range: Range): Draft["at"] {
 	return { x: rect.left, y: rect.bottom };
 }
 
-export function PlanPanel({ renderPlan }: { renderPlan: (text: string) => ReactNode }) {
+export function PlanPanel() {
 	const { t } = useI18n();
 	const sessionId = useScopedSessionId();
 	const approvals = useScopedApprovals();
@@ -171,7 +171,7 @@ export function PlanPanel({ renderPlan }: { renderPlan: (text: string) => ReactN
 			{/* 松开鼠标时取选区：双击、三击选词选段也是松开之后才定。 */}
 			<div className="relative">
 				<div ref={bodyRef} onMouseUp={(event) => { if (event.button === 0) requestAnimationFrame(pick); }} data-plan-body="">
-					{renderPlan(text)}
+					<Markdown text={text} className="min-w-0 max-w-full break-words" />
 				</div>
 				{/* 每条评论那段字的末尾一枚序号，和审批卡上那条评论前面的数一样。不接鼠标：挡着它就划不了后面的字。 */}
 				{marks.map((mark) => <MarkNumber key={mark.id} n={mark.n} className="pointer-events-none absolute -translate-y-1/2 shadow-sm" data-plan-mark={mark.n} style={{ left: mark.x, top: mark.y }} />)}

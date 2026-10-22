@@ -308,7 +308,6 @@ const PLAN_DETAIL = "# 登录换成 OAuth\n\n## 方案\n换成 OAuth\n\n## 改�
 const planApproval = (id = "plan", options = ["批准，开始执行", "要改"]) => ({ id, kind: "interactive" as const, subject: "submit_plan", title: "审批计划", detail: PLAN_DETAIL, options, allowCustomInput: true, selectionMode: "single" as const, allowSkip: false });
 
 async function planCard(id: string, permissionMode: "ask" | "auto", options?: string[]) {
-	const { planMarkdown } = await import("../../src/features/conversation/rows.tsx");
 	const { providePlanOpener } = await import("../../src/app/plan-opener.ts");
 	const { DEFAULT_SETTINGS } = await import("@plume/core");
 	const answered: unknown[] = [];
@@ -317,7 +316,7 @@ async function planCard(id: string, permissionMode: "ask" | "auto", options?: st
 	Object.defineProperty(window, "plume", { configurable: true, value: { agent: { approve: async (_session: string, _id: string, decision: unknown) => { answered.push(decision); } } } });
 	providePlanOpener((screen) => opened.push(screen));
 	useApp.setState({ activeSessionId: "owner", approvals: [planApproval(id, options)], settings: { ...DEFAULT_SETTINGS, permissionMode }, saveSettings: async (settings) => { saved.push(settings.permissionMode); } });
-	const render = () => mount(h(LayoutProvider, { children: h(ApprovalOverlay, { renderPlan: planMarkdown }) }));
+	const render = () => mount(h(LayoutProvider, { children: h(ApprovalOverlay) }));
 	return { render, answered, saved, opened, release: () => providePlanOpener(null) };
 }
 
@@ -428,7 +427,6 @@ test("在新会话里执行：core 给了这一项才画，点了交出这一项
 
 // 窄窗口右栏一次只摆一格，开面板会把卡片盖住：不替人开，计划照旧画在卡片里。
 test("in a compact window a submitted plan stays drawn in the card as markdown", async () => {
-	const { planMarkdown } = await import("../../src/features/conversation/rows.tsx");
 	const { providePlanOpener } = await import("../../src/app/plan-opener.ts");
 	const previous = useApp.getState();
 	const width = Object.getOwnPropertyDescriptor(window, "innerWidth");
@@ -437,7 +435,7 @@ test("in a compact window a submitted plan stays drawn in the card as markdown",
 	const opened: (string | undefined)[] = [];
 	providePlanOpener((screen) => opened.push(screen));
 	useApp.setState({ activeSessionId: "owner", approvals: [planApproval("plan-compact")] });
-	const view = await mount(h(LayoutProvider, { children: h(ApprovalOverlay, { renderPlan: planMarkdown }) }));
+	const view = await mount(h(LayoutProvider, { children: h(ApprovalOverlay) }));
 	try {
 		assert.equal(view.all("pre").length, 0, "计划不是一段原样文本");
 		assert.equal(view.find(".ly-approval-scroll h2").textContent, "方案");
