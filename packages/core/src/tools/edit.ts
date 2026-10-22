@@ -22,6 +22,7 @@ import { withTextFile } from "./file-write.ts";
 import { computeDiff, formatDiff, type FileDiff } from "./diff.ts";
 import { formatCharWindow, MAX_LINE_CHARS } from "./long-line.ts";
 import { displayPath, resolveWorkspacePath } from "./paths.ts";
+import { withDiagnostics } from "./edit-diagnostics.ts";
 import { findEditMatch, replacementFor } from "./edit-match.ts";
 import { changedSince, markRead, readRecord } from "./read-state.ts";
 import { scratchFile } from "./scratch-file.ts";
@@ -65,7 +66,8 @@ export const editTool: Tool<EditArgs> = {
 		}
 		try {
 			const file = await scratchFile(ctx, args.path);
-			return await withTextFile(ctx, file ?? args.path, async ({ path: absolute, before: raw, stamp, write }) => {
+			let changedFile: string | undefined;
+			const result = await withTextFile<ToolResult>(ctx, file ?? args.path, async ({ path: absolute, before: raw, stamp, write }) => {
 				const record = readRecord(ctx, absolute);
 				if (!record?.stamp) return errorResult(`Read ${args.path} as text before editing it.`);
 				if (record.partial) {
@@ -116,6 +118,7 @@ export const editTool: Tool<EditArgs> = {
 
 				const written = await write(encodeText(after, layout));
 				markRead(ctx, absolute, written.stamp);
+				changedFile = absolute;
 				// One line of context, not the preview's three: the echo is there to spare a re-read, not to review the change.
 				const echo = changedView(computeDiff(before, after, 1), after);
 
@@ -136,6 +139,8 @@ export const editTool: Tool<EditArgs> = {
 					},
 				};
 			});
+			// Outside the file queue: waiting on the language server must not hold up the next write to this file.
+			return changedFile ? await withDiagnostics(ctx, changedFile, result) : result;
 		} catch (error) {
 			return errorResult(error instanceof Error ? error.message : String(error));
 		}

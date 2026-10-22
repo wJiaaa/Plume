@@ -96,9 +96,12 @@ export class TsServerBackend implements CodeIntelBackend {
 		 * Without this the language server keeps the host process alive: a CLI run that asked one
 		 * `references` question finishes its work in 300ms and then sits there until tsserver's own
 		 * idle timeout, looking hung. `dispose` still kills it — this only stops it voting on when
-		 * the parent may exit.
+		 * the parent may exit. The pipes too, as in `stdio.ts`: unref on the process alone left them
+		 * holding the loop, and once edits started the server in the background a test file that
+		 * edited a `.ts` never exited.
 		 */
 		this.child.unref();
+		for (const stream of [this.child.stdin, this.child.stdout, this.child.stderr]) (stream as { unref?: () => void } | null)?.unref?.();
 
 		this.child.stdout?.setEncoding("utf8");
 		this.child.stdout?.on("data", (chunk: string) => this.consume(chunk));

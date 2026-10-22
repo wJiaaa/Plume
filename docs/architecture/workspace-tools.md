@@ -156,9 +156,15 @@ npm 装的 `.cmd` 并经 `cmd.exe` 启动，回收时按进程树结束。找不
 发给服务器的路径换成真实路径、收回来再换回项目根，避免符号链接下的项目（macOS 的 `/var` →
 `/private/var`）同一个文件被当成两个。clangd 会在项目里写 `.cache/clangd/index`，这是它自己的行为。
 
+`edit`、`write` 成功后会把这个文件当前的错误附在结果末尾（`tools/edit-diagnostics.ts`）：只附
+错误级别、只看这一个文件，最多 10 条，文件没有错误就一个字不加。服务器已就绪时最多等 2 秒，超时照常
+返回；还没起来就在后台启动、这次不等。耗时、错误数、是否超时记在结果的 `details.diagnostics` 里。
+改了签名而坏掉的其他文件不在这里查，那要整个项目检查，交给 `lsp references`。
+
 回归入口：`packages/core/test/lsp-stdio.test.ts`（路由、降级提示、URI 与 Windows 路径、分帧）、
 `packages/core/test/lsp-stdio-server.test.ts`（对着假服务器走完握手、改文件后重问、诊断、回收）、
-`packages/core/test/tsserver-diagnostics.test.ts`（真 tsserver 上改文件后重问、语法错误）。
+`packages/core/test/tsserver-diagnostics.test.ts`（真 tsserver 上改文件后重问、语法错误）、
+`packages/core/test/edit-diagnostics.test.ts`（编辑后附诊断的各个分支）。
 
 ### 快照与撤销
 

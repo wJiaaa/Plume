@@ -146,3 +146,12 @@ function delay(ms: number): Promise<void> {
 }
 
 export const CODE_INTEL_KEY = "codeIntel";
+
+/** 会话里那一个管理器：`lsp` 工具和编辑后的诊断共用，不各起一台服务器；会话结束时从 state 里取出来释放。 */
+export function codeIntelFor(state: Map<string, unknown>): CodeIntelManager {
+	const existing = state.get(CODE_INTEL_KEY);
+	if (existing instanceof CodeIntelManager) return existing;
+	const manager = new CodeIntelManager();
+	state.set(CODE_INTEL_KEY, manager);
+	return manager;
+}

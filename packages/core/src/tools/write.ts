@@ -3,6 +3,7 @@ import { declinedResult, errorResult } from "./result.ts";
 import type { Tool, ToolResult } from "../types.ts";
 import { withTextFile } from "./file-write.ts";
 import { computeDiff, formatDiff } from "./diff.ts";
+import { withDiagnostics } from "./edit-diagnostics.ts";
 import { displayPath, resolveWorkspacePath } from "./paths.ts";
 import { changedSince, markRead, readRecord } from "./read-state.ts";
 import { scratchFile } from "./scratch-file.ts";
@@ -73,7 +74,8 @@ export const writeTool: Tool<WriteArgs> = {
 		 * 读那一侧留着（`read.ts`、`ls.ts`），那是附件本来的用途。
 		 */
 		try {
-			return await withTextFile(ctx, args.path, async ({ path: absolute, before, stamp, write }) => {
+			let changedFile: string | undefined;
+			const result = await withTextFile<ToolResult>(ctx, args.path, async ({ path: absolute, before, stamp, write }) => {
 				const alreadyExists = before !== null;
 				const previous = alreadyExists ? decodeText(before) : null;
 				const record = readRecord(ctx, absolute);
@@ -99,6 +101,7 @@ export const writeTool: Tool<WriteArgs> = {
 				const { changeId, stamp: writtenStamp } = await write(written);
 				const lines = after === "" ? 0 : after.split("\n").length;
 				markRead(ctx, absolute, writtenStamp);
+				changedFile = absolute;
 
 				return {
 					content: [
@@ -118,6 +121,8 @@ export const writeTool: Tool<WriteArgs> = {
 					},
 				};
 			});
+			// Outside the file queue, as in `edit.ts`.
+			return changedFile ? await withDiagnostics(ctx, changedFile, result) : result;
 		} catch (error) {
 			return errorResult(error instanceof Error ? error.message : String(error));
 		}

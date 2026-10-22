@@ -15,10 +15,10 @@
 import { extname, relative, resolve } from "node:path";
 import { errorResult } from "./result.ts";
 import { textualReferences, TEXTUAL_CAVEAT } from "../lsp/fallback.ts";
-import { CODE_INTEL_KEY, CodeIntelManager } from "../lsp/manager.ts";
+import { codeIntelFor } from "../lsp/manager.ts";
 import type { CodeLocation } from "../lsp/types.ts";
 import { walkFiles } from "../capability/fs.ts";
-import type { Tool, ToolContext, ToolResult } from "../types.ts";
+import type { Tool, ToolResult } from "../types.ts";
 import { authorizeRead } from "./read-access.ts";
 
 interface LspArgs {
@@ -69,7 +69,7 @@ export const lspTool: Tool<LspArgs> = {
 		if (!authorized.ok) return errorResult(authorized.message);
 		const absolute = authorized.absolute;
 
-		const manager = getManager(ctx);
+		const manager = codeIntelFor(ctx.state);
 		const backend = await manager.acquire(absolute, ctx.cwd).catch(() => null);
 		// 没有服务器时那句「为什么」：没装什么、还在启动。模型据此知道下面是文本搜索，也能转告人去装。
 		const why = backend ? null : await manager.unavailable(absolute).catch(() => null);
@@ -197,12 +197,4 @@ async function locate(args: LspArgs, absolute: string): Promise<{ line: number; 
 		firstUse ??= { line: i + 1, column: match.index + 1 };
 	}
 	return firstUse ? { ...firstUse, word: args.symbol } : null;
-}
-
-function getManager(ctx: ToolContext): CodeIntelManager {
-	const existing = ctx.state.get(CODE_INTEL_KEY);
-	if (existing instanceof CodeIntelManager) return existing;
-	const manager = new CodeIntelManager();
-	ctx.state.set(CODE_INTEL_KEY, manager);
-	return manager;
 }
