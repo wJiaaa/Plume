@@ -13,7 +13,7 @@ import { DispatchFaces, useDelegation, useDispatches } from "./DelegationCard.ts
 import { SessionSuggestionCard } from "./SessionSuggestionCard.tsx";
 import { ToolGroup } from "./ToolGroup.tsx";
 import type { ToolRun as ToolRunState } from "../../store/index.ts";
-import { useScopedFromToolRuns, useScopedMeta, useScopedRunning } from "../../app/session-scope.tsx";
+import { useScopedFromMeta, useScopedFromToolRuns, useScopedRunning } from "../../app/session-scope.tsx";
 import { useWriteDraft } from "./write-draft.ts";
 import type { Dispatch } from "../../lib/dispatches.ts";
 import { toolCardFallback } from "./tool-status.ts";
@@ -152,7 +152,7 @@ function PlainToolCard({ block, run: own, stopReason, runs, turnRunning, thinkin
   const run = ids ? latest : own;
   const result = useMemo(() => (joined !== undefined && run?.result ? { ...run.result, content: [{ type: "text" as const, text: joined }] } : run?.result), [joined, run]);
   const command = starter?.args.command;
-  const root = useScopedMeta()?.cwd;
+  const root = useScopedFromMeta((meta) => meta?.cwd);
   // A checked page is drawn by its check, from the call that published it.
   const publishedBy = page && "publishedBy" in page ? page.publishedBy : undefined;
   const stored = useScopedFromToolRuns((toolRuns) => (publishedBy ? toolRuns[publishedBy] : undefined));

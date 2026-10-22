@@ -349,6 +349,16 @@ export function useSessionCard(onOpen?: () => void): {
 	 * animation something to play on; same arrangement as the toast stack.
 	 */
 	const [leaving, setLeaving] = useState(false);
+	/*
+	 * From the pointer arriving until the card is gone: the only stretch in which there is anything
+	 * for a scroll, a wheel or a blur to take away.
+	 *
+	 * The window listeners below used to be on for every row all the time. Each is a capture listener
+	 * on `window`, so every scroll anywhere ran `dismiss()` once per row — and while a reply streams the
+	 * transcript scrolls every frame: forty-odd rows at 120 scrolls a second was a second of the
+	 * renderer's main thread per 25s of output, spent clearing timers that were never set.
+	 */
+	const [engaged, setEngaged] = useState(false);
 	const open = useRef<number | undefined>(undefined);
 	const close = useRef<number | undefined>(undefined);
 
@@ -357,9 +367,17 @@ export function useSessionCard(onOpen?: () => void): {
 		window.clearTimeout(close.current);
 		setAnchor(null);
 		setLeaving(false);
+		setEngaged(false);
+	}, []);
+
+	// A row that unmounts mid-hover (the list re-sorts constantly) takes its timers with it.
+	useEffect(() => () => {
+		window.clearTimeout(open.current);
+		window.clearTimeout(close.current);
 	}, []);
 
 	useEffect(() => {
+		if (!engaged) return;
 		const hide = () => dismiss();
 		window.addEventListener("scroll", hide, true);
 		window.addEventListener("wheel", hide, true);
@@ -376,14 +394,12 @@ export function useSessionCard(onOpen?: () => void): {
 		 */
 		const unsubscribe = onHoverLayersDismissed(dismiss);
 		return () => {
-			window.clearTimeout(open.current);
-			window.clearTimeout(close.current);
 			window.removeEventListener("scroll", hide, true);
 			window.removeEventListener("wheel", hide, true);
 			window.removeEventListener("blur", hide);
 			unsubscribe();
 		};
-	}, [dismiss]);
+	}, [engaged, dismiss]);
 
 	return {
 		anchor,
@@ -395,6 +411,7 @@ export function useSessionCard(onOpen?: () => void): {
 				const box = event.currentTarget.getBoundingClientRect();
 				window.clearTimeout(open.current);
 				window.clearTimeout(close.current);
+				setEngaged(true);
 				// Coming back before the exit finished is a re-entry, not a second arrival.
 				setLeaving(false);
 				open.current = window.setTimeout(() => {
@@ -410,6 +427,7 @@ export function useSessionCard(onOpen?: () => void): {
 				close.current = window.setTimeout(() => {
 					setAnchor(null);
 					setLeaving(false);
+					setEngaged(false);
 				}, LEAVE_MS);
 			},
 			onClick: () => {

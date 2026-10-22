@@ -21,6 +21,7 @@ import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { motionReduced } from "../../ui/motion/reduced.ts";
 
 import { ScrollText } from "../../ui/scroll/ScrollText.tsx";
+import { GLIDE, useTickedAnimations } from "../../ui/motion/ticked.ts";
 
 export function FlowRow({
 	icon,
@@ -53,6 +54,9 @@ export function FlowRow({
 	className?: string;
 } & Record<`data-${string}`, string | undefined>) {
 	const expandable = onToggle !== undefined;
+	// 扫光按拍走（`ticked.ts`）；悬停时那段自读的滚动不在名单里，照常逐帧。
+	const summaryBox = useRef<HTMLSpanElement>(null);
+	useTickedAnimations(summaryBox, GLIDE, Boolean(running));
 	const body = (
 		<>
 			{/* 图标一直在：它说的是这一行是什么（在想 / 在动手 / 在跑命令），不该被别的东西顶掉。 */}
@@ -68,7 +72,7 @@ export function FlowRow({
 			 * `background-clip: text` 裁不到它的字，整句就没了。
 			 */}
 			{summary !== undefined && summary !== null && summary !== "" && (
-				<span className="ly-flow-summary">
+				<span ref={summaryBox} className="ly-flow-summary">
 					{/*
 					 * 这一句和侧边栏的标题是同一种东西：虚化代替省略号，鼠标放上去自己读出来。
 					 *

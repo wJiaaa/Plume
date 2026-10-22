@@ -297,11 +297,24 @@ export function applyAgentEvent(sessionId: string, event: AgentEvent, set: Set, 
 			const who = target ? translate("applyEvent.named", { title: sessionTitle(target.title) }) : translate("applyEvent.task");
 			get().notify(`${who}${completion.text}`, completion.level, sessionId);
 		}
-    const cached = get().sessionCache[sessionId];
-    if (cached) {
-      const settled = cachedEvent(cached, event);
-      const next = handoff && settled.state ? { ...settled, state: { ...settled.state, running: true, stopped: null } } : settled;
-      if (next !== cached) set({ sessionCache: { ...get().sessionCache, [sessionId]: next } });
+    if (event.type === "message_update") {
+      // Once a frame, like the conversation on screen: see `coalesce`. Read at flush time, so it
+      // applies to whatever the cache holds by then.
+      coalesce(() => {
+        const cached = get().sessionCache[sessionId];
+        if (!cached) return;
+        const next = cachedEvent(cached, event);
+        if (next !== cached) set({ sessionCache: { ...get().sessionCache, [sessionId]: next } });
+      }, `cache:${sessionId}`);
+    } else {
+      // A held update lands before anything that comes after it — same rule as below.
+      flushCoalesced();
+      const cached = get().sessionCache[sessionId];
+      if (cached) {
+        const settled = cachedEvent(cached, event);
+        const next = handoff && settled.state ? { ...settled, state: { ...settled.state, running: true, stopped: null } } : settled;
+        if (next !== cached) set({ sessionCache: { ...get().sessionCache, [sessionId]: next } });
+      }
     }
 
     if (event.type === "title") {
@@ -343,7 +356,7 @@ export function applyAgentEvent(sessionId: string, event: AgentEvent, set: Set, 
    * settles it, or after the tool card that follows it — and overwrite the newer state with the
    * older one.
    */
-  if (event.type !== "message_update") flushCoalesced();
+  if (event.type !== "message_update" && event.type !== "tool_update") flushCoalesced();
 
   switch (event.type) {
     case "agent_start":
@@ -388,8 +401,18 @@ export function applyAgentEvent(sessionId: string, event: AgentEvent, set: Set, 
       });
       break;
 
-    case "tool_start":
     case "tool_update":
+      /*
+       * 一拍落一次，每个调用各占一格，理由和 `message_update` 一样：命令输出一秒来几十块，每块都把整张
+       * `toolRuns` 换新、跑一遍窗口里每个选择器，而两拍之间的那些块，画出来之前就被下一块盖掉了。
+       * 它的 `tool_end` 照常先把它落下（上面的 `flushCoalesced`）。
+       */
+      coalesce(() => {
+        if (get().activeSessionId === sessionId) applyToolEvent(event, set, get);
+      }, `tool:${event.toolCallId}`);
+      break;
+
+    case "tool_start":
     case "tool_end":
       applyToolEvent(event, set, get);
       break;

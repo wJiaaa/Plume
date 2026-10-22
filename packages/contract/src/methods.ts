@@ -118,6 +118,7 @@ export const METHODS = {
 		setModel: "agent:setModel",
 		setThinking: "agent:setThinking",
 		setPlanMode: "agent:setPlanMode",
+		streamingMessage: "agent:streamingMessage",
 	},
 	subAgents: {
 		list: "subagents:list",

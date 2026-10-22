@@ -45,6 +45,40 @@ export interface SessionServices { jobs: SessionService[]; discoveryError?: stri
  */
 export interface ServiceOutput { text: string; next: number; done: boolean; replace?: boolean }
 
+type StreamedReply = Extract<AgentEvent, { type: "message_update" }>;
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+
+/**
+ * 一步改动：路径、`a` 追加（`at` 是追加前的长度）、`s` 换成新值、`d` 删掉这个键。
+ *
+ * 路径为空的 `s` 是整条换掉——关键帧，不依赖接收方手里有什么。
+ */
+export type PatchOp =
+	| [path: (string | number)[], kind: "a", at: number, text: string]
+	| [path: (string | number)[], kind: "s", value: unknown]
+	| [path: (string | number)[], kind: "d"];
+
+/**
+ * 流式回复过 IPC 时的样子：`message_update` 只带这一次变了的部分。
+ *
+ * 进程内的 `message_update` 带整条消息是免费的——那是一个引用；过 IPC 就是一次结构化克隆，每个
+ * token 搬一整条回复，两万字的回复要搬近百兆。`seq` 从 `message_start`（记作 0）往上数，接收方
+ * 据此知道自己手里那份是不是正好接得上；接不上就用 `agent.streamingMessage` 要一帧关键帧。
+ * 编码与还原见 `desktop/shared/message-patch.ts`。
+ */
+export interface MessagePatch {
+	type: "message_patch";
+	/** 正在流的那条回复的 `timestamp`。 */
+	timestamp: number;
+	seq: number;
+	ops: PatchOp[];
+	/** 原事件的 `delta`，去掉了 `partial`——那就是整条消息，还原时接回去。 */
+	delta: DistributiveOmit<StreamedReply["delta"], "partial">;
+}
+
+/** 主进程发给窗口的事件：`message_update` 换成了 `MessagePatch`，其余原样。 */
+export type WireAgentEvent = Exclude<AgentEvent, StreamedReply> | MessagePatch;
+
 export interface AgentApi {
 	/**
 	 * `synthetic` marks a message the app composed on the user's behalf — 「继续」 — so the
@@ -70,7 +104,13 @@ export interface AgentApi {
 	setThinking(sessionId: string, thinking: ThinkingLevel | null): Promise<void>;
 	/** 进出计划模式。批准计划后 core 自己关掉，那一次经 `sessions:changed` 送到渲染层。 */
 	setPlanMode(sessionId: string, on: boolean): Promise<void>;
-	onEvent(handler: (payload: { sessionId: string; event: AgentEvent }) => void): () => void;
+	onEvent(handler: (payload: { sessionId: string; event: WireAgentEvent }) => void): () => void;
+	/**
+	 * 这个会话正在流的那条回复，作为一帧关键帧；没有在流的就是 null。
+	 *
+	 * 窗口手里的那份接不上补丁时才问（中途打开、重载、`seq` 断档），见 `MessagePatch`。
+	 */
+	streamingMessage(sessionId: string): Promise<MessagePatch | null>;
 }
 
 /**

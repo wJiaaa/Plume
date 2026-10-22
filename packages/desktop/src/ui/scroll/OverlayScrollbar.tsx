@@ -101,7 +101,10 @@ export function OverlayScrollbar({
 		const size = overflow ? Math.min(rail, Math.max(28, (length / total) * rail)) : 0;
 		const travel = rail - size;
 		const progress = total - length <= 0 ? 0 : at / (total - length);
-		setMetrics({ offset: travel * progress, size, overflow, inset });
+		const offset = travel * progress;
+		setMetrics((prev) =>
+			Math.abs(prev.offset - offset) < 0.5 && Math.abs(prev.size - size) < 0.5 && prev.overflow === overflow && prev.inset === inset ? prev : { offset, size, overflow, inset },
+		);
 	}, [vertical, sticky, element]);
 
 	useLayoutEffect(() => {
@@ -115,10 +118,25 @@ export function OverlayScrollbar({
 		const observer = new ResizeObserver(measure);
 		observer.observe(el);
 		for (const child of el.children) observer.observe(child);
-		const mutations = new MutationObserver(measure);
+		/*
+		 * 内容变了推到下一帧再量，一帧最多一次。
+		 *
+		 * 正在输出的代码块每次提交都改一串文字节点，变更回调紧跟在提交后面，那时布局还是脏的——当场读
+		 * `scrollWidth` 就是为它强制把整页排一遍，几个面板同时输出时每帧好几次。挪到下一帧开头，几处
+		 * 读挨在一起、中间没有写，整页只排一次。
+		 */
+		let frame = 0;
+		const mutations = new MutationObserver(() => {
+			if (frame) return;
+			frame = requestAnimationFrame(() => {
+				frame = 0;
+				measure();
+			});
+		});
 		mutations.observe(el, { childList: true, subtree: true, characterData: true });
 
 		return () => {
+			cancelAnimationFrame(frame);
 			el.removeEventListener("scroll", measure);
 			observer.disconnect();
 			mutations.disconnect();

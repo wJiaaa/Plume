@@ -334,8 +334,20 @@ export function ComposerShell({
    * a longer model name is the ordinary way. No dependency array — `remeasure` only calls `setFit`
    * with the level it measured, so a render that changes nothing settles on the same answer and
    * stops.
+   *
+   * But only when what is in the row changed: same text and same number of elements means the same
+   * widths, and the box itself is the observer's job above. Reading `scrollWidth` lays out the whole
+   * page, and while replies stream the composer redraws for unrelated reasons — measuring on each of
+   * those was 6% of the renderer.
    */
-  useLayoutEffect(remeasure);
+  const measuredFor = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const row = bar.current;
+    const key = row ? `${row.getElementsByTagName("*").length}|${row.textContent}` : null;
+    if (key === measuredFor.current) return;
+    measuredFor.current = key;
+    remeasure();
+  });
 
   /*
    * Grow with the text, up to eight lines (160px of text), and never past a third of the

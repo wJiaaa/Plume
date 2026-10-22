@@ -14,7 +14,7 @@ import { MessageActions } from "./MessageActions.tsx";
 import { ForkAction } from "./ForkAction.tsx";
 import { MessageEditor } from "./message/MessageEditor.tsx";
 import { useApp } from "../../store/index.ts";
-import { useDockScope, useScopedFromMessages, useScopedMeta, useScopedRunning, useScopedSessionId } from "../../app/session-scope.tsx";
+import { useDockScope, useScopedFromMessages, useScopedFromMeta, useScopedRunning, useScopedSessionId } from "../../app/session-scope.tsx";
 import { bridge } from "../../services/index.ts";
 import { useI18n } from "../../i18n/index.ts";
 import { useConfirmer } from "../../ui/overlay/Confirm.tsx";
@@ -178,7 +178,7 @@ export function UserMessage({
 	 * 侧边聊天里只有编辑重问。撤回要把话放回输入框、分叉要开一个新会话，两样都是对着主对话那个
 	 * 输入框和会话列表说的，侧边聊天两样都没有。
 	 */
-	const aside = useScopedMeta()?.parentId !== undefined;
+	const aside = useScopedFromMeta((meta) => meta?.parentId !== undefined);
 	const editMessage = useApp((s) => s.editMessage);
 	const revertMessage = useApp((s) => s.revertMessage);
 	const lastUser = useScopedFromMessages(lastUserMessageIndex);

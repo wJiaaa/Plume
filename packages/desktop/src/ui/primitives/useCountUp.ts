@@ -17,6 +17,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motionReduced } from "../motion/reduced.ts";
+import { cancelTick, requestTick } from "../motion/ticker.ts";
 
 /** Long enough to read as movement, short enough that a burst of updates does not queue up. */
 const TRAVEL_MS = 520;
@@ -51,7 +52,7 @@ export function useCountUp(
 	const from = useRef(target);
 
 	useEffect(() => {
-		cancelAnimationFrame(frame.current);
+		cancelTick(frame.current);
 
 		/*
 		 * Downwards is not a journey, it is a different conversation.
@@ -89,11 +90,12 @@ export function useCountUp(
 			const value = begin + (target - begin) * eased;
 			from.current = value;
 			setShown(value);
-			if (progress < 1) frame.current = requestAnimationFrame(step);
+			if (progress < 1) frame.current = requestTick(step);
 		};
 
-		frame.current = requestAnimationFrame(step);
-		return () => cancelAnimationFrame(frame.current);
+		// 按拍走，不按帧：运行行上的 token 数和正文同时在动，见 `ticker.ts`。
+		frame.current = requestTick(step);
+		return () => cancelTick(frame.current);
 	}, [target, ms, bidirectional]);
 
 	return shown;

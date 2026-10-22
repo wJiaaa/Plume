@@ -1,6 +1,5 @@
 import { translate } from "../../i18n/translate.ts";
 import { useEffect, useState } from "react";
-import { ThinkingOrb } from "thinking-orbs";
 import { useCountUp } from "../../ui/primitives/useCountUp.ts";
 import { StatusSpinner } from "../../ui/motion/loaders.tsx";
 import { moodFor, phraseFor } from "../../lib/thinking-words.ts";
@@ -17,6 +16,8 @@ import { formatTokens } from "../../lib/format-tokens.ts";
 import { formatElapsed } from "@plume/client-runtime/running";
 import { useLiveRate, useProducedChars } from "./useLiveRate.ts";
 import { liveTurnMeter } from "./turns.ts";
+import type { ToolRun } from "../../store/tool-run.ts";
+import { ThinkingOrb } from "./ThinkingOrb.tsx";
 
 /**
  * What the agent is spending while it works: elapsed time and tokens so far.
@@ -87,12 +88,15 @@ export function RunningIndicator() {
 	 * re-runs when the store changes, and nothing changes when a hold quietly expires.
 	 */
 	const doing = useScopedFromToolRuns((toolRuns) => {
-		const runs = Object.values(toolRuns);
-		const running = runs.filter((run) => run.status === "running").sort((a, b) => b.startedAt - a.startedAt)[0];
+		// 一遍找出两个最新的，不筛不排：这个选择器在每个工具事件上都跑，而 `toolRuns` 攒着这一轮的全部调用。
+		let running: ToolRun | undefined;
+		let finished: ToolRun | undefined;
+		for (const run of Object.values(toolRuns)) {
+			if (run.status === "running") {
+				if (!running || run.startedAt > running.startedAt) running = run;
+			} else if (run.finishedAt !== undefined && (!finished || run.finishedAt > (finished.finishedAt ?? 0))) finished = run;
+		}
 		if (running) return `${running.toolName}\u0000${running.summary}\u0000`;
-		const finished = runs
-			.filter((run) => run.finishedAt !== undefined)
-			.sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0))[0];
 		return finished ? `${finished.toolName}\u0000${finished.summary}\u0000${finished.finishedAt}` : "";
 	});
 	/**
@@ -129,8 +133,6 @@ export function RunningIndicator() {
 		return last?.role === "assistant" && last.stopReason === "pending" ? freshTokens(last.usage) : 0;
 	});
 	const total = tokens + live;
-	// Travelled to, not jumped to: usage lands per message, so this moves in steps of thousands.
-	const counted = useCountUp(total);
 	/*
 	 * 现在写得多快——**只能是估出来的**，这一点必须说在前面。
 	 *
@@ -239,7 +241,7 @@ export function RunningIndicator() {
 			 * line of text. Theme stays on `auto`, which reads the `dark`/`light` class this app
 			 * already puts on `<html>` and follows it live.
 			 */}
-			<ThinkingOrb aria-hidden state={mood} size={20} className="shrink-0" />
+			<ThinkingOrb state={mood} size={20} className="shrink-0" />
 			{/*
 			 * Keyed on the words so one fades in as the other goes, rather than swapping in place.
 			 *
@@ -259,14 +261,7 @@ export function RunningIndicator() {
 					<span className="text-ink-faint tabular-nums">{formatElapsed(now - startedAt)}</span>
 				</>
 			)}
-			{total > 0 && (
-				<>
-					<span className="text-ink-faint">·</span>
-					{/* `tabular-nums` matters more while it is moving: without it the glyph widths
-					    change every frame and the whole line shuffles sideways as the number climbs. */}
-					<span className="text-ink-faint tabular-nums">{translate("running.turnTokens", { n: formatTokens(Math.round(counted)) })}</span>
-				</>
-			)}
+			<TurnTokens total={total} />
 			{/*
 			 * 这一轮写得多快——一旦有过读数，就一直挂着，直到被新的读数**走**过去替换。
 			 *
@@ -279,12 +274,7 @@ export function RunningIndicator() {
 			 *
 			 * 淡入一次而不是每次都淡：这一行上已经有一个跳动的省略号和一个在爬的总数，数字自己走就够了。
 			 */}
-			{rate >= 0.05 && (
-				<>
-					<span className="text-ink-faint">·</span>
-					<span className="ly-fade-in text-ink-faint tabular-nums">{rate.toFixed(1)} tok/s</span>
-				</>
-			)}
+			<LiveRate rate={rate} />
 			{/*
 			 * Why the wait is longer than it should be, on the line that is already counting it.
 			 *
@@ -315,5 +305,48 @@ export function RunningIndicator() {
 			 * 模型在思考。见 `thinking-words.ts`。
 			 */}
 		</div>
+	);
+}
+
+/*
+ * 下面两个数字是这一行上唯二逐拍在动的东西，所以各自单独一个组件。
+ *
+ * 行程（`useCountUp`）每一拍改一次状态。写在 `RunningIndicator` 里，每一拍就是整个指示器重算一遍：十来个
+ * store 选择器、心情和短语、思考球的 props。量过并行工具的一轮：指示器每秒自己重画约 44 次，几乎全是这两段
+ * 行程（速度每 250ms 来一个新目标、走 240ms，等于一直在走）。放在这里，每拍只重画一个 span。
+ *
+ * 目标值和它的记忆（`useLiveRate` 的采样）仍然留在指示器里，在等待审批的那个提前返回之前：这两块在
+ * 等待时被卸下，回来时从当前读数直接出现，不从 0 走起，攒下的速度也不丢。
+ */
+
+/** Travelled to, not jumped to: usage lands per message, so this moves in steps of thousands. */
+function TurnTokens({ total }: { total: number }) {
+	const counted = useCountUp(total);
+	if (total <= 0) return null;
+	return (
+		<>
+			<span className="text-ink-faint">·</span>
+			{/* `tabular-nums` matters more while it is moving: without it the glyph widths
+			    change every frame and the whole line shuffles sideways as the number climbs. */}
+			<span className="text-ink-faint tabular-nums">{translate("running.turnTokens", { n: formatTokens(Math.round(counted)) })}</span>
+		</>
+	);
+}
+
+/**
+ * 速度走过去，**而且是双向的**：`useCountUp` 默认拒绝往下走，因为它本来是给只增不减的累计数用的；
+ * 速度不一样，慢下来和快起来一样真实。
+ *
+ * 走得比 token 总数那条快一点。总数走 520ms，因为它一次跳几千、需要时间读完这一段路。速度每 250ms 就有
+ * 新值，520ms 的行程会让上一段还没走完下一段就开始，看起来像在拖。240ms 刚好接得上采样的节奏。
+ */
+function LiveRate({ rate: reading }: { rate: number }) {
+	const rate = useCountUp(reading, 240, { bidirectional: true });
+	if (rate < 0.05) return null;
+	return (
+		<>
+			<span className="text-ink-faint">·</span>
+			<span className="ly-fade-in text-ink-faint tabular-nums">{rate.toFixed(1)} tok/s</span>
+		</>
 	);
 }

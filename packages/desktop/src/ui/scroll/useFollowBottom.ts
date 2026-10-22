@@ -29,6 +29,7 @@ import {
 } from "./follow.ts";
 import { readFollow, writeFollow, type FollowSnapshot } from "./memory.ts";
 import { motionReduced } from "../motion/reduced.ts";
+import { windowFocused } from "../motion/ticker.ts";
 
 /** How long the ride back down takes. The curve matches `--ly-e-out`, like everything else here. */
 const GLIDE_MS = 420;
@@ -376,8 +377,10 @@ export function useFollowBottom({
 
 			const moving = chase.current !== 0;
 			const output = writing.current.live || now - writing.current.ended < TAIL_MS;
+			// 窗口没焦点时不追，直接贴底：正文那时按 10Hz 长（`ticker.ts`），弹簧却照样每帧写 `scrollTop`，
+			// 失焦省下的那点几乎全被它吃掉。没人盯着看的时候，这一段滑不滑没有区别。
 			const slide =
-				output && known && sameView && grew >= 0 && grew <= reading.clientHeight && target > reading.scrollTop && (moving || grew > 0) && !motionReduced();
+				output && known && sameView && grew >= 0 && grew <= reading.clientHeight && target > reading.scrollTop && (moving || grew > 0) && !motionReduced() && windowFocused();
 			if (!slide) {
 				cancelAnimationFrame(chase.current);
 				chase.current = 0;

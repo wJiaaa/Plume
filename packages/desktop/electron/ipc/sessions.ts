@@ -43,6 +43,7 @@ import {
 	setReportBack,
 	sideSessionsOf,
 	snapshot,
+	streamingMessage,
 	touchSession,
 	worktreeFollowsArchive,
 } from "../session/session-hub.ts";
@@ -426,6 +427,8 @@ export function registerSessionsIpc({
 	ipcMain.handle("agent:abort", async (_event, sessionId: string) => {
 		await abortSession(sessionId);
 	});
+
+	ipcMain.handle("agent:streamingMessage", (_event, sessionId: string) => streamingMessage(sessionId));
 
 	ipcMain.handle(
 		"agent:approve",

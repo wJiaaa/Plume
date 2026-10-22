@@ -115,7 +115,8 @@ test("切走期间写下的字，切回来那一帧就在；之后来的字照�
 		await frames(60);
 		const more = `${away}${"回来以后才到的字。".repeat(20)}`;
 		await view.rerender(h(Page, { text: more }));
-		await frames(30);
+		// 放字按拍走（`ticker.ts`，33ms 一拍），等两拍。
+		await frames(60);
 		const shown = view.text().length;
 		assert.ok(shown > away.length && shown < more.length, `回来以后到的字照常放：${shown}/${more.length}`);
 	} finally {
@@ -141,8 +142,15 @@ test("新起的一段淡入；早就在屏幕上的那段字不重放", async ()
 		await frames(120);
 		await frames(250);
 		await view.rerender(h(Markdown, { text: `${first}\n\n新起的一段。`, streaming: true }));
-		await frames(60);
-		const [old, fresh] = view.all("p");
+		// 等它露面，不按固定时长等：字按拍放（一拍 33ms），机器一忙计时器就晚，60ms 里可能一拍都没轮到。
+		// 一露面就看，淡入要 180ms，20ms 一查赶得上。
+		let fresh: Element | undefined;
+		for (let waited = 0; !fresh && waited < 1000; waited += 20) {
+			await frames(20);
+			fresh = view.all("p")[1];
+		}
+		const [old] = view.all("p");
+		assert.ok(fresh, "新起的一段放出来了");
 		assert.equal(old.querySelectorAll(".ly-fade-char").length, 0, "老的那段一个字也不重放");
 		assert.ok(fresh.querySelectorAll(".ly-fade-char").length > 0, "新起的一段在淡入");
 	} finally {
@@ -290,6 +298,27 @@ test("输出中的代码块，新来的字也淡入；写完之后是原样的�
 		await frames(1500);
 		assert.equal(view.all(".ly-fade-char").length, 0, "淡完之后是纯文本");
 		assert.equal(view.find(".ly-code-block pre").textContent, code.slice(code.indexOf("const a"), code.lastIndexOf("\n```")));
+	} finally {
+		await view.unmount();
+	}
+});
+
+test("淡入的字透明度一拍一拍往上走，写在 style 上而不是交给 CSS 动画", async () => {
+	const view = await mount(h(Markdown, { text: "第一句。", streaming: true }));
+	try {
+		await frames(300);
+		await view.rerender(h(Markdown, { text: "第一句。第二句接着来。", streaming: true }));
+		await frames(20);
+		const span = view.all(".ly-fade-char")[0] as HTMLElement | undefined;
+		assert.ok(span, "新出现的字应该在淡入");
+		const early = Number(span.style.opacity);
+		await frames(70);
+		const later = Number(span.style.opacity);
+		assert.ok(early >= 0 && early < later && later <= 1, `同一组字的透明度应该在涨：${early} → ${later}`);
+		// 分几次等：一次长的 `act` 里 React 把渲染攒到最后才提交，那一刻放出来的字透明度必然是 0。
+		for (let i = 0; i < 10; i++) await frames(50);
+		const left = view.all(".ly-fade-char").map((e) => `${e.textContent}@${(e as HTMLElement).style.opacity}`);
+		assert.equal(left.length, 0, `淡完之后并回纯文本：${left.join(" | ")}`);
 	} finally {
 		await view.unmount();
 	}

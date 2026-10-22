@@ -1,8 +1,40 @@
 import type { SessionStorage } from "@plume/core";
 import type { SessionChange } from "@plume/contract";
 
+/** 消息记录引起的列表变化最多隔这么久推一次，见 `observeSessionStorage`。 */
+export const SETTLE_MS = 250;
+
 /** Observe committed writes at the shared IPC/RPC boundary, including cold sessions. */
-export function observeSessionStorage(store: SessionStorage, changed: (change: SessionChange) => void): SessionStorage {
+export function observeSessionStorage(store: SessionStorage, announce: (change: SessionChange) => void): SessionStorage {
+	/*
+	 * 消息记录引起的变化，每个会话最多 `SETTLE_MS` 推一次：第一条立刻推，之后的并成一条带最新 meta 的。
+	 *
+	 * 每写一条记录 `seq`、`updatedAt` 就换新，一批六个并行工具是十几条消息记录、十几次广播，每次窗口都把整张
+	 * 会话列表重排一遍，侧边栏、顶栏、分屏跟着重画——量到每秒约 11 次。消息记录给列表带来的只有排序，晚
+	 * 一点没人分得出。标题、模型、归档、挪动、截断、删除是列表上看得见的事，照旧立刻推，并作废这个会话
+	 * 还没推出去的那条：删掉之后再推一条旧的，会把会话放回侧边栏。
+	 */
+	const held = new Map<string, { timer: ReturnType<typeof setTimeout>; change: SessionChange | null }>();
+	const settle = (id: string) => {
+		const slot = held.get(id);
+		held.delete(id);
+		if (slot?.change) gathered(slot.change);
+	};
+	const gathered = (change: SessionChange) => {
+		const slot = held.get(change.id);
+		if (slot) {
+			slot.change = change;
+			return;
+		}
+		announce(change);
+		held.set(change.id, { change: null, timer: setTimeout(() => settle(change.id), SETTLE_MS) });
+	};
+	const changed = (change: SessionChange) => {
+		const slot = held.get(change.id);
+		if (slot) clearTimeout(slot.timer);
+		held.delete(change.id);
+		announce(change);
+	};
 	return {
 		async create(...args) {
 			const meta = await store.create(...args);
@@ -13,7 +45,8 @@ export function observeSessionStorage(store: SessionStorage, changed: (change: S
 			const meta = await store.append(...args);
 			// Token updates already travel over the agent stream; only directory changes need a push.
 			// Null is a write that landed after its session was deleted: announcing it would put the session back in the sidebar.
-			if (meta && args[1].type !== "event") changed({ id: meta.id, projectId: meta.projectId, meta });
+			if (!meta || args[1].type === "event") return meta;
+			(args[1].type === "message" ? gathered : changed)({ id: meta.id, projectId: meta.projectId, meta });
 			return meta;
 		},
 		async setArchived(...args) {

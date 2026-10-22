@@ -77,7 +77,7 @@ afterEach(async () => {
 });
 
 function meterUnder(id: string, messages: Message[]): ReturnType<typeof h> {
-	return h(I18nProvider, { locale: "zh-CN", children: h(SessionScope.Provider, { value: id }, h(ContextMeter, { messages, settings, modelId: model.id, sessionId: id })) });
+	return h(I18nProvider, { locale: "zh-CN", children: h(SessionScope.Provider, { value: id }, h(ContextMeter, { messageCount: messages.length, settings, modelId: model.id, sessionId: id })) });
 }
 const settle = () => act(async () => {});
 

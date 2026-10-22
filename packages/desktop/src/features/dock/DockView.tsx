@@ -44,6 +44,7 @@ import { useBoxSize } from "./useBoxSize.ts";
 import { useColumnSlide } from "./column-slide.ts";
 import { activeTab, clampTabShare, legacyTabShare, panelsOf, tabbedTree } from "./tabs.ts";
 import { PanelTabs, type AddablePanel, type PanelTab } from "./PanelTabs.tsx";
+import { RetainedPanel } from "./RetainedPanel.tsx";
 
 const WHOLE: Box = { left: 0, top: 0, width: 1, height: 1 };
 
@@ -385,6 +386,7 @@ export function DockView({
 						const panelHeader = conversation ? null : renderPanelHeader(kind as PanelKind);
 						const inset = startCorner === kind ? insets.start : 0;
 						const insetEnd = endCorner === kind ? insets.end : 0;
+						const hidden = compact ? kind !== focusedPane : !placed;
 						return (
 							<DockPane
 								key={kind}
@@ -394,7 +396,7 @@ export function DockView({
 								label={label}
 								icon={icon}
 								maximized={Boolean(focus) && Boolean(placed)}
-								hidden={compact ? kind !== focusedPane : !placed}
+								hidden={hidden}
 								/*
 								 * 新开一个标签，是在这一栏正显示着的那一格上顶替它：旧的那格立刻透明，
 								 * 新的那格要是再从透明淡入，中间 150ms 整栏（连同标签条）都是空的，看着就是闪了一下。
@@ -427,7 +429,9 @@ export function DockView({
 												{panelHeader}
 											</div>
 										)}
-										<div className="relative flex min-h-0 min-w-0 flex-1 flex-col">{renderPanel(kind as PanelKind)}</div>
+										<div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+											{base === "chat" ? <RetainedPanel hidden={hidden}>{renderPanel(kind as PanelKind)}</RetainedPanel> : renderPanel(kind as PanelKind)}
+										</div>
 									</>
 								)}
 							</DockPane>

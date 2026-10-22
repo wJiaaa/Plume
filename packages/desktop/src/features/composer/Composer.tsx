@@ -39,7 +39,7 @@ import type { DraftAttachment } from "./attachments/read.ts";
 import { useComposerAttachments } from "./useComposerAttachments.tsx";
 import { useDraft } from "./useDraft.ts";
 import { useApp } from "../../store/index.ts";
-import { focusScreenOf, useScopedFromMessages, useScopedMessages, useScopedMeta, useScopedRunning, useScopedSessionId, useScopedStopped, useScopedSubAgents, useScopedTodos, useScopedToolRuns, useScopedWorking, useScopedWorkspace } from "../../app/session-scope.tsx";
+import { focusScreenOf, useScopedFromMessages, useScopedMeta, useScopedRunning, useScopedSessionId, useScopedStopped, useScopedSubAgents, useScopedTodos, useScopedToolRuns, useScopedUserMessages, useScopedWorking, useScopedWorkspace } from "../../app/session-scope.tsx";
 import { awaitingSubAgents } from "../../store/subAgents.ts";
 import { awaitingSession } from "../../store/tool-run.ts";
 import { carryOnPrompt } from "../../store/derive.ts";
@@ -80,7 +80,8 @@ export function Composer({ centered = false }: {
 	const { workspace, scratchCwd } = useScopedWorkspace();
 	const settings = useApp((s) => s.settings);
 	const meta = useScopedMeta();
-	const messages = useScopedMessages();
+	const userMessages = useScopedUserMessages();
+	const messageCount = useScopedFromMessages((all) => all.length);
 	const running = useScopedRunning();
 	const stopped = useScopedStopped();
 	// A count, not the list: a selector that builds an array hands back a new one on every store tick.
@@ -233,7 +234,7 @@ export function Composer({ centered = false }: {
 	 * 排在 @ 和 / 后面接方向键——它俩开着的时候，上下是用来挑名单的。
 	 */
 	const history = useInputHistory({
-		messages,
+		messages: userMessages,
 		value: text,
 		attachments,
 		/* 翻出来的那一条整份交回：字是字，那袋文件也照原样挂上。 */
@@ -879,7 +880,7 @@ export function Composer({ centered = false }: {
 							 * already given up its words for a larger saving.
 							 */}
 							<div data-ly-fit-drop="2" className="flex shrink-0 items-center">
-								<ContextMeter messages={messages} settings={settings} modelId={modelId} sessionId={activeSessionId} openFile={openFile} />
+								<ContextMeter messageCount={messageCount} settings={settings} modelId={modelId} sessionId={activeSessionId} openFile={openFile} />
 							</div>
 
 							<ModelTrigger modelId={modelId} ariaLabel={t("composer.selectModel")} />

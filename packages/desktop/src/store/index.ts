@@ -35,6 +35,7 @@ import { create } from "zustand";
 import { useSide } from "../features/dock/sideStore.ts";
 import { sideChatRunning, sideSessionIds } from "../lib/row-activity.ts";
 import { bridge, inFrame } from "../services/index.ts";
+import { PatchReader } from "../../shared/message-patch.ts";
 import { activeModelCatalog } from "@plume/core/model-catalog";
 import { pullModelCatalog } from "./model-catalog.ts";
 import type { ToolRun } from "./tool-run.ts";
@@ -719,14 +720,19 @@ export const useApp = create<AppState>((set, get) => ({
 			.updates?.()
 			.then((pluginUpdates) => set({ pluginUpdates }))
 			.catch(() => {});
-		bridge.agent.onEvent(({ sessionId, event }) =>
-			inFrame(() => get().applyEvent(sessionId, event)),
+		// 流式回复过 IPC 时只带变了的部分，在这里接回整条 `message_update`，下游照旧。见 `message-patch.ts`。
+		const replies = new PatchReader(
+			(sessionId) => bridge.agent.streamingMessage(sessionId),
+			(sessionId, event) => inFrame(() => get().applyEvent(sessionId, event)),
 		);
+		bridge.agent.onEvent(({ sessionId, event }) => replies.read(sessionId, event));
 		if (typeof window !== "undefined") {
 			window.addEventListener("plume:connection", (event) => {
 				const status = event instanceof CustomEvent ? event.detail : null;
 				if (status === "reconnecting" || status === "offline") {
 					connectionInterrupted = true;
+					// 断开期间的补丁可能丢了，手里那份接不上；下一条补丁会去要关键帧。
+					replies.reset();
 					return;
 				}
 				if (status !== "connected" || !connectionInterrupted || !initialComplete) return;

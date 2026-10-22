@@ -18,6 +18,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { motionReduced } from "../../ui/motion/reduced.ts";
+import { cancelTick, requestTick } from "../../ui/motion/ticker.ts";
 import { FADE, holdsWord, Pace, wordCut } from "./stream-pace.ts";
 
 /**
@@ -101,7 +102,10 @@ export function useSmoothText(
 		// 刚露面时也不接别处的时间线：被挤出去又挂回来的那一段，旧时间线只排到离开时的长度。
 		const adopted = motion && !arrival.fresh ? resumable(text, live) : null;
 		const pace = adopted ?? new Pace();
-		if (!adopted) {
+		// 接过来的时间线只排到旧的那段原文。收尾那一批字常和 message_end、重挂落在同一次提交里，不排进去的话
+		// 时间线比原文短：放字永远到不了结尾，`active` 永远不落，末尾那几个字一直不出来。
+		if (adopted) adopted.plan(now, text.length);
+		else {
 			if (live && motion && !arrival.fresh && text.length <= REPLAY) pace.plan(now, text.length);
 			else pace.present(text.length, now);
 		}
@@ -150,6 +154,10 @@ export function useSmoothText(
 		}
 		if (!here.active) return;
 
+		/*
+		 * 按拍放字，不按帧：每放一次就是整段 Markdown 重画一遍，而一个字要淡 `FADE` 毫秒，30 次每秒时
+		 * 相邻几批照样叠着淡，看不出一格一格。只管什么时候画，时间线照旧按帧时刻排，字的出现时刻不变。
+		 */
 		const step = (time: number) => {
 			here.frame = 0;
 			const cut = wordCut(here.target, here.pace.cut(time), holdsWord(time, here.pace.arrivedAt, here.live));
@@ -161,13 +169,13 @@ export function useSmoothText(
 				if (!here.live) settle();
 				return;
 			}
-			here.frame = requestAnimationFrame(step);
+			here.frame = requestTick(step);
 		};
 		if (here.cut >= text.length) {
 			if (!live) settle();
 			return;
 		}
-		here.frame = requestAnimationFrame(step);
+		here.frame = requestTick(step);
 	}, [text, live, motion, here, arrival]);
 
 	/*
@@ -177,7 +185,7 @@ export function useSmoothText(
 	 */
 	useEffect(
 		() => () => {
-			cancelAnimationFrame(here.frame);
+			cancelTick(here.frame);
 			here.frame = 0;
 			clearTimeout(here.linger);
 		},

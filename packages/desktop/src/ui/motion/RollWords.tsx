@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { useRolled } from "./RollingText.tsx";
+import { GLIDE, useTickedAnimations } from "./ticked.ts";
 
 /**
  * 一行流水行里换掉的那句话：新的从一道缝里落进来，词框的宽度跟着平滑地变。
@@ -29,6 +30,7 @@ export function RollWords({ rollKey, text, from, glide, enter, children }: {
 	const rolls = useRolled(rollKey) || enter;
 	const box = useRef<HTMLSpanElement>(null);
 	const width = useRef<number | null>(from ?? null);
+	useTickedAnimations(box, GLIDE, Boolean(glide));
 
 	useLayoutEffect(() => {
 		const element = box.current;

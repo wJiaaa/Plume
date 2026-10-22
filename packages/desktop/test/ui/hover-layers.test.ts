@@ -232,3 +232,43 @@ test("useSessionCard: 卡已经开着，菜单或对话框一来就把它撤掉"
 
 	await view.unmount();
 });
+
+test("useSessionCard: 没悬停的行不在 window 上挂 scroll 监听，悬停期间挂上、滚动照样收卡", async () => {
+	// 流式时转录每帧都滚，每一行一个捕获监听就是每帧 × 行数次 `dismiss()`。
+	const live = new Set<EventListenerOrEventListenerObject>();
+	const add = window.addEventListener.bind(window);
+	const remove = window.removeEventListener.bind(window);
+	window.addEventListener = ((type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) => {
+		if (type === "scroll") live.add(listener);
+		add(type, listener, options);
+	}) as typeof window.addEventListener;
+	window.removeEventListener = ((type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions) => {
+		if (type === "scroll") live.delete(listener);
+		remove(type, listener, options);
+	}) as typeof window.removeEventListener;
+	try {
+		const p = probe();
+		const view = await p.view;
+		const row = view.find("[data-probe]");
+		assert.equal(live.size, 0, "指针没来过的行不该听滚动");
+
+		await act(async () => {
+			p.read().bind.onMouseEnter({ currentTarget: row, buttons: 0 } as never);
+		});
+		await act(async () => {
+			await sleep(PAST_THE_DELAY_MS);
+		});
+		assert.ok(p.read().anchor, "悬停把卡摆出来");
+		assert.equal(live.size, 1, "卡在场时要听滚动");
+
+		await act(async () => {
+			window.dispatchEvent(new Event("scroll"));
+		});
+		assert.equal(p.read().anchor, null, "一滚动卡就收掉");
+		assert.equal(live.size, 0, "收掉以后监听跟着摘掉");
+		await view.unmount();
+	} finally {
+		window.addEventListener = add;
+		window.removeEventListener = remove;
+	}
+});

@@ -110,7 +110,7 @@ export function RetainedViews<T extends string>({
  * 页面自己那层（`pageClassName`）不算：那是换页本身的到达动画，每次换页都该有。转圈、呼吸这种
  * 没有终点的照常跑——它们也没法跳到终点，`finish()` 会抛错。
  */
-function finishReplayedAnimations(page: HTMLElement): void {
+export function finishReplayedAnimations(page: HTMLElement): void {
 	for (const animation of page.getAnimations({ subtree: true })) {
 		// 只认 CSS 动画：`animate()` 起的（比如上面的滑入）不会因为 display 而重播。
 		if (!("animationName" in animation)) continue;

@@ -130,7 +130,7 @@ export function CodeBlock({ lang, code, fade = false }: { lang: string; code: st
 	}, [code, language, generation, fade]);
 
 	// 正在输出的代码块，新来的字和正文一样淡入，见 `FadeText`。不在输出的块不记出现时刻。
-	const { settled, group } = useFade(code, fade ? Array.from(code).length : 0);
+	const { settled, group, alpha } = useFade(code, fade ? Array.from(code).length : 0);
 	/*
 	 * The block's own sideways thumb. Native bars are hidden everywhere, so a long line simply ran
 	 * off the right edge: a trackpad could swipe to it, a Windows mouse could only Shift+wheel, and
@@ -170,7 +170,7 @@ export function CodeBlock({ lang, code, fade = false }: { lang: string; code: st
 			</div>
 			<pre ref={viewport}>
 				{fade ? (
-					fading(tokens ?? [{ text: code, className: "" }], { settled, group })
+					fading(tokens ?? [{ text: code, className: "" }], { settled, group, alpha })
 				) : (
 					<code>
 						{tokens
@@ -266,13 +266,13 @@ function fading(tokens: Token[], fade: Fade): ReactNode[] {
 }
 
 /** 一段里还有字在淡：淡完的部分成段，其余一组一个 span，里面再按 token 上色。 */
-function live(tokens: Token[], start: number, { settled, group }: Fade): ReactNode[] {
+function live(tokens: Token[], start: number, { settled, group, alpha }: Fade): ReactNode[] {
 	const out: ReactNode[] = [];
 	let open: { head: number; pieces: ReactNode[] } | null = null;
 	const close = () => {
 		if (open) {
 			out.push(
-				<span key={open.head} className="ly-fade-char">
+				<span key={open.head} className="ly-fade-char" style={{ opacity: alpha(open.head) }}>
 					{open.pieces}
 				</span>,
 			);

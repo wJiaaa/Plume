@@ -18,7 +18,7 @@
 import { Bot, Check, Copy, CornerLeftUp, Play, Plus, RotateCcw, TriangleAlert } from "../../ui/icons/index.ts";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { Message, SubAgentSummary } from "@plume/core";
+import type { SubAgentSummary } from "@plume/core";
 import { useI18n } from "../../i18n/index.ts";
 import { useApp } from "../../store/index.ts";
 import { rosterOrder, useSubAgents } from "../../store/subAgents.ts";
@@ -51,8 +51,6 @@ import { bridge } from "../../services/index.ts";
 import { openFilePane } from "../dock/index.ts";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import { useCopied } from "../../ui/hooks/useCopied.ts";
-
-const NO_MESSAGES: Message[] = [];
 
 /** 在应用里打开一个磁盘上的文件：开进旁边的文件面板，和主输入框、侧边聊天一样。 */
 const openFile = (path: string) => void openFilePane(path);
@@ -509,6 +507,6 @@ function Steer({ agent, sessionId }: { agent: SubAgentSummary; sessionId: string
 /** 它自己的上下文窗口，和主输入框同一只表。模型只有运行时知道（派它时按定义选的），窗口随读数一起来。 */
 function SubAgentMeter({ agent, sessionId }: { agent: SubAgentSummary; sessionId: string }) {
 	const settings = useApp((s) => s.settings);
-	const messages = useSubAgents((s) => s.transcripts[agent.id]) ?? NO_MESSAGES;
-	return <ContextMeter messages={messages} settings={settings} modelId={null} sessionId={sessionId} subAgentId={agent.id} running={agent.status === "running"} openFile={openFile} />;
+	const messageCount = useSubAgents((s) => s.transcripts[agent.id]?.length ?? 0);
+	return <ContextMeter messageCount={messageCount} settings={settings} modelId={null} sessionId={sessionId} subAgentId={agent.id} running={agent.status === "running"} openFile={openFile} />;
 }

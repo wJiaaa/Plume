@@ -338,6 +338,22 @@ test("写完那一刻剩下的字还在放：一秒内长出来的行照样滑�
 	await view.unmount();
 });
 
+test("窗口没焦点时输出中的长高一步到位，不再每帧追；回到窗口照旧滑", async () => {
+	const { view, el } = await open("blurred");
+	window.dispatchEvent(new Event("blur"));
+	try {
+		await arrives(view, "blurred", 1, 26);
+		await act(async () => controls.onResize(el));
+		assert.equal(el.scrollTop, bottom(), "没人盯着看，直接贴底");
+	} finally {
+		window.dispatchEvent(new Event("focus"));
+	}
+	await arrives(view, "blurred", 2, 26);
+	await act(async () => controls.onResize(el));
+	assert.ok(el.scrollTop < bottom(), "回来之后长高一行又是滑过去的");
+	await view.unmount();
+});
+
 test("没在输出时长高的一截一步到位——切进一个会话，末尾那张卡片晚到，不把整段历史滑上来", async () => {
 	const { view, el } = await open("at-rest", { live: false });
 	geometry.content += 150;

@@ -943,20 +943,8 @@
 }
 
 /*
- * 正在输出的字淡入——见 `FadeText.tsx`。
- *
- * 时长和那边的 `FADE` 是同一个数，改一处要跟着改另一处：那边按它判断一个字什么时候淡完、可以并回
- * 纯文本。`both` 让还没轮到的字（`animation-delay` 为正）先保持透明，而不是先实着闪一下再淡入。
+ * 正在输出的字淡入不在这里：透明度由 `FadeText.tsx` 按拍子算好写进 `style`，`.ly-fade-char` 只是
+ * 「这几个字还在淡」的标记。CSS 动画试过两种，都不行——动 `opacity` 会给每组字提一个合成层，
+ * 层树每帧重排（Layerize 占主线程 43%）；动注册过的自定义属性不提层，可它只能在主线程逐帧算，
+ * 120Hz 屏上页面每帧都脏。见 `ui/motion/ticker.ts`。
  */
-@keyframes ly-stream-fade {
-	from {
-		opacity: 0;
-	}
-	to {
-		opacity: 1;
-	}
-}
-
-.ly-fade-char {
-	animation: ly-stream-fade 180ms cubic-bezier(0.33, 0, 0.67, 1) both;
-}

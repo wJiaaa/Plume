@@ -11,7 +11,7 @@ import { test } from "node:test";
 import type { Message } from "@plume/core";
 
 import { runKey, type Run } from "../src/features/conversation/grouping.ts";
-import { turnBlocks, withoutThinking, type TurnBlock } from "../src/features/conversation/turn-blocks.ts";
+import { sameStep, turnBlocks, withoutThinking, type Step, type TurnBlock } from "../src/features/conversation/turn-blocks.ts";
 
 const ask = (text: string, index: number): Run => ({
 	kind: "message",
@@ -359,4 +359,23 @@ test("挨着自己一行的后台命令结果并成一行，key 跟第一条走"
 
 test("子代理的结果照旧单独一行：后面那段话是就着它说的", () => {
 	assert.deepEqual(items(turnBlocks([ask("派出去", 0), work(1), returned(2, true), work(1)])[1]), ["step(read)", "user", "step(read)"]);
+});
+
+test("sameStep: a regrouped step with the same calls is the same; a streamed argument or a new call is not", () => {
+	const block = { type: "toolCall" as const, id: "c1", name: "read", arguments: { path: "a.ts" } };
+	const reply = { role: "assistant", content: [{ type: "thinking", thinking: "看一下" }], stopReason: "toolUse", timestamp: 1 } as Message;
+	const stats = { durationMs: 10, requestMs: 5, sseDurationMs: 4, outputTokens: 3, requestCount: 1, startIndex: 0 };
+	const build = (calls = [block], turnStats = { ...stats }): Step => ({
+		key: "step-c1",
+		category: "explore",
+		calls: calls.map((b) => ({ block: b, stopReason: "toolUse" as const })),
+		members: [
+			{ kind: "thinking" as const, run: { kind: "message" as const, message: reply, index: 1, upTo: 1, turnStats } },
+			...calls.map((b) => ({ kind: "call" as const, call: { block: b, stopReason: "toolUse" as const } })),
+		],
+	});
+	assert.equal(sameStep(build(), build()), true, "分组重做出来的新对象，内容没变");
+	assert.equal(sameStep(build(), build([{ ...block, arguments: { path: "a.tsx" } }])), false, "参数还在流进来：id 没变，block 换了");
+	assert.equal(sameStep(build(), build([block, { ...block, id: "c2" }])), false, "又多了一次调用");
+	assert.equal(sameStep(build(), build([block], { ...stats, outputTokens: 9 })), false, "推理那一行的账变了");
 });

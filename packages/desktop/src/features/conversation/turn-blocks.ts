@@ -8,7 +8,8 @@
 import type { DeliveredReport } from "@plume/core";
 import { toolCategory } from "../../lib/tool-kinds.ts";
 import { runKey, type Call, type Run } from "./grouping.ts";
-import { opensTurn } from "./turns.ts";
+import { samePage } from "./preview-pages.ts";
+import { opensTurn, sameStats } from "./turns.ts";
 
 /**
  * 一轮：开口的那句话之后，到下一句之前的全部。
@@ -59,6 +60,38 @@ export interface Step {
 }
 
 export type StepMember = { kind: "call"; call: Call } | { kind: "thinking" | "job"; run: Extract<Run, { kind: "message" }> };
+
+/**
+ * 一段活有没有要重画的东西——`WorkStep` 的 memo 比较。
+ *
+ * `turnBlocks` 每次转录变了都整个重做，每一段都是新对象；不比内容，一个工具结果落地，可见的二十轮里
+ * 每一段活都要重画一遍，连同各自那七八个 store 订阅。并行工具一批六个、两百轮下来，渲染进程每轮的 CPU
+ * 涨到开头的近两倍，大头就是这个（`e2e/scratch/tools-cpu-probe.ts`）。
+ *
+ * 调用比 `block` 本身而不是 `sameRun` 那样比 id：这一行的那句话读的是参数，参数还在流进来时 id 不变、
+ * block 换了。消息只换不改，定下来的 block 引用不会变。推理和送回来的结果按 `sameRow` 的规矩比，
+ * `turnStats` 比数。
+ *
+ * 只管内容；`live` 和画推理那一行要的外部状态由调用方另比。放在这里而不是组件里，理由同 `sameRun`。
+ */
+export function sameStep(before: Step, after: Step): boolean {
+	if (before === after) return true;
+	if (before.key !== after.key || before.category !== after.category || before.members.length !== after.members.length) return false;
+	return before.members.every((member, i) => {
+		const other = after.members[i];
+		if (member.kind !== other.kind) return false;
+		if (member.kind === "call" && other.kind === "call") {
+			return member.call.block === other.call.block && member.call.stopReason === other.call.stopReason && samePage(member.call.page, other.call.page);
+		}
+		return member.kind !== "call" && other.kind !== "call" && sameMessageRun(member.run, other.run);
+	});
+}
+
+function sameMessageRun(a: Extract<Run, { kind: "message" }>, b: Extract<Run, { kind: "message" }>): boolean {
+	const keys = Object.keys(a) as (keyof typeof a)[];
+	if (keys.length !== Object.keys(b).length) return false;
+	return keys.every((key) => key === "turnStats" || Object.is(a[key], b[key])) && sameStats(a.turnStats, b.turnStats);
+}
 
 /** 这一条 run 是不是「过程」——相对于说出口的话。 */
 function isProcess(run: Run): boolean {

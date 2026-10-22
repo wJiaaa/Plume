@@ -26,7 +26,7 @@ import { stripEmoji } from "../../lib/markdown/strip-emoji.ts";
 import { withoutFollowups } from "@plume/core/followups";
 import { completeTailHeld } from "../../lib/markdown/stream-tail.ts";
 import { useSmoothText } from "./useSmoothText.ts";
-import { BlockScan, FadeScope, FadeText } from "./FadeText.tsx";
+import { BlockScan, FadeIn, FadeScope, FadeText } from "./FadeText.tsx";
 import { OverlayScrollbar } from "../../ui/scroll/OverlayScrollbar.tsx";
 import { Doc, Writing } from "./context.ts";
 import { Link } from "./MarkdownLink.tsx";
@@ -369,13 +369,9 @@ function renderToken(token: Inline, fade: boolean): ReactNode {
 		case "text":
 			return fade ? <FadeText text={token.text} /> : token.text;
 		case "code": {
-			/*
-			 * 行内代码写完才出现（见 `completeTail`），整枚一起淡入。`ly-fade-char` 的动画只在挂上时跑
-			 * 一次，之后这枚代码跟着重画也不会再从头淡一遍。
-			 */
-			const code = (
-				<code className={`[box-decoration-break:clone] [-webkit-box-decoration-break:clone]${fade ? " ly-fade-char" : ""}`}>{token.text}</code>
-			);
+			// 行内代码写完才出现（见 `completeTail`），整枚一起淡入。
+			const box = "[box-decoration-break:clone] [-webkit-box-decoration-break:clone]";
+			const code = fade ? <FadeIn as="code" className={box}>{token.text}</FadeIn> : <code className={box}>{token.text}</code>;
 			// 提示词让模型把路径写成 `path/to/file.ts:42` 以便点击；解析不到本机路径时 `Link` 原样还给这枚代码。
 			const path = filePathInCode(token.text);
 			return path ? <Link href={path}>{code}</Link> : code;
@@ -396,7 +392,7 @@ function renderToken(token: Inline, fade: boolean): ReactNode {
 			const html = renderMath(token.tex, false);
 			if (!html) return `$${token.tex}$`;
 			// noDangerouslySetInnerHtml 在这里不适用（本仓库用 oxlint，不认 biome 的抑制注释，所以这只是一句说明）: KaTeX's own output, built from a parse tree it escapes.
-			return <span className={fade ? "ly-math ly-fade-char" : "ly-math"} dangerouslySetInnerHTML={{ __html: html }} />;
+			return fade ? <FadeIn as="span" className="ly-math" dangerouslySetInnerHTML={{ __html: html }} /> : <span className="ly-math" dangerouslySetInnerHTML={{ __html: html }} />;
 		}
 		case "link":
 			return <Link href={token.href}>{renderTokens(token.children, fade)}</Link>;

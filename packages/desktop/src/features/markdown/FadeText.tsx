@@ -18,7 +18,8 @@
  * 块的原文里找到自己（`BlockScan`），落在那之后的淡入，之前的当作淡完。
  */
 
-import { createContext, type ReactNode, useContext, useRef } from "react";
+import { createContext, type HTMLAttributes, type ReactNode, useContext, useEffect, useReducer, useRef } from "react";
+import { cancelTick, requestTick } from "../../ui/motion/ticker.ts";
 import { FADE } from "./stream-pace.ts";
 
 /** 这条回复的原文（画出来的那份）从第几个 UTF-16 单元起是最近放出来的。`Markdown` 每次画都改这一个对象，不换引用：换了引用，每个 `FadeText` 每帧都要重画。 */
@@ -32,7 +33,7 @@ export const BlockScan = createContext<{ raw: string; start: number; cursor: num
 
 export function FadeText({ text }: { text: string }) {
 	const chars = Array.from(text);
-	const { settled, group } = useFade(text, chars.length);
+	const { settled, group, alpha } = useFade(text, chars.length);
 
 	const fading: ReactNode[] = [];
 	for (let at = settled; at < chars.length; ) {
@@ -40,7 +41,7 @@ export function FadeText({ text }: { text: string }) {
 		let end = at + 1;
 		while (end < chars.length && group(end) === head) end++;
 		fading.push(
-			<span key={head} className="ly-fade-char">
+			<span key={head} className="ly-fade-char" style={{ opacity: alpha(head) }}>
 				{chars.slice(at, end).join("")}
 			</span>,
 		);
@@ -56,12 +57,17 @@ export function FadeText({ text }: { text: string }) {
 
 /**
  * 一段正在长的字里，每个字什么时候出现：`settled` 之前的已经淡完，画成纯文本；之后的字按
- * `group(序号)` 分组，每组画成一个淡入的 span，组头就是 key。`length` 按码点数（`Array.from`），
- * 不按 UTF-16；`text` 用来在块的原文里找位置。
+ * `group(序号)` 分组，每组画成一个 span，组头就是 key，透明度是 `alpha(组头)`。`length` 按码点数
+ * （`Array.from`），不按 UTF-16；`text` 用来在块的原文里找位置。
  *
  * 代码块也用它：配色切出来的 token 边界随着字长出来会变，但每个字的序号不变，出现时刻就不会乱。
+ *
+ * **淡入按拍子重画，不交给 CSS 动画。** 从前动的是注册过的 `--ly-stream-alpha`（为的是不提合成层，
+ * 见 `markdown.css`），可自定义属性的动画只能在主线程上逐帧算：120Hz 屏上，哪怕正文这一拍没长，
+ * 页面也每帧都脏一遍。现在透明度在渲染时按出生时刻算好写进 `style`，还有字在淡就约下一拍
+ * （`ticker.ts`）再画一次，和放字、跟随滚动落在同一帧里。仍然不提层：没有动画，就没有合成器要接手的东西。
  */
-export function useFade(text: string, length: number): { settled: number; group: (index: number) => number } {
+export function useFade(text: string, length: number): { settled: number; group: (index: number) => number; alpha: (head: number) => number } {
 	const scope = useContext(FadeScope);
 	const scan = useContext(BlockScan);
 	const state = useRef<{ births: number[]; groups: number[] } | null>(null);
@@ -99,7 +105,56 @@ export function useFade(text: string, length: number): { settled: number; group:
 	let settled = 0;
 	while (settled < length && now - births[settled] >= FADE) settled++;
 
-	return { settled, group: (index) => groups[index] };
+	const [, redraw] = useReducer((n: number) => n + 1, 0);
+	const fading = settled < length;
+	useEffect(() => {
+		if (!fading) return;
+		/*
+		 * 自己续拍，不等渲染完再约：最后一个字淡完之前每拍重画一次。新字是父组件在同一拍里放出来的，
+		 * 这一拍看到的还是旧的出生时刻，可能以为已经淡完就停了——所以字数一变就重新起一趟，不然新来的
+		 * 那组字停在透明度 0 上。
+		 */
+		let tick = 0;
+		const loop = () => {
+			redraw();
+			const latest = state.current?.births.at(-1) ?? 0;
+			if (performance.now() - latest < FADE) tick = requestTick(loop);
+		};
+		tick = requestTick(loop);
+		return () => cancelTick(tick);
+	}, [fading, length]);
+
+	return { settled, group: (index) => groups[index], alpha: (head) => fadeAlpha(now - births[head]) };
+}
+
+/**
+ * 挂上时整枚一起淡入：写完才出现的行内代码、公式。和 `useFade` 一样按拍子重画，淡完就摘掉
+ * `style`，之后跟着重画也不会再淡一遍。
+ */
+export function FadeIn({ as: Tag, className, ...rest }: { as: "code" | "span" } & HTMLAttributes<HTMLElement>) {
+	const born = useRef(0);
+	if (!born.current) born.current = performance.now();
+	const alpha = fadeAlpha(performance.now() - born.current);
+	const [, redraw] = useReducer((n: number) => n + 1, 0);
+	const fading = alpha < 1;
+	useEffect(() => {
+		if (!fading) return;
+		let tick = 0;
+		const loop = () => {
+			redraw();
+			if (performance.now() - born.current < FADE) tick = requestTick(loop);
+		};
+		tick = requestTick(loop);
+		return () => cancelTick(tick);
+	}, [fading]);
+	if (alpha >= 1) return <Tag {...rest} className={className} />;
+	return <Tag {...rest} className={className ? `${className} ly-fade-char` : "ly-fade-char"} style={{ opacity: alpha }} />;
+}
+
+/** 出生了 `age` 毫秒的字此刻的透明度。曲线和从前的 CSS 动画同一条（`cubic-bezier(0.33, 0, 0.67, 1)`，近似成 smoothstep）。 */
+function fadeAlpha(age: number): number {
+	const t = Math.min(1, Math.max(0, age / FADE));
+	return Math.round(t * t * (3 - 2 * t) * 100) / 100;
 }
 
 /**

@@ -27,6 +27,7 @@ import { createPeerRouter, createPeerTools, lastReply } from "../peer/index.ts";
 import { archiveAfterTurn, createSessionOpsTools } from "./session-ops.ts";
 import { reportBackAfterFirstTurn } from "./session-report-back.ts";
 import { handOffApprovedPlans } from "./plan-handoff.ts";
+import { MessagePatcher } from "../../shared/message-patch.ts";
 
 export interface HubDeps {
 	store(): SessionStorage;
@@ -299,6 +300,13 @@ export function broadcastSessionChange(change: SessionChange): void {
 	eachAppWindow((win) => win.webContents.send("sessions:changed", change));
 }
 
+const patcher = new MessagePatcher();
+
+/** 正在流的那条回复，整条作为一帧；窗口手里那份接不上补丁时来要。 */
+export function streamingMessage(sessionId: string): ReturnType<MessagePatcher["keyframe"]> {
+	return patcher.keyframe(sessionId);
+}
+
 export function broadcast(sessionId: string, event: AgentEvent): void {
 	peers.observe(sessionId, event);
 	// 侧边聊天是开着面板、人正看着问的，不发系统通知；手机端也不认识这种会话。
@@ -308,7 +316,9 @@ export function broadcast(sessionId: string, event: AgentEvent): void {
 	if (!side) summaries.observe(sessionId, event);
 	// 活会话的回复不经过快照：这一轮刚交付、链着验证截图的那条，正是人马上要点的。
 	if (event.type === "message_end") noteTranscriptFiles([event.message]);
-	eachAppWindow((win) => win.webContents.send("agent:event", { sessionId, event }));
+	// 流式回复只发变了的部分：整条消息每个 token 克隆一次，总量是回复长度的平方。见 `message-patch.ts`。
+	const wire = patcher.wire(sessionId, event);
+	eachAppWindow((win) => win.webContents.send("agent:event", { sessionId, event: wire }));
 	const session = sessions.get(sessionId);
 	const working = session?.subAgents.list().some((one) => one.background && (one.status === "running" || one.status === "queued")) ?? false;
 	if (!side) notifyAgentEvent(sessionId, event, session?.meta.title, working);

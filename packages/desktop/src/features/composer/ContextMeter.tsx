@@ -1,6 +1,6 @@
 import { useI18n } from "../../i18n/index.ts";
 import type { MessageKey } from "../../i18n/messages/index.ts";
-import type { ContextBreakdown, ContextSegmentKey, Message, Settings } from "@plume/core";
+import type { ContextBreakdown, ContextSegmentKey, Settings } from "@plume/core";
 import { useEffect, useState } from "react";
 
 import { useScopedCompactions, useScopedRunning } from "../../app/session-scope.tsx";
@@ -24,7 +24,7 @@ import { ContextMemoryFiles } from "./ContextMemoryFiles.tsx";
  * months. Rebuild at turn boundaries or while inspecting, never on every streamed chunk.
  */
 export function ContextMeter({
-	messages,
+	messageCount,
 	settings,
 	modelId,
 	sessionId,
@@ -32,7 +32,8 @@ export function ContextMeter({
 	running: runningHere,
 	openFile,
 }: {
-	messages: Message[];
+	/** 只要条数：整份消息每个 token 都换一次，拿着它这一格就跟着每个 token 重画。 */
+	messageCount: number;
 	settings: Settings | null;
 	/** Null when only the runtime knows the model — a sub-agent's; the window then comes with the reading. */
 	modelId: string | null;
@@ -49,7 +50,7 @@ export function ContextMeter({
 	const [snapshot, setSnapshot] = useState<{ sessionId: string; modelId: string | null; subAgentId?: string; detail: ContextBreakdown | null; error?: string } | null>(null);
 	const current = snapshot?.sessionId === sessionId && snapshot.modelId === modelId && snapshot.subAgentId === subAgentId ? snapshot : null;
 	const detail = current?.detail;
-	const hasMessages = messages.length > 0;
+	const hasMessages = messageCount > 0;
 	/*
 	 * This screen's turn and summaries, the two things that decide when to re-read.
 	 *
@@ -61,7 +62,7 @@ export function ContextMeter({
 	const scopedRunning = useScopedRunning();
 	const running = runningHere ?? scopedRunning;
 	const open = popover.open;
-	const revision = open || !running ? messages.length : 0;
+	const revision = open || !running ? messageCount : 0;
 
 	// Refresh at conversation boundaries; hidden meters do not rebuild prompts for each tool message.
 	useEffect(() => {
@@ -87,7 +88,7 @@ export function ContextMeter({
 	 * literally zero — but "1% used" next to an empty transcript is a gauge for a journey that
 	 * has not started. It appears with the first message, which is also when it starts moving.
 	 */
-	if (messages.length === 0) return null;
+	if (messageCount === 0) return null;
 
 	// Both readings use the model history, which can differ from the visible transcript.
 	const used = detail?.used ?? 0;

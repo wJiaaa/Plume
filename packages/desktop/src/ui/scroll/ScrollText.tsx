@@ -5,6 +5,11 @@ const GAP = 44;
 /** Pixels per second. Slow enough to read a long path without chasing it. */
 const SPEED = 46;
 
+const NO_FIT = { over: 0, hidden: 0, width: 0 };
+
+/** 差不到一个像素的不算变：一个来回抖一像素的读数会让观察器的每次回调都重画一遍。 */
+const moved = (prev: number, next: number) => (Math.abs(next - prev) > 1 ? next : prev);
+
 /**
  * One line of text that fades out at the edge instead of ending in an ellipsis, and reads
  * itself out when the row it sits in is hovered.
@@ -40,10 +45,11 @@ export function ScrollText({
 }) {
 	const box = useRef<HTMLSpanElement>(null);
 	const body = useRef<HTMLSpanElement>(null);
-	/** 越出盒子的那一截，和悬停时读不到的那一截——后者把控件占掉的宽度也算进去。 */
-	const [over, setOver] = useState(0);
-	const [hidden, setHidden] = useState(0);
-	const [width, setWidth] = useState(0);
+	/**
+	 * 越出盒子的那一截（`over`），和悬停时读不到的那一截（`hidden`）——后者把控件占掉的宽度也算进去。
+	 * `width` 是字自己的宽，只有滚起来才用得到（一圈走多远、副本放哪）。
+	 */
+	const [{ over, hidden, width }, setFit] = useState(NO_FIT);
 
 	useLayoutEffect(() => {
 		const outer = box.current;
@@ -75,9 +81,17 @@ export function ScrollText({
 			const reserve = Number.parseFloat(getComputedStyle(outer).getPropertyValue("--ly-row-controls")) || 0;
 			const spill = Math.max(0, part - room);
 			const unread = Math.max(0, part - (room - reserve));
-			setWidth((prev) => (Math.abs(part - prev) > 1 ? part : prev));
-			setOver((prev) => (Math.abs(spill - prev) > 1 ? spill : prev));
-			setHidden((prev) => (Math.abs(unread - prev) > 1 ? unread : prev));
+			setFit((prev) => {
+				const over = moved(prev.over, spill);
+				const hidden = moved(prev.hidden, unread);
+				/*
+				 * 不滚的时候不跟着字宽走。字宽在缓（`RollWords` 换句子时把词框的宽度过渡过去）的那几百毫秒里，
+				 * 观察器每一帧都报一次、每次都差出 2px；记着它，装得下的一行就跟着每帧重画。并行工具的一轮量到
+				 * 过每秒约 90 次，全是这一个数在变，而它在不滚的行上根本没人读。
+				 */
+				const width = hidden > 1 ? moved(prev.width, part) : prev.width;
+				return over === prev.over && hidden === prev.hidden && width === prev.width ? prev : { over, hidden, width };
+			});
 		};
 		measure();
 

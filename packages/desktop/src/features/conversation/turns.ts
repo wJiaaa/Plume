@@ -123,6 +123,14 @@ export function saw(clock: Clock, message: Message): void {
 	}
 }
 
+/** 两份账说的是不是同一组数：分组每次重做都给一份新的副本，比引用永远不等。 */
+export function sameStats(a: TurnStats | undefined, b: TurnStats | undefined): boolean {
+	if (a === b) return true;
+	if (!a || !b) return false;
+	return a.durationMs === b.durationMs && a.requestMs === b.requestMs && a.sseDurationMs === b.sseDurationMs
+		&& a.outputTokens === b.outputTokens && a.requestCount === b.requestCount && a.startIndex === b.startIndex;
+}
+
 /** 此刻为止这一轮的账，一份定下来的副本。 */
 export function snapshot(clock: Clock): TurnStats {
 	const open = clock.from === null ? 0 : Math.max(0, clock.to - clock.from);

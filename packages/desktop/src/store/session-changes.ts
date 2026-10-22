@@ -38,16 +38,18 @@ export function applySessionChange(change: SessionChange, set: Set, get: () => A
 		// 变化里的 meta 是存档那一份，没有列表才算的侧边聊天用量；沿用上一份，等下次读列表再更新。
 		if (meta) sessions.push(previous?.sideUsage && !meta.sideUsage ? { ...meta, sideUsage: previous.sideUsage } : meta);
 		sessions.sort((a, b) => b.updatedAt - a.updatedAt);
-		const sessionCache = { ...state.sessionCache };
-		const drafts = { ...state.drafts };
-		// 排着的那几条跟草稿一起走：它们本来就是没发出去的草稿，而要说给它听的那个对话已经没了。
-		const queued = { ...state.queued };
+		// 缓存、草稿、排队只在真有东西要改时才换新；平时原样交回，不然每条记录都让读它们的组件重画一遍。
+		let { sessionCache, drafts, queued } = state;
 		if (!meta) {
+			sessionCache = { ...sessionCache };
 			delete sessionCache[id];
+			drafts = { ...drafts };
 			delete drafts[id];
+			// 排着的那几条跟草稿一起走：它们本来就是没发出去的草稿，而要说给它听的那个对话已经没了。
+			queued = { ...queued };
 			delete queued[id];
 		} else if (sessionCache[id]) {
-			sessionCache[id] = { ...sessionCache[id], meta, dirty: true };
+			sessionCache = { ...sessionCache, [id]: { ...sessionCache[id], meta, dirty: true } };
 		}
 		return {
 			sessions, sessionCache, drafts, queued,

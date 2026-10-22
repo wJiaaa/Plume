@@ -15,6 +15,7 @@
  */
 
 import { createContext, useContext, useEffect, useMemo } from "react";
+import { useShallow } from "zustand/react/shallow";
 import type { Message, SessionMeta, SubAgentSummary } from "@plume/core";
 import { isProjectLess } from "../lib/project-scope.ts";
 import { sessionProject } from "../lib/project-identity.ts";
@@ -105,6 +106,17 @@ export function useScopedMessages(): Message[] {
 export function useScopedFromMessages<T>(read: (messages: Message[]) => T): T {
 	const id = useScopedSessionId();
 	return useApp((s) => read(id === s.activeSessionId ? s.messages : (parked(s, id)?.messages ?? EMPTY_MESSAGES)));
+}
+
+/**
+ * 这一屏里人说过的那几条（用户消息），按原对象给。
+ *
+ * 流式输出时变的只有助手那一条，别的消息对象原样留着，逐个比下来这份名单不动——输入历史拿它，
+ * 输入框就不跟着每个 token 整个重画。
+ */
+export function useScopedUserMessages(): Message[] {
+	const id = useScopedSessionId();
+	return useApp(useShallow((s) => (id === s.activeSessionId ? s.messages : (parked(s, id)?.messages ?? EMPTY_MESSAGES)).filter((message) => message.role === "user")));
 }
 
 export function useScopedRunning(): boolean {
@@ -229,10 +241,23 @@ export function useScopedCompactedAt(): number | null {
 }
 
 export function useScopedMeta(): SessionMeta | null {
+	return useScopedFromMeta(whole);
+}
+
+const whole = (meta: SessionMeta | null) => meta;
+
+/**
+ * 元数据里的一样东西，变了才重画。
+ *
+ * 元数据每写一条记录就换一个新对象（`seq`、`updatedAt` 跟着走），一次并行工具就是十几次。转录里
+ * 每一行都要的只是其中不变的一两样（`cwd`、是不是侧边聊天），拿整个对象就是每写一条记录，可见的
+ * 每一段活、每一句回复都重画一遍——会话越长越贵。行里一律用这个，别用 `useScopedMeta`。
+ */
+export function useScopedFromMeta<T>(read: (meta: SessionMeta | null) => T): T {
 	const id = useScopedSessionId();
 	return useApp((s) => {
-		if (id === s.activeSessionId) return s.meta;
-		return parked(s, id)?.meta ?? (id === null ? null : (s.sessions.find((session) => session.id === id) ?? null));
+		if (id === s.activeSessionId) return read(s.meta);
+		return read(parked(s, id)?.meta ?? (id === null ? null : (s.sessions.find((session) => session.id === id) ?? null)));
 	});
 }
 

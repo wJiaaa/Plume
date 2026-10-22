@@ -22,11 +22,11 @@ import { DeliveryRow } from "./DeliveryRow.tsx";
 import { PeerLetterRow } from "./PeerLetterRow.tsx";
 import { conversationTime } from "./question-navigation.ts";
 import { UserMessage } from "./UserMessage.tsx";
-import { useScopedMeta, useScopedSessionId } from "../../app/session-scope.tsx";
+import { useScopedFromMeta, useScopedSessionId } from "../../app/session-scope.tsx";
 import { useI18n } from "../../i18n/index.ts";
 import { useApp } from "../../store/index.ts";
 import { isNudge } from "./grouping.ts";
-import type { TurnStats } from "./turns.ts";
+import { sameStats, type TurnStats } from "./turns.ts";
 import { LiveToolCard, segments, ToolRun as ToolRunGroup } from "./runs.tsx";
 
 /**
@@ -45,7 +45,8 @@ function settled(stopReason: AssistantMessage["stopReason"]): boolean {
  *
  * The transcript re-renders on every streamed token; the four hundred rows above the one being
  * written have not changed and must not be rebuilt. Message objects are replaced rather than
- * mutated, so the default comparison is exactly the right question to ask.
+ * mutated, so comparing by identity is exactly the right question to ask — for everything but
+ * `turnStats`, see `sameRow`.
  */
 export const MessageRow = memo(function MessageRow({
   message,
@@ -135,7 +136,26 @@ export const MessageRow = memo(function MessageRow({
   return (
     <AssistantRow message={message} index={index} upTo={upTo} from={from} lead={lead} continued={continued} pauses={pauses} trailer={trailer} turnStats={turnStats} viewKey={viewKey} />
   );
-});
+}, sameRow);
+
+/**
+ * `memo`'s own comparison, except that `turnStats` is compared by what it says.
+ *
+ * The grouping is redone whenever the transcript changes — every streamed token — and it hands each
+ * row a fresh `TurnStats` snapshot even when none of its figures moved. Compared by identity, every
+ * assistant row in the window looked changed on every token and the whole window re-rendered with
+ * the one row that was being written. The figures are what the footer reads, so they are what is
+ * compared.
+ */
+export function sameRow<P extends { turnStats?: TurnStats }>(a: Readonly<P>, b: Readonly<P>): boolean {
+  const keys = Object.keys(a) as (keyof P)[];
+  if (keys.length !== Object.keys(b).length) return false;
+  for (const key of keys) {
+    if (key === "turnStats") continue;
+    if (!Object.is(a[key], b[key])) return false;
+  }
+  return sameStats(a.turnStats, b.turnStats);
+}
 
 /**
  * The date over a message that follows a pause.
@@ -177,7 +197,7 @@ function AssistantRow({
   viewKey?: string;
 }) {
   const sessionId = useScopedSessionId();
-  const aside = useScopedMeta()?.parentId !== undefined;
+  const aside = useScopedFromMeta((meta) => meta?.parentId !== undefined);
   const showThinking = useApp((s) => s.settings?.showThinking === true);
   /*
    * 这条回复是不是看着它写完的：挂上的时候还在写。只有这种，底下那行操作在写完时展开出来——

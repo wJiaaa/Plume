@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { scrollFade } from "./fade.ts";
+import { cancelMeasure, type Measure, queueMeasure } from "./measure-batch.ts";
 import type { Direction } from "./follow.ts";
 
 /**
@@ -104,24 +105,49 @@ export function Scroller({
 	const own = useRef<HTMLDivElement>(null);
 	const viewport = scrollRef ?? own;
 	const drag = useRef<{ startY: number; startTop: number } | null>(null);
-	const retainedTop = useRef<number | null>(null);
+	/*
+	 * Activity preserves the DOM, but Chromium resets native scroll offsets while hidden: restore the
+	 * last position `read` saw, before paint. Not read at hide time — that runs in the middle of React
+	 * removing the old page, and each scroller asking for `scrollTop` there forced a whole-page layout.
+	 */
+	const seenTop = useRef<number | null>(null);
 
 	useLayoutEffect(() => {
 		const el = viewport.current;
-		if (!el) return;
-		// Activity preserves the DOM, but Chromium resets native scroll offsets while hidden.
-		// Save before hiding and restore before paint, independently of content measurement effects.
-		if (retainedTop.current !== null) el.scrollTop = retainedTop.current;
-		return () => { if (el.clientHeight > 0) retainedTop.current = el.scrollTop; };
+		if (el && seenTop.current !== null) el.scrollTop = seenTop.current;
 	}, [viewport]);
 
-	const [metrics, setMetrics] = useState({ height: 0, thumbTop: 0, thumbHeight: 0, overflow: false, atTop: true, atBottom: true });
+	const [metrics, setMetrics] = useState({ height: 0, overflow: false, atTop: true, atBottom: true });
 	const [active, setActive] = useState(false);
+	/*
+	 * 滑块的位置和长度不进 state，直接写到它身上。
+	 *
+	 * 贴底跟随每帧都在挪 `scrollTop`，滑块跟着动半个像素就是一次 React 重画、一次样式写入。几个面板
+	 * 同时在输出时，一个面板的 scroll 回调刚写完，下一个面板的 scroll 回调读 `scrollHeight`，就为它把
+	 * 整页的样式和布局强制算一遍——量过，这里一处占了渲染进程 12%。只有边缘渐隐和要不要画滑块这几样
+	 * 真的改变渲染，留在 state 里。
+	 *
+	 * 写也不能弄脏布局：这一写就夹在各个面板的 scroll 回调之间，写 `top` 会让紧接着读 `scrollTop`
+	 * 的下一个面板再排一遍版，量到强制布局翻了一倍多（401 → 980 次 / 3s）。位置走 `transform`，只动绘制；长度取整，
+	 * 内容每长一截它只变零点几像素，取整后多半不用写。
+	 */
+	const thumb = useRef<HTMLDivElement>(null);
+	const geometry = useRef({ top: 0, height: 0 });
+	const paintThumb = useCallback(() => {
+		const element = thumb.current;
+		if (!element) return;
+		const top = `translateY(${Math.round(geometry.current.top * 2) / 2}px)`;
+		const height = `${Math.round(geometry.current.height)}px`;
+		if (element.style.transform !== top) element.style.transform = top;
+		if (element.style.height !== height) element.style.height = height;
+	}, []);
 
-	const measure = useCallback(() => {
+	/** 只读，交回写的那一半——好让 `queueMeasure` 把几个面板的读全排在写前面。 */
+	const read = useCallback<Measure>(() => {
 		const el = viewport.current;
-		if (!el) return;
+		if (!el) return () => {};
 		const { scrollTop, scrollHeight, clientHeight } = el;
+		if (clientHeight > 0) seenTop.current = scrollTop;
 		const overflow = scrollHeight - clientHeight > 1;
 		// A thumb shorter than this is impossible to grab; it stops tracking exactly once the
 		// content is very long, which is a fair trade for staying usable.
@@ -132,27 +158,19 @@ export function Scroller({
 		const newAtTop = scrollTop <= 1;
 		const newAtBottom = scrollTop >= scrollHeight - clientHeight - 1;
 
-		setMetrics((prev) => {
-			if (
-				prev.height === clientHeight &&
-				Math.abs(prev.thumbTop - newThumbTop) < 0.5 &&
-				Math.abs(prev.thumbHeight - thumbHeight) < 0.5 &&
-				prev.overflow === overflow &&
-				prev.atTop === newAtTop &&
-				prev.atBottom === newAtBottom
-			) {
-				return prev;
-			}
-			return {
-				height: clientHeight,
-				thumbTop: newThumbTop,
-				thumbHeight,
-				overflow,
-				atTop: newAtTop,
-				atBottom: newAtBottom,
-			};
-		});
-	}, [viewport]);
+		return () => {
+			geometry.current = { top: newThumbTop, height: thumbHeight };
+			paintThumb();
+			setMetrics((prev) => {
+				if (prev.height === clientHeight && prev.overflow === overflow && prev.atTop === newAtTop && prev.atBottom === newAtBottom) return prev;
+				return { height: clientHeight, overflow, atTop: newAtTop, atBottom: newAtBottom };
+			});
+		};
+	}, [viewport, paintThumb]);
+	const measure = useCallback(() => read()(), [read]);
+
+	// 滑块是 `overflow` 变真时才挂上的，那一刻它身上还没有位置。
+	useLayoutEffect(paintThumb, [metrics.overflow, paintThumb]);
 
 	useLayoutEffect(() => {
 		const el = viewport.current;
@@ -160,14 +178,7 @@ export function Scroller({
 		onResize?.(el);
 		measure();
 
-		let frame = 0;
-		const scheduleMeasure = () => {
-			if (frame) return;
-			frame = requestAnimationFrame(() => {
-				frame = 0;
-				measure();
-			});
-		};
+		const scheduleMeasure = () => queueMeasure(read);
 
 		/*
 		 * The content is watched, not just the box — they are different measurements.
@@ -219,11 +230,11 @@ export function Scroller({
 		mutations.observe(el, { childList: true, subtree: false });
 
 		return () => {
-			if (frame) cancelAnimationFrame(frame);
+			cancelMeasure(read);
 			observer.disconnect();
 			mutations.disconnect();
 		};
-	}, [measure, onResize, onSettle, viewport]);
+	}, [measure, read, onResize, onSettle, viewport]);
 
 	// Dragging continues outside the thumb, so the listeners live on the window.
 	useEffect(() => {
@@ -238,7 +249,7 @@ export function Scroller({
 			const el = viewport.current;
 			const state = drag.current;
 			if (!el || !state) return;
-			const travel = el.clientHeight - metrics.thumbHeight;
+			const travel = el.clientHeight - geometry.current.height;
 			if (travel <= 0) return;
 			const ratio = (event.clientY - state.startY) / travel;
 			/*
@@ -283,7 +294,7 @@ export function Scroller({
 			window.removeEventListener("mouseup", onUp);
 			if (frame) cancelAnimationFrame(frame);
 		};
-	}, [active, metrics.thumbHeight, onUserScroll, viewport]);
+	}, [active, onUserScroll, viewport]);
 
 	/*
 	 * 滚不动的时候不拦滚轮。
@@ -312,7 +323,7 @@ export function Scroller({
 			<div
 				ref={viewport}
 				onScroll={(event) => {
-					measure();
+					queueMeasure(read);
 					onScroll?.(event.currentTarget);
 				}}
 				/*
@@ -413,6 +424,7 @@ export function Scroller({
 				>
 					{/* Hidden from assistive technology: the viewport underneath is what scrolls. */}
 					<div
+						ref={thumb}
 						aria-hidden
 						tabIndex={-1}
 						onMouseDown={(event) => {
@@ -425,8 +437,7 @@ export function Scroller({
 							// and, if a ride back down is in flight, the thing that calls it off.
 							onUserScroll?.("unknown");
 						}}
-						style={{ top: metrics.thumbTop, height: metrics.thumbHeight }}
-						className={`ly-thumb absolute right-[2px] w-[6px] rounded-full bg-ink-faint ${active ? "ly-thumb-active" : ""}`}
+						className={`ly-thumb absolute top-0 right-[2px] w-[6px] rounded-full bg-ink-faint ${active ? "ly-thumb-active" : ""}`}
 					/>
 				</div>
 			)}

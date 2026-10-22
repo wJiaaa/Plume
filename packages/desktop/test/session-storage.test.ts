@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { SessionStore } from "@plume/core";
-import { observeSessionStorage } from "../electron/session/session-storage.ts";
+import { observeSessionStorage, SETTLE_MS } from "../electron/session/session-storage.ts";
 import type { SessionChange } from "@plume/contract";
 import { readTrajectoryChanges } from "../electron/session/trajectory-changes.ts";
 
@@ -35,6 +35,43 @@ test("committed cold-session changes notify every persistence path without broad
 		await store.deleteMany([a.id, b.id]);
 		assert.deepEqual(changes.slice(-2).map((change) => [change.id, change.meta]), [[a.id, null], [b.id, null]]);
 	} finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("a burst of message records reaches the list once now and once with the newest meta, and never after a delete", async () => {
+	const root = await mkdtemp(join(tmpdir(), "plume-session-burst-"));
+	const changes: SessionChange[] = [];
+	const source = new SessionStore(join(root, "sessions"));
+	const store = observeSessionStorage(source, (change) => changes.push(change));
+	const settled = () => new Promise((resolve) => setTimeout(resolve, SETTLE_MS + 50));
+	const said = (text: string) => ({ type: "message" as const, message: { role: "user" as const, content: [{ type: "text" as const, text }], timestamp: 1 } });
+	try {
+		let meta = await store.create(root, "model");
+		const before = changes.length;
+		for (const text of ["a", "b", "c", "d"]) meta = (await store.append(meta, said(text)))!;
+		assert.equal(changes.length, before + 1, "the first is announced at once, the rest wait");
+		await settled();
+		assert.equal(changes.length, before + 2, "the rest arrive together");
+		assert.equal(changes.at(-1)?.meta?.seq, meta.seq, "carrying the newest meta");
+
+		// A rename is something the list shows: it goes out at once and takes the place of what was waiting.
+		meta = (await store.append(meta, said("e")))!;
+		meta = (await store.append(meta, said("f")))!;
+		meta = (await store.append(meta, { type: "title", title: "Renamed" }))!;
+		assert.equal(changes.at(-1)?.meta?.title, "Renamed");
+		const renamed = changes.length;
+		await settled();
+		assert.equal(changes.length, renamed, "the waiting message change was superseded, not sent late");
+
+		await settled();
+		await store.append(meta, said("g"));
+		await store.append(meta, said("h"));
+		await store.delete(meta.id);
+		await settled();
+		assert.deepEqual(changes.at(-1), { id: meta.id, projectId: meta.projectId, meta: null }, "a deleted conversation must not reappear in the sidebar");
+	} finally {
+		source.close();
+		await rm(root, { recursive: true, force: true });
+	}
 });
 
 test("a write that lands after its conversation was deleted is not announced", async () => {

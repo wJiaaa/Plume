@@ -38,9 +38,10 @@ const SplitScreen = memo(function SplitScreen({
 	/** The only screen: its panel column can be folded away (see `DockView`). */
 	lone: boolean;
 }) {
+	// 只问有没有，不问有几条：交回条数的话，每进一条消息（并行工具时一秒十来条）整块屏连同输入框都重画一遍。
 	const messages = useApp((s) => {
-		if (!sessionId || s.activeSessionId === sessionId) return s.messages.length;
-		return s.sessionCache[sessionId]?.messages.length ?? 0;
+		if (!sessionId || s.activeSessionId === sessionId) return Math.min(s.messages.length, 1);
+		return Math.min(s.sessionCache[sessionId]?.messages.length ?? 0, 1);
 	});
 	const loading = useApp((s) => {
 		if (!sessionId) return false;

@@ -1,3 +1,6 @@
+import { useRef } from "react";
+import { useTickedAnimations } from "./ticked.ts";
+
 /**
  * 「正在忙」的三个记号，以及它们各管哪里。
  *
@@ -83,9 +86,14 @@ export function ActionSpinner({
  * 颜色走完 accent → info → violet 的那 2.4 秒，是它说「跑了多久」的方式：扫一眼知道它活着，
  * 多看一会儿知道它**还**活着，而没有任何东西变快或变响。
  */
+const BREATHE = new Set(["ly-breathe-wave", "ly-breathe-hue", "ly-breathe-core"]);
+
 export function BreatheLoader({ size = 14, className = "" }: { size?: number; className?: string }) {
+	// 按拍走，不按帧：变色只能在主线程重绘，见 `ticked.ts`。
+	const box = useRef<HTMLSpanElement>(null);
+	useTickedAnimations(box, BREATHE);
 	return (
-		<span aria-hidden className={`ly-breathe shrink-0 ${className}`} style={{ width: size, height: size }}>
+		<span ref={box} aria-hidden className={`ly-breathe shrink-0 ${className}`} style={{ width: size, height: size }}>
 			{/* 两道波纹差半个周期，所以总有一道正在离场；`b` 是核心。 */}
 			<i />
 			<i />

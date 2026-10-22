@@ -141,6 +141,9 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
   }, [messages, compactions, commandRuns, hiccups, showThinking]);
   const turnStart = useMemo(() => currentTurnStart(messages), [messages]);
   const separators = useMemo(() => timeSeparators(messages), [messages]);
+  // `draw` 闭包里除了 run 本身还读的几样；`WorkStep` 的 memo 拿它判断画出来的推理行会不会变。
+  const separatorList = [...separators].join(",");
+  const drawKey = `${activeSessionId}:${running}:${turnStart}:${separatorList}`;
   const questions = useMemo(() => questionsIn(messages), [messages]);
   /*
    * 先分块，再开窗——顺序反过来就是那个「点了没反应」的 bug。
@@ -408,6 +411,13 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
          * matches it.
          */
         fadeTop={32}
+        /*
+         * 跟着底部走的时候底下不渐隐：底下没有要提示的东西，只有弹簧还没追上的那几像素。
+         *
+         * 输出时内容每长一截就离底几像素、追上又贴底，底部渐隐跟着一开一合，每一次都是遮罩深度的一段
+         * 过渡、整块转录重画一遍。读者滚开了（`away`）才是「下面还有」，那时再淡。
+         */
+        bottom={follow.away ? "fade" : "none"}
         onScroll={follow.onScroll}
         onResize={follow.onResize}
         onUserScroll={follow.onUserScroll}
@@ -566,7 +576,7 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
                   const entry = {
                     key: `${activeSessionId}:${item.key}`,
                     // 正在做的那一段是这一轮的最后一行：后面有了别的（下一段活、一句话），它就做完了。
-                    node: item.kind === "step" ? <WorkStep step={item.step} live={live && item === tail} draw={draw} /> : draw(item.run),
+                    node: item.kind === "step" ? <WorkStep step={item.step} live={live && item === tail} draw={draw} drawKey={drawKey} /> : draw(item.run),
                   };
                   if (item.kind !== "step") return [entry];
                   /*

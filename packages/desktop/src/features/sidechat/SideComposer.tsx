@@ -11,6 +11,7 @@ import { useI18n } from "../../i18n/index.ts";
 import type { Message, SessionMeta } from "@plume/core";
 import type { QueuedMessage } from "../../store/queue-slice.ts";
 import { useEffect, useRef } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { findModel } from "../models/index.ts";
 import { askSide, openFilePane, setSideModel, setSideThinking, sideKey, useSide } from "../dock/index.ts";
 import { sideDraftKey, useSideTarget } from "./target.ts";
@@ -69,7 +70,9 @@ export function SideComposer({
 	/** 这一格的会话已经建了、记录还没读进来。 */
 	const loading = useApp((s) => sideId_ !== null && !s.sessionCache[sideId_]);
 	const running = useApp((s) => (sideId_ ? (s.sessionCache[sideId_]?.state?.running ?? false) : false));
-	const messages = useApp((s) => (sideId_ ? (s.sessionCache[sideId_]?.messages ?? NO_MESSAGES) : NO_MESSAGES));
+	// 只拿人问过的那几条和总数：整份消息每个 token 都换一次，拿着它输入框就跟着每个 token 重画。见 `useScopedUserMessages`。
+	const userMessages = useApp(useShallow((s) => (sideId_ ? (s.sessionCache[sideId_]?.messages ?? NO_MESSAGES) : NO_MESSAGES).filter((message) => message.role === "user")));
+	const messageCount = useApp((s) => (sideId_ ? (s.sessionCache[sideId_]?.messages.length ?? 0) : 0));
 	const queuedCount = useApp((s) => (sideId_ ? (s.queued[sideId_]?.length ?? 0) : 0));
 	/*
 	 * 草稿按侧边聊天存，和主输入框同一个仓库——换个会话再回来，打了一半的话还在。关掉面板就是不要
@@ -86,7 +89,7 @@ export function SideComposer({
 	const { marks } = kit;
 	/* 方向键往回翻自己在这个侧边聊天里问过的话——和主输入框同一套手感。 */
 	const history = useInputHistory({
-		messages,
+		messages: userMessages,
 		value: text,
 		attachments,
 		onPick: (next, files) => {
@@ -212,7 +215,7 @@ export function SideComposer({
 				right={
 					<>
 						{/* 和主输入框同一只表，量的是这一格自己的会话：跟着主会话时，窗口也是主会话那个模型的。 */}
-						<ContextMeter messages={messages} settings={settings} modelId={modelId || model?.id || null} sessionId={sideId_} running={running} openFile={openFile} />
+						<ContextMeter messageCount={messageCount} settings={settings} modelId={modelId || model?.id || null} sessionId={sideId_} running={running} openFile={openFile} />
 						{/*
 						 * 和主输入框同一枚，不是一个长得像它的。继承没被藏起来，只是挪进了提示里——见 `inheriting`。
 						 */}

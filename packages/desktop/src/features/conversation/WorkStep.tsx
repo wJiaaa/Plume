@@ -19,10 +19,10 @@
  *   一行冒出来、几秒后又被收走——那是旧样子一跳一跳的来源。
  */
 
-import { Fragment, useRef, type ReactNode } from "react";
+import { Fragment, memo, useRef, type ReactNode } from "react";
 import { CircleX, Layers } from "../../ui/icons/index.ts";
 import { Collapse } from "../../ui/layout/Collapse.tsx";
-import { useScopedFromToolRuns, useScopedMeta } from "../../app/session-scope.tsx";
+import { useScopedFromMeta, useScopedFromToolRuns } from "../../app/session-scope.tsx";
 import { translate } from "../../i18n/translate.ts";
 import { StepDispatchFaces } from "./DelegationCard.tsx";
 import { FlowRow } from "./FlowRow.tsx";
@@ -33,7 +33,7 @@ import { RollWords } from "../../ui/motion/RollWords.tsx";
 import { useHeldKey } from "../../ui/motion/held.ts";
 import { describeCalls, describeOne, diffOf, foldPolls, polledJob, startedJob } from "./call-words.ts";
 import type { Call, Run } from "./grouping.ts";
-import { thinkingLive, type Step } from "./turn-blocks.ts";
+import { sameStep, thinkingLive, type Step } from "./turn-blocks.ts";
 import { useTranscriptDisclosure } from "./view-state.ts";
 import { useWriteDraft } from "./write-draft.ts";
 
@@ -42,12 +42,22 @@ function drawCall({ block, stopReason, page }: Call, line?: { thinking?: ReactNo
 	return <LiveToolCard block={block} stopReason={stopReason} page={page} thinking={line?.thinking} extra={line?.extra} polls={line?.polls} />;
 }
 
-export function WorkStep({ step, live, draw }: {
+/**
+ * 只在这一段自己变了时重画，见 `sameStep`。
+ *
+ * `draw` 每次渲染都是新闭包，不比；它画出来的东西取决于的那几样外部状态由 `drawKey` 带着比。
+ * 漏比 `live` 的后果见 `ToolRun` 上那段：高亮会一直留在当过「正在做」的每一段上。
+ */
+export const WorkStep = memo(WorkStepRow, (a, b) => a.live === b.live && a.drawKey === b.drawKey && sameStep(a.step, b.step));
+
+function WorkStepRow({ step, live, draw }: {
 	step: Step;
 	/** 这一段是不是这一轮此刻正在做的那一段：一轮还在跑，而它后面什么都还没有。 */
 	live: boolean;
 	/** 推理那一行怎么画，交给转录自己（`MessageRow`），这里不另做一份。 */
 	draw: (run: Run) => ReactNode;
+	/** `draw` 画出来的东西还取决于什么（会话、在不在跑、这一轮从哪起、哪几句挂时间），拼成一个串好比较。 */
+	drawKey: string;
 }) {
 	const tail = step.members[step.members.length - 1];
 	const writing = live && tail?.kind === "thinking" && thinkingLive(tail.run) ? tail.run : null;
@@ -124,7 +134,7 @@ function StepGroup({ step, thought, live, thinking, from, draw }: {
 	const { block: said, lines } = useWriteDraft(current, unrecorded);
 	// bash 给人看的那句话只在记录的 `summary` 里，参数里是命令本身。
 	const saidSummary = useScopedFromToolRuns((runs) => (said ? runs[said.id]?.summary : undefined));
-	const root = useScopedMeta()?.cwd;
+	const root = useScopedFromMeta((meta) => meta?.cwd);
 	// 查后台任务输出的那一次，说的是那条命令的说明，不是光秃秃的「查看输出」。
 	const saidJob = useScopedFromToolRuns((runs) => {
 		const job = said ? polledJob(said) : undefined;

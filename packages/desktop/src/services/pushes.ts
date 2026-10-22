@@ -8,6 +8,13 @@
  * 5–14ms, and six of them back to back left no room to paint: the first send after opening a
  * conversation of a thousand messages held one frame for 100ms, right as the bubble appeared.
  *
+ * The batch is the shared tick (`ui/motion/ticker.ts`, about thirty a second), not every frame. On a
+ * 120Hz screen a frame per push was still up to 120 commits a second while tools ran in parallel —
+ * each start, phase, result and session change its own — and every commit is a style, layout and
+ * paint pass whose cost grows with the transcript. The reply's text is let out per tick anyway, and a
+ * push after a quiet spell still lands on the next frame: the first tick after an idle stretch is
+ * immediate. See `docs/architecture/smoothness-checklist.md` §15.
+ *
  * Two rules keep this from changing what the window believes, only when it redraws:
  *
  * - **Order against replies.** A push that arrived before a reply is applied before the caller sees
@@ -18,10 +25,12 @@
  *   key or pointer press flushes too, so what they act on is what the main process last said.
  */
 
-const queue: Array<() => void> = [];
-let frame = 0;
+import { cancelTick, requestTick } from "../ui/motion/ticker.ts";
 
-/** Apply `push` with the others that arrive before the next frame, in arrival order. */
+const queue: Array<() => void> = [];
+let tick = 0;
+
+/** Apply `push` with the others that arrive before the next tick, in arrival order. */
 export function inFrame(push: () => void): void {
 	if (typeof requestAnimationFrame !== "function" || typeof document === "undefined" || document.visibilityState === "hidden") {
 		flushPushes();
@@ -29,17 +38,17 @@ export function inFrame(push: () => void): void {
 		return;
 	}
 	queue.push(push);
-	if (!frame) frame = requestAnimationFrame(() => {
-		frame = 0;
+	if (!tick) tick = requestTick(() => {
+		tick = 0;
 		flushPushes();
 	});
 }
 
 /** Apply everything queued now. Called before a reply resolves and before a person's input. */
 export function flushPushes(): void {
-	if (frame) {
-		cancelAnimationFrame(frame);
-		frame = 0;
+	if (tick) {
+		cancelTick(tick);
+		tick = 0;
 	}
 	if (queue.length === 0) return;
 	for (const push of queue.splice(0)) apply(push);

@@ -112,6 +112,12 @@
  * The delay is there so a pointer crossing the list on its way somewhere else does not set
  * every row it touches in motion.
  *
+ * Two passes, not `infinite`. Clicking a conversation leaves the pointer resting on its row, and an
+ * endless loop there kept the compositor busy for as long as the person read the transcript —
+ * measured, about 11% of the GPU process and 5% of the renderer with nothing else happening. Two
+ * passes read the title out twice; the loop ends where it began (the trailing copy lands exactly on
+ * the first), so stopping is invisible. Moving the pointer away and back starts it again.
+ *
  * One rule per selector on purpose. Lightning CSS prunes rules it considers unsupported by the
  * build targets, and `:has()` took a whole comma-separated group with it once — including the
  * `:hover` half, which silently killed the effect outright.
@@ -128,7 +134,7 @@
 }
 
 .ly-scroll:hover .ly-marquee-track {
-  animation: ly-marquee var(--ly-scroll, 8s) linear 300ms infinite;
+  animation: ly-marquee var(--ly-scroll, 8s) linear 300ms 2;
 }
 
 /*
@@ -142,7 +148,7 @@
 }
 
 .ly-scroll:has(:focus-visible) .ly-marquee-track {
-  animation: ly-marquee var(--ly-scroll, 8s) linear 300ms infinite;
+  animation: ly-marquee var(--ly-scroll, 8s) linear 300ms 2;
 }
 
 /*

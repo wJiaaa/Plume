@@ -309,6 +309,31 @@ test("queued stream updates cannot write into a newly selected session", () => {
 	assert.deepEqual(useApp.getState().messages[0].content, [{ type: "text", text: "stream from b" }]);
 });
 
+test("a conversation streaming in the background writes its cache once per frame, and in order", () => {
+	useApp.setState({ sessionCache: { b: { meta: meta("b"), messages: [reply("b")], toolRuns: {} } } });
+	const writes: unknown[] = [];
+	const stop = useApp.subscribe((state, previous) => {
+		if (state.sessionCache !== previous.sessionCache) writes.push(state.sessionCache);
+	});
+	try {
+		const pending = (text: string): AssistantMessage => ({ ...reply(text), stopReason: "pending", timestamp: 20 });
+		applyAgentEvent("b", { type: "message_start", message: pending("") }, useApp.setState, useApp.getState);
+		const startWrites = writes.length;
+		for (const text of ["o", "on", "one"]) {
+			const partial = pending(text);
+			applyAgentEvent("b", { type: "message_update", message: partial, delta: { type: "text_delta", index: 0, delta: text, partial } }, useApp.setState, useApp.getState);
+		}
+		assert.equal(writes.length, startWrites, "the tokens wait for the frame instead of each writing the store");
+		const done = { ...reply("one two"), timestamp: 20 };
+		applyAgentEvent("b", { type: "message_end", message: done }, useApp.setState, useApp.getState);
+		const cached = useApp.getState().sessionCache.b.messages.at(-1);
+		assert.deepEqual(cached?.content, done.content, "the held update lands first, so the ending is not overwritten by it");
+		assert.equal(writes.length, startWrites + 2, "three tokens became one write, then the ending");
+	} finally {
+		stop();
+	}
+});
+
 test("pruning always respects the limit even when the oldest entry is active", () => {
 	const cache: Cache = {};
 	for (let i = 0; i < 15; i++) cache[`s-${i}`] = { meta: meta(`s-${i}`), messages: [], toolRuns: {} };
