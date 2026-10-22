@@ -51,8 +51,14 @@ const SCRIPT: (string | null)[] = [
 	"接着上次做完了。",
 ];
 
-/** Said by the reply that gets interrupted, so its disappearance is something a test can see. */
-const HALF = "开始干活，这一段很长";
+/**
+ * Said by the reply that gets interrupted, so its disappearance is something a test can see.
+ *
+ * Long enough to count as the answer (past 150 characters, see `looksLikeAnswer`), so the running
+ * line is hidden when stop is pressed — the state whose fold must not fade it back in. A short opener
+ * leaves the line on screen, and its ordinary fold is not what this guards.
+ */
+const HALF = "开始干活，这一段很长" + "，接着往下写".repeat(30);
 
 /**
  * A reply that hangs is what a long turn looks like from the window's side.
