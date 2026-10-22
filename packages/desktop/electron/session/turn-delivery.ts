@@ -10,6 +10,7 @@ export async function sessionDelivery(store: SessionStorage, sessionId: string, 
 	const meta = live?.meta ?? (await store.get(sessionId));
 	if (!meta) throw new Error("会话不存在");
 	const turn = live ? deliveryMessages(live.messages, timestamp) : await storedTurn(store, sessionId, meta.seq, timestamp);
+	if (!turn) throw new Error("会话记录不存在");
 	return collectDelivery(sessionId, meta.cwd, turn, timestamp);
 }
 export async function undoDeliveryFile(store: SessionStorage, sessionId: string, timestamp: number, path?: string): Promise<void> {

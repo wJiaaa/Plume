@@ -46,7 +46,7 @@ interface Readings {
 interface Entry {
 	seq: number;
 	history?: Promise<Loaded>;
-	turns: Map<number, Promise<Message[]>>;
+	turns: Map<number, Promise<Message[] | null>>;
 	readings?: Readings;
 }
 
@@ -92,20 +92,22 @@ function trimTurns(): void {
 		}
 }
 
-/** 某一轮交付了什么——切出来的那一小段消息。文件现在什么样（能不能撤销）由调用方每次现查。 */
-export function storedTurn(store: SessionStorage, sessionId: string, seq: number, timestamp: number): Promise<Message[]> {
+/**
+ * 某一轮交付了什么——切出来的那一小段消息。文件现在什么样（能不能撤销）由调用方每次现查。
+ * `null` 是会话记录没读到，和读失败一样不留。
+ */
+export function storedTurn(store: SessionStorage, sessionId: string, seq: number, timestamp: number): Promise<Message[] | null> {
 	const entry = entryFor(sessionId, seq);
 	const kept = entry.turns.get(timestamp);
 	if (kept) return kept;
-	const reading = history(store, sessionId, entry).then((loaded) => {
-		if (!loaded) throw new Error("会话记录不存在");
-		return deliveryMessages(loaded.messages, timestamp);
-	});
+	const reading = history(store, sessionId, entry).then((loaded) => (loaded ? deliveryMessages(loaded.messages, timestamp) : null));
 	entry.turns.set(timestamp, reading);
 	trimTurns();
-	return forgetIfFailed(reading, () => {
+	const forget = () => {
 		if (entry.turns.get(timestamp) === reading) entry.turns.delete(timestamp);
-	});
+	};
+	void reading.then((turn) => turn ?? forget(), () => {});
+	return forgetIfFailed(reading, forget);
 }
 
 /** 项目设置文件此刻的样子。改了就换一个值；没有这个文件也是一种样子。 */

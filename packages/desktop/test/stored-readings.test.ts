@@ -152,12 +152,12 @@ test("a failed turn read is not kept either", async () => {
 	store.load = async (sessionId, ...rest) => (sessionId === id ? null : load.call(store, sessionId, ...rest));
 	const seq = (await store.get(id))!.seq;
 	try {
-		await assert.rejects(storedTurn(store, id, seq, 11), /会话记录不存在/);
+		assert.equal(await storedTurn(store, id, seq, 11), null, "没读到记录");
 	} finally {
 		store.load = load;
 	}
 	const turn = await storedTurn(store, id, seq, 11);
-	assert.ok(turn.length > 0, "the turn is read again rather than failing until the log moves");
+	assert.ok(turn && turn.length > 0, "the turn is read again rather than failing until the log moves");
 });
 
 test("a turn is read once per log position, and again once the log moves", async () => {
