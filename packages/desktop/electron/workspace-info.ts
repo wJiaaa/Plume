@@ -7,7 +7,7 @@
 
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
-import { gitBranch, probeRepo } from "./git.ts";
+import { gitBranch, probeRepo } from "./git-probe.ts";
 import type { WorkspaceInfo } from "./ipc-types.ts";
 
 /**

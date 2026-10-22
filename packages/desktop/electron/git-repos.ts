@@ -8,7 +8,7 @@
 import { readdir, stat } from "node:fs/promises";
 import { basename, join, relative } from "node:path";
 import { git } from "./git-exec.ts";
-import { gitBranch, isGitRepo } from "./git.ts";
+import { gitBranch, isGitRepo } from "./git-probe.ts";
 import { canonicalPath } from "./path-key.ts";
 import { removeWorktree } from "./git-worktrees.ts";
 

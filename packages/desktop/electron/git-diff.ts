@@ -9,10 +9,10 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { computeDiff, type DiffHunk } from "@plume/core";
-import type { WorkspaceDiffFile } from "./ipc-types.ts";
+import type { WorkspaceDiffFile } from "./ipc-shapes.ts";
 import { readBlobs, type BlobRead } from "./git-blobs.ts";
 import { git, gitBuffer, mapLimit, MAX_BLOB_BYTES, MAX_FILES } from "./git-exec.ts";
-import { gitBranch, isGitRepo } from "./git.ts";
+import { gitBranch, isGitRepo } from "./git-probe.ts";
 import { resolveInside } from "./file-ops.ts";
 
 /**

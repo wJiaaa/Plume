@@ -6,13 +6,13 @@
  */
 
 import { computeDiff } from "@plume/core";
-import type { GitCommit, WorkspaceDiffFile } from "./ipc-types.ts";
+import type { WorkspaceDiffFile } from "./ipc-shapes.ts";
 import { readBlobs, type BlobRead } from "./git-blobs.ts";
 import { git, run, runRemote, MAX_FILES, type RemoteResult } from "./git-exec.ts";
 import { capHunks, classify } from "./git-diff.ts";
 import { defaultRemote } from "./git-remote-state.ts";
-import { EMPTY_TREE, LOG_FORMAT } from "./git-status.ts";
-import { gitBranch, isGitRepo } from "./git.ts";
+import { EMPTY_TREE, LOG_FORMAT, type GitCommit } from "./git-status.ts";
+import { gitBranch, isGitRepo } from "./git-probe.ts";
 
 export async function gitLog(cwd: string, limit = 60, ref?: string): Promise<GitCommit[]> {
 	if (!(await isGitRepo(cwd))) return [];

@@ -7,11 +7,13 @@
 
 import { access, readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import type { WorkspaceDiffFile } from "./ipc-types.ts";
+import type { GitCommit, GitStatus, GitStatusFile } from "./ipc-shapes.ts";
 import { git, run, mapLimit, MAX_BLOB_BYTES, MAX_FILES } from "./git-exec.ts";
 import { classify } from "./git-diff.ts";
-import { classifyRemote, type GitOperation, type RemoteState } from "./git-remote-state.ts";
-import { gitBranch, isGitRepo } from "./git.ts";
+import { classifyRemote, type GitOperation } from "./git-remote-state.ts";
+import { gitBranch, isGitRepo } from "./git-probe.ts";
+
+export type { GitCommit, GitStatus, GitStatusFile };
 
 /**
  * How much is uncommitted, without building the diffs.
@@ -116,49 +118,6 @@ export async function upstreamDistance(cwd: string): Promise<{ upstream: string;
 
 /** The empty tree, so the first commit in a repository can be diffed against something. */
 export const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
-
-export interface GitStatusFile {
-	path: string;
-	status: WorkspaceDiffFile["status"];
-	/** Both can be true: a file edited after part of it was staged. */
-	staged: boolean;
-	unstaged: boolean;
-	added: number;
-	removed: number;
-}
-
-export interface GitStatus {
-	branch: string | null;
-	upstream: string | null;
-	/**
-	 * Commits this branch has that its upstream does not, and the reverse.
-	 *
-	 * Both are 0 whenever there is no upstream, because that is all `git status` reports — which is
-	 * why nothing should read them without looking at `remoteState` first. `unpushed` is the number
-	 * to show.
-	 */
-	ahead: number;
-	behind: number;
-	staged: GitStatusFile[];
-	unstaged: GitStatusFile[];
-	/** Which of the situations in `git-remote-state.ts` this checkout is in. */
-	remoteState: RemoteState;
-	/** Where a push would go. Null when no remote could be chosen — see `defaultRemote`. */
-	remote: string | null;
-	/** The unfinished rebase / merge / …, when `remoteState` is `in-progress`. */
-	operation: GitOperation | null;
-	/**
-	 * Commits that exist here and not on the remote.
-	 *
-	 * Null means the question has no answer rather than that the answer is zero: a branch the remote
-	 * has never seen has nothing to be counted against. The panel says "还没有发布过" there instead
-	 * of a number, because `rev-list --count HEAD` would answer with the length of the whole branch
-	 * — accurate, and no use to anyone.
-	 */
-	unpushed: number | null;
-	/** The short sha a detached HEAD is sitting on. Null whenever a branch is checked out. */
-	head: string | null;
-}
 
 /**
  * The unfinished operation, if any, read from the marker files git leaves in its directory.
@@ -402,19 +361,6 @@ export async function discardPaths(cwd: string, paths: string[]): Promise<{ ok: 
 	}
 	if (untracked.length) return run(cwd, ["clean", "-fd", "--", ...untracked]);
 	return { ok: true };
-}
-
-export interface GitCommit {
-	sha: string;
-	shortSha: string;
-	subject: string;
-	/** Every parent, so the renderer can draw where lines split and rejoin. */
-	parents: string[];
-	author: string;
-	/** ISO 8601, formatted for display in the renderer where the locale lives. */
-	date: string;
-	/** Branch and tag names pointing at this commit, already stripped of their prefixes. */
-	refs: string[];
 }
 
 export const LOG_FORMAT = "%H%x1f%h%x1f%s%x1f%an%x1f%aI%x1f%D%x1f%P%x1e";

@@ -11,7 +11,7 @@ import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import type { Settings } from "@plume/core";
 import { git } from "./git-exec.ts";
-import { isGitRepo } from "./git.ts";
+import { isGitRepo } from "./git-probe.ts";
 import { canonicalPath } from "./path-key.ts";
 import { uncommittedFiles } from "./worktree-lifecycle.ts";
 

@@ -9,7 +9,7 @@
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
 import { git } from "./git-exec.ts";
-import { isGitRepo } from "./git.ts";
+import { isGitRepo } from "./git-probe.ts";
 import { listAccounts, tokenFor } from "./forge/vault.ts";
 import { json as forgeJson } from "./forge/http.ts";
 import type { ForgeConnection } from "./forge/types.ts";

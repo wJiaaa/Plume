@@ -6,9 +6,7 @@
  * core's own types — the boundary does not get to have its own idea of what a session is.
  */
 
-import type { BranchList } from "./git.ts";
-
-export type { GitCommit, GitStatus, GitStatusFile } from "./git.ts";
+import type { GitOperation, RemoteState } from "./git-remote-state.ts";
 
 /** The shape every diff view consumes, whatever produced it. */
 export interface RefDiff {
@@ -16,8 +14,6 @@ export interface RefDiff {
 	added: number;
 	removed: number;
 }
-
-export type { BranchList };
 
 export interface SessionChange {
 	id: string;
@@ -278,3 +274,72 @@ export interface PluginUpdateState {
 
 // A conversation's own worktree, as the window shows it; a file of its own so the git modules that produce these import nothing back.
 export type { MergeOutcome, SyncOutcome, WorktreeState } from "./worktree-types.ts";
+
+/*
+ * Git's answers, defined here rather than next to the code that produces them: the git modules
+ * read `WorkspaceDiffFile` from this file, so when these lived there each one closed a cycle back
+ * through it. `git.ts` and `git-status.ts` re-export them for their callers.
+ */
+
+export interface GitStatusFile {
+	path: string;
+	status: WorkspaceDiffFile["status"];
+	/** Both can be true: a file edited after part of it was staged. */
+	staged: boolean;
+	unstaged: boolean;
+	added: number;
+	removed: number;
+}
+
+export interface GitStatus {
+	branch: string | null;
+	upstream: string | null;
+	/**
+	 * Commits this branch has that its upstream does not, and the reverse.
+	 *
+	 * Both are 0 whenever there is no upstream, because that is all `git status` reports — which is
+	 * why nothing should read them without looking at `remoteState` first. `unpushed` is the number
+	 * to show.
+	 */
+	ahead: number;
+	behind: number;
+	staged: GitStatusFile[];
+	unstaged: GitStatusFile[];
+	/** Which of the situations in `git-remote-state.ts` this checkout is in. */
+	remoteState: RemoteState;
+	/** Where a push would go. Null when no remote could be chosen — see `defaultRemote`. */
+	remote: string | null;
+	/** The unfinished rebase / merge / …, when `remoteState` is `in-progress`. */
+	operation: GitOperation | null;
+	/**
+	 * Commits that exist here and not on the remote.
+	 *
+	 * Null means the question has no answer rather than that the answer is zero: a branch the remote
+	 * has never seen has nothing to be counted against. The panel says "还没有发布过" there instead
+	 * of a number, because `rev-list --count HEAD` would answer with the length of the whole branch
+	 * — accurate, and no use to anyone.
+	 */
+	unpushed: number | null;
+	/** The short sha a detached HEAD is sitting on. Null whenever a branch is checked out. */
+	head: string | null;
+}
+
+export interface GitCommit {
+	sha: string;
+	shortSha: string;
+	subject: string;
+	/** Every parent, so the renderer can draw where lines split and rejoin. */
+	parents: string[];
+	author: string;
+	/** ISO 8601, formatted for display in the renderer where the locale lives. */
+	date: string;
+	/** Branch and tag names pointing at this commit, already stripped of their prefixes. */
+	refs: string[];
+}
+
+export interface BranchList {
+	current: string | null;
+	local: string[];
+	/** Remote-tracking branches, minus the ones that already have a local counterpart. */
+	remote: string[];
+}
