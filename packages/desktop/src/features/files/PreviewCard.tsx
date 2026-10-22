@@ -11,7 +11,7 @@ import { useScopedSessionId } from "../../app/session-scope.tsx";
 import { bridge } from "../../services/index.ts";
 import { useApp } from "../../store/index.ts";
 import { onAppearanceApplied } from "../settings/index.ts";
-import { HEIGHT_MESSAGE, PREVIEW_MAX_HEIGHT, THEME_MESSAGE, WIDTH_KEY, previewFragment, readOpenRequest, readSendRequest, readStateRequest, type PreviewTheme } from "../../../shared/preview.ts";
+import { HEIGHT_MESSAGE, PAUSE_MESSAGE, PREVIEW_MAX_HEIGHT, THEME_MESSAGE, WIDTH_KEY, previewFragment, readOpenRequest, readSendRequest, readStateRequest, type PreviewTheme } from "../../../shared/preview.ts";
 import { MAX_ADJUSTMENTS, followHeight } from "./preview-height.ts";
 import { previewTheme } from "./preview-theme.ts";
 import { sayFor } from "../../store/say.ts";
@@ -202,6 +202,22 @@ export function PreviewCard({ preview, startHeight, onShown }: {
 		frame.current?.contentWindow?.postMessage({ [THEME_MESSAGE]: theme }, "*");
 	}, [preview]);
 	useEffect(() => (preview.themed ? onAppearanceApplied(postTheme) : undefined), [preview.themed, postTheme]);
+	/*
+	 * Whether the page should hold its frames: this window is not in front (see `withPreviewBridge`).
+	 * Asked of `hasFocus()` rather than read off the event: clicking into the page to drag it blurs
+	 * the window too, and the focus is still in this window.
+	 */
+	const postPause = useCallback(() => {
+		frame.current?.contentWindow?.postMessage({ [PAUSE_MESSAGE]: !document.hasFocus() }, "*");
+	}, []);
+	useEffect(() => {
+		window.addEventListener("blur", postPause);
+		window.addEventListener("focus", postPause);
+		return () => {
+			window.removeEventListener("blur", postPause);
+			window.removeEventListener("focus", postPause);
+		};
+	}, [postPause]);
 
 	/*
 	 * A link in the page, opened where the reader's links go; or a button in it speaking for the
@@ -488,6 +504,8 @@ export function PreviewCard({ preview, startHeight, onShown }: {
 							setReady(true);
 							// A theme that changed while the page was loading never reached it.
 							postTheme();
+							// Written while the reader was in another app, it starts held.
+							postPause();
 						}}
 						/*
 						 * The frame's scheme is the page's. A frame whose scheme differs from its

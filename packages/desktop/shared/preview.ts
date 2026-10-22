@@ -37,6 +37,8 @@ export const SEND_MESSAGE = "__lyPreviewSend";
 export const STATE_MESSAGE = "__lyPreviewState";
 /** App → page: the theme changed. */
 export const THEME_MESSAGE = "__lyPreviewTheme";
+/** App → page: hold the page's frames (`true`) or let them go (`false`) — the window left the front or came back. */
+export const PAUSE_MESSAGE = "__lyPreviewPause";
 
 /**
  * What a themed page starts from: the reply's own type, on no background of its own — the card is

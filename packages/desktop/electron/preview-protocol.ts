@@ -15,7 +15,7 @@ import { nativeImage, net, protocol, session } from "electron";
 import { parseSessionImageUrl, SESSION_IMAGE_HOST, SESSION_MEDIA_HOST } from "../shared/session-image.ts";
 import { safeMediaName, sessionMediaHome, sessionMediaPath } from "@plume/core";
 import { cachedThumb, parkedThumb } from "./media-thumbs.ts";
-import { HEIGHT_MESSAGE, INLINE_KEY, MAX_PAGE_STATE, MAX_TWEAK_CONTROLS, MAX_TWEAK_GROUPS, OPEN_MESSAGE, PREVIEW_THEMED_BASE, SEND_MESSAGE, STATE_KEY, STATE_MESSAGE, THEME_KEY, THEME_MESSAGE, TWEAK_SET_MESSAGE, TWEAKS_MESSAGE, WIDTH_KEY } from "../shared/preview.ts";
+import { HEIGHT_MESSAGE, INLINE_KEY, MAX_PAGE_STATE, MAX_TWEAK_CONTROLS, MAX_TWEAK_GROUPS, OPEN_MESSAGE, PAUSE_MESSAGE, PREVIEW_THEMED_BASE, SEND_MESSAGE, STATE_KEY, STATE_MESSAGE, THEME_KEY, THEME_MESSAGE, TWEAK_SET_MESSAGE, TWEAKS_MESSAGE, WIDTH_KEY } from "../shared/preview.ts";
 import { attachmentFile } from "./attachment-reads.ts";
 import { serveRanged } from "./ranged-file.ts";
 
@@ -206,11 +206,35 @@ api.slider=add("slider");api.color=add("color");api.toggle=add("toggle");api.sel
 addEventListener("message",function(e){var d=e.data;if(e.source!==parent||parent===window||!d||typeof d!=="object"||!Array.isArray(d[${JSON.stringify(TWEAK_SET_MESSAGE)}]))return;
 var touched=[];d[${JSON.stringify(TWEAK_SET_MESSAGE)}].forEach(function(s){groups.forEach(function(g){g.controls.forEach(function(c){if(s&&c.id===s.id){c.obj[c.key]=s.value;if(touched.indexOf(g)<0)touched.push(g)}})})});
 touched.forEach(function(g){if(g.onChange)try{g.onChange()}catch(x){console.error(x)}});});`;
+	/*
+	 * Frames held while the window is not in front.
+	 *
+	 * The app's window opts out of background throttling (`window.ts`), so a page drawing every frame
+	 * — a WebGL scene, a canvas loop — kept the GPU process at a third of a core with the app covered
+	 * or hidden. Scrolled out of view, Chromium stops it on its own; covered, nothing does. Held rather
+	 * than dropped: callbacks asked for meanwhile run on the first frame back, so a loop picks up where
+	 * it was, and the last frame stays on screen instead of a blank card. CSS and Web Animations pause
+	 * alongside. The card says when (`PreviewCard`); the page's own blur covers the one move the card
+	 * cannot see — focus leaving the app straight from inside the page. Only in the conversation: in
+	 * the panel the page is a browser tab of its own.
+	 */
+	const hold = `if(inline&&parent!==window&&window.requestAnimationFrame){
+var raf=window.requestAnimationFrame.bind(window),caf=window.cancelAnimationFrame.bind(window),held=null,moved={},seq=0,stilled=[];
+window.requestAnimationFrame=function(f){if(!held)return raf(f);var id=-(++seq);held[id]=f;return id};
+window.cancelAnimationFrame=function(id){if(held&&id in held)delete held[id];else caf(id in moved?moved[id]:id)};
+function still(on){
+if(on){if(held)return;held={};stilled=document.getAnimations?document.getAnimations().filter(function(a){return a.playState==="running"}):[];stilled.forEach(function(a){a.pause()});return}
+if(!held)return;var q=held;held=null;moved={};for(var id in q)moved[id]=raf(q[id]);stilled.forEach(function(a){try{a.play()}catch(e){}});stilled=[];
+}
+addEventListener("blur",function(){still(true)});addEventListener("focus",function(){still(false)});
+addEventListener("message",function(e){var d=e.data;if(e.source===parent&&d&&typeof d==="object"&&typeof d[${JSON.stringify(PAUSE_MESSAGE)}]==="boolean")still(d[${JSON.stringify(PAUSE_MESSAGE)}])});
+}`;
 	const script = `<script>(function(){
 ${theme}
 ${links}
 ${send}
 ${tweaks}
+${hold}
 var last=0;
 var measure=${MEASURE_HEIGHT};
 function report(){
