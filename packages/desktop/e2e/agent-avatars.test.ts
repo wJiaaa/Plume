@@ -105,13 +105,13 @@ after(async () => {
 const until = (expression: string, ms = 30000) => waitFor(app, expression, ms);
 const faceMap = () => app.evaluate<Record<string, string>>(`Object.fromEntries([...document.querySelectorAll('[data-agent-profile]')].flatMap(row=>{const f=row.querySelector('.ly-avatar');return f?[[row.dataset.agentProfile,f.dataset.avatar]]:[];}))`);
 
-test("设置页：八个智能体八张脸；指针进来那一行的脸真的弹了一下、眼睛跟着指针，没人碰也会自己眨眼", async () => {
+test("设置页：九个智能体九张脸；指针进来那一行的脸真的弹了一下、眼睛跟着指针，没人碰也会自己眨眼", async () => {
 	await click(app, 'button:has(svg.lucide-settings)');
 	await click(app, "nav button", "智能体", "starts");
-	// 七个内置（`core/src/agents-builtin.ts`）加上文件里那个 docs-writer；「会话」那一段的 compact 没有脸。
-	await until(`document.querySelectorAll('[data-agent-profile] .ly-avatar').length === 8`);
+	// 八个内置（`core/src/agents-builtin.ts`）加上文件里那个 docs-writer；「会话」那一段的 compact 没有脸。
+	await until(`document.querySelectorAll('[data-agent-profile] .ly-avatar').length === 9`);
 	faces = await faceMap();
-	assert.equal(new Set(Object.values(faces)).size, 8, `互不相同：${JSON.stringify(faces)}`);
+	assert.equal(new Set(Object.values(faces)).size, 9, `互不相同：${JSON.stringify(faces)}`);
 	assert.equal(faces.general, "circle-blue");
 	assert.equal(faces["docs-writer"], "ghost-plum", "文件里写的那张");
 

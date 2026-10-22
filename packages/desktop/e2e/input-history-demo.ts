@@ -42,7 +42,7 @@ const SHOT = "截图.png";
 /** 一条附了一排图的旧消息，用来逼出换行——叉浮在角上，最怕的就是换行之后压住上一行。 */
 const MANY = "这一堆图都看一下";
 const MANY_COUNT = 14;
-/** 往回翻之前手里那半句。翻一圈回来，它必须还在。 */
+/** 手里那半句：有字的时候 ↑ 归光标，不翻历史；清空之后才往回翻。 */
 const DRAFT = "这是我打了一半的草稿";
 /** 一张 1×1 的红点 PNG。够小，而且是张真图——加载不了的话缩略图就是个空框。 */
 const PNG =
@@ -194,6 +194,8 @@ function stripState(): Promise<{ images: number; names: string }> {
 			' const shell = document.querySelector("main textarea")?.closest(".ly-composer");' +
 			' const strip = shell ? shell.querySelector("[data-ly-attachments]") : null;' +
 			' if (!strip) return { images: 0, names: "" };' +
+			// 收起时那一排还在 DOM 里（留着给收起的动画用），看不见的不算。
+			' if (strip.closest(".ly-reveal")?.getAttribute("data-open") === "false") return { images: 0, names: "" };' +
 			' const images = strip.querySelectorAll("img").length;' +
 			' const names = [...strip.querySelectorAll("[data-ly-tip]")].map((el) => el.getAttribute("data-ly-tip") || "").join("|");' +
 			' return { images, names };' +
@@ -259,11 +261,19 @@ async function main() {
 		await pause(1500);
 		check("会话开着，那几句都在转录里", true, "");
 
-		console.log("\n【二】先打半句草稿，再往回翻");
+		console.log("\n【二】手里有字时 ↑ 不翻历史，清空之后才往回翻");
 		await d.type(DRAFT);
 		await pause(1200);
 		await putCaret(DRAFT.length);
 		await pause(400);
+		await d.key("ArrowUp", UP);
+		await pause(900);
+		check("有字时 ↑ 归光标，框里还是那半句", (await fieldValue()) === DRAFT, await fieldValue());
+		// 单行里 ↑ 把光标挪到了行首，删之前放回行尾。
+		await putCaret(DRAFT.length);
+		for (let i = 0; i < DRAFT.length; i++) await d.key("Backspace", 8);
+		await pause(600);
+		check("清空了", (await fieldValue()) === "", await fieldValue());
 
 		await d.key("ArrowUp", UP);
 		await pause(1100);
@@ -305,7 +315,7 @@ async function main() {
 		check("鼠标挪开又藏回去", left === "0", left);
 		await pause(800);
 
-		console.log("\n【五】再翻一条——一排图，看叉是不是浮在角上，以及换行会不会压到上一行");
+		console.log("\n【五】再翻一条——一排图，看叉是不是浮在角上，以及放不下时是不是横着滚");
 		await d.key("ArrowUp", UP);
 		await pause(1600);
 		const manyText = await fieldValue();
@@ -331,31 +341,24 @@ async function main() {
 			JSON.stringify({ 第一个格子: geo.thumbs[0], 它的叉: geo.crosses[0] }),
 		);
 
-		// 按 top 把它们分行——这一排必须真的换过行，否则下面那条断言什么也没验到。
-		const rows = [...new Set(geo.thumbs.map((thumb) => thumb.top))].sort((a, b) => a - b);
-		check("这一排确实换了行", rows.length >= 2, `只有 ${rows.length} 行，没换行，下一条就白验了`);
-		if (rows.length >= 2) {
-			const firstBottom = Math.max(...geo.thumbs.filter((t) => t.top === rows[0]).map((t) => t.bottom));
-			const secondTop = Math.min(
-				...geo.crosses.filter((_, at) => geo.thumbs[at]?.top === rows[1]).map((c) => c.top),
-			);
-			check(
-				"下一行的叉没压在上一行格子上",
-				secondTop >= firstBottom,
-				`下一行叉顶 ${secondTop}，上一行格底 ${firstBottom}`,
-			);
-		}
+		// 放不下的图不换行，留在同一排里横着滚（见 attachments.css 的 `.ly-attachments-row`）。
+		const rows = new Set(geo.thumbs.map((thumb) => thumb.top)).size;
+		check("十几张图还是一排，不换行", rows === 1, `排成了 ${rows} 行`);
+		const scroll = await app.evaluate<{ width: number; client: number }>(
+			'(() => { const row = document.querySelector("main .ly-composer .ly-attachments-row"); return { width: row?.scrollWidth ?? 0, client: row?.clientWidth ?? 0 }; })()',
+		);
+		check("放不下的那一截能横着滚过去", scroll.width > scroll.client, `内容宽 ${scroll.width}，可见宽 ${scroll.client}`);
 		await pause(1500);
 
-		console.log("\n【六】一路翻回来，草稿和它的附件都得原样还在");
+		console.log("\n【六】一路翻回来，回到空着的输入框");
 		for (const wait of [900, 900, 900, 1400]) {
 			await d.key("ArrowDown", DOWN);
 			await pause(wait);
 		}
 		const back = await fieldValue();
 		const backStrip = await stripState();
-		check("回到自己那半句草稿", back === DRAFT, back || "（空的——草稿丢了）");
-		check("草稿本来没附件，图也跟着退干净", backStrip.images === 0, `还剩 ${backStrip.images} 张`);
+		check("回到空着的输入框", back === "", back);
+		check("翻出来的图也跟着退干净", backStrip.images === 0, `还剩 ${backStrip.images} 张`);
 		check("回到草稿就不再标第几条", (await indicator()) === "", (await indicator()) || "（已消失）");
 
 		console.log("\n【七】多行文本里，方向键该归光标管");
@@ -370,12 +373,20 @@ async function main() {
 		const multi = await fieldValue();
 		check("多行里没被历史抢走 ↑", multi === "上面一行\n下面一行", multi.replace(/\n/g, "⏎"));
 
-		// 挪到最前面，这才轮到历史接手。
+		// 挪到最前面也一样：框里有字，↑ 就一律归光标（见 useInputHistory 的草稿态）。
 		await putCaret(0);
 		await pause(400);
 		await d.key("ArrowUp", UP);
+		await pause(1000);
+		check("贴到最前面也不翻：有字时历史不接手", (await fieldValue()) === multi, (await fieldValue()).replace(/\n/g, "⏎"));
+
+		// 清空之后，这才轮到历史。
+		await putCaret(multi.length);
+		for (let i = 0; i < multi.length; i++) await d.key("Backspace", 8);
+		await pause(400);
+		await d.key("ArrowUp", UP);
 		await pause(1200);
-		check("光标贴到最前面时才翻历史", (await fieldValue()) === SECOND, await fieldValue());
+		check("清空之后 ↑ 才翻历史", (await fieldValue()) === SECOND, await fieldValue());
 		await pause(1200);
 
 		console.log("\n【八】发出去之后，那行小字不该还留着");
