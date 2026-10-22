@@ -142,10 +142,8 @@ async function ask(text: string): Promise<void> {
 
 /** Wait until the running indicator is on screen, or give up and say so. */
 /*
- * Shown, not just mounted. The running line folds while prose is arriving (`conversation/answering.ts`)
- * and this model's opening words do exactly that, so the canvas exists folded away until the stream
- * has sat still for `STALL_MS`. Folded, the orb is off screen and pauses itself — measured then, a
- * correct orb read as one that never animates.
+ * Shown, not just mounted. The canvas exists before the row's reveal has opened, and folded away the
+ * orb is off screen and pauses itself — measured then, a correct orb read as one that never animates.
  */
 async function waitForRunning(): Promise<boolean> {
 	for (let i = 0; i < 60; i++) {

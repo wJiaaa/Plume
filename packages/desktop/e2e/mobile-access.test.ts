@@ -173,13 +173,11 @@ test("独立手机界面操作真实桌面运行时与授权", { timeout: 120_00
 	const runningLine = await app.evaluate<string | null>(`(() => { const list = [...document.querySelectorAll("div")].filter((e) => /auto|scroll/.test(getComputedStyle(e).overflowY) && e.innerText.includes("DO_WORK")).at(-1); return list?.querySelector('[data-testid="running-line"]')?.textContent ?? null; })()`);
 	assert.match(runningLine ?? "", /^[A-Z][^…]*…·\d+(s|m \d{2}s)/, `运行行在消息列表里，照桌面的格式：${runningLine}`);
 	await frames(app, 10); await shot(app, `${stamp}-mobile-plan`);
-	// 回答前半段落下时运行行和桌面一样收起；字停住超过 STALL_MS 它回来（两段之间停多久见 mobile-work-fixture）。
+	// 结论出到一半时运行行收起，和桌面同一个判断（`looksLikeAnswer`）；两段之间停多久见 mobile-work-fixture。
 	const line = 'Boolean(document.querySelector(\'[data-testid="running-line"]\'))';
 	await until(app, 'document.body.innerText.includes("手机端这次做了三件事")', 1800);
-	assert.ok(!await app.evaluate<boolean>(line), "回复正在出字，运行行收起");
+	assert.ok(!await app.evaluate<boolean>(line), "结论正在出字，运行行收起");
 	await frames(app, 10); await shot(app, `${stamp}-mobile-answering`);
-	await until(app, `${line} && !document.body.innerText.includes("有问题随时说。")`, 400);
-	await frames(app, 10); await shot(app, `${stamp}-mobile-answer-stalled`);
 	/*
 	 * 后半段（约 100 字）一次到达，照桌面的节奏分很多帧放出来、新字淡入，而不是整段蹦出来。量的是屏幕上
 	 * 那段回答逐帧的字数（运行行的字扣掉）和有没有半透明的字。

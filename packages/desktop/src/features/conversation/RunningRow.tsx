@@ -12,15 +12,12 @@ import { RunningIndicator } from "./RunningIndicator.tsx";
  * transcript pinned to the bottom dropped the row's whole height at once. Now the indicator stays
  * until the fold has finished, and only then goes.
  *
- * 回答在来的时候它只是看不见，位置照旧占着。
+ * 结论流进来时它只是看不见，位置照旧占着（`answering`，判据见 client-runtime 的 `looksLikeAnswer`）。
+ * 挂在结论底下的话，表格、代码块每长出一截它就被推下去一截，一跳一跳的。不在第一个字就藏：那时分不清
+ * 是结论还是调工具前的一句开场白，藏了的话开场白一出来它就消失、工具调用到了才回来。
  *
- * 看不见是当帧的，不淡出。第一行字挂在它上面，它被挤下去一行，词也同一帧从「Thinking」换成
- * 「Writing」——淡出的那 150ms 里，人看到的是字底下冒出来一行新的，又跟着转录往上滑着消失。
- * 停顿后长回来照旧淡入：那是它自己在原地出现，没有别的东西在动。
- *
- * 从前回答一开始它就当帧收起，指望和第一行字「一增一减抵掉」。抵不掉：正文由 `useSmoothText` 逐帧
- * 放出来，比这一行收起晚一到四帧，于是贴底的转录先掉下去 30px、再被字顶回来；回答停顿超过
- * `STALL_MS` 它又长回来，把转录往上推 30px，字接着来再掉一次。一轮里高度不变，这些就都不会发生。
+ * 看不见是当帧的，不淡出：淡出的那 150ms 里，人看到的是字底下冒出来一行，又跟着转录往上滑着消失。
+ * 工具调用接上来、它重新出现时照旧淡入。
  *
  * 回答写完（`answered`）以后它先只是看不见，等 `running` 落下那一次提交才当帧收起，不走过渡：
  * 回答底下那一行时间和复制按钮也是等 `running` 落下才长出来的（一轮没结束谁是最后一句还没定，
@@ -33,16 +30,13 @@ import { RunningIndicator } from "./RunningIndicator.tsx";
 export function RunningRow({ running, answering, answered, compacting }: {
 	running: boolean;
 	answering: boolean;
-	/**
-	 * 最后一条是一段正常写完的回答。收尾时消息先定稿、`answering` 先变回 false，`running` 晚一次提交
-	 * 才落下——只看 `answering`，这一行会在收尾前一刻亮一下。
-	 */
+	/** 最后一条是一段正常写完的回答。收尾时消息先定稿，`running` 晚一次提交才落下。 */
 	answered: boolean;
 	compacting: boolean;
 }) {
 	const open = running && !compacting;
 	/*
-	 * 收起时沿用收起前那一刻的隐/显。回答写到一半被停下（或开始压缩）时这一行正隐着，`open` 一落、
+	 * 收起时沿用收起前那一刻的隐/显。结论写到一半被停下（或开始压缩）时这一行正隐着，`open` 一落、
 	 * 只按 `open && …` 算的话它就不再隐，于是在往下收的那 300ms 里把「Thinking…」淡入回来——
 	 * 人刚按了停止，看到的却是它又在想。收完、指示器卸掉以后才放开，下一轮展开时照旧。
 	 */

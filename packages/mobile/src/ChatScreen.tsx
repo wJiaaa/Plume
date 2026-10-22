@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { ClientState, Message, RemoteClient } from "@plume/client-runtime";
-import { formatElapsed, formatTokens, phraseFor, proseLength, STALL_MS } from "@plume/client-runtime/running";
+import { formatElapsed, formatTokens, looksLikeAnswer, phraseFor } from "@plume/client-runtime/running";
 import { activityOf } from "./activity.ts";
 import { ApprovalCard } from "./ApprovalCard.tsx";
 import { ChoiceSheet } from "./ChoiceSheet.tsx";
@@ -30,8 +30,8 @@ type ScrollNode = { addEventListener(type: string, listener: () => void, options
  * tok/s 是按流式字数估的，手机拿不到同样的数据，不放。等人授权或回答时整行换成「等待你的…」，
  * 和桌面一样——这时候它什么都没在做，计时和词都不该再走。
  *
- * 放在消息流末尾而不是浮在输入框上：下一段内容就从这里长出来。回复正文在往外流时收起，和桌面一样，
- * 见下面的 `useAnswering`。
+ * 放在消息流末尾而不是浮在输入框上：下一段内容就从这里长出来。结论往外流时收起，和桌面同一个判断
+ * （`looksLikeAnswer`）：挂在结论底下会跟着字一跳一跳。
  */
 function RunningLine({ messages, waiting, t }: { messages: Message[]; waiting: "question" | "approval" | null; t: T }) {
 	const theme = useTheme();
@@ -59,26 +59,6 @@ function RunningLine({ messages, waiting, t }: { messages: Message[]; waiting: "
 		{startedAt !== null && <><Text style={meta}>·</Text><Text style={meta}>{formatElapsed(elapsed)}</Text></>}
 		{tokens > 0 && <><Text style={meta}>·</Text><Text style={meta}>{t("turnTokens", { n: formatTokens(tokens) })}</Text></>}
 	</View>;
-}
-
-/**
- * 回复正文此刻正在落下来——这时运行行收起，和桌面 `useAnswering` 同一个判断、同一个钟。
- *
- * 字停着不长 `STALL_MS` 就当它不在写了：停住的流和刚长过的流从消息里看一模一样，只能靠计时分开。
- * 每次长度变化重开一个定时器，而不是整段回复里一直跑一个 tick。
- */
-function useAnswering(messages: Message[]): boolean {
-	const prose = proseLength(messages);
-	// 带上条数：新一条回复的第一块恰好和上一条最后一样长时，计时也要从新回复算起。
-	const key = prose === null ? null : `${messages.length}:${prose}`;
-	const [stalled, setStalled] = useState(false);
-	useEffect(() => {
-		setStalled(false);
-		if (key === null) return;
-		const timer = setTimeout(() => setStalled(true), STALL_MS);
-		return () => clearTimeout(timer);
-	}, [key]);
-	return key !== null && !stalled;
 }
 
 export function ChatScreen({ state, client, back, error, draft, setDraft, t }: { state: ClientState; client: RemoteClient; back(): void; error(cause: unknown): void; draft: string; setDraft(value: string): void; t: T }) {
@@ -112,7 +92,7 @@ export function ChatScreen({ state, client, back, error, draft, setDraft, t }: {
 	const project = session ? projectLabel(state.bootstrap?.projects ?? [], session.meta) : "";
 	const visible = useMemo(() => session?.messages.filter((message) => message.role !== "user" || !message.synthetic || message.delivery || message.peer) ?? [], [session?.messages]);
 	const running = !!session?.running;
-	const answering = useAnswering(visible);
+	const answering = useMemo(() => looksLikeAnswer(visible), [visible]);
 	const feed = useMemo(() => buildFeed(visible, running), [visible, running]);
 	const rows = useMemo(() => flatten(feed, expanded), [feed, expanded]);
 	const todos = useMemo(() => latestTodos(visible), [visible]);

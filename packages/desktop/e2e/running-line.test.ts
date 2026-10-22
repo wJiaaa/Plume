@@ -1,20 +1,20 @@
 /**
  * Whether the window ever stops saying it is working while it is still working.
  *
- * The running line folds away once the answer itself is streaming in, which is right: prose
- * arriving on screen is a better progress report than a phrase about progress. What it must not do
- * is fold away and *stay* folded while the turn goes on without it — the composer's stop button is
- * still spinning, so the two halves of the window disagree about whether anything is happening, and
- * the half that is easier to see is the one that is wrong.
+ * The running line steps aside while the conclusion streams in — under it, it would jump with
+ * every line the conclusion grows. What it must not do is step aside for a sentence said before a
+ * tool call: mid-stream that sentence looks like the start of an answer, and hiding for it made the
+ * line vanish and come back around every batch of calls while the composer's stop button went on
+ * spinning. See `looksLikeAnswer` for how the two are told apart.
  *
- * Two ways to reach that, both of them ordinary:
+ * Three shapes, all ordinary:
  *
  *   1. A reply that says a sentence and then calls a tool. That is one assistant message holding
  *      `[text, toolCall]`, not two messages — so a test that models it as two never sees it.
- *   2. A reply that says a sentence and then goes quiet: a slow provider, a long think between
- *      paragraphs. Nothing arrives, nothing changes, and nothing says the turn is still alive.
+ *   2. A one-line reply that keeps writing: the line stays.
+ *   3. A conclusion in paragraphs: the line stays out of the way for all of it.
  *
- * The model here does both, and hangs in each state so the window can be read while it is in it.
+ * The last two are read across the whole stream, so a flicker cannot hide between two readings.
  */
 
 import assert from "node:assert/strict";
@@ -25,8 +25,6 @@ import { after, before, test } from "node:test";
 import { closeListeningServer, startApp, type RunningApp } from "./app.ts";
 import { cleanupFixture } from "./fixture-cleanup.ts";
 import { poll } from "./drive.ts";
-// The app's own threshold, so tuning it moves this wait with it rather than quietly stranding it.
-import { STALL_MS } from "../src/features/conversation/answering.ts";
 
 let app: RunningApp;
 let model: Server;
@@ -49,12 +47,9 @@ function sse(res: import("node:http").ServerResponse, payload: unknown): void {
 }
 
 /**
- * Both replies say a sentence first and then hang; they differ in what they hang *in*.
- *
- * The first hangs having started a tool call, which is the common shape — a model narrating what it
- * is about to do. The second hangs mid-sentence with nothing else open, which is what a stalled
- * stream looks like from here. Neither ever ends, because the question is what the window shows
- * while a turn is unfinished.
+ * Both replies say a sentence first. The first then hangs having started a tool call, which is the
+ * common shape — a model narrating what it is about to do. The second keeps writing. Neither ever
+ * ends, because the question is what the window shows while a turn is unfinished.
  */
 function startModel(): Server {
 	const server = createServer((req, res) => {
@@ -77,27 +72,22 @@ function startModel(): Server {
 			sse(res, { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: PROSE } });
 
 			/*
-			 * The third reply keeps writing, which is the case the fold exists for.
-			 *
-			 * Slowly on purpose — 700ms between chunks is slower than any real model and still well
-			 * inside the stall threshold, so if the line came back here it would be coming back
-			 * during an ordinary answer.
+			 * The second reply keeps writing on one line; the third writes paragraphs. Slowly, so
+			 * each can be read many times while it does.
 			 */
-			if (turn > 1) {
+			if (turn > 0) {
 				let sent = 0;
 				const writing = setInterval(() => {
 					if (sent++ >= 10 || res.writableEnded) {
 						clearInterval(writing);
 						return;
 					}
-					sse(res, { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: `，第 ${sent} 段` } });
+					const text = turn > 1 ? `\n\n第 ${sent} 段：转录、工具卡、审批都在这一段里。` : `，第 ${sent} 段`;
+					sse(res, { type: "content_block_delta", index: 0, delta: { type: "text_delta", text } });
 				}, 700);
 				res.on("close", () => clearInterval(writing));
 				return;
 			}
-
-			// The stalled reply stops here: prose on screen, stream open, nothing more coming.
-			if (turn > 0) return;
 
 			/*
 			 * Prose, then a call — in one message, which is the whole point.
@@ -205,6 +195,8 @@ interface Claim {
 	 * group of calls now, and a single call is drawn as its own row without one.
 	 */
 	toolCard: boolean;
+	/** The third reply has broken into paragraphs. */
+	paragraphs: boolean;
 	/** In the tree at all, as against folded to nothing — the two are worth telling apart in a failure. */
 	mounted: boolean;
 	/** The fold's measured height, so a failure says how shut it was rather than only that it was. */
@@ -220,9 +212,8 @@ interface Claim {
  * ancestor clipping it to nothing. The wrapper is the one that shrinks, so the wrapper is what has
  * to be measured.
  *
- * Hidden in place counts as gone as well. While the answer streams the row no longer folds: it
- * keeps its height and the line goes to opacity 0, so a transcript pinned to the bottom does not
- * jump when the words start (see `RunningRow`). Height alone would read that as "shown".
+ * Hidden in place counts as gone as well: under a finished answer the row keeps its height with the
+ * line at opacity 0 (see `RunningRow`), and height alone would read that as "shown".
  */
 const READ_CLAIM = `(() => {
 	const line = document.querySelector("main [data-ly-running]");
@@ -233,6 +224,7 @@ const READ_CLAIM = `(() => {
 		line: shown,
 		stopButton: Boolean(document.querySelector('main button[aria-label="停止"]')),
 		prose: text.includes(${JSON.stringify(PROSE)}),
+		paragraphs: text.includes("第 1 段："),
 		toolCard: Boolean(document.querySelector("main [data-ly-tool]")),
 		mounted: Boolean(line),
 		foldHeight: fold ? Math.round(fold.getBoundingClientRect().height) : -1,
@@ -301,50 +293,10 @@ test("a reply that talks and then calls a tool keeps saying it is working", asyn
 });
 
 // ---------------------------------------------------------------------------
-// 2. Prose that simply stops arriving
+// 2. A one-line reply that keeps writing
 // ---------------------------------------------------------------------------
 
-test("a reply that goes quiet mid-answer says so rather than looking finished", async () => {
-	await app.evaluate(`(() => {
-		[...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "新对话")?.click();
-		return true;
-	})()`);
-	await new Promise((resolve) => setTimeout(resolve, 800));
-
-	await ask("再看一次");
-	const streaming = await until((c) => c.prose);
-	assert.equal(streaming.prose, true, "the second reply never started streaming");
-
-	/*
-	 * Folded while the words are arriving is correct and is not what this checks. What it checks is
-	 * that the fold does not outlive the arriving: nothing more is coming, and after a few seconds
-	 * of silence the only thing left saying the turn is alive is the composer's stop button.
-	 *
-	 * Waited out rather than polled for, and waited out past the threshold the app itself uses —
-	 * polling would catch the fold on its way shut and call that "the line is there", which is
-	 * exactly the false pass this file was rewritten to stop.
-	 */
-	const stalled = await settled(STALL_MS + 2_500);
-	assert.equal(stalled.stopButton, true, "the turn ended on its own, so there was no stall to see");
-	assert.equal(
-		stalled.line,
-		true,
-		`prose stopped arriving and the window looked finished while the turn was still running (${JSON.stringify(stalled)})`,
-	);
-});
-
-// ---------------------------------------------------------------------------
-// 3. The case the fold exists for, which must still work
-// ---------------------------------------------------------------------------
-
-test("while the answer really is streaming, the line stays out of the way", async () => {
-	/*
-	 * The other half of the fix, and the one a fix for the first two could easily break.
-	 *
-	 * Putting the line back whenever prose is not the newest thing is only right if it stays away
-	 * while prose *is*. A line that flickers back between paragraphs would be worse than one that
-	 * left too early: it is motion under the text someone is reading.
-	 */
+test("while a one-line reply is streaming, the line stays on screen", async () => {
 	await app.evaluate(`(() => {
 		[...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "新对话")?.click();
 		return true;
@@ -353,12 +305,12 @@ test("while the answer really is streaming, the line stays out of the way", asyn
 
 	await ask("写点长的");
 	const started = await until((c) => c.prose);
-	assert.equal(started.prose, true, "the third reply never started streaming");
+	assert.equal(started.prose, true, "the second reply never started streaming");
 
 	/*
 	 * Sampled across the whole of the answer rather than at the end of it. A single reading cannot
-	 * tell "never came back" from "came back and went away again", and a flicker is exactly the
-	 * shape of fault that would hide between two readings.
+	 * tell "never went away" from "went away and came back", and a flicker is exactly the shape of
+	 * fault that would hide between two readings.
 	 */
 	const readings: Claim[] = [];
 	for (let i = 0; i < 12; i++) {
@@ -368,10 +320,35 @@ test("while the answer really is streaming, the line stays out of the way", asyn
 
 	const streamed = readings.filter((c) => c.stopButton);
 	assert.ok(streamed.length >= 8, `the turn ended too early to prove anything: ${streamed.length} readings`);
+	const hidden = streamed.filter((c) => !c.line);
+	assert.equal(hidden.length, 0, `the running line went away while the turn was still running: ${JSON.stringify(hidden)}`);
+});
+
+// ---------------------------------------------------------------------------
+// 3. A conclusion in paragraphs
+// ---------------------------------------------------------------------------
+
+test("while a conclusion in paragraphs streams, the line stays out of the way", async () => {
+	await app.evaluate(`(() => {
+		[...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "新对话")?.click();
+		return true;
+	})()`);
+	await new Promise((resolve) => setTimeout(resolve, 800));
+
+	await ask("写结论");
+	// The first paragraph break is what marks it as a conclusion; before it, it is one sentence.
+	const started = await until((c) => c.prose && c.paragraphs);
+	assert.equal(started.paragraphs, true, "the third reply never broke into paragraphs");
+
+	const readings: Claim[] = [];
+	for (let i = 0; i < 12; i++) {
+		await new Promise((resolve) => setTimeout(resolve, 500));
+		readings.push(await claim());
+	}
+
+	const streamed = readings.filter((c) => c.stopButton);
+	assert.ok(streamed.length >= 8, `the turn ended too early to prove anything: ${streamed.length} readings`);
 	const shown = streamed.filter((c) => c.line);
-	assert.equal(
-		shown.length,
-		0,
-		`the running line came back while the answer was still being written: ${JSON.stringify(shown)}`,
-	);
+	assert.equal(shown.length, 0, `the running line was under the conclusion while it streamed: ${JSON.stringify(shown)}`);
+	assert.ok(streamed.every((c) => c.mounted && c.foldHeight > 1), "hidden in place, not folded: folding moves the transcript");
 });

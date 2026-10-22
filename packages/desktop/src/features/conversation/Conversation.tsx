@@ -7,6 +7,7 @@ import { Composer } from "../composer/index.ts";
 import { ResumeRow } from "./ResumeRow.tsx";
 import { HiccupRow } from "./HiccupTrace.tsx";
 import { ModelSwitchRow } from "./ModelSwitchRow.tsx";
+import { looksLikeAnswer } from "@plume/client-runtime/running";
 import { RunningRow } from "./RunningRow.tsx";
 import { TaskList } from "../task/index.ts";
 import { environmentCard, useEnvironmentCard } from "../../store/environment-card.ts";
@@ -14,7 +15,6 @@ import { clearTranscriptJump, useTranscriptJump } from "../../store/transcript-j
 import { GeneratedImages } from "./ImageCanvas.tsx";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { ActionSpinner } from "../../ui/motion/loaders.tsx";
-import { useAnswering } from "./useAnswering.ts";
 import { runs, runKey, type Run } from "./grouping.ts";
 import { currentTurnStart } from "./turns.ts";
 import { turnBlocks, withoutThinking } from "./turn-blocks.ts";
@@ -85,9 +85,9 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
   /*
    * 转录的入口，也是那道闸门的位置。
    *
-   * `intact` 放在这里而不是只放在 `runs` 里，是因为这一条数组要交给五个消费者——`runs`、
-   * `timeSeparators`、`questionsIn`、`useAnswering`、`tailSignature`——它们各自都会去读 `role`。
-   * 只挡住其中一个，另外四个照样能把整个窗口掀翻，而报出来还是同一句话。
+   * `intact` 放在这里而不是只放在 `runs` 里，是因为这一条数组要交给好几个消费者——`runs`、
+   * `timeSeparators`、`questionsIn`、`tailSignature`——它们各自都会去读 `role`。
+   * 只挡住其中一个，另外几个照样能把整个窗口掀翻，而报出来还是同一句话。
    *
    * 没有损坏时 `intact` 交回的是同一个引用，所以下面那些 `useMemo` 的依赖不会因此失效。
    */
@@ -215,16 +215,8 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
       observer.disconnect();
     };
   }, []);
-  /**
-   * The final answer is arriving right now.
-   *
-   * This is the moment the running indicator stops being informative and starts being noise — and
-   * it lasts exactly as long as words are actually landing. Asked of the tail of the transcript and
-   * of the clock, because the two ways it comes apart from "this reply has some text in it" are
-   * both ordinary: a call appended after a sentence, and a stream that goes quiet. Both left the
-   * line folded for the rest of a turn that was still running. See `conversation/answering.ts`.
-   */
-  const answering = useAnswering(messages);
+  /** 末尾正在流的正文像结论：运行行原地隐去，不跟着字一跳一跳。见 `RunningRow`。 */
+  const answering = useMemo(() => looksLikeAnswer(messages), [messages]);
   /** 最后一条是一段正常写完的回答：底下的操作行在这时长出来，运行行在同一帧让位，见 `RunningRow`。 */
   const answered = useMemo(() => {
     const last = messages[messages.length - 1];
@@ -593,19 +585,12 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
           </div>
 
           {/*
-           * Present for the whole turn, and out of sight while the answer is arriving — at that point
-           * it has been overtaken by what it was standing in for.
+           * Present for the whole turn, and out of sight while the conclusion is streaming in.
            *
            * It stays put through the parts of a turn: it used to appear only when the last message
            * had settled, so it came and went with every tool call, and its 46px came and went with
-           * it, shifting the transcript up and down all through a turn.
-           *
-           * But once prose is streaming in above it, "Nearly there…" is describing something the
-           * reader can already see the end of. Sitting under a finished answer saying almost-done
-           * reads as the app having lost track of itself.
-           *
-           * Hidden rather than folded, so the height does not change at all — which is the whole
-           * reason it was made to stay put in the first place. See `RunningRow`.
+           * it, shifting the transcript up and down all through a turn. Hidden rather than folded
+           * while the conclusion streams, so the height does not change at all. See `RunningRow`.
            */}
           {range.end < allBlocks.length && (
             <div className="my-3 flex items-center justify-center">
@@ -622,7 +607,7 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
             </div>
           )}
           {range.end === allBlocks.length && <>
-          {/* 回答在来的时候这一行只是看不见、高度不变，答完时当帧让位给操作行——为什么这样，见 `RunningRow`。 */}
+          {/* 结论在来的时候这一行只是看不见、高度不变，答完时当帧让位给操作行——为什么这样，见 `RunningRow`。 */}
           <RunningRow running={running} answering={answering} answered={answered} compacting={compacting} />
           {/* Where the running indicator would have been, saying why it is not there. */}
           {!side && <ResumeRow />}

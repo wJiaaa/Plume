@@ -116,35 +116,22 @@ export function formatTokens(count: number): string {
 }
 
 /**
- * 回复的正文停着不长多久，运行行就回来。模型真在写时两块字之间只隔几十毫秒，正常回复里碰不到这个数，
- * 运行行不会一闪一闪；又短到人还盯着屏幕时就承认它卡住了。
- */
-export const STALL_MS = 2_500;
-
-/**
- * 消息流末尾正在写的那段正文有多长；没有在写就是 `null`。
+ * 末尾正在流的这段正文像不像结论。像，运行行就让开：挂在结论底下，字每折一行它就往下跳一行。
  *
- * 运行行在正文流进来时收起——字正落在屏幕上，比一句「Writing…」更能说明进度。但只看末尾那一块：
- * 同一条回复里先说一句再调工具（`[text, toolCall]`）是最常见的形状，按「这条回复有没有字」判断，
- * 运行行会在第一个字时收起、整段工具活儿都不回来。返回长度而不是布尔，是因为调用方要知道它**还在长**
- * ——停住的流和刚长过的流长得一样，区别只在过了多久（`STALL_MS`）。完整的来龙去脉见桌面
- * `features/conversation/answering.ts`。
+ * 流到一半没有确定的信号：只有 OpenAI 的 Responses 会把开场白标成 `commentary`，别的接口不标，
+ * 中转网关还会把开场白标成 `final_answer`。所以看长相。2026-10 在本机 1447 条开场白、410 条结论上量过：
+ * 开场白中位 58 字、含换行的 1%；结论中位 885 字、含换行的 89%。按「出现换行或超过 150 字」判，
+ * 开场白误判 2.8%（工具调用一到就回来），结论多半写到第一段末尾（中位第 73 个字）就判出来——
+ * 一行能放六七十个字，判出来之前最多跳一两下。没长到这个地步的短回答本来也跳不了几下。
  */
-export function proseLength(messages: Message[]): number | null {
-	return tailProse(messages[messages.length - 1]);
-}
+export const ANSWER_CHARS = 150;
 
-/** 同一个判断，问的是一条消息。消息合并时要拿前后两份比一比正文长没长，见 `message-event.ts`。 */
-export function tailProse(last: Message | undefined): number | null {
-	if (last?.role !== "assistant" || last.stopReason !== "pending") return null;
+export function looksLikeAnswer(messages: Message[]): boolean {
+	const last = messages[messages.length - 1];
+	if (last?.role !== "assistant" || last.stopReason !== "pending") return false;
 	const block = last.content[last.content.length - 1];
-	/*
-	 * 播报不是回答：它是调工具前的一句「接下来做什么」，说完活才开始。当它是回答来收起运行行，
-	 * 每一批调用前都要空白「播报的时长 + STALL_MS」——这时转录上只有一句话，底下什么都没有，
-	 * 看上去这一轮已经停了。没有 phase 的（别的接口、旧会话）照旧按正文算，不猜。
-	 */
-	if (block?.type !== "text" || block.phase === "commentary") return null;
-	// 文本块先开一个空的再一点点填；把空白算作开始写，运行行会早收一拍、接着又弹回来。
+	// 标了 commentary 的一定是开场白，这一个信号是确定的。
+	if (block?.type !== "text" || block.phase === "commentary") return false;
 	const text = block.text.trim();
-	return text.length > 0 ? text.length : null;
+	return text.includes("\n") || text.length > ANSWER_CHARS;
 }

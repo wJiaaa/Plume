@@ -55,16 +55,16 @@ test("a compaction starting folds the row the same way", async () => {
 	}
 });
 
-test("while the answer arrives the row is only hidden: it keeps its height, and is back when the answer pauses", async () => {
+test("while the conclusion streams the row is only hidden: it keeps its height, and is back when a tool call follows", async () => {
 	const view = await mount(h(RunningRow, { running: true, answering: false, answered: false, compacting: false }));
 	try {
 		const row = view.find(".ly-reveal");
 		await view.rerender(h(RunningRow, { running: true, answering: true, answered: false, compacting: false }));
 		assert.equal(row.dataset.open, "true", "folding here moved the transcript before the first words were drawn");
-		assert.ok(view.host.querySelector("[data-ly-running-quiet]"), "hidden while words are landing");
+		assert.ok(view.host.querySelector("[data-ly-running-quiet]"), "hidden while the conclusion is landing");
 		assert.ok(view.host.querySelector("[data-ly-running]"), "still drawn, so its height stays");
 
-		// 回答停住超过 STALL_MS：同一格里亮回来，高度没动过。
+		// 写着写着接上了工具调用：同一格里亮回来，高度没动过。
 		await view.rerender(h(RunningRow, { running: true, answering: false, answered: false, compacting: false }));
 		assert.equal(row.dataset.open, "true");
 		assert.ok(!view.host.querySelector("[data-ly-running-quiet]"));
@@ -73,7 +73,7 @@ test("while the answer arrives the row is only hidden: it keeps its height, and 
 	}
 });
 
-test("stopped while the answer streams, the row folds away still hidden instead of fading the indicator back in", async () => {
+test("stopped while the conclusion streams, the row folds away still hidden instead of fading the indicator back in", async () => {
 	const view = await mount(h(RunningRow, { running: true, answering: true, answered: false, compacting: false }));
 	try {
 		const row = view.find(".ly-reveal");
