@@ -469,8 +469,6 @@ app.whenReady().then(async () => {
 
 	await mkdir(plumeHome(), { recursive: true });
 
-	followThemeWithDockIcon();
-
 	// 先换上缓存的模型目录，读设置时套的目录值才是最新的一份。
 	await loadCachedModelCatalog();
 	await loadAppSettings();
@@ -640,6 +638,14 @@ function bindScreenshotShortcut(): void {
 	registerIpc();
 	createWindow();
 	getWindow()?.webContents.once("did-finish-load", firstWindowLoaded);
+	/*
+	 * The dock icon once the window is on screen. `setIcon` hands the 1024px image to the Dock
+	 * synchronously — about 50ms on this thread, and a pre-decoded image is no faster — and this is
+	 * also the thread that starts the renderer and shows the window. Ahead of `createWindow`, or just
+	 * after it, the window appeared that much later on every launch. By `show` the theme is applied,
+	 * so the first icon set is already the right one.
+	 */
+	getWindow()?.once("show", () => setImmediate(followThemeWithDockIcon));
 	bindScreenshotShortcut();
 	/*
 	 * Build the capture overlay now, while nothing is waiting on it.
