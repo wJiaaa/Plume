@@ -31,7 +31,7 @@ import { freeze, relight, saveCarried } from "./turn-meter.ts";
  * below the features rather than beside them, so it is not one domain reaching into another.
  */
 import { sideParentOf, useSide } from "../features/dock/sideStore.ts";
-import { awaitingSubAgents, useSubAgents } from "./subAgents.ts";
+import { awaitingSubAgents, delegating, useSubAgents } from "./subAgents.ts";
 import { waitsOnSession } from "./tool-run.ts";
 import { outlivingTurn } from "../lib/approval-scope.ts";
 import type { AppState } from "./index.ts";
@@ -57,7 +57,13 @@ const RECONNECTED = new Set<AgentEvent["type"]>([
 ]);
 
 export function applyAgentEvent(sessionId: string, event: AgentEvent, set: Set, get: Get): void {
-	const completion = completionNotice(event, get().activity[sessionId] ?? null);
+	/*
+	 * 派完子智能体的那一轮干净收尾时，活还没完：结果回来会再开一轮，那一轮收尾才算做完。此刻记成
+	 * 「已完成」、报一声做完了都是假的——主进程的系统通知同理（`notifyAgentEvent` 的 `working`）。
+	 * 这一段里会话行靠名单亮着（`useRunningBeside`）。报错、中断照旧：那是这一轮的结局。
+	 */
+	const delegated = event.type === "agent_end" && event.reason === "done" && delegating(useSubAgents.getState().rosters[sessionId]);
+	const completion = delegated ? null : completionNotice(event, get().activity[sessionId] ?? null);
   recordReadEvent(sessionId, event);
   /*
    * 被「现在就发」停下的那一轮的收尾：转录照样落定，会话不放下——新的一轮几十毫秒后就开始。
@@ -76,7 +82,7 @@ export function applyAgentEvent(sessionId: string, event: AgentEvent, set: Set, 
    */
   {
     const current = get().activity[sessionId] ?? null;
-    const settled = handoff ? current : nextActivity(event, current);
+    const settled = handoff ? current : delegated ? null : nextActivity(event, current);
     /*
      * A conversation you are watching cannot finish unread.
      *

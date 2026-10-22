@@ -6,6 +6,9 @@
  *
  * The side chat only contributes "still going". Its own finish is not an unread result on this
  * row: the transcript it wrote is in another pane.
+ *
+ * Sub-agents still out on a delegation feed the same `sideRunning` bit (`useRunningBeside`): the
+ * turn that dispatched them has already ended, and their results start another one.
  */
 
 import { visibleActivity, type SessionActivity } from "@plume/core/activity";

@@ -1,12 +1,12 @@
 import type { SessionMeta } from "@plume/core";
 import { translate } from "../../i18n/translate.ts";
-import { useApp, useSideChatRunningKey } from "../../store/index.ts";
+import { useApp, useRunningBesideKey } from "../../store/index.ts";
 import { ActionSpinner } from "../../ui/motion/loaders.tsx";
 import { groupActivity } from "./group-activity.ts";
 
 export function GroupActivity({ sessions, collapsed, count }: { sessions: readonly Pick<SessionMeta, "id">[]; collapsed: boolean; count: number }) {
 	const ids = sessions.map((session) => session.id);
-	const sideKey = useSideChatRunningKey(collapsed ? ids : []);
+	const sideKey = useRunningBesideKey(collapsed ? ids : []);
 	// A primitive return, so a heading only wakes when its own count changes.
 	const running = useApp((state) =>
 		collapsed ? groupActivity(ids, state.activity, state.activeSessionId, new Set(sideKey ? sideKey.split("\0") : [])).counts.running : 0,

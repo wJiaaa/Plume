@@ -228,6 +228,16 @@ export function isActive(one: Pick<SubAgentSummary, "status">): boolean {
 }
 
 /**
+ * 这个会话派出去的还有没交差的。
+ *
+ * 子代理派出即放手（`delegation-waits.ts`）：派完那一轮当场收尾，活其实才开始，结果回来还会再开
+ * 一轮。只看主回合，会话行在它们跑的那十几分钟里不是「已完成」就是什么都没有。
+ */
+export function delegating(roster: readonly SubAgentSummary[] | undefined): boolean {
+	return roster?.some(isActive) ?? false;
+}
+
+/**
  * 主会话此刻卡在它派出去的子代理上。
  *
  * 人这时候说的话不该排在它们后面：主会话不是在干活，是在等——等的那十几分钟里，排着的消息一句都

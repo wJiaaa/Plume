@@ -13,7 +13,7 @@
 import { useI18n } from "../../i18n/index.ts";
 import type { SessionMeta } from "@plume/core";
 import { rowActivity } from "../../lib/row-activity.ts";
-import { useApp, useSideChatRunning } from "../../store/index.ts";
+import { useApp, useRunningBeside } from "../../store/index.ts";
 import { Archive, ArchiveRestore, Pin, PinOff, Trash2 } from "../../ui/icons/index.ts";
 import { memo, useState } from "react";
 import { useLayout } from "../../app/layout.tsx";
@@ -138,7 +138,7 @@ export const SessionRow = memo(function SessionRow({
 	 * this id, not the whole cache.
 	 */
 	const activity = useApp((s) => s.activity[session.id] ?? null);
-	const sideRunning = useSideChatRunning(session.id);
+	const sideRunning = useRunningBeside(session.id);
 	const settings = useApp((s) => s.settings);
 	const setSessionPinned = useApp((s) => s.setSessionPinned);
 	const deleteSession = useApp((s) => s.deleteSession);

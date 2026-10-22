@@ -34,6 +34,7 @@ import { create } from "zustand";
  */
 import { useSide } from "../features/dock/sideStore.ts";
 import { sideChatRunning, sideSessionIds } from "../lib/row-activity.ts";
+import { delegating, useSubAgents } from "./subAgents.ts";
 import { bridge, inFrame } from "../services/index.ts";
 import { PatchReader } from "../../shared/message-patch.ts";
 import { activeModelCatalog } from "@plume/core/model-catalog";
@@ -44,18 +45,22 @@ import type { Hiccup } from "../lib/hiccup.ts";
 import type { DraftQuote } from "../lib/quote.ts";
 
 /**
- * 这个会话旁边有没有侧边聊天还在答。
+ * 主回合之外，这个会话还有没有活在跑：旁边的侧边聊天还在答，或者它派出去的子智能体还没交差。
  *
- * 两步取：先从侧边聊天那边取它旁边那几个会话的 id（拼成一个串，没变就不重画），再看它们的活动状态。
+ * 侧边聊天两步取：先从侧边聊天那边取它旁边那几个会话的 id（拼成一个串，没变就不重画），再看它们的活动状态。
  */
-export function useSideChatRunning(sessionId: string): boolean {
+export function useRunningBeside(sessionId: string): boolean {
 	const sides = useSide((state) => sideSessionIds(state, [sessionId]));
-	return useApp((state) => sideChatRunning(sides, state.activity, sessionId));
+	const delegated = useSubAgents((state) => delegating(state.rosters[sessionId]));
+	const side = useApp((state) => sideChatRunning(sides, state.activity, sessionId));
+	return side || delegated;
 }
 
-export function useSideChatRunningKey(ids: readonly string[]): string {
+export function useRunningBesideKey(ids: readonly string[]): string {
 	const sides = useSide((state) => sideSessionIds(state, ids));
-	return useApp((state) => ids.filter((id) => sideChatRunning(sides, state.activity, id)).join("\0"));
+	const delegated = useSubAgents((state) => ids.filter((id) => delegating(state.rosters[id])).join("\0"));
+	const side = useApp((state) => ids.filter((id) => sideChatRunning(sides, state.activity, id)).join("\0"));
+	return [side, delegated].filter(Boolean).join("\0");
 }
 
 /**
