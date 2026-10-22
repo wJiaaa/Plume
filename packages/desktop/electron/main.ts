@@ -480,8 +480,8 @@ app.whenReady().then(async () => {
 	 */
 	// 先换上缓存的模型目录，读设置时套的目录值才是最新的一份。
 	await loadCachedModelCatalog();
-	// Built from the default set plus whatever the user has installed; see `bootHostKernel`.
-	kernel = await bootHostKernel(await loadAppSettings());
+	await loadAppSettings();
+	kernel = await bootHostKernel();
 	store = observeSessionStorage(kernel.storage, broadcastSessionChange);
 	/*
 	 * The conversations have to open before any window does.

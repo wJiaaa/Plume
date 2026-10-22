@@ -37,7 +37,7 @@ before(async () => {
 	await mkdir(join(workspace, ".plume", "skills", "demo"), { recursive: true });
 	await writeFile(join(workspace, "a.txt"), "hello\n");
 	await writeFile(join(workspace, ".plume", "skills", "demo", "SKILL.md"), "---\nname: demo\ndescription: 演示用的 skill，把事情整理成清单\n---\n\n整理成清单。\n");
-	kernel = await bootHostKernel(SETTINGS, () => {});
+	kernel = await bootHostKernel();
 });
 
 after(async () => {
@@ -68,7 +68,7 @@ function run(prompt: string, script: (said: string) => AssistantMessage, setting
 
 test("a second host in the same process is refused, not silently swapped in", async () => {
 	// The seams are process-wide; a second boot would re-point the sessions of the first.
-	await assert.rejects(bootHostKernel(SETTINGS, () => {}), /already running/);
+	await assert.rejects(bootHostKernel(), /already running/);
 });
 
 test("跑完一个任务：进度只进日志，回答是最后一段不调工具的话", async () => {

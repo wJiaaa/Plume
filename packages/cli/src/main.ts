@@ -65,7 +65,7 @@ async function main(): Promise<number> {
 	await loadCachedModelCatalog().catch(() => false);
 	const settings = await loadSettings();
 	const log = (line: string) => process.stderr.write(`${line}\n`);
-	const kernel = await bootHostKernel(settings, log);
+	const kernel = await bootHostKernel();
 	registerDefaultSearchProviders(() => settings.searchApiKeys);
 
 	const controller = new AbortController();

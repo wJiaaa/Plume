@@ -1,17 +1,13 @@
 /**
  * What every host does before its first session: build the kernel and point the runtime at it.
  *
- * The window and the terminal both run this, so a capability plugin someone installed behaves the
- * same in either. Written once because the list of seams is the kind of thing that drifts — a seam
+ * The window and the terminal both run this. Written once because the list of seams is the kind of thing that drifts — a seam
  * added here and forgotten in a second copy shows up as a feature that works in one host only.
  */
 
-import { join } from "node:path";
 import { useLlmRegistry } from "../ai/index.ts";
 import { useAgentLoop, type AgentLoop } from "../agent/runner.ts";
 import type { Settings } from "../config/settings.ts";
-import { loadCapabilityPlugins } from "../plugins/capability.ts";
-import { loadPlugins } from "../plugins/loader.ts";
 import { useApprovalPolicy } from "../runtime/approval-policy.ts";
 import { useCompaction } from "../runtime/compaction/compaction.ts";
 import { useScheduler } from "../runtime/scheduling.ts";
@@ -28,7 +24,6 @@ import {
 	TAVILY_PROVIDER_ID,
 } from "../search/keyed.ts";
 import type { SessionStorage } from "../session/storage.ts";
-import { plumeHome } from "../session/store.ts";
 import { useSkillRegistry } from "../skills/registry.ts";
 import { useToolRegistry } from "../tools/index.ts";
 import type { Context } from "./context.ts";
@@ -72,42 +67,19 @@ export interface HostKernel {
  */
 let booted = false;
 
-export async function bootHostKernel(settings: Settings, warn: (message: string) => void = console.warn): Promise<HostKernel> {
+export async function bootHostKernel(): Promise<HostKernel> {
 	if (booted) throw new Error("bootHostKernel: a host is already running in this process; dispose it first.");
 	booted = true;
 	try {
-		return await boot(settings, warn);
+		return await boot();
 	} catch (error) {
 		booted = false;
 		throw error;
 	}
 }
 
-async function boot(settings: Settings, warn: (message: string) => void): Promise<HostKernel> {
-	/*
-	 * The kernel is built from the default set plus whatever the user has installed.
-	 *
-	 * A plugin that replaces the model registry or the sandbox has to be in place before the first
-	 * session is built, not bolted on afterwards. A bundle that fails to load is recorded and
-	 * skipped — someone else's broken plugin must not be why the host will not start.
-	 */
-	const bundles = await loadPlugins(
-		[{ dir: join(plumeHome(), "plugins"), source: "user" as const }],
-		settings.disabledPlugins,
-	);
-	const extra = await loadCapabilityPlugins(bundles.plugins);
-	for (const diagnostic of extra.diagnostics) warn(`[plugin] ${diagnostic.path}: ${diagnostic.message}`);
-	/*
-	 * A capability that loads and then throws while being applied is as broken as one that does not
-	 * load, and was not covered: the throw came out of `createContext`, before the window existed,
-	 * and the app did not open. Started again without the installed ones — the built-in set is what
-	 * an ordinary Plume is, and a context that failed halfway is not something to keep building on.
-	 */
-	const context = await createContext([...DEFAULT_PLUGINS, ...extra.plugins]).catch((error: unknown) => {
-		if (extra.plugins.length === 0) throw error;
-		warn(`[plugin] 已装的能力插件（${extra.plugins.map((plugin) => plugin.name).join("、")}）启动失败，这次不带它们启动：${error instanceof Error ? error.message : String(error)}`);
-		return createContext(DEFAULT_PLUGINS);
-	});
+async function boot(): Promise<HostKernel> {
+	const context = await createContext(DEFAULT_PLUGINS);
 	const skills = context.require<SkillRegistry>(SKILLS);
 	useLlmRegistry(context.require<LlmRegistry>(LLM));
 	useToolRegistry(context.require<ToolRegistry>(TOOLS));
