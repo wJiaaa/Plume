@@ -13,7 +13,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { Sandbox, SandboxProcess } from "../src/kernel/index.ts";
+import type { Sandbox, SandboxProcess } from "../src/sandbox/types.ts";
 import { useSandbox } from "../src/sandbox/index.ts";
 import { bashTool } from "../src/tools/bash.ts";
 import type { ToolContext, ToolResult } from "../src/types.ts";

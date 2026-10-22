@@ -10,7 +10,6 @@
 import type { AgentEventSink } from "./events.ts";
 import type { AgentToolContext } from "./run-config.ts";
 import { coerceArguments, resolveTool, unknownToolMessage, withParameterHint } from "./tool-args.ts";
-import { runTool } from "./tool-pipeline.ts";
 import { skillRefusal } from "../skills/tool.ts";
 import { translatedShellCommand, TOOL_NAMES_KEY } from "../tools/reroute.ts";
 import { declinedResult, errorResult } from "../tools/result.ts";
@@ -351,7 +350,7 @@ async function executeOne(
 		 * Racing the signal here makes the button mean what it says. Whatever the tool is doing
 		 * carries on in the background and its result is discarded; the turn is over.
 		 */
-		result = await Promise.race([runTool({ tool: runnable, args: runArgs, ctx }), stop.stopped]);
+		result = await Promise.race([runnable.execute(runArgs, ctx), stop.stopped]);
 	} catch (error) {
 		if (signal?.aborted) return cancelledResult(waiting, left);
 		return errorResult(error instanceof Error ? error.message : String(error));

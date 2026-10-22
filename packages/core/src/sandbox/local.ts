@@ -17,7 +17,7 @@ import { Socket } from "node:net";
 import type { Readable } from "node:stream";
 import { commandShell, type CommandShell } from "../platform.ts";
 import { osPipe } from "./linux/libc.ts";
-import type { Sandbox, SandboxProcess } from "../kernel/services.ts";
+import type { Sandbox, SandboxProcess } from "./types.ts";
 import { confine } from "./backend.ts";
 import { commandEnv } from "./login-path.ts";
 import type { SandboxMode } from "./policy.ts";

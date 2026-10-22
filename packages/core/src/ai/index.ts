@@ -12,31 +12,29 @@ import { anthropicMessagesProvider } from "./anthropic-messages.ts";
 import { openaiResponsesProvider } from "./openai-responses.ts";
 import { openaiChatCompletionsProvider } from "./openai-chat-completions.ts";
 
-/**
- * The adapters this module falls back to.
- *
- * The real registry is `ctx.llm`, contributed by the `llm` plugin — that is where an adapter for
- * a private or experimental API gets added without editing anything here. This map is what the
- * lookup uses when no context has been bound, which is the case in tests and in small tools that
- * have no reason to build a plugin host.
- */
+/** The adapters the app speaks. A bound registry is asked first; see `useLlmRegistry`. */
 const BUILT_IN: Record<ApiFormat, Provider> = {
 	"anthropic-messages": anthropicMessagesProvider,
 	"openai-responses": openaiResponsesProvider,
 	"openai-chat-completions": openaiChatCompletionsProvider,
 };
 
-/** Set once by the host that owns the plugin context; read on every lookup. */
-let registry: { get(api: string): Provider | undefined } | null = null;
+/** What provider lookup asks before falling back to the built-in adapters. */
+export interface LlmRegistry {
+	get(api: string): Provider | undefined;
+}
+
+let registry: LlmRegistry | null = null;
 
 /**
- * Point provider lookup at a plugin registry.
+ * Put a registry in front of the built-in adapters.
  *
  * Deliberately a binding rather than a parameter threaded through every call site: the adapter
- * in use is a property of the running application, and passing it down through the agent loop,
- * compaction and every tool that streams would say otherwise.
+ * in use is a property of the running process, and passing it down through the agent loop,
+ * compaction and every tool that streams would say otherwise. Neither host binds one; the seam is
+ * for tests and scripts, and for whatever per-session injection replaces it (ADR-0054).
  */
-export function useLlmRegistry(next: { get(api: string): Provider | undefined } | null): void {
+export function useLlmRegistry(next: LlmRegistry | null): void {
 	registry = next;
 }
 

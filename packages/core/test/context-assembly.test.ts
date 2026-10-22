@@ -14,7 +14,6 @@ import { DEFAULT_SETTINGS } from "../src/config/settings.ts";
 import { AgentSession } from "../src/runtime/session.ts";
 import { SessionLog } from "../src/runtime/session-log.ts";
 import { SessionStore } from "../src/session/store.ts";
-import { useTurnPipeline } from "../src/runtime/turn.ts";
 import { estimateTokens } from "../src/tokens.ts";
 import type { Skill } from "../src/skills/loader.ts";
 import { emptyUsage, type AssistantMessage, type LlmContext, type ModelConfig, type ProviderConfig } from "../src/types.ts";
@@ -134,18 +133,13 @@ test("runtime statistics reuse filtered requests and recorded sources through re
 		await session.log.commit({ role: "user", content: [{ type: "text", text: "inspect output" }], timestamp: 1 });
 		await session.log.commit({ ...reply(), content: [{ type: "toolCall", id: "large", name: "bash", arguments: { command: "fixture" } }], stopReason: "toolUse" });
 		await session.log.commit({ role: "toolResult", toolName: "bash", toolCallId: "large", content: [{ type: "text", text: "x".repeat(80_000) }], isError: false, timestamp: 2 });
-		useTurnPipeline(async (turn, next) => next({ ...turn, tools: [], systemPrompt: turn.systemPrompt + "\nPLUGIN_MARKER" }));
 		await session.prompt([{ type: "text", text: "hello" }]);
 		assert.match(sent.systemPrompt, /CUSTOM_IDENTITY/);
 		assert.match(sent.systemPrompt, /RULES_BEFORE/);
-		assert.match(sent.systemPrompt, /PLUGIN_MARKER/);
-		assert.equal(sent.tools.length, 0);
 		assert.ok(JSON.stringify(sent.messages).length < 20_000, "statistics must see the pruned request, not the full transcript");
 		const detail = await session.contextBreakdown();
 		assert.ok(detail);
 		assert.equal(detail.used, textTokens(sent.systemPrompt) + toolTokens(sent.tools) + estimateTokens([...sent.messages, answer]));
-		assert.ok(!detail.segments.some(segment => segment.key === "systemTools"));
-		assert.ok(detail.sources?.some(section => section.source === "extension"));
 		await writeFile(join(root, "AGENTS.md"), "RULES_AFTER".repeat(100));
 		assert.deepEqual(await session.contextBreakdown(), detail);
 		const loaded = await store.load(session.meta.id);
@@ -155,7 +149,6 @@ test("runtime statistics reuse filtered requests and recorded sources through re
 		const restored = await reopened.contextBreakdown();
 		assert.deepEqual(restored?.sources, detail.sources);
 		assert.deepEqual(restored?.memoryFiles, detail.memoryFiles);
-		assert.ok(!restored?.segments.some(segment => segment.key === "systemTools"));
 		const frozen = sent.systemPrompt;
 		await session.prompt([{ type: "text", text: "next" }]);
 		// 会话内 system prompt 冻结，磁盘上改了的项目指令作为增量接在末尾（见 `prompt-freeze.test.ts`）。
@@ -164,7 +157,6 @@ test("runtime statistics reuse filtered requests and recorded sources through re
 		await session.log.truncateFrom(session.messages.length - 2);
 		assert.deepEqual((await session.contextBreakdown())?.sources, detail.sources, "rewinding must discard the later prompt and request snapshot");
 	} finally {
-		useTurnPipeline(null);
 		await session.dispose();
 		await reopened?.dispose();
 		for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }

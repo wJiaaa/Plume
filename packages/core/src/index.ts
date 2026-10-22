@@ -1,5 +1,6 @@
 export { normalizeRetryPolicy } from "./config/retry-policy.ts";
-export { bootHostKernel, registerDefaultSearchProviders, type HostKernel } from "./kernel/host.ts";
+export { bootHostKernel, type HostKernel } from "./kernel/host.ts";
+export { registerDefaultSearchProviders } from "./search/defaults.ts";
 export { primeCommandPath } from "./sandbox/index.ts";
 /** 登录 shell 的环境——MCP 服务就在这份环境里启动，「这个变量有没有设」也要问它。 */
 export { commandEnv } from "./sandbox/login-path.ts";

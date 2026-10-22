@@ -33,7 +33,6 @@ import { toolTable } from "../tools/mcp-search.ts";
 import { addressLookups, runSubAgent } from "./sub-agent/sub-agent.ts";
 import type { SubAgentRegistry } from "./sub-agent/sub-agents.ts";
 import type { DelegationWaits } from "./sub-agent/delegation-waits.ts";
-import type { TurnContext } from "./turn.ts";
 import { RepetitionWatch } from "../agent/repetition.ts";
 import { sessionPruner } from "../agent/aged-prune.ts";
 import { inheritedToolEnv } from "./run-policy.ts";
@@ -95,6 +94,14 @@ export interface TurnConfigDeps {
 	liveModel?: LiveModel;
 	/** Sees each request as it is sent; the session records it for the context inspector. */
 	onContext?: (context: LlmContext, model: ModelConfig) => void;
+}
+
+/** What the model will see this turn, as it was assembled. */
+export interface TurnContext {
+	systemPrompt: string;
+	messages: Message[];
+	tools: Tool[];
+	cwd: string;
 }
 
 export function buildTurnConfig(

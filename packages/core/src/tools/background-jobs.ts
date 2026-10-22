@@ -1,4 +1,4 @@
-import type { SandboxProcess } from "../kernel/services.ts";
+import type { SandboxProcess } from "../sandbox/types.ts";
 
 export interface BackgroundJob {
 	id: string;

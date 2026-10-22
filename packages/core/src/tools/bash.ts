@@ -18,7 +18,7 @@ import { authorizeCommandReads } from "./read-access.ts";
 import { literalWords, nests, sequence, type LiteralWord } from "./shell-split.ts";
 import { describeStatus, readExit } from "./exit-status.ts";
 import { commandShell, type CommandShell } from "../platform.ts";
-import type { SandboxProcess } from "../kernel/services.ts";
+import type { SandboxProcess } from "../sandbox/types.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 
 const DEFAULT_TIMEOUT_MS = 120_000;

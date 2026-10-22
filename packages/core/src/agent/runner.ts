@@ -6,8 +6,7 @@
  * replies, one that stops to check with a person on every write — and which is right depends on
  * what the agent is for, not on what this file happens to contain.
  *
- * Bound by the host at boot like the other seams, with the built-in loop as the fallback so the
- * CLI and the tests keep working without a kernel.
+ * Unbound — which is both hosts — it is `runAgent`. `useAgentLoop` is the seam a test swaps.
  */
 
 import type { AgentEventSink } from "./events.ts";

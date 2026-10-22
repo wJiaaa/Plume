@@ -10,8 +10,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { createContext, SANDBOX, type Sandbox, type SandboxProcess } from "../src/kernel/index.ts";
 import { getSandbox, useSandbox } from "../src/sandbox/index.ts";
+import { LocalSandbox } from "../src/sandbox/local.ts";
+import type { Sandbox, SandboxProcess } from "../src/sandbox/types.ts";
 import { bashTool } from "../src/tools/bash.ts";
 import type { ToolContext } from "../src/types.ts";
 
@@ -67,12 +68,10 @@ test("with nothing bound, commands still run locally", async () => {
 	}
 });
 
-test("the default context provides a sandbox", async () => {
-	const ctx = await createContext();
-	try {
-		assert.ok(ctx.require<Sandbox>(SANDBOX), "loaded by default");
-		assert.ok(getSandbox(), "and asking without binding one still answers");
-	} finally {
-		await ctx.dispose();
-	}
+test("unbound, the sandbox is the local one, and unbinding returns to it", () => {
+	const local = getSandbox();
+	assert.ok(local instanceof LocalSandbox);
+	useSandbox(new StubSandbox());
+	useSandbox(null);
+	assert.equal(getSandbox(), local);
 });

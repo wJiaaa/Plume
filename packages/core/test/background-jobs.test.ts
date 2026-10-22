@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import { BackgroundJobs, backgroundJobs, type BackgroundJob } from "../src/tools/background-jobs.ts";
-import type { SandboxProcess } from "../src/kernel/services.ts";
+import type { SandboxProcess } from "../src/sandbox/types.ts";
 import { useSandbox } from "../src/sandbox/index.ts";
 import { bashOutputTool, bashTool } from "../src/tools/bash.ts";
 import { SessionCapabilities } from "../src/runtime/session-capabilities.ts";

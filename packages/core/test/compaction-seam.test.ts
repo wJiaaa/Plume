@@ -2,7 +2,7 @@
  * That binding a compaction strategy does not turn features off.
  *
  * `compactWith` used to take seven positional arguments and forward four of them to the bound
- * strategy. The desktop binds one at boot, so on the only host that ships, automatic compaction
+ * strategy. The desktop bound one at boot then, so on the only host that ships, automatic compaction
  * ran with no overhead accounting (the threshold ignored the system prompt and every tool schema,
  * which is the case the code's own comment says lands over the line and then compacts on every
  * turn) and no artifact sink (so a pruned placeholder advertised an `artifact://` address that had
@@ -14,9 +14,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createContext } from "../src/kernel/index.ts";
-import { COMPACTION, type CompactionRequest, type CompactionStrategy } from "../src/kernel/services.ts";
-import { compactWith, useCompaction } from "../src/runtime/compaction/compaction.ts";
+import { compactWith, useCompaction, type CompactionRequest, type CompactionStrategy } from "../src/runtime/compaction/compaction.ts";
 import { estimateTokens } from "../src/tokens.ts";
 import type { AssistantMessage, Message, ModelConfig, ProviderConfig } from "../src/types.ts";
 import { emptyUsage } from "../src/types.ts";
@@ -104,7 +102,7 @@ test("a bound strategy receives the whole request, not the first four arguments"
 	assert.equal(request.streamFn, stream as never, "the model seam reached the strategy");
 });
 
-test("the built-in strategy honours overhead the same way an unbound call does", async () => {
+test("the built-in policy honours overhead", async () => {
 	/*
 	 * Measured as behaviour, not as structure: overhead does not decide *whether* to compact — the
 	 * threshold is checked against the provider's own count of the request that already happened —
@@ -126,23 +124,16 @@ test("the built-in strategy honours overhead the same way an unbound call does",
 		return reply("summary of the earlier work");
 	};
 
-	const ctx = await createContext();
-	try {
-		useCompaction(ctx.require<CompactionStrategy>(COMPACTION));
-		const light = await compactWith({ messages: conversation, model: MODEL, provider: PROVIDER, streamFn: stream as never, overhead: 0 });
-		const heavy = await compactWith({ messages: conversation, model: MODEL, provider: PROVIDER, streamFn: stream as never, overhead: 5000 });
-		assert.ok(light && heavy, "both compacted");
-		assert.ok(
-			estimateTokens(heavy.messages) < estimateTokens(light.messages),
-			`a 5000-token prompt leaves less room for history (${estimateTokens(heavy.messages)} vs ${estimateTokens(light.messages)})`,
-		);
-	} finally {
-		useCompaction(null);
-		await ctx.dispose();
-	}
+	const light = await compactWith({ messages: conversation, model: MODEL, provider: PROVIDER, streamFn: stream as never, overhead: 0 });
+	const heavy = await compactWith({ messages: conversation, model: MODEL, provider: PROVIDER, streamFn: stream as never, overhead: 5000 });
+	assert.ok(light && heavy, "both compacted");
+	assert.ok(
+		estimateTokens(heavy.messages) < estimateTokens(light.messages),
+		`a 5000-token prompt leaves less room for history (${estimateTokens(heavy.messages)} vs ${estimateTokens(light.messages)})`,
+	);
 });
 
-test("the built-in strategy forces when asked, which is what /compact needs", async () => {
+test("the built-in policy forces when asked, which is what /compact needs", async () => {
 	const conversation: Message[] = Array.from({ length: 20 }, (_, index) =>
 		index % 2 ? reply(`Details ${index} ${"context ".repeat(150)}`) : { role: "user", content: [{ type: "text", text: `Task ${index} ${"requirements ".repeat(80)}` }], timestamp: 1 },
 	);
@@ -154,15 +145,8 @@ test("the built-in strategy forces when asked, which is what /compact needs", as
 		return reply("Tasks and decisions preserved.");
 	};
 
-	const ctx = await createContext();
-	try {
-		useCompaction(ctx.require<CompactionStrategy>(COMPACTION));
-		assert.equal(await compactWith({ messages: conversation, model: wide, provider: PROVIDER, streamFn: stream as never }), null, "precondition: nothing is needed in a million-token window");
-		const forced = await compactWith({ messages: conversation, model: wide, provider: PROVIDER, streamFn: stream as never, force: true });
-		assert.equal(requests, 1, "forcing summarises exactly once");
-		assert.ok(forced && forced.kept !== undefined && forced.messages.length < conversation.length);
-	} finally {
-		useCompaction(null);
-		await ctx.dispose();
-	}
+	assert.equal(await compactWith({ messages: conversation, model: wide, provider: PROVIDER, streamFn: stream as never }), null, "precondition: nothing is needed in a million-token window");
+	const forced = await compactWith({ messages: conversation, model: wide, provider: PROVIDER, streamFn: stream as never, force: true });
+	assert.equal(requests, 1, "forcing summarises exactly once");
+	assert.ok(forced && forced.kept !== undefined && forced.messages.length < conversation.length);
 });

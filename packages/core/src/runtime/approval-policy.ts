@@ -1,15 +1,39 @@
 /**
  * Which approval policy is in force.
  *
- * Bound by the host at boot like the other seams. The fallback is the built-in blacklist, so the
- * CLI and the tests judge risk the same way the app does without having to build a kernel.
+ * Neither host binds one, so the app, the CLI and the tests all judge with the built-in blacklist
+ * below; `useApprovalPolicy` is the seam a test swaps.
  */
 
-import type { ApprovalPolicy } from "../kernel/services.ts";
 import { assessCommand, assessWrite } from "../tools/risk.ts";
 import { assessNetwork } from "../tools/risk-network.ts";
+import type { RiskCode, RiskParams } from "../tools/risk-reasons.ts";
+import type { ApprovalRequest } from "../types.ts";
 
-/** Also what the kernel's `approval` plugin provides, so the app and a bare runtime judge alike. */
+export interface ApprovalVerdict {
+	risky: boolean;
+	/** Why, as a sentence, when it is risky. Shown as is wherever `code` is absent. */
+	reason?: string;
+	/**
+	 * Which built-in rule found it, when one did. A host says it in its own language from this
+	 * (`risk.<code>` in the desktop's catalogues); a policy with rules of its own leaves it out and
+	 * gives only `reason`.
+	 */
+	code?: RiskCode;
+	/** The values `code`'s sentence needs. */
+	params?: RiskParams;
+}
+
+export interface ApprovalPolicy {
+	/**
+	 * Judge one action.
+	 *
+	 * `subject` is the command, path or URL — the thing the decision is actually about, rather
+	 * than the prose the model wrapped it in.
+	 */
+	assess(kind: string, subject: string, cwd: string, request?: ApprovalRequest): ApprovalVerdict;
+}
+
 export const builtInApprovalPolicy: ApprovalPolicy = {
 	assess(kind, subject, cwd, request) {
 		if (kind === "bash") return assessCommand(subject, cwd);

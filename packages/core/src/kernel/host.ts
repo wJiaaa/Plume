@@ -1,132 +1,55 @@
 /**
- * What every host does before its first session: build the kernel and point the runtime at it.
+ * What every host does before its first session.
  *
- * The window and the terminal both run this. Written once because the list of seams is the kind of thing that drifts — a seam
- * added here and forgotten in a second copy shows up as a feature that works in one host only.
+ * The window and the terminal both run this. It used to build a plugin context and copy each of its
+ * services onto a module-level seam; every service was the same object the seam already fell back
+ * to, so that layer is gone (ADR-0054) and what is left is the part that is really per host: the
+ * session store, and somewhere for the host to register skills of its own.
+ *
+ * Nothing else in core imports this directory — `.dependency-cruiser.cjs`
+ * (`core-does-not-reach-the-host-assembly`) holds that, so it stays the top of the package.
  */
 
-import { useLlmRegistry } from "../ai/index.ts";
-import { useAgentLoop, type AgentLoop } from "../agent/runner.ts";
-import type { Settings } from "../config/settings.ts";
-import { useApprovalPolicy } from "../runtime/approval-policy.ts";
-import { useCompaction } from "../runtime/compaction/compaction.ts";
-import { useScheduler } from "../runtime/scheduling.ts";
-import { useTurnPipeline } from "../runtime/turn.ts";
-import { useSandbox } from "../sandbox/index.ts";
-import { duckDuckGoProvider } from "../search/duckduckgo.ts";
-import { registerSearchProvider } from "../search/index.ts";
-import { instantAnswerProvider } from "../search/instant.ts";
-import {
-	BRAVE_PROVIDER_ID,
-	DEEPSEEK_PROVIDER_ID,
-	EXA_PROVIDER_ID,
-	keyedSearchProvider,
-	TAVILY_PROVIDER_ID,
-} from "../search/keyed.ts";
 import type { SessionStorage } from "../session/storage.ts";
-import { useSkillRegistry } from "../skills/registry.ts";
-import { useToolRegistry } from "../tools/index.ts";
-import type { Context } from "./context.ts";
-import { createContext, DEFAULT_PLUGINS } from "./index.ts";
-import {
-	APPROVAL,
-	COMPACTION,
-	LLM,
-	LOOP,
-	SANDBOX,
-	SCHEDULER,
-	SESSION,
-	SKILLS,
-	STORAGE,
-	TOOLS,
-	type ApprovalPolicy,
-	type CompactionStrategy,
-	type LlmRegistry,
-	type Sandbox,
-	type SkillRegistry,
-	type TaskScheduler,
-	type ToolRegistry,
-	type TurnPipeline,
-} from "./services.ts";
+import { SessionStore } from "../session/store.ts";
+import { createSkillRegistry, useSkillRegistry, type SkillRegistry } from "../skills/registry.ts";
 
 export interface HostKernel {
-	context: Context;
-	/** The session store a plugin may have replaced. Hosts build their sessions on this one. */
+	/** Where this host's sessions are kept. Hosts build their sessions on this one. */
 	storage: SessionStorage;
+	/** Skills the host brings in code; every session reads them through `registeredSkills()`. */
 	skills: SkillRegistry;
-	/** Unwinds every seam, then the plugins, in the reverse of the order they arrived. */
-	dispose(): Promise<void>;
+	/** Unbinds the skill registry. A second call is a no-op. */
+	dispose(): void;
 }
 
 /**
  * One host per process, enforced rather than assumed.
  *
- * The seams below are module-level: a second host would silently re-point sessions already running
- * under the first, and disposing either would unbind both. Moving the seams onto the context is the
- * fix if a process ever needs two; until then, booting a second one is an error, not a surprise.
+ * The skill registry, like every other seam, is module-level: a second host would silently re-point
+ * sessions already running under the first, and disposing either would unbind both. ADR-0039 has
+ * why the seams stay per process; until a process needs two hosts, booting a second one is an
+ * error, not a surprise.
  */
 let booted = false;
 
-export async function bootHostKernel(): Promise<HostKernel> {
+export function bootHostKernel(): HostKernel {
 	if (booted) throw new Error("bootHostKernel: a host is already running in this process; dispose it first.");
+	// Built before anything is marked or bound, so a store that fails to construct leaves no trace.
+	const storage = new SessionStore();
+	const skills = createSkillRegistry();
 	booted = true;
-	try {
-		return await boot();
-	} catch (error) {
-		booted = false;
-		throw error;
-	}
-}
-
-async function boot(): Promise<HostKernel> {
-	const context = await createContext(DEFAULT_PLUGINS);
-	const skills = context.require<SkillRegistry>(SKILLS);
-	useLlmRegistry(context.require<LlmRegistry>(LLM));
-	useToolRegistry(context.require<ToolRegistry>(TOOLS));
-	useSandbox(context.require<Sandbox>(SANDBOX));
-	useCompaction(context.require<CompactionStrategy>(COMPACTION));
-	useApprovalPolicy(context.require<ApprovalPolicy>(APPROVAL));
 	useSkillRegistry(skills);
-	useScheduler(context.require<TaskScheduler>(SCHEDULER));
-	useAgentLoop(context.require<AgentLoop>(LOOP));
-	useTurnPipeline(context.require<TurnPipeline>(SESSION).middleware);
 	let disposed = false;
 	return {
-		context,
-		storage: context.require<SessionStorage>(STORAGE),
+		storage,
 		skills,
-		async dispose() {
+		dispose() {
 			// A second dispose of this host must not unbind a host booted since.
 			if (disposed) return;
 			disposed = true;
-			useLlmRegistry(null);
-			useToolRegistry(null);
-			useSandbox(null);
-			useCompaction(null);
-			useApprovalPolicy(null);
 			useSkillRegistry(null);
-			useScheduler(null);
-			useAgentLoop(null);
-			useTurnPipeline(null);
 			booted = false;
-			await context.dispose();
 		},
 	};
-}
-
-/**
- * Search, working out of the box.
- *
- * The keyless provider is registered unconditionally so a fresh install can search at all; the
- * keyed ones read their key at call time, so they become available the moment one is pasted in
- * and stay out of the way until then. Which of them runs is `selectSearchProvider`'s call: the
- * user's pick, or — with none made — a pasted key over the keyless default.
- */
-export function registerDefaultSearchProviders(keys: () => Settings["searchApiKeys"]): void {
-	registerSearchProvider(duckDuckGoProvider());
-	registerSearchProvider(instantAnswerProvider());
-	registerSearchProvider(keyedSearchProvider(TAVILY_PROVIDER_ID, () => keys()?.tavily));
-	registerSearchProvider(keyedSearchProvider(EXA_PROVIDER_ID, () => keys()?.exa));
-	registerSearchProvider(keyedSearchProvider(BRAVE_PROVIDER_ID, () => keys()?.brave));
-	registerSearchProvider(keyedSearchProvider(DEEPSEEK_PROVIDER_ID, () => keys()?.deepseek));
 }

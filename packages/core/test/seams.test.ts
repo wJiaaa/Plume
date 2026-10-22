@@ -14,31 +14,18 @@ import { test } from "node:test";
 import type { QueuedTask } from "../src/agent/events.ts";
 import { useAgentLoop, runTurn, type AgentLoop } from "../src/agent/runner.ts";
 import { runConfig } from "./run-config.ts";
-import { runTool } from "../src/agent/tool-pipeline.ts";
-import {
-	createContext,
-	EVENTS,
-	LOOP,
-	SCHEDULER,
-	SESSION,
-	SKILLS,
-	STORAGE,
-	type AgentLoop as AgentLoopService,
-	type SkillRegistry,
-	type TaskScheduler,
-	type TurnPipeline,
-} from "../src/kernel/index.ts";
-import { nextTask, useScheduler } from "../src/runtime/scheduling.ts";
-import { prepareTurn, useTurnPipeline } from "../src/runtime/turn.ts";
+import { streamAssistant, useLlmRegistry } from "../src/ai/index.ts";
+import { nextTask, useScheduler, type TaskScheduler } from "../src/runtime/scheduling.ts";
 import type { Skill } from "../src/skills/loader.ts";
-import { registeredSkills, useSkillRegistry } from "../src/skills/registry.ts";
+import { createSkillRegistry, registeredSkills, useSkillRegistry } from "../src/skills/registry.ts";
 import type { SessionStorage } from "../src/session/storage.ts";
 import { SessionStore } from "../src/session/store.ts";
-import { emptyUsage, type AgentRunResult, type Tool, type ToolResult } from "../src/types.ts";
+import { emptyUsage, type AgentRunResult, type AssistantMessage, type LlmContext, type ModelConfig, type Provider, type ProviderConfig } from "../src/types.ts";
 
-test("skills: a plugin's skills reach the session", () => {
+test("skills: a host's skills reach the session", () => {
 	const skill = { name: "deploy", description: "Ship it", source: "user" } as unknown as Skill;
-	const registry: SkillRegistry = { register: () => () => {}, all: () => [skill] };
+	const registry = createSkillRegistry();
+	registry.register([skill]);
 	useSkillRegistry(registry);
 	try {
 		assert.deepEqual(
@@ -51,32 +38,47 @@ test("skills: a plugin's skills reach the session", () => {
 	}
 });
 
-test("session: middleware amends the turn, outermost first", async () => {
-	const ctx = await createContext();
-	const pipeline = ctx.require<TurnPipeline>(SESSION);
-	const order: string[] = [];
-	pipeline.use(async (turn, next) => {
-		order.push("outer");
-		const out = await next({ ...turn, systemPrompt: `${turn.systemPrompt}\n[outer]` });
-		return { ...out, systemPrompt: `${out.systemPrompt}\n[outer done]` };
-	});
-	pipeline.use(async (turn, next) => {
-		order.push("inner");
-		return next({ ...turn, systemPrompt: `${turn.systemPrompt}\n[inner]` });
-	});
-	useTurnPipeline(pipeline.middleware);
+test("skills: a later registration replaces one of the same name, and withdrawing it restores the first", () => {
+	const registry = createSkillRegistry();
+	const first = { name: "deploy", description: "first" } as unknown as Skill;
+	const second = { name: "deploy", description: "second" } as unknown as Skill;
+	const other = { name: "review", description: "other" } as unknown as Skill;
+	registry.register([first, other]);
+	const withdraw = registry.register([second]);
+	assert.deepEqual(registry.all().map((s) => `${s.name}:${s.description}`), ["deploy:second", "review:other"]);
+	withdraw();
+	assert.deepEqual(registry.all().map((s) => `${s.name}:${s.description}`), ["deploy:first", "review:other"]);
+});
 
+test("llm: a bound registry answers first, and anything it lacks falls back to the built-in adapters", async () => {
+	const said: string[] = [];
+	const stub = {
+		api: "openai-responses",
+		// Counted when it is asked, not when it is iterated, so a lookup that merely reached it shows.
+		stream() {
+			said.push("stub");
+			// oxlint-disable-next-line require-yield -- a provider that answers without streaming anything
+			return (async function* () {
+				return { role: "assistant", content: [{ type: "text", text: "from the stub" }] } as unknown as AssistantMessage;
+			})();
+		},
+	} as unknown as Provider;
+	const config = (api: string) => ({ api }) as unknown as ProviderConfig;
+	const model = {} as ModelConfig;
+	const context = { systemPrompt: "", messages: [] } as unknown as LlmContext;
+	useLlmRegistry({ get: (api) => (api === "openai-responses" ? stub : undefined) });
 	try {
-		const turn = await prepareTurn({ systemPrompt: "base", messages: [], tools: [], cwd: "/tmp" });
-		assert.deepEqual(order, ["outer", "inner"]);
-		assert.equal(turn.systemPrompt, "base\n[outer]\n[inner]\n[outer done]");
+		const stream = streamAssistant(config("openai-responses"), model, context);
+		const done = await stream.next();
+		assert.equal(done.done && (done.value.content[0] as { text: string }).text, "from the stub");
+		// The registry has no answer for this one, so the built-in adapter is what streams it. Not
+		// iterated: the built-in would dial out.
+		streamAssistant(config("anthropic-messages"), model, context);
 	} finally {
-		useTurnPipeline(null);
-		await ctx.dispose();
+		useLlmRegistry(null);
 	}
-
-	const untouched = await prepareTurn({ systemPrompt: "base", messages: [], tools: [], cwd: "/tmp" });
-	assert.equal(untouched.systemPrompt, "base", "an empty pipeline is a no-op");
+	streamAssistant(config("openai-responses"), model, context);
+	assert.deepEqual(said, ["stub"], "only the bound lookup reached the stub");
 });
 
 test("scheduler: a replacement decides what runs next", () => {
@@ -132,72 +134,5 @@ test("storage: the runtime accepts any store with the right shape", async () => 
 		assert.equal(after.seq > meta.seq, true, "append advances the sequence");
 	} finally {
 		await rm(root, { recursive: true, force: true });
-	}
-});
-
-test("the default context provides every capability", async () => {
-	const ctx = await createContext();
-	try {
-		assert.ok(ctx.require<SessionStorage>(STORAGE));
-		assert.ok(ctx.require<TaskScheduler>(SCHEDULER));
-		assert.ok(ctx.require<AgentLoopService>(LOOP));
-		assert.ok(ctx.require<SkillRegistry>(SKILLS));
-		assert.ok(ctx.require<TurnPipeline>(SESSION));
-	} finally {
-		await ctx.dispose();
-	}
-});
-
-test("plugins collaborate through the bus: a listener wraps every tool call", async () => {
-	const ctx = await createContext();
-	const seen: string[] = [];
-
-	try {
-		// A plugin that times every call, without knowing which tools exist.
-		const off = ctx.onWaterfall<[{ tool: { name: string } }], ToolResult>(EVENTS.toolCall, async (call, next) => {
-			seen.push(`in:${call.tool.name}`);
-			const result = await next();
-			seen.push(`out:${call.tool.name}`);
-			return result;
-		});
-
-		const echo = {
-			name: "echo",
-			execute: async () => ({ content: [{ type: "text" as const, text: "hi" }] }),
-		} as unknown as Tool;
-
-		const result = await runTool({ tool: echo, args: {}, ctx: {} as never });
-		assert.equal(result.content[0]?.type === "text" && result.content[0].text, "hi", "the call still happened");
-		assert.deepEqual(seen, ["in:echo", "out:echo"], "and it was wrapped on both sides");
-
-		off();
-		seen.length = 0;
-		await runTool({ tool: echo, args: {}, ctx: {} as never });
-		assert.deepEqual(seen, [], "withdrawing the listener leaves the call unwrapped");
-	} finally {
-		await ctx.dispose();
-	}
-});
-
-test("a turn-pipeline step registered after boot still runs", async () => {
-	const ctx = await createContext();
-	try {
-		const pipeline = ctx.require<TurnPipeline>(SESSION);
-		// The host binds once, at boot, before any plugin has registered anything.
-		useTurnPipeline(pipeline.middleware);
-
-		const before = await prepareTurn({ systemPrompt: "base", messages: [], tools: [], cwd: "/tmp" });
-		assert.equal(before.systemPrompt, "base", "nothing registered, nothing changed");
-
-		const off = pipeline.use(async (turn, next) => next({ ...turn, systemPrompt: `${turn.systemPrompt}\n[late]` }));
-		const after = await prepareTurn({ systemPrompt: "base", messages: [], tools: [], cwd: "/tmp" });
-		assert.equal(after.systemPrompt, "base\n[late]", "a step added later is not missed");
-
-		off();
-		const removed = await prepareTurn({ systemPrompt: "base", messages: [], tools: [], cwd: "/tmp" });
-		assert.equal(removed.systemPrompt, "base");
-	} finally {
-		useTurnPipeline(null);
-		await ctx.dispose();
 	}
 });

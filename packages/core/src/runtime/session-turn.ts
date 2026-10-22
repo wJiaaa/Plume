@@ -1,9 +1,8 @@
 /**
  * Assembling one turn: everything the loop needs, in the order it has to be decided.
  *
- * Build the system prompt, let plugins amend the whole turn, then write down what came out. The
- * recording happens last on purpose — what belongs in the log is what the model was actually sent,
- * not what this file would have sent if nothing had intervened.
+ * Build the system prompt, put the turn together, then write down what came out. The recording
+ * happens last on purpose — what belongs in the log is what the model was actually sent.
  *
  * Separate from the session because it is a function of its inputs and nothing else: given the same
  * workspace, capabilities and history it produces the same request. That is what makes a turn
@@ -41,9 +40,8 @@ import type { SessionCapabilities } from "./session-capabilities.ts";
 import type { SessionLog } from "./session-log.ts";
 import type { Boundary } from "../session/types.ts";
 import { SUBAGENTS_KEY } from "../resources/handlers.ts";
-import { prepareTurn } from "./turn.ts";
 import { loadPromptContext, promptCapabilities, type PromptProfile } from "./prompt-context.ts";
-import { reconcilePrompt, type PromptContext } from "../prompt/context.ts";
+import type { PromptContext } from "../prompt/context.ts";
 import { currentSections, diffSections, promptSections, promptUpdateMessage } from "../prompt/update.ts";
 import { buildTurnConfig } from "./turn-config.ts";
 import { PLAN_MODE_KEY, planModeTools, unsubmittedPlanCheck } from "./plan-mode.ts";
@@ -334,11 +332,10 @@ async function assembleTurn(input: TurnInputs, hooks: TurnHooks): Promise<{ conf
 		followups: input.followups,
 		project: log.meta.project,
 	}));
-	const turn = await prepareTurn({
+	const turn = {
 		cwd, tools, systemPrompt: prompt.systemPrompt,
 		messages: modelHistory(log, input.provider, input.model),
-	});
-	const assembled = reconcilePrompt(prompt, turn.systemPrompt);
+	};
 	// 这一轮从日志的这里开始写：没交计划的提醒只看这之后调过什么（续跑共用同一份 config，也算在内）。
 	const from = log.messages.length;
 	const stopHook = makeOnStop(hooks);
@@ -351,7 +348,7 @@ async function assembleTurn(input: TurnInputs, hooks: TurnHooks): Promise<{ conf
 		table.map((tool) => tool.name),
 		can.skills.map((skill) => skill.name),
 		table.map(({ name, description, parameters }) => ({ name, description, parameters })),
-		{ sections: assembled.sections, mcpTools: [...can.mcpToolNames()] },
+		{ sections: prompt.sections, mcpTools: [...can.mcpToolNames()] },
 	);
 
 	const config = buildTurnConfig(

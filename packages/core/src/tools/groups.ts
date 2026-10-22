@@ -4,7 +4,7 @@
  * One list, because there used to be two. The kernel's tools plugin registered four groups and
  * `index.ts` kept a flat list of its own beside them — and they drifted apart: `recall`, `learn`,
  * `lsp` and `web_search` (and a since-removed `rule`) only ever reached the flat one. The desktop
- * binds the kernel registry, so for the desktop those five tools did not exist: they were written, tested, shipped,
+ * bound the kernel registry, so for the desktop those five tools did not exist: they were written, tested, shipped,
  * and never advertised to a model. 23,000 tool calls of real session logs contain none of them.
  * Nothing compared the two lists, so nothing said so. `test/tool-registry.test.ts` now does.
  *

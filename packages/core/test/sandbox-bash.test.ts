@@ -23,7 +23,7 @@ import { bashTool } from "../src/tools/bash.ts";
 import { selectRunner } from "../src/sandbox/backend.ts";
 import { resetSystemShell } from "../src/platform.ts";
 import { useSandbox } from "../src/sandbox/index.ts";
-import type { SandboxProcess } from "../src/kernel/services.ts";
+import type { SandboxProcess } from "../src/sandbox/types.ts";
 import type { SandboxMode } from "../src/sandbox/policy.ts";
 import type { ToolContext, ToolResult } from "../src/types.ts";
 import { shellFor } from "./shell-for.ts";

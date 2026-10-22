@@ -245,15 +245,15 @@ function insideAProject(target: string): boolean {
 }
 
 /*
- * Resolved from the kernel once it is up.
+ * Resolved from the host once it is up.
  *
- * Declared here because everything in this file reaches for it, and assigned at boot so that a
- * plugin providing a different store is actually the one used.
+ * Declared here because everything in this file reaches for it, and assigned at boot to the store
+ * `bootHostKernel` built, so the window and the sessions read the same one.
  */
 let store: SessionStorage = new SessionStore();
 /** Live sessions keyed by session id. A session stays warm so MCP servers are not respawned per turn. */
 
-/** The capability context: what the app can do, assembled from plugins at boot. */
+/** The host assembly: the session store and the skills the app registers in code. */
 let kernel: HostKernel | null = null;
 /**
  * Live pseudo-terminals, one per project directory. Killed when the app quits.
@@ -470,18 +470,10 @@ app.whenReady().then(async () => {
 
 	followThemeWithDockIcon();
 
-	/*
-	 * Capabilities first, everything else after.
-	 *
-	 * The model adapters, the tool set and the approval policy are contributed by plugins into a
-	 * context, and the kernel is pointed at that context here — before any session exists. Nothing
-	 * downstream imports a concrete implementation, so replacing one (a sandboxed shell, another
-	 * model API, a stricter policy) is a change to this list rather than to the code that uses it.
-	 */
 	// 先换上缓存的模型目录，读设置时套的目录值才是最新的一份。
 	await loadCachedModelCatalog();
 	await loadAppSettings();
-	kernel = await bootHostKernel();
+	kernel = bootHostKernel();
 	store = observeSessionStorage(kernel.storage, broadcastSessionChange);
 	/*
 	 * The conversations have to open before any window does.
@@ -856,8 +848,7 @@ app.on("before-quit", async (event) => {
 	for (const terminal of terminals.values()) terminal.pty.kill();
 	terminals.clear();
 	await Promise.all([...sessions.values()].map((s) => s.dispose("quit")));
-	// Unwinds every capability the plugins installed, in the reverse of the order they arrived.
-	await kernel?.dispose();
+	kernel?.dispose();
 	kernel = null;
 });
 

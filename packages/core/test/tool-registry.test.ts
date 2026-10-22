@@ -3,12 +3,12 @@
  *
  * The defect this exists for: the kernel's tools plugin registered four groups, `tools/index.ts`
  * kept a flat list beside them, and `rule`, `recall`, `learn`, `lsp` and `web_search` were only in
- * the flat one. The desktop binds the kernel registry, so on the desktop those five did not exist.
+ * the flat one. The desktop bound the kernel registry, so on the desktop those five did not exist.
  * They type-checked, they had tests, they were shipped — and 23,000 tool calls of real session logs
  * contain not one of them. Nothing compared the two lists.
  *
- * So the assertion is not "the two lists agree" (they now read the same constant, which makes that
- * true by construction and therefore worthless). It is against the source tree: every `*Tool`
+ * So the assertion is not "the two lists agree" (there is only one list now — the kernel registry is
+ * gone, ADR-0054). It is against the source tree: every `*Tool`
  * exported under `src/tools/` has to reach the registry. Forgetting to register the next one fails
  * here rather than in a year of nobody noticing.
  */
@@ -18,9 +18,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
-import { createContext } from "../src/kernel/index.ts";
-import { TOOLS, type ToolRegistry } from "../src/kernel/services.ts";
-import { builtinTools, staticTools } from "../src/tools/index.ts";
+import { builtinTools, staticTools, useToolRegistry } from "../src/tools/index.ts";
 
 const srcDir = join(fileURLToPath(new URL("../src", import.meta.url)));
 
@@ -62,49 +60,30 @@ test("every tool in the source reaches the static list", () => {
 	assert.deepEqual(missing, [], `written but never advertised: ${missing.map((n) => declared.get(n)).join(", ")}`);
 });
 
-test("the kernel registry advertises the same tools as the static list", async () => {
-	const ctx = await createContext();
-	try {
-		const registered = ctx.require<ToolRegistry>(TOOLS).all().map((tool) => tool.name);
-		assert.deepEqual([...registered].sort(), staticTools().map((tool) => tool.name).sort());
-	} finally {
-		await ctx.dispose();
-	}
+test("unbound, the session's tool list is the static list", () => {
+	assert.deepEqual(builtinTools().map((tool) => tool.name), staticTools().map((tool) => tool.name));
 });
 
-test("the tools the desktop used to be missing are in the registry", async () => {
+test("the tools the desktop used to be missing are in the list", () => {
 	/*
 	 * Named individually on purpose. A set comparison passes the moment both sides are wrong the
 	 * same way, and these are the ones that were actually lost — `recall` is how compacted
 	 * history is retrieved, `learn` is where project memory comes from, and the settings pages for
 	 * both were drawn and reachable the whole time.
 	 */
-	const ctx = await createContext();
-	try {
-		const registry = ctx.require<ToolRegistry>(TOOLS);
-		for (const name of ["recall", "learn", "lsp", "web_search"]) {
-			assert.ok(registry.all().some((tool) => tool.name === name), `${name} is not registered`);
-		}
-	} finally {
-		await ctx.dispose();
+	const names = new Set(builtinTools().map((tool) => tool.name));
+	for (const name of ["recall", "learn", "lsp", "web_search"]) {
+		assert.ok(names.has(name), `${name} is not in the list`);
 	}
 });
 
-test("a bound registry is what builtinTools reads, and it can displace a built-in", async () => {
-	const ctx = await createContext();
+test("a bound registry is what builtinTools reads, and unbinding restores the static list", () => {
+	const replacement = { name: "bash", description: "not the real one", parameters: {}, execute: async () => ({ content: [] }) };
+	useToolRegistry({ all: () => [replacement as never] });
 	try {
-		const registry = ctx.require<ToolRegistry>(TOOLS);
-		const replacement = { name: "bash", description: "not the real one", parameters: {}, run: async () => ({ content: [] }) };
-		const remove = registry.register([replacement as never]);
-		const { useToolRegistry } = await import("../src/tools/index.ts");
-		useToolRegistry(registry);
-		try {
-			assert.equal(builtinTools().find((tool) => tool.name === "bash")?.description, "not the real one");
-		} finally {
-			useToolRegistry(null);
-			remove();
-		}
+		assert.deepEqual(builtinTools().map((tool) => tool.description), ["not the real one"]);
 	} finally {
-		await ctx.dispose();
+		useToolRegistry(null);
 	}
+	assert.equal(builtinTools().length, staticTools().length);
 });

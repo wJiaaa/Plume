@@ -65,7 +65,7 @@ async function main(): Promise<number> {
 	await loadCachedModelCatalog().catch(() => false);
 	const settings = await loadSettings();
 	const log = (line: string) => process.stderr.write(`${line}\n`);
-	const kernel = await bootHostKernel();
+	const kernel = bootHostKernel();
 	registerDefaultSearchProviders(() => settings.searchApiKeys);
 
 	const controller = new AbortController();
@@ -84,7 +84,7 @@ async function main(): Promise<number> {
 		console.error(error instanceof Error ? error.message : String(error));
 		return error instanceof SetupError ? 2 : 1;
 	} finally {
-		await kernel.dispose().catch(() => {});
+		kernel.dispose();
 	}
 }
 

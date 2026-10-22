@@ -23,25 +23,98 @@
  * writes both down.
  */
 
-import type { Compaction, CompactionVia } from "../../types/compaction.ts";
-import type { CompactionRequest, CompactionStrategy } from "../../kernel/services.ts";
+import type { Compaction, CompactionLineage, CompactionObserver, CompactionVia } from "../../types/compaction.ts";
 import { streamAssistant } from "../../ai/index.ts";
-import { dropUneventful, FRESH_RESULT_MAX_CHARS, pruneToolResults } from "../../agent/prune.ts";
+import { dropUneventful, FRESH_RESULT_MAX_CHARS, pruneToolResults, type ArtifactSink } from "../../agent/prune.ts";
 import { dropStaleResults } from "./stale-results.ts";
 import { estimateTokens, measureTotal } from "../../tokens.ts";
 import { taskContextFromHistory } from "./task-context.ts";
-import type { Message, ModelConfig, RequestPrefix } from "../../types.ts";
+import type { Message, ModelConfig, ProviderConfig, RequestPrefix } from "../../types.ts";
 import { forkable, forkSummary } from "./compaction-fork.ts";
 import { droppedMessage, filesSeen, lastRequest, summaryMessages } from "./compaction-head.ts";
 import { fallbackSummary, summarize } from "./compaction-summary.ts";
 import { compactionBudget, KEEP_MIN, type CompactionBudget } from "./compaction-budget.ts";
 
 /**
+ * Everything a compaction decision needs, as one object.
+ *
+ * It is an object rather than a parameter list because the parameter list is what went wrong. The
+ * seam used to take four arguments while the direct call took nine, so `compactWith` silently
+ * dropped five of them the moment a host bound a strategy — and the desktop bound one at the time. What the
+ * desktop lost was not cosmetic: `overhead` is the system prompt and the tool schemas, and a
+ * budget computed without them lands over the line it was aiming for and then compacts on every
+ * single turn; `artifacts` is what makes the `artifact://` address in a pruned placeholder real.
+ * Both were off on the only host that ships.
+ *
+ * A field added here now reaches every implementation or fails to compile.
+ */
+export interface CompactionRequest {
+	observer?: CompactionObserver;
+	messages: Message[];
+	model: ModelConfig;
+	provider: ProviderConfig;
+	/**
+	 * `streamFn` is the same seam the loop uses to reach the model.
+	 *
+	 * Passed through rather than reached for, because summarising is itself a model call: a host
+	 * that replaced how requests are made must have replaced this one too, or a session with a
+	 * stubbed provider quietly dials out when it runs out of room.
+	 *
+	 * It is also what lets compaction be exercised without a model. Compaction is hard to observe in
+	 * the wild — it happens once, deep in a long run, and the evidence is that a number went down.
+	 * Being able to drive it directly is the only way to know the cut lands where it should.
+	 */
+	streamFn?: typeof streamAssistant;
+	/**
+	 * What the request carries besides the conversation: the system prompt and every tool schema.
+	 *
+	 * Passed in because it is fixed while the conversation is not. A budget that treats the two as
+	 * one shrinks the prompt and the schemas on paper whenever the conversation is cut — and they
+	 * are sent in full every time, so the result lands above the line it was aiming for.
+	 */
+	overhead?: number;
+	/**
+	 * Compact now, whatever the conversation currently weighs — what `/compact` sets.
+	 *
+	 * Someone who has just finished one piece of work and is about to start another knows something
+	 * the threshold cannot: that the last two hours are done with, and carrying them into the next
+	 * thing is what will make it drift. Waiting for the automatic line would summarise the new work along with the old.
+	 */
+	force?: boolean;
+	/**
+	 * Where cut-out originals are kept so `artifact://` can fetch them back.
+	 *
+	 * Optional: without it pruning behaves as it always did, and what is cut is gone. With it, the
+	 * placeholder's "the full result stays in the session" is true for the model for the first time —
+	 * it cannot read the transcript, but it can read an address.
+	 */
+	artifacts?: ArtifactSink;
+	/** `/compact <instructions>`, and the signal that cancels it. */
+	manual?: { instructions?: string; signal?: AbortSignal };
+	/**
+	 * 从哪一次请求分叉出摘要请求（`runtime/compaction/compaction-fork.ts`）。不给就只有独立的摘要请求——
+	 * 超长恢复不给，因为完整历史本来就放不下。
+	 */
+	lineage?: CompactionLineage;
+}
+
+/**
+ * What to do when the conversation no longer fits.
+ *
+ * Summarising the middle is one answer, not the answer: dropping tool output, spilling to a file
+ * the agent can grep, or asking the user are all reasonable, and which is right depends on the
+ * work. Returning `null` means "nothing needed", so a strategy also decides when to act.
+ */
+export interface CompactionStrategy {
+	compact(request: CompactionRequest): Promise<Compaction | null>;
+}
+
+/**
  * Which strategy is in force.
  *
- * Bound by the host at boot; unbound everywhere else, where the built-in answer is the right one.
- * Callers go through `compactWith` so that replacing the strategy is a plugin, not an edit to the
- * loop that runs out of room.
+ * Unbound in both hosts, where the built-in answer is the right one. Callers go through
+ * `compactWith` so that replacing the strategy is one `useCompaction` call, not an edit to the
+ * loop that runs out of room — the sub-agent and overflow tests do exactly that.
  */
 let strategy: CompactionStrategy | null = null;
 

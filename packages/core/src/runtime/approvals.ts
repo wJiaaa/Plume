@@ -9,11 +9,10 @@
 
 import { randomUUID } from "node:crypto";
 import type { PermissionMode } from "../config/settings.ts";
-import type { ApprovalVerdict } from "../kernel/services.ts";
 import { checkFormValues } from "../mcp/form.ts";
 import { riskReason } from "../tools/risk-reasons.ts";
 import type { ApprovalDecision, ApprovalRequest, ApprovalRisk } from "../types.ts";
-import { approvalPolicy } from "./approval-policy.ts";
+import { approvalPolicy, type ApprovalVerdict } from "./approval-policy.ts";
 
 export interface PendingApproval {
 	id: string;
