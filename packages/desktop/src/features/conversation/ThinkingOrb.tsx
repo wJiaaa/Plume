@@ -33,18 +33,21 @@ export function ThinkingOrb({ state, size, className }: { state: OrbState; size:
 			context.clearRect(0, 0, size, size);
 			paintFrame(context, frameOf(size, seconds, opts), document.documentElement.classList.contains("dark"));
 		};
-		// 和原组件一样：不动的时候停在 0.6 秒那一帧，那一帧的样子是调过的。
-		if (motionReduced()) {
-			draw(0.6);
-			return;
-		}
-
+		/*
+		 * 和原组件一样：不动的时候停在 0.6 秒那一帧，那一帧的样子是调过的。每拍现问一次而不是挂上时问：
+		 * 跑着的时候在设置里关掉动效（或者系统那边关掉），球要当场停住——原组件是听着媒体查询的。
+		 * 停住以后不再重画，只是拍子还在，好在打开动效时接着走。
+		 */
+		let still = motionReduced();
 		let tick = 0;
 		const loop = (now: number) => {
-			draw((now / 1000) * speed);
+			const reduced = motionReduced();
+			if (!reduced) draw((now / 1000) * speed);
+			else if (!still) draw(0.6);
+			still = reduced;
 			tick = requestTick(loop);
 		};
-		draw((performance.now() / 1000) * speed);
+		draw(still ? 0.6 : (performance.now() / 1000) * speed);
 		// 滚出视口就停：一段长回复把运行行顶到屏幕外以后，没人看得见它。
 		const observer = new IntersectionObserver(([entry]) => {
 			cancelTick(tick);

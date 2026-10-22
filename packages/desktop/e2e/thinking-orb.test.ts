@@ -290,11 +290,19 @@ test("the animation moves normally and paints a static frame with reduced motion
 		})()`;
 
 	for (const reduced of [false, true]) await withReducedMotion(reduced, async (evaluate) => {
-		await evaluate(`new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
+		/*
+		 * 也拨应用自己的开关：它压过系统偏好（`motionReduced`），fixture 里是 `off`，只模拟媒体查询的话球照样动。
+		 * 跑着的时候拨，球要当场跟着停——这正是设置页里那个开关做的事。球按拍子画（约 30Hz，`ticker.ts`），
+		 * 拨完要到下一拍才停到静止帧上：两帧不够，等过几拍。
+		 */
+		await evaluate(`document.documentElement.dataset.reduceMotion = ${JSON.stringify(reduced ? "on" : "off")}`);
+		await evaluate(`new Promise(resolve=>setTimeout(resolve, 150))`);
 		const before = await evaluate(snapshot);
 		await new Promise((r) => setTimeout(r, 500));
 		const after = await evaluate(snapshot);
 		t.diagnostic(JSON.stringify({ reduced, before, after }));
+		// 拨回 fixture 原来的样子，后面的测试照常看到动着的球。
+		await evaluate(`document.documentElement.dataset.reduceMotion = "off"`);
 		if (reduced) assert.equal(after, before, "reduced motion keeps a static representative frame");
 		else assert.notEqual(after, before, "the pixels changed between two reads half a second apart");
 	});
