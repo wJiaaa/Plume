@@ -395,7 +395,14 @@ export const bashTool: Tool<BashArgs> = {
 		const timeout = Math.min(args.timeout ?? DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS);
 		let baseline: Awaited<ReturnType<typeof beforeCommand>> = null;
 		let changeWarning: string | undefined;
-		try { baseline = await beforeCommand(ctx); } catch (error) { changeWarning = String(error); }
+		/*
+		 * 只读命令不拍前后快照：它不写文件，快照记不到任何东西，代价却不小——前后各起五六个 git、
+		 * 把工作区里每个已改动的文件读一遍。一批并行的 `git log`、`rg` 正好全是只读的，六条在一个有
+		 * 五十几个改动文件的仓库里，每批光快照就是主进程 200ms、连同 git 子进程约 0.8 秒 CPU。
+		 */
+		if (!isReadOnlyCommand(args.command)) {
+			try { baseline = await beforeCommand(ctx); } catch (error) { changeWarning = String(error); }
+		}
 		const outputLog = await createOutputLog(ctx.scratchDir);
 		/** Set when the command outlives this call: its log then stays open for the job that continues it. */
 		let handedOff = false;

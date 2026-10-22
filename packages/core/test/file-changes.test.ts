@@ -10,6 +10,9 @@ import { beforeCommand, afterCommand } from "../src/tools/command-changes.ts";
 import { computeDiff } from "../src/tools/diff.ts";
 import type { ToolContext } from "../src/types.ts";
 import { asWindows, refuseRenames } from "./held-open.ts";
+import { useSandbox } from "../src/sandbox/index.ts";
+import type { Sandbox } from "../src/sandbox/types.ts";
+import { bashTool } from "../src/tools/bash.ts";
 let home: string, cwd: string, ctx: ToolContext;
 let prior: string | undefined;
 beforeEach(async () => {
@@ -224,4 +227,21 @@ test("on Windows an undo refused for a moment is retried rather than failed", as
 	await undoFileChangeBatches(cwd, [[change]]);
 	assert.equal(refused(), 2, "the premise: the first two renames were refused");
 	assert.equal(await readFile(path, "utf8"), "before");
+});
+
+test("a read-only command takes no snapshot, so it records nothing and pays for no git", async () => {
+	const git = (...args: string[]) => execFileSync("git", ["-C", cwd, ...args], {stdio:"pipe"});
+	git("init"); git("config", "user.email", "test@example.invalid"); git("config", "user.name", "Test");
+	await writeFile(join(cwd, "a.ts"), "base\n"); git("add", "."); git("commit", "-m", "base");
+	// 假沙箱：不管命令是什么都改一个文件。只读命令照样被改了，却不该被记下——它根本没拍快照。
+	useSandbox({ run: () => {
+		const exits: ((code: number | null) => void)[] = [];
+		void writeFile(join(cwd, "a.ts"), `changed ${Math.random()}\n`).then(() => { for (const exit of exits) exit(0); });
+		return { onOutput: () => {}, onExit: (listener) => exits.push(listener), onError: () => {}, kill: () => {} };
+	} } as Sandbox);
+	try {
+		const run = async (command: string) => (await bashTool.execute({ command }, ctx)).details as { changeIds: string[] };
+		assert.deepEqual((await run("git log --oneline -5")).changeIds, []);
+		assert.equal((await run("touch a.ts")).changeIds.length, 1, "会写的命令照旧记下改动");
+	} finally { useSandbox(null); }
 });
