@@ -172,8 +172,13 @@ export function thinkingLive(run: Extract<Run, { kind: "message" }>): boolean {
 	return run.message.role === "assistant" && run.message.stopReason === "pending" && run.upTo === run.message.content.length;
 }
 
-/** 互相接成一段的几类：读、跑命令、改文件、操作网页。边改边在页面上验，本来就是一件事。 */
-const MERGES = new Set(["explore", "terminal", "files", "browser"]);
+/**
+ * 互相接成一段的几类：读、跑命令、改文件、操作网页、看预览。边改边在页面上验，本来就是一件事。
+ *
+ * 走到这里的 preview 都是收进过程的那种（同一轮里没被发布的检查、失败的、发布那一次）；画成页面的不进 `Step`。
+ * 它从前自成一类，「改一次、检查一次」的一段就被切成命令一行、预览一行地交替排下去。
+ */
+const MERGES = new Set(["explore", "terminal", "files", "browser", "preview"]);
 
 /**
  * MCP 的工具不论哪个服务器都算一类。名字是 `mcp__<服务器>__<工具>`，可超长的会换成哈希（core 的

@@ -81,6 +81,11 @@ test("浏览器的几个工具是同一类", () => {
 	assert.deepEqual(items(blocks[1]), ["step(browser_open,think,browser_act,browser_screenshot)"]);
 });
 
+test("收进过程的预览和命令接成一段：改一次、检查一次，不再一行命令一行预览地交替", () => {
+	const blocks = turnBlocks([ask("画一只鹈鹕", 0), work(["bash"]), think(2), work(["preview"]), work(["bash", "bash"]), work(["preview", "preview"]), work(["todo_write"]), work(["preview"])]);
+	assert.deepEqual(items(blocks[1]), ["step(bash,think,preview,bash,bash,preview,preview)", "step(todo_write)", "step(preview)"]);
+});
+
 test("一段活往后长，它的 key 不变", () => {
 	// 换 key 等于卸掉重建：跑着的那一行会在原地闪一下，点开着的会合上。
 	const first = work(["browser_open"]);
