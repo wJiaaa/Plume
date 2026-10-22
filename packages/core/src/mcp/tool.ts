@@ -26,6 +26,8 @@ export interface McpToolHandle {
 	explain(): string;
 	/** 服务器自己说它是做什么的（`serverInfo.description`，没有就是 `instructions` 的第一行）。 */
 	describe(): string | undefined;
+	/** 把一次调用记在发起它的会话名下，调用期间服务器反问人时才找得到人（`McpPool.askFor`）。 */
+	track<T>(run: () => Promise<T>): Promise<T>;
 }
 
 export interface RawMcpTool {
@@ -116,12 +118,14 @@ export function toAgentTool(handle: McpToolHandle, raw: RawMcpTool, qualifiedNam
 				 * 掐掉；一个既不回复也不报进度的，到点就取消。不设总时长上限：报着进度的调用是在干活，
 				 * 要它停的是人，人有停止按钮。取消（人按停止、超时）由 SDK 发 `notifications/cancelled`。
 				 */
-				const response = await client.callTool({ name: raw.name, arguments: (args ?? {}) as Record<string, unknown> }, undefined, {
-					signal: ctx.signal,
-					timeout: handle.callTimeoutMs,
-					resetTimeoutOnProgress: true,
-					onprogress,
-				});
+				const response = await handle.track(() =>
+					client.callTool({ name: raw.name, arguments: (args ?? {}) as Record<string, unknown> }, undefined, {
+						signal: ctx.signal,
+						timeout: handle.callTimeoutMs,
+						resetTimeoutOnProgress: true,
+						onprogress,
+					}),
+				);
 				return toToolResult(response, { serverId: current.id, serverName: current.name, tool: raw.name, scratchDir: ctx.scratchDir });
 			} catch (error) {
 				if (error instanceof McpError && error.code === ErrorCode.RequestTimeout && !ctx.signal?.aborted) {

@@ -400,6 +400,13 @@ function ServerCard({
 								</div>
 								<Toggle checked={server.pinned === true} onChange={(pinned) => onUpdate({ pinned })} ariaLabel={t("mcpSettings.pinned")} />
 							</div>
+							<div className="flex items-start gap-3">
+								<div className="min-w-0 flex-1">
+									<p className="text-label text-ink-muted">{t("mcpSettings.perSession")}</p>
+									<p className="mt-1 text-detail text-ink-faint">{t("mcpSettings.perSessionHint")}</p>
+								</div>
+								<Toggle checked={server.perSession === true} onChange={(perSession) => onUpdate({ perSession })} ariaLabel={t("mcpSettings.perSession")} />
+							</div>
 						</div>
 				</fieldset>
 			</Collapse>

@@ -373,6 +373,17 @@ export async function toggleSetting(page: Page, title: string): Promise<void> {
 	await until(page, `${find}?.getAttribute("aria-checked") !== ${JSON.stringify(before.checked)}`);
 }
 
+/** 设置 → 插件 → MCP，展开一台服务器的「启动方式与环境变量」，等它那几个开关可见。`id` 是卡片的 `data-mcp-server`。 */
+export async function openMcpServerConfig(page: Page, id: string): Promise<void> {
+	const card = `[data-mcp-server="${id}"]`;
+	await openSettings(page, "插件");
+	await click(page, '[data-tab="mcp"]');
+	await until(page, `document.querySelector(${JSON.stringify(card)})`, 1800);
+	await page.evaluate(`document.querySelector(${JSON.stringify(card)}).scrollIntoView({ block: 'center' })`);
+	await click(page, `${card} button[aria-label="启动方式与环境变量"]`);
+	await until(page, `document.querySelector(${JSON.stringify(`${card} button[role="switch"]`)})?.checkVisibility()`, 1800);
+}
+
 /** 从设置回到工作区：点左侧导航顶上那颗「返回工作区」。 */
 export async function closeSettings(page: Page): Promise<void> {
 	await click(page, "nav button", "返回工作区", "starts");

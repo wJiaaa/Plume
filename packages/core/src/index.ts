@@ -61,6 +61,8 @@ export {
 	type McpServerConfig,
 	type McpServerStatus,
 } from "./mcp/client.ts";
+/** 宿主在会话之间共用的 MCP 连接；见 `mcp/pool.ts`。 */
+export { McpPool } from "./mcp/pool.ts";
 /** 远程 MCP 服务器的 OAuth：后台连接用的令牌、桌面端「登录 / 退出登录」。见 `mcp/oauth.ts`。 */
 export { forgetTokens, usesOAuth } from "./mcp/oauth.ts";
 export { loginMcpServer } from "./mcp/oauth-login.ts";

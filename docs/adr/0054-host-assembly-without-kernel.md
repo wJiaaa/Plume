@@ -57,7 +57,7 @@
 | --- | --- | --- |
 | 内置工具 | `builtinTools()`，未绑定时就是 `tools/groups.ts` 的分组；`useToolRegistry` 可整表替换 | 进程级 |
 | 宿主的工具（桌面端的浏览器、会话间通信、会话操作） | `AgentSessionOptions.extraTools` → `SessionCapabilities` → `loadCapabilities` | 按会话 |
-| MCP 工具 | `McpManager` 按 `settings.mcpServers` 连接，见 `session-setup.ts` | 按会话 |
+| MCP 工具 | `McpManager` 按 `settings.mcpServers` 向 `AgentSessionOptions.mcpPool` 借连接，见 `mcp/pool.ts`；不给池子（命令行）就自己连一份 | 宿主级共用；标了 `perSession` 的按会话 |
 | 宿主的 skill（桌面端的浏览器 skill） | `kernel.skills.register` → `registeredSkills()` → 每个会话的插件 provider | 进程级 |
 
 - 工具表是 `[...builtinTools(), ...extraTools]`：**不去重，同名也不替换**。原来内核工具注册表「后注册的同名工具

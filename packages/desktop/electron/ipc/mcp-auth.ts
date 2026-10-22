@@ -10,20 +10,21 @@ import { forgetTokens, loginMcpServer, usesOAuth, type McpServerConfig } from "@
 import { ipcMain } from "electron";
 import { settings } from "../app-settings.ts";
 import { forgetProbe } from "../capabilities/mcp-probe.ts";
-import { sessions } from "../session/session-hub.ts";
+import { mcpPool, sessions } from "../session/session-hub.ts";
 import { openExternalSafely } from "../app/window-security.ts";
 
 type Outcome = { ok: true } | { ok: false; error: string };
 
-/** 每个会话都把这台服务器断开、重连一遍：用的令牌变了，配置却没变，`connectAll` 自己看不出来。 */
+/**
+ * 把这台服务器的连接整个关掉，再让每个会话重载一遍：用的令牌变了，配置却没变，`connectAll` 自己看不出来。
+ *
+ * 先在池子上一次关完，再重载。逐个会话「断开、重载」时，先重载的会话会接上另一个会话还拿着的旧连接，
+ * 用的还是旧令牌。
+ */
 async function reconnect(server: McpServerConfig): Promise<void> {
 	forgetProbe(server);
-	await Promise.allSettled(
-		[...sessions.values()].map(async (session) => {
-			await session.can.mcp.disconnect((one) => one.id === server.id);
-			await session.reloadCapabilities();
-		}),
-	);
+	await mcpPool.disconnect((one) => one.id === server.id);
+	await Promise.allSettled([...sessions.values()].map((session) => session.reloadCapabilities()));
 }
 
 function find(serverId: string): McpServerConfig | undefined {
@@ -55,7 +56,8 @@ export function registerMcpAuthIpc(): void {
 		const server = find(serverId);
 		if (!server) return;
 		forgetProbe(server);
-		await Promise.allSettled([...sessions.values()].map((session) => session.can.mcp.reconnect(serverId)));
+		// 在池子上重连一次：逐个会话叫，共用的那条连接会被重启好几遍。
+		await mcpPool.reconnect(serverId);
 	});
 
 	ipcMain.handle("plugins:mcpLogout", async (_event, serverId: string): Promise<Outcome> => {

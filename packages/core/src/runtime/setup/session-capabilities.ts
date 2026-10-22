@@ -13,6 +13,7 @@
 import { createHash } from "node:crypto";
 import { CODE_INTEL_KEY, CodeIntelManager } from "../../lsp/manager.ts";
 import { McpManager, type McpServerConfig, type McpServerStatus } from "../../mcp/client.ts";
+import type { McpPool } from "../../mcp/pool.ts";
 import type { AskPerson } from "../../mcp/elicitation.ts";
 import { BUILTIN_RESOURCES } from "../../resources/handlers.ts";
 import { ResourceRouter } from "../../resources/router.ts";
@@ -51,6 +52,8 @@ export interface SessionCapabilitiesOptions {
 	 * 让慢的在后台连，第一轮开始前再等一小会儿（`mcpReady`）。
 	 */
 	mcpWait?: number;
+	/** 宿主在会话之间共用的 MCP 连接。不给就自己连一份，会话关了跟着关。见 `mcp/pool.ts`。 */
+	mcpPool?: McpPool;
 }
 
 export class SessionCapabilities {
@@ -113,7 +116,7 @@ export class SessionCapabilities {
 	constructor(extraTools: Tool[] = [], options: SessionCapabilitiesOptions = {}) {
 		this.extraTools = extraTools;
 		this.options = options;
-		this.mcp = new McpManager({ ask: options.ask, onChange: (status) => this.mcpChanged(status) });
+		this.mcp = new McpManager({ pool: options.mcpPool, ask: options.ask, onChange: (status) => this.mcpChanged(status) });
 	}
 
 	/** 每台 MCP 服务器此刻的状态：连上、连接中、重连中、失败的原因。 */

@@ -32,6 +32,7 @@ import type { ContextBreakdown } from "../record/context.ts";
 import { describeContext, describeSession, type SessionFacts, type SessionStatus } from "../record/reporting.ts";
 import { CapabilityWatcher } from "../setup/capability-watch.ts";
 import { mcpFailureNotice, SessionCapabilities } from "../setup/session-capabilities.ts";
+import type { McpPool } from "../../mcp/pool.ts";
 import { scratchDir, sessionFacts } from "../record/session-facts.ts";
 import { SessionLog } from "../record/session-log.ts";
 import { PROJECT_MEMORY_ENABLED_KEY, projectMemoryEnabled } from "../memory/project-memory.ts";
@@ -108,6 +109,8 @@ export interface AgentSessionOptions {
 	 * 传 false：不向服务器声明这项能力，服务器硬发来就回 decline。
 	 */
 	elicitation?: boolean;
+	/** 宿主在会话之间共用的 MCP 连接（`mcp/pool.ts`）。命令行一次只有一个会话，不给。 */
+	mcpPool?: McpPool;
 }
 
 export class AgentSession {
@@ -262,6 +265,7 @@ export class AgentSession {
 				...(options.elicitation === false ? {} : { ask: (request, signal) => this.approvals.request(request, signal) }),
 				// 服务器在后台连，不挡会话打开；连不上的在对话里说一声，原因在设置页的那张卡片上。
 				mcpWait: 0,
+				mcpPool: options.mcpPool,
 				onMcpFailure: (status) => void this.emit(mcpFailureNotice(status)).catch(() => {}),
 			},
 		);

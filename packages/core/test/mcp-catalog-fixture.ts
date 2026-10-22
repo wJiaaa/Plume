@@ -328,6 +328,7 @@ export function fixtureTools(calls: { server: string; tool: string; args: Record
 				callTimeoutMs: 1_000,
 				explain: () => "",
 				describe: () => server.description,
+				track: (run) => run(),
 			};
 			return server.tools.map((raw) => toAgentTool(handle, raw, qualifiedToolName(server.id, raw.name)));
 		})

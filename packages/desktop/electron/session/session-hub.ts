@@ -9,7 +9,7 @@
  * keeps the map from being reachable — and therefore mutable — from six different files.
  */
 
-import { AgentSession, backgroundJobs, plumeHome, removeSessionArtifacts, type AgentEvent, type SessionEndReason, type SessionMeta, type SessionStorage, type Settings } from "@plume/core";
+import { AgentSession, backgroundJobs, McpPool, plumeHome, removeSessionArtifacts, type AgentEvent, type SessionEndReason, type SessionMeta, type SessionStorage, type Settings } from "@plume/core";
 import type { BrowserWindow } from "electron";
 import { browserState, closeSessionBrowser, createBrowserTools } from "../browser/index.ts";
 import { autoCreateSessionWorktree, bringBackWorktree, cleanOldWorktrees, reclaimWorktree } from "../git/index.ts";
@@ -50,6 +50,11 @@ export function configureHub(next: HubDeps): void {
 }
 
 export const sessions = new Map<string, AgentSession>();
+/**
+ * 所有会话共用的 MCP 连接：每台服务器一个进程，不再每个会话各起一份（`mcp/pool.ts`）。侧边聊天
+ * 也借这一份。最后一个用它的会话关了，连接才关。
+ */
+export const mcpPool = new McpPool({ elicitation: true });
 const ready = new Set<string>();
 const submitted = new Set<string>();
 const initializing = new Map<string, Promise<AgentSession | null>>();
@@ -147,14 +152,14 @@ function stageSession(saved: SessionSnapshot, parent?: AgentSession): AgentSessi
 	 * 由 core 按 `parent` 加上。
 	 */
 	if (parent) {
-		const side = new AgentSession({ cwd: saved.meta.cwd, settings: deps.settings(), store: deps.store(), meta: saved.meta, parent, emit: (event) => broadcast(saved.meta.id, event) });
+		const side = new AgentSession({ cwd: saved.meta.cwd, settings: deps.settings(), store: deps.store(), meta: saved.meta, parent, mcpPool, emit: (event) => broadcast(saved.meta.id, event) });
 		side.restore(saved.messages);
 		sessions.set(saved.meta.id, side);
 		return side;
 	}
 	const browser = createBrowserTools();
 	const session = new AgentSession({ cwd: saved.meta.cwd, settings: deps.settings(), store: deps.store(), meta: saved.meta,
-		extraTools: [...browser.tools, ...peerTools, ...sessionOps], emit: (event) => broadcast(saved.meta.id, event), compactWhenIdle: true, suggestFollowups: true });
+		extraTools: [...browser.tools, ...peerTools, ...sessionOps], mcpPool, emit: (event) => broadcast(saved.meta.id, event), compactWhenIdle: true, suggestFollowups: true });
 	session.restore(saved.messages);
 	sessions.set(saved.meta.id, session);
 	browsers.set(saved.meta.id, browser.dispose);
@@ -372,9 +377,10 @@ export async function getOrCreateSession(cwd: string, _modelId: string, project?
 /**
  * How many sessions stay warm.
  *
- * Each one owns its MCP servers — real child processes — plus a visible browser tabs, so an
- * unbounded map meant an afternoon of browsing left a dozen sets of them running. Eight keeps
- * the conversations you are actually moving between instant without hoarding processes.
+ * Each one owns a visible browser tab, its language servers and its `perSession` MCP servers — real
+ * child processes — so an unbounded map meant an afternoon of browsing left a dozen sets of them
+ * running. Eight keeps the conversations you are actually moving between instant without hoarding
+ * processes. Shared MCP servers are not counted here: they belong to `mcpPool`, one per server.
  */
 const MAX_LIVE_SESSIONS = 8;
 
@@ -619,7 +625,7 @@ async function evictStaleSessions(keep: string): Promise<void> {
 	// Snapshotted with `entries()`, not spread: this loop deletes from the map as it goes.
 	/*
 	 * 侧边聊天不占名额、也不单独回收：它跟着父会话起落。正在答的侧边聊天由 `sessionBusy` 挡住；
-	 * 空着的不挡——「旁边活着侧边聊天就不回收」让看过一眼侧边聊天的会话连同两份 MCP 子进程
+	 * 空着的不挡——「旁边活着侧边聊天就不回收」让看过一眼侧边聊天的会话连同它占着的子进程
 	 * 一直留到退出，名额形同虚设。收掉的侧边聊天记录还在盘上，再问一句时重新拉起。
 	 */
 	const counted = () => Array.from(sessions.values()).filter((session) => !session.parent).length;

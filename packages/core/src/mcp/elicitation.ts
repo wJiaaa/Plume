@@ -45,9 +45,13 @@ export class ElicitationQueue {
 	}
 }
 
-/** 给一个刚建好、还没连上的 Client 装上回答 elicitation 的处理。 */
-export function handleElicitation(client: Client, server: McpServerConfig, ask: AskPerson | undefined, queue: ElicitationQueue): void {
-	if (!ask) {
+/**
+ * 给一个刚建好、还没连上的 Client 装上回答 elicitation 的处理。
+ *
+ * 问谁是每次现问的（`askFor`）：一条连接可能几个会话共用，表单该给正在调用它的那一个。答不出就拒绝。
+ */
+export function handleElicitation(client: Client, server: McpServerConfig, askFor: (() => AskPerson | undefined) | undefined, queue: ElicitationQueue): void {
+	if (!askFor) {
 		// 没声明能力，不能用 `setRequestHandler` 注册（SDK 会拦），走兜底的处理。
 		client.fallbackRequestHandler = async (request) => {
 			if (request.method === "elicitation/create") return { action: "decline" } satisfies ElicitResult;
@@ -66,6 +70,8 @@ export function handleElicitation(client: Client, server: McpServerConfig, ask: 
 			if (error instanceof UnsupportedFormError) throw new McpError(ErrorCode.InvalidParams, `Unsupported elicitation schema: ${error.message}`);
 			throw error;
 		}
+		const ask = askFor();
+		if (!ask) return { action: "decline" };
 		const decision = await queue.run(server.id, extra.signal, () =>
 			ask({ kind: "form", title: server.name, detail: params.message, subject: `mcp_elicitation:${server.id}`, fields }, extra.signal),
 		);

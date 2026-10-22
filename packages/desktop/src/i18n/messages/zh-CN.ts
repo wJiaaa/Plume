@@ -741,6 +741,8 @@ export const zhCN = {
 	"mcpSettings.trustReadOnlyHint": "自动模式下，这台服务器标为只读的工具不再逐次确认。只读是服务器自己声明的，只对信得过的服务器打开。它标为会删除或覆盖数据的工具，始终要确认。",
 	"mcpSettings.pinned": "常驻",
 	"mcpSettings.pinnedHint": "MCP 工具很多时，Plume 只在工具表里放一个搜索入口，模型要用哪台服务器的工具再去搜。打开后，这台服务器的工具每轮都直接给模型，省掉搜索那一步；适合几乎每次都要用的服务器。",
+	"mcpSettings.perSession": "每个会话独立",
+	"mcpSettings.perSessionHint": "默认所有会话共用这台服务器的同一个进程。打开后，每个会话各起一个，互不影响；适合把状态留在进程里的服务器，比如操控浏览器、保持数据库连接的。会多占进程和内存。",
 	"mcpSettings.loginHint": "这台服务器要先登录才能用。点登录会在浏览器里打开它的授权页。",
 	"mcpSettings.loginWaiting": "在浏览器里完成授权后会自动回来……",
 	"mcpSettings.login": "登录",

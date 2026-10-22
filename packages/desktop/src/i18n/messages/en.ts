@@ -564,6 +564,8 @@ export const en = {
 	"mcpSettings.trustReadOnlyHint": "In Auto mode, tools this server marks read-only run without asking each time. The labels come from the server itself, so only turn this on for a server you trust. Tools it marks destructive always ask.",
 	"mcpSettings.pinned": "Always loaded",
 	"mcpSettings.pinnedHint": "When many MCP tools are connected, Plume gives the model a search tool instead of every tool, and it looks up a server's tools when it needs them. Turn this on to give the model this server's tools every turn and skip the search. Use it for a server you need in almost every conversation.",
+	"mcpSettings.perSession": "Separate for each conversation",
+	"mcpSettings.perSessionHint": "By default every conversation shares one running copy of this server. Turn this on to start a separate copy for each conversation, so they can't affect each other. Use it for servers that keep state in the process, such as one that drives a browser or holds a database connection. Each copy uses its own process and memory.",
 	"mcpSettings.loginHint": "This server needs you to sign in first. Sign in opens its authorization page in your browser.",
 	"mcpSettings.loginWaiting": "Finish authorizing in your browser; this updates on its own…",
 	"mcpSettings.login": "Sign in",
