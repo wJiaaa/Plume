@@ -225,6 +225,14 @@ export function useFollowBottom({
 	const selectedSurface = useRef<string | null | undefined>(undefined);
 	const restore = useRef<FollowSnapshot | undefined>(undefined);
 	const clearWritten = useRef(0);
+	/**
+	 * 刚露面（换了会话、从 `Activity` 的隐藏里回来）、第一帧还没画完。
+	 *
+	 * 回来时第一次提交画的是离开时的旧内容，订阅重挂后紧跟着补进离开期间写下的字。那一截不是此刻在出的
+	 * 字，滑过去就是切进来先落后一百来像素、再往上滑一段。所以这段时间里贴底一律一步到位。撑两帧：
+	 * 补账那次 `pin` 走的是 `ResizeObserver`，晚于同一帧的 rAF。
+	 */
+	const arriving = useRef({ on: false, frame: 0 });
 	/** Read by `pin`, which is memoised and must not be rebuilt on every token. `ended`: when `live` last fell. */
 	const writing = useRef({ live, ended: Number.NEGATIVE_INFINITY });
 	if (writing.current.live && !live) writing.current.ended = performance.now();
@@ -380,7 +388,7 @@ export function useFollowBottom({
 			// 窗口没焦点时不追，直接贴底：正文那时按 10Hz 长（`ticker.ts`），弹簧却照样每帧写 `scrollTop`，
 			// 失焦省下的那点几乎全被它吃掉。没人盯着看的时候，这一段滑不滑没有区别。
 			const slide =
-				output && known && sameView && grew >= 0 && grew <= reading.clientHeight && target > reading.scrollTop && (moving || grew > 0) && !motionReduced() && windowFocused();
+				!arriving.current.on && output && known && sameView && grew >= 0 && grew <= reading.clientHeight && target > reading.scrollTop && (moving || grew > 0) && !motionReduced() && windowFocused();
 			if (!slide) {
 				cancelAnimationFrame(chase.current);
 				chase.current = 0;
@@ -750,6 +758,13 @@ export function useFollowBottom({
 		cancelAnimationFrame(chase.current);
 		chase.current = 0;
 		size.current = { content: 0, view: 0 };
+		const arrival = arriving.current;
+		arrival.on = true;
+		arrival.frame = requestAnimationFrame(() => {
+			arrival.frame = requestAnimationFrame(() => {
+				arrival.on = false;
+			});
+		});
 		cancelAnimationFrame(clearWritten.current);
 		written.current = null;
 		touchY.current = 0;
@@ -769,6 +784,7 @@ export function useFollowBottom({
 			cancelAnimationFrame(glide.current);
 			cancelAnimationFrame(chase.current);
 			chase.current = 0;
+			cancelAnimationFrame(arrival.frame);
 			/*
 			 * The position comes from `lastTop`, not from the element.
 			 *

@@ -217,7 +217,10 @@ export function nextState(state: FollowState, event: FollowEvent, reading: Readi
 				// Zero threshold, deliberately. One notch upwards during a streaming turn is a complete
 				// sentence: "stop moving". Asking how far it went is what made the first 80px of every
 				// such gesture disappear.
-				return "detached";
+				//
+				// Unless there is nothing to scroll: a transcript that fits has nowhere to leave to. Read as
+				// a leave, the reply then grows past the window and stays stuck at the top.
+				return fitsInView(reading) ? state : "detached";
 			}
 			// Downwards, or a drag whose direction is not knowable: the position answers. Reaching the
 			// bottom is the only way to say "follow again", so it has to be enough on its own.

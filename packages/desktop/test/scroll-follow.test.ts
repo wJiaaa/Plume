@@ -242,6 +242,12 @@ test("a short transcript is at the bottom by definition, so it follows", () => {
 	assert.equal(nextState("detached", { kind: "arrived" }, short), "following");
 });
 
+test("scrolling up a transcript that fits leaves nothing, so it keeps following", () => {
+	// 会话刚开始还在想、不满一屏时向上滚一下：从前就此 detached，回复写过几屏也停在顶上。
+	const short = { scrollTop: 0, scrollHeight: 400, clientHeight: 800 };
+	assert.equal(nextState("following", { kind: "user-scroll", direction: "up" }, short), "following");
+});
+
 test("the ride back owns the position while it is in flight", () => {
 	/*
 	 * Every frame of the glide writes `scrollTop`, and the frames it passes through are exactly the
