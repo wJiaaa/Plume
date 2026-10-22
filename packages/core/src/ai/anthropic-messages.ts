@@ -404,9 +404,13 @@ async function* streamAnthropic(
 	const replayAtStart = thinkingReplay(provider, model, options.cacheKey);
 	let replayNow = replayAtStart;
 
-	let body = buildBody(replayNow);
-
-	options.onPayload?.(body);
+	/*
+	 * Built by each attempt below, not here as well. It used to be built once up front and again by
+	 * the first attempt, with `onPayload` (a hash of every message, for the cache-prefix check) run on
+	 * both: twice the per-request cost of a history that only grows. Nothing reads it in between, and
+	 * a build that throws still surfaces — the retry wrapper rethrows what no learner recognises.
+	 */
+	let body: Record<string, unknown> = {};
 
 	/** Stand-in ids for calls the provider did not name, keyed by block index. */
 	const inventedIds = new Map<number, string>();

@@ -33,7 +33,7 @@ import {
 import { THINK_TAG_FIELD, ThinkTagSplitter } from "./think-tag.ts";
 import { USER_AGENT, failedStreamEvent, joinUrl, priceAttempt, settleUsage } from "./endpoint.ts";
 import { resolveReasoningEffort } from "./thinking-options.ts";
-import { learnReasoningPadding, padsMissingReasoning, reasoningReplay, withReasoningRetry, type ReasoningReplay } from "./reasoning-compat.ts";
+import { learnReasoningPadding, padsMissingReasoning, withReasoningRetry, type ReasoningReplay } from "./reasoning-compat.ts";
 import { droppedParams, learnDroppedParam, type SentParams } from "./request-params-compat.ts";
 import { thinkingDialect } from "./vendors/index.ts";
 import { chatThinkingFields } from "./vendors/thinking.ts";
@@ -350,9 +350,13 @@ async function* streamChatCompletions(
 			...sampling,
 		};
 	};
-	let body = buildBody(reasoningReplay(scope.providerId, scope.modelId));
-
-	options.onPayload?.(body);
+	/*
+	 * Built by each attempt below, not here as well. It used to be built once up front and again by
+	 * the first attempt, with `onPayload` (a hash of every message, for the cache-prefix check) run on
+	 * both: twice the per-request cost of a history that only grows. Nothing reads it in between, and
+	 * a build that throws still surfaces — the retry wrapper rethrows what no learner recognises.
+	 */
+	let body: Record<string, unknown> = {};
 
 	const doFetch = options.fetch ?? globalThis.fetch;
 	// 在这里算一次，重试沿用同一个会话 id。

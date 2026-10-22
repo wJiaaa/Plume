@@ -27,7 +27,7 @@ import { RetryBudget, fetchWithRetry, retryStream, toolCallId } from "./retry.ts
 import { argumentFragment, parseToolArguments, readSseWithIdleTimeout, STREAM_IDLE_TIMEOUT_MS } from "../utils/sse.ts";
 import { USER_AGENT, failedStreamEvent, joinUrl, priceAttempt, settleUsage } from "./endpoint.ts";
 import { resolveReasoningEffort } from "./thinking-options.ts";
-import { reasoningReplay, withReasoningRetry, type ReasoningReplay } from "./reasoning-compat.ts";
+import { withReasoningRetry, type ReasoningReplay } from "./reasoning-compat.ts";
 import { learnToolPairing, toolPairing } from "./tool-pairing-compat.ts";
 import { learnToolResultImages, toolResultImages } from "./tool-result-images-compat.ts";
 import { droppedParams, learnDroppedParam } from "./request-params-compat.ts";
@@ -150,15 +150,19 @@ async function* streamResponses(
 			...(dropped.has("sampling") ? {} : { ...model.samplingParams, ...options.samplingParams }),
 		};
 	};
-	let body = buildBody(reasoningReplay(scope.providerId, scope.modelId));
+	/*
+	 * Built by each attempt below, not here as well. It used to be built once up front and again by
+	 * the first attempt, with `onPayload` (a hash of every message, for the cache-prefix check) run on
+	 * both: twice the per-request cost of a history that only grows. Nothing reads it in between, and
+	 * a build that throws still surfaces — the retry wrapper rethrows what no learner recognises.
+	 */
+	let body: Record<string, unknown> = {};
 	/** 补位还没开、而端点说了那句话：开，重发一次。已经开着就不认，交给推理梯子。 */
 	const learnLeadingReasoning = (providerId: string, modelId: string, said: string): boolean => {
 		if (leadingReasoning() || !MUST_PASS_BACK.test(said)) return false;
 		leadsWithReasoning.add(compatKey(providerId, modelId));
 		return true;
 	};
-
-	options.onPayload?.(body);
 
 	const doFetch = options.fetch ?? globalThis.fetch;
 	// 在这里算一次，重试沿用同一个会话 id。
