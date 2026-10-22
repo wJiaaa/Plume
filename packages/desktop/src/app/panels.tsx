@@ -7,6 +7,10 @@
  * In the shell, not in `dock/`: this list imports nearly every feature, and nearly every feature
  * imports `dock` to open a panel. While `dock/index` pulled this file in, each of those imports
  * closed a cycle back through it — 64 of the 108 in the baseline. `App.tsx` imports it once.
+ *
+ * A panel that only this list draws is imported from its file, not its domain's index: on the index
+ * it is carried into every domain that wanted something small from it — `SubAgentBar` for the
+ * composer, `TaskList` for the conversation — and those panels lead back to both.
  */
 
 import { Bot, FileDiff, FileText, Folder, GitCompare, Globe, History, ListOrdered, ListTodo, MessageCirclePlus, SquareTerminal, Undo2 } from "../ui/icons/index.ts";
@@ -15,12 +19,12 @@ import { useEffect, useRef, useState } from "react";
 import { BrowserPanel, BrowserTabTitle, browserResidentsOf, closeBrowser, newBrowserPage, subscribeBrowserResidents } from "../features/browser/index.ts";
 import { FileBrowser } from "../features/files/index.ts";
 import { FilePanel } from "../features/files/index.ts";
-import { SubAgentPanel } from "../features/subagents/index.ts";
+import { SubAgentPanel } from "../features/subagents/SubAgentPanel.tsx";
 import { FileActions } from "../features/files/index.ts";
 import { FileTitle, FileTabTitle, closeFile } from "../features/files/index.ts";
 import { DiffView, GitPanel } from "../features/git/index.ts";
 import { SideChat, SideChatTitle, closeSideChat, confirmCloseSideChat } from "../features/sidechat/index.ts";
-import { TaskPanel } from "../features/task/index.ts";
+import { TaskPanel } from "../features/task/TaskPanel.tsx";
 import { TerminalPane, TerminalTitle, closeTerminal, confirmCloseTerminal } from "../features/terminal/index.ts";
 import { announceUndo, TrajectoryPanel, useDeliveryReview, useDeliveryUndos, useSharedDeliveryTarget } from "../features/conversation/index.ts";
 import { usePathMenu } from "../features/markdown/index.ts";

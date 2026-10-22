@@ -8,5 +8,4 @@
  */
 
 export { SubAgentBar } from "./SubAgentBar.tsx";
-export { SubAgentPanel } from "./SubAgentPanel.tsx";
 export { elapsedSince, ranFor, statusWord } from "./format.ts";

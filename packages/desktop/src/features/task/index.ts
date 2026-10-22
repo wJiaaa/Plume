@@ -8,4 +8,3 @@
  */
 
 export { TaskList } from "./TaskList.tsx";
-export { TaskPanel } from "./TaskPanel.tsx";
