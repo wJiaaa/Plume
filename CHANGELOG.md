@@ -2,6 +2,53 @@
 
 这个文件由 `pnpm release` 生成，条目来自提交信息。写得含糊的提交在这里也含糊，所以值得在提交时就写清楚。
 
+## [0.9.48](https://github.com/wJiaaa/Plume/releases/tag/v0.9.48) - 2026-10-22
+
+<!-- plume:notes en -->
+
+### New
+
+- **A file link in a reply opens at the line it names.** Models pointing at a piece of code used to link the file alone, so you landed at the top and went looking by hand. The link now ends with the line or the range — `src/auth.ts:42`, `src/auth.ts:42-50` — the link shows `:42`, and opening it scrolls that file's pane to those lines and highlights them for a moment. It works when the file is already open, and when the pane has been popped out into its own window.
+- **An edit that broke the file comes back with the errors.** After a file is written or edited, any type or syntax errors in it are appended to the result, at most ten, so a mistake shows up in the turn that made it instead of whenever a check is next run. A clean file adds nothing. Diagnostics had also been answering from the copy of the file from before the edit, and a missing closing brace counted as no error; both are fixed.
+
+### Changes
+
+- **Previews in a reply stop drawing while Plume is behind another window.** Background throttling stays off — screenshots flash white without it, and a covered pane stops reporting its size — so a page kept rendering at full rate while you worked elsewhere; one inline WebGL page held the GPU process at about 15%. A preview now holds its last frame and pauses its CSS animation when the window is not in front, and picks up where it stopped when you come back. Pages in the sidebar are separate tabs and are not affected.
+- **On DeepSeek, a compaction an hour after the last request still reads its summary from cache.** The summary request was only branched off the main request while the two were within 4.5 minutes of each other; later than that it became a separate request that paid full price for the system prompt and the whole history again. DeepSeek normally keeps its cache for hours to days, so for DeepSeek that window is an hour.
+
+### Fixes
+
+- **A compacted conversation no longer loses what it was working on.** On a 64k window the messages kept after the summary were trimmed down to the last one, so a conversation that had been editing a file came back with no memory of that file and read it again. The kept tail no longer runs into a ceiling that only existed to stop compaction from firing twice in a row.
+- **`git mv` no longer leaves a ghost file in the Git panel.** The old path stayed in both the staged and the unstaged list, so a one-file rename was counted as two files with two added lines.
+- **Starting Plume from a git hook no longer reads another repository.** Launched from a hook, or from a terminal with `GIT_DIR` set, the checkout found through `origin` and the file contents read from it both came from a different repository.
+- **Text typed in one chat no longer appears in another.** An unsent draft was written under a key that another conversation then read, so switching chats showed the other chat's text for a frame.
+- **The dialog for discarding an untracked folder had an empty name in its title.** For a path ending in a slash, such as `.claude/`, taking the last segment after splitting on `/` left nothing, and the dialog asked whether to discard `""`.
+
+<!-- plume:notes zh-CN -->
+
+<details>
+<summary>中文（简体）</summary>
+
+### 新功能
+
+- **回复里点文件链接，直接到那一行。** 模型指向某处代码时以前只链到文件，点开停在开头，还得自己去找。现在链接末尾带着行号或行范围——`src/auth.ts:42`、`src/auth.ts:42-50`，链接上显示 `:42`，点开文件那一格滚到这几行并亮一下。文件已经开着也照样跳，面板弹到单独窗口里点也一样。
+- **改坏了当场就报出来。** 写入或编辑一个文件之后，这个文件里现有的类型错误和语法错误会附在结果末尾，最多十条，所以错误出现在改动的那一轮，而不是等到下次有人跑检查。文件本身干净就一个字不加。诊断原来还会拿改动前的内容回答，少一个右括号也算「没有错误」，这两处一起修了。
+
+### 变化
+
+- **Plume 被别的窗口挡住时，回复里的预览停住不画。** 后台节流是关着的（关掉是为了截图不闪白、被挡住的窗格还报尺寸），代价是页面在你看别处时仍按满帧率画，一张内联的 WebGL 页面让 GPU 进程常驻 15% 上下。现在窗口不在前台时，预览停在最后一帧、CSS 动画一起暂停，切回来接着走。侧栏里的页面是独立的浏览器标签，不受影响。
+- **DeepSeek 上，隔一小时再压缩，摘要请求照样吃缓存。** 摘要请求原来只在距上一次请求 4.5 分钟以内才从主请求分叉，再晚就换成独立请求，系统提示词和整段历史按原价再读一遍。DeepSeek 的缓存通常要几小时到几天才清，这个窗口对它放到了一小时。
+
+### 修复
+
+- **压缩之后，长对话不再忘了刚才在做什么。** 64k 窗口上，摘要写好以后保留的那几条被一路删到只剩最后一条，正在改的文件跟着没了，下一轮只能重读一遍。现在保留的尾部按它自己的预算留着，不再撞那条只为「防止刚压完又压」设的天花板。
+- **`git mv` 之后，Git 面板不再多出一个已经不存在的旧路径。** 已暂存和未暂存里都有它，一个文件的重命名统计成 2 个文件、加 2 行。
+- **从 git hook 启动 Plume，不再读到另一个仓库。** 从 hook、或者带着 `GIT_DIR` 的终端启动时，按 origin 找检出、批量读文件内容都落到别的仓库去了。
+- **在一个会话里打的字，不会再出现在另一个会话。** 没发出去的草稿被写在另一处，切换会话时另一个会话的屏幕上闪了一下这段字。
+- **丢弃未跟踪文件夹的确认框，标题里的名字是空的。** 问的是要不要丢弃「」。像 `.claude/` 这样带结尾斜杠的路径，按 `/` 切完最后一段是空的。
+
+</details>
+
 ## [0.9.47](https://github.com/wJiaaa/Plume/releases/tag/v0.9.47) - 2026-10-22
 
 <!-- plume:notes en -->
