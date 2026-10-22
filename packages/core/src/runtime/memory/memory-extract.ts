@@ -26,7 +26,7 @@ import type { SessionStorage } from "../../session/storage.ts";
 import type { streamAssistant } from "../../ai/index.ts";
 import { proposeSkill, type SkillCandidate } from "./managed-skills.ts";
 import { readReply, replyText } from "../summary/one-shot.ts";
-import { projectMemoryDir, redactSecrets } from "./project-memory.ts";
+import { projectMemoryDir, redactSecrets, sessionMemoryDir } from "./project-memory.ts";
 import { loadProjectInstructions } from "../../prompt/system.ts";
 
 /**
@@ -380,17 +380,24 @@ export async function readExtractedMemory(cwd: string): Promise<string> {
 	return body.join("\n").trim();
 }
 
-/** This project's sessions that are worth a pass, newest first. */
+/**
+ * This project's sessions that are worth a pass, newest first.
+ *
+ * Matched by memory directory rather than `projectId`: a session run in its own worktree has the
+ * worktree's id, and its transcripts belong to the project it branched from (`sessionMemoryDir`).
+ */
 export async function findCandidates(
 	storage: Pick<SessionStorage, "listSessions" | "messages">,
-	projectId: string,
+	cwd: string,
 	now = Date.now(),
 ): Promise<ExtractionCandidate[]> {
 	const found: ExtractionCandidate[] = [];
+	const dir = projectMemoryDir(cwd);
 	// The list is newest first, so the first MAX_SESSIONS candidates are the ones kept; reading past them loads transcripts only to drop them.
 	for (const meta of await storage.listSessions()) {
 		if (found.length >= MAX_SESSIONS) break;
-		if (meta.projectId !== projectId || !isCandidate(meta, now)) continue;
+		// Age first: it is free, and the directory walks `.git` pointers on disk.
+		if (!isCandidate(meta, now) || sessionMemoryDir(meta) !== dir) continue;
 		const messages = await storage.messages(meta.id).catch(() => []);
 		found.push({ id: meta.id, updatedAt: meta.updatedAt, messages });
 	}

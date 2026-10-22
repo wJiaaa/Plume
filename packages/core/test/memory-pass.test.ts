@@ -116,10 +116,10 @@ async function seedSession(cwd: string, id: string, lines: string[], ageMs: numb
 		content: [{ type: "text", text }],
 		timestamp: 0,
 	}) as Message);
-	seeded.set(id, { meta: { id, projectId: projectIdFor(cwd), updatedAt: Date.now() - ageMs, messageCount: messages.length }, messages });
+	seeded.set(id, { meta: { id, cwd, projectId: projectIdFor(cwd), updatedAt: Date.now() - ageMs, messageCount: messages.length }, messages });
 }
 
-const seeded = new Map<string, { meta: { id: string; projectId: string; updatedAt: number; messageCount: number }; messages: Message[] }>();
+const seeded = new Map<string, { meta: { id: string; cwd: string; projectId: string; updatedAt: number; messageCount: number }; messages: Message[] }>();
 const spent: { source: string; providerId: string; modelId: string; usage: { input: number } }[] = [];
 const STORAGE = {
 	listSessions: async () => [...seeded.values()].map((entry) => entry.meta).sort((a, b) => b.updatedAt - a.updatedAt),

@@ -20,9 +20,11 @@ import type { Settings } from "../../config/settings.ts";
  *   wholesale, which is only safe because the deliberate half lives elsewhere.
  */
 
+import { lstatSync, readFileSync } from "node:fs";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { plumeHome, projectIdFor } from "../../session/store.ts";
+import type { SessionMeta } from "../../session/types.ts";
 import { budgetMemory } from "../../prompt/budget.ts";
 import { today } from "../../prompt/environment.ts";
 import { invalidateMemorySnapshots } from "./memory.ts";
@@ -48,7 +50,63 @@ export const MAX_LESSON_CHARS = 2000;
 const MAX_CONTEXT_CHARS = 400;
 
 export function projectMemoryDir(cwd: string): string {
-	return join(plumeHome(), "projects", projectIdFor(cwd), "memory");
+	return join(plumeHome(), "projects", projectIdFor(memoryHome(cwd)), "memory");
+}
+
+/**
+ * 一个会话的转录算进哪份记忆。先看会话上记的原项目：工作树被收回以后目录不在了，`.git` 指针
+ * 也跟着没了，`cwd` 再也映射不回去（ADR-0050）。
+ */
+export function sessionMemoryDir(meta: Pick<SessionMeta, "cwd" | "worktree">): string {
+	return projectMemoryDir(meta.worktree?.project ?? meta.cwd);
+}
+
+/**
+ * 记忆按哪个目录归档：git 工作树里的目录换成主检出里的同一个目录，其余原样。
+ *
+ * 记的是仓库的事（「用 pnpm 不用 npm」），工作树是同一个仓库；按工作树路径归档，每个工作树会话
+ * 都从一份空记忆开始，`learn` 写下的落进一个工作树一收回就没人再读的目录。
+ *
+ * 认工作树靠 `.git` 文件指向的 gitdir 里有没有 `commondir`：submodule 的 `.git` 也是文件，但它是
+ * 另一个仓库，没有这个文件。共享目录不叫 `.git`（裸仓库）就没有主检出可回，也原样。拿不准一律原样
+ * ——那只是退回修之前的行为。
+ *
+ * 已知边界：git 写进指针的是真实路径，项目若是从软链打开的，算出来的主检出和它登记的写法对不上，
+ * 仍是两份。
+ */
+function memoryHome(cwd: string): string {
+	const target = resolve(cwd);
+	for (let dir = target; ; dir = dirname(dir)) {
+		const dotGit = join(dir, ".git");
+		let pointer: string | null = null;
+		try {
+			// 目录 = 主检出或普通仓库，这里就是它自己。
+			if (!lstatSync(dotGit).isFile()) return cwd;
+			pointer = readFileSync(dotGit, "utf8");
+		} catch {
+			// 这一层没有 `.git`，往上找。
+		}
+		if (pointer !== null) {
+			const main = mainCheckout(dir, pointer);
+			// 子目录项目落在主检出的同一个子目录；`relative` 而不是拼分隔符，Windows 上才成立。
+			return main === null ? cwd : join(main, relative(dir, target));
+		}
+		if (dirname(dir) === dir) return cwd;
+	}
+}
+
+/** `.git` 指针所在的工作树对应的主检出，不是工作树就是 null。 */
+function mainCheckout(worktree: string, pointer: string): string | null {
+	const gitdir = /^\s*gitdir:\s*(.+?)\s*$/m.exec(pointer)?.[1];
+	if (!gitdir) return null;
+	try {
+		// 指针和 `commondir` 都可能是相对路径（`worktree.useRelativePaths`），各自相对所在位置解析。
+		const own = resolve(worktree, gitdir);
+		const common = resolve(own, readFileSync(join(own, "commondir"), "utf8").trim());
+		return basename(common) === ".git" ? dirname(common) : null;
+	} catch {
+		return null;
+	}
 }
 
 /**

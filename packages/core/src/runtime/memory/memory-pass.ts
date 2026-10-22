@@ -23,7 +23,6 @@ import { resolveModelRef } from "../../config/model-choice.ts";
 import { resolveModel } from "../../config/settings.ts";
 import type { streamAssistant } from "../../ai/index.ts";
 import { streamAssistant as realStream } from "../../ai/index.ts";
-import { projectIdFor } from "../../session/store.ts";
 import type { SessionStorage } from "../../session/storage.ts";
 import type { ModelConfig, ProviderConfig } from "../../types.ts";
 import { extractMemory, findCandidates, type ExtractionResult } from "./memory-extract.ts";
@@ -97,7 +96,7 @@ export async function runMemoryPass(options: PassOptions): Promise<ExtractionRes
 	const verdict = shouldRunPass(options.settings, await lastPassAt(options.cwd), now);
 	if (!verdict.run) return { memory: "", sessions: 0, skipped: verdict.reason };
 
-	const candidates = await findCandidates(options.storage, projectIdFor(options.cwd), now);
+	const candidates = await findCandidates(options.storage, options.cwd, now);
 	await markPass(options.cwd, now);
 	// 没有候选时 `extractMemory` 自己交回「没有符合条件的会话」。
 	return extractMemory({
