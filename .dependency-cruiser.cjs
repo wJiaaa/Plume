@@ -64,8 +64,8 @@ module.exports = {
 			 *
 			 * The baseline is a file that can only be regenerated deliberately, so shrinking it is
 			 * a visible act and growing it is one somebody has to defend in review. Untangling one
-			 * hub — `features/dock` accounts for most of desktop's 119 — and regenerating is the
-			 * expected way this number goes down.
+			 * hub and regenerating is the expected way this number goes down — `features/dock` was
+			 * the first, and with `features/markdown` took it from 108 to 21.
 			 */
 			severity: "error",
 			from: {},

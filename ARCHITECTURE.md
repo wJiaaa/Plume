@@ -83,8 +83,8 @@ pre-push 里都是必过项：
    它们；压缩、审批、钩子、中途换模型都经 `AgentRunConfig` 交进来。循环自己做的历史剪枝在 `agent/`，
    token 估算在 `tokens.ts`。类型也算——从 `runtime/` 拿一个类型，下一次就是拿一个值。
 
-循环依赖是 error，垫着一份已有的 108 条的基线（`.dependency-cruiser-known-violations.json`，
-连同第 8 条那两处有理由的破例共 110 条）：新加一条会让 `pnpm arch` 变红，已有那些照旧通过。
+循环依赖是 error，垫着一份已有的 21 条的基线（`.dependency-cruiser-known-violations.json`，
+连同第 8 条那两处有理由的破例共 23 条）：新加一条会让 `pnpm arch` 变红，已有那些照旧通过。
 这个数字每次 `pnpm arch` 都会印出来，少一条就 `pnpm arch:baseline` 重生成一次——那是让它下降的
 正常动作，也是唯一能让它上升的动作。
 
@@ -93,7 +93,7 @@ pre-push 里都是必过项：
 `export {} from "./forge/index.ts"` 断掉的。每一次下降都由 `test/docs-numbers.test.ts` 逼着改
 这一段：它要求这里写的数和基线里的一样多。最近一次是循环的契约类型拆进 `agent/run-config.ts`
 （118 → 116）：`tool-run.ts` 不再为了类型回头引用 `agent/loop.ts`，经过它闭合的两条环随之消失。
-手机端共享消息合并函数时移除了它对桌面 store 类型的反向引用，循环基线进一步从 116 降到 114。侧边聊天改成会话、旧的侧聊消息行删掉之后，经过它和输入框上下文表的五条环跟着消失，降到 109。`errorResult` 从 `agent/tool-run.ts` 挪进 `tools/result.ts` 之后，工具不再为了一个报错构造器回头引用循环的执行器，`skills/tool.ts` 与它之间那条环随之断开，降到 108。
+手机端共享消息合并函数时移除了它对桌面 store 类型的反向引用，循环基线进一步从 116 降到 114。侧边聊天改成会话、旧的侧聊消息行删掉之后，经过它和输入框上下文表的五条环跟着消失，降到 109。`errorResult` 从 `agent/tool-run.ts` 挪进 `tools/result.ts` 之后，工具不再为了一个报错构造器回头引用循环的执行器，`skills/tool.ts` 与它之间那条环随之断开，降到 108。内置面板的注册表从 `features/dock/panels/` 挪到 `app/panels.tsx` 之后，`dock` 的出口不再挂着那张 import 了几乎所有功能域的表，各域「打开一个面板」不再绕回自己；`Markdown` 连同它画代码块、图表、路径菜单的那一簇搬进独立的 `features/markdown/`，Git、文件、设置不再为了渲染一段文字经过对话域；主进程里跨进程的 git 结构收进 `ipc-shapes.ts`，`isGitRepo`、`gitBranch` 挪进 `git-probe.ts`，git 各模块不再经 `git.ts` 的转出回头引用自己。三处合起来降到 30，主进程那一侧清零。随后拆掉了当初为绕开这些环而写的参数注入（`Markdown` 由调用方传进气泡、审批卡、计划面板），`SubAgentPanel`、`TaskPanel` 这两个只有面板注册表用的面板也撤出了各自域的出口、由 `app/panels.tsx` 直接引用，功能域之间的环随之清零，降到 21。剩下的每一条都要经过一个 `import type` 才闭合——store 的各个 slice 回头拿 `AppState` 就是这一种——只看值依赖，整个仓库没有环。
 
 ## 要做某件事，去哪
 
