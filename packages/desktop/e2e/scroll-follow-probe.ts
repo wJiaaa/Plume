@@ -522,7 +522,7 @@ async function panelsMount(): Promise<void> {
 	/*
 	 * By keyboard, not by clicking a menu.
 	 *
-	 * ⌥⌘S and ⌥⌘U are what the panel definitions register (`panels/builtin.tsx`), and driving the
+	 * ⌥⌘S and ⌥⌘U are what the panel definitions register (`app/panels.tsx`), and driving the
 	 * shortcut is both shorter and less brittle than walking an overflow menu whose markup is not
 	 * this probe's business.
 	 */

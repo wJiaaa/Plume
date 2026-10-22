@@ -14,7 +14,7 @@
  */
 
 import { useEffect } from "react";
-import type { TurnDelivery } from "../../../electron/turn-delivery.ts";
+import type { TurnDelivery } from "../../../electron/delivery-record.ts";
 import { bridge } from "../../services/index.ts";
 import { rememberDelivery } from "./delivery-cache.ts";
 import { useDeliveryReview } from "./delivery-review.ts";

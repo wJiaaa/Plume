@@ -217,7 +217,7 @@ export interface PlumeApi {
 		output(sessionId: string, id: string, from: number): Promise<import("../shared/session-services.ts").ServiceOutput | null>;
 	};
 	delivery: {
-		get(sessionId: string, timestamp: number): Promise<import("./turn-delivery.ts").TurnDelivery>;
+		get(sessionId: string, timestamp: number): Promise<import("./delivery-record.ts").TurnDelivery>;
 		undo(sessionId: string, timestamp: number, path?: string): Promise<void>;
 	};
 	browser: {

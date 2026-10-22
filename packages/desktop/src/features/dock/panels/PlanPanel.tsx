@@ -1,7 +1,7 @@
 /**
  * 右栏的计划面板：把计划摊开读，划一段字就地留评论。
  *
- * 计划交上来时由审批卡替人打开（见 `ApprovalOverlay`）。正文由 `builtin.tsx` 交进来（`renderPlan`），
+ * 计划交上来时由审批卡替人打开（见 `ApprovalOverlay`）。正文由 `app/panels.tsx` 交进来（`renderPlan`），
  * 不在这里 import `Markdown`：那会让这个文件也落进对话域与 dock 之间那个环，`pnpm arch` 的基线只降不升。等审批的时候能评论：
  * 这里只管划线和写，评论本身列在审批卡上（`PlanApproval`），由那里修订或带着接受；面板上那段字画下划线、
  * 末尾挂一枚和卡上同号的序号。批准或打回以后面板只读，那份计划留着看。

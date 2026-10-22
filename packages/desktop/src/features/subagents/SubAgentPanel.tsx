@@ -53,7 +53,7 @@ import { IconButton } from "../../ui/primitives/IconButton.tsx";
 
 const NO_MESSAGES: Message[] = [];
 
-/** 在应用里打开一个磁盘上的文件——由挂这个面板的那一层给，见 `dock/panels/builtin.tsx`。 */
+/** 在应用里打开一个磁盘上的文件——由挂这个面板的那一层给，见 `app/panels.tsx`。 */
 type OpenFile = (path: string, name: string) => void;
 
 export function SubAgentPanel({ openFile }: { openFile?: OpenFile } = {}) {

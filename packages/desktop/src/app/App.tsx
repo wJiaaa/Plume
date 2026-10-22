@@ -23,6 +23,7 @@ import { DragBand, WindowButtons, WindowHeader } from "./window/WindowToolbar.ts
 import { useNavShortcuts, watchNavHistory } from "./nav-history.ts";
 import { SessionWindow } from "./window/SessionWindow.tsx";
 import { PanelWindow } from "./window/PanelWindow.tsx";
+import "./panels.tsx";
 import { watchPanelWindows } from "../features/dock/index.ts";
 import { LayoutProvider, NavPane, useLayout, useSidebarFit } from "./layout.tsx";
 import { useShortcuts } from "./shortcuts.ts";

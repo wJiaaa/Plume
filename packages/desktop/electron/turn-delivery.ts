@@ -1,7 +1,6 @@
 import { readFileChange, undoFileChangeBatches, type SessionStorage } from "@plume/core";
 import { sessions } from "./session-hub.ts";
 
-export type { DeliveryFile, TurnDelivery } from "./delivery-record.ts";
 import { collectDelivery, deliveryMessages, type TurnDelivery } from "./delivery-record.ts";
 export async function sessionDelivery(store: SessionStorage, sessionId: string, timestamp: number): Promise<TurnDelivery> {
 	const live = sessions.get(sessionId);

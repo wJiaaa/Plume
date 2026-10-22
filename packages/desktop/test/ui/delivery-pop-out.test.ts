@@ -11,11 +11,11 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 import { act, createElement as h } from "react";
-import type { TurnDelivery } from "../../electron/turn-delivery.ts";
+import type { TurnDelivery } from "../../electron/delivery-record.ts";
 import { LayoutProvider } from "../../src/app/layout.tsx";
 import { SessionScope } from "../../src/app/session-scope.tsx";
 import { useDeliveryReview } from "../../src/features/conversation/delivery-review.ts";
-import "../../src/features/dock/panels/builtin.tsx";
+import "../../src/app/panels.tsx";
 import { allPanels } from "../../src/features/dock/panels/registry.ts";
 import { I18nProvider } from "../../src/i18n/index.ts";
 import { useApp, type AppState } from "../../src/store/index.ts";

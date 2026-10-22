@@ -16,6 +16,7 @@ import { LayoutProvider } from "../../src/app/layout.tsx";
 import { SessionScope } from "../../src/app/session-scope.tsx";
 import { PanelMenu } from "../../src/app/window/WindowToolbar.tsx";
 import { usePaneDock } from "../../src/features/dock/pane-store.ts";
+import "../../src/app/panels.tsx";
 import { I18nProvider } from "../../src/i18n/index.ts";
 import { useApp, type AppState } from "../../src/store/index.ts";
 import { click, mount, type Mounted } from "../helpers/mount.ts";

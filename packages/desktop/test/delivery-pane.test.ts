@@ -7,7 +7,7 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 test("the delivery pane is registered, hidden from the chooser, and not persisted", async () => {
-	const source = await readFile(new URL("../src/features/dock/panels/builtin.tsx", import.meta.url), "utf8");
+	const source = await readFile(new URL("../src/app/panels.tsx", import.meta.url), "utf8");
 	assert.match(source, /kind: "delivery"/);
 	assert.match(source, /listed: false/);
 	assert.match(source, /ephemeral: true/);
@@ -22,11 +22,11 @@ test("the chooser skips unlisted panes and storage skips ephemeral ones", async 
 });
 
 test("the pane renders recorded hunks, not the worktree and not the open file", async () => {
-	const file = await readFile(new URL("../src/features/dock/panels/builtin.tsx", import.meta.url), "utf8");
+	const file = await readFile(new URL("../src/app/panels.tsx", import.meta.url), "utf8");
 	/*
 	 * 只看交付面板自己那几段——标题和正文。
 	 *
-	 * 这个文件还挂着别的面板：子智能体面板从这里拿到「把一份文件打开到旁边」（它那个域不能引 dock），
+	 * 这个文件还挂着别的面板：子智能体面板从这里拿到「把一份文件打开到旁边」，
 	 * 那一段当然要碰打开的文件。这条要守的是「交付面板画的是记录下来的 diff，不是打开的文件」，不是
 	 * 「这个文件里不许出现 useOpenFile」。
 	 */

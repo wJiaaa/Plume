@@ -24,7 +24,7 @@ import { act, createElement as h, Fragment, type ReactNode } from "react";
 import { Terminal } from "@xterm/xterm";
 import type { Message, SessionMeta, UserMessage as UserMessageType } from "@plume/core";
 import type { ContextBreakdown, WorkspaceInfo } from "../../electron/ipc-types.ts";
-import type { TurnDelivery } from "../../electron/turn-delivery.ts";
+import type { TurnDelivery } from "../../electron/delivery-record.ts";
 import type { BrowserCommand, BrowserTab } from "../../shared/browser.ts";
 import { LayoutProvider } from "../../src/app/layout.tsx";
 import { DockScope, SessionScope } from "../../src/app/session-scope.tsx";

@@ -3,42 +3,45 @@
  *
  * Registered like any other set, so there is nothing special about them beyond loading first —
  * which is exactly the property that lets a plugin replace one.
+ *
+ * In the shell, not in `dock/`: this list imports nearly every feature, and nearly every feature
+ * imports `dock` to open a panel. While `dock/index` pulled this file in, each of those imports
+ * closed a cycle back through it — 64 of the 108 in the baseline. `App.tsx` imports it once.
  */
 
-import { Bot, FileDiff, FileText, Folder, GitCompare, Globe, History, ListOrdered, ListTodo, MessageCirclePlus, SquareTerminal, Undo2 } from "../../../ui/icons/index.ts";
+import { Bot, FileDiff, FileText, Folder, GitCompare, Globe, History, ListOrdered, ListTodo, MessageCirclePlus, SquareTerminal, Undo2 } from "../ui/icons/index.ts";
 import { useEffect, useRef, useState } from "react";
 
-import { BrowserPanel, BrowserTabTitle, browserResidentsOf, closeBrowser, newBrowserPage, subscribeBrowserResidents } from "../../browser/index.ts";
-import { FileBrowser } from "../../files/index.ts";
-import { FilePanel } from "../../files/index.ts";
-import { SubAgentPanel } from "../../subagents/index.ts";
-import { FileActions } from "../../files/index.ts";
-import { FileTitle, FileTabTitle, closeFile } from "../../files/index.ts";
-import { DiffView, GitPanel } from "../../git/index.ts";
-import { SideChat, SideChatTitle, closeSideChat, confirmCloseSideChat } from "../../sidechat/index.ts";
-import { TaskPanel } from "../../task/index.ts";
-import { TerminalPane, TerminalTitle, closeTerminal, confirmCloseTerminal } from "../../terminal/index.ts";
-import { announceUndo, Markdown, TrajectoryPanel, useDeliveryReview, useDeliveryUndos, usePathMenu, useSharedDeliveryTarget } from "../../conversation/index.ts";
-import type { DeliveryFile, TurnDelivery } from "../../../../electron/turn-delivery.ts";
-import { useI18n } from "../../../i18n/index.ts";
-import { relativeTo } from "../../../lib/paths.ts";
-import { bridge } from "../../../services/index.ts";
-import { useApp } from "../../../store/index.ts";
-import { useConfirmer } from "../../../ui/overlay/Confirm.tsx";
-import { PanelEmpty } from "../../../ui/layout/PanelEmpty.tsx";
-import { IconButton } from "../../../ui/primitives/IconButton.tsx";
-import { Scroller } from "../../../ui/scroll/Scroller.tsx";
-import { closeNow } from "../pane-store.ts";
-import { openFilePane } from "../popout.ts";
-import { useDockScope, useScopedProjectPath, useScopedSessionId } from "../../../app/session-scope.tsx";
-import { registerPanels, type PanelDefinition } from "./registry.ts";
-import { PlanPanel } from "./PlanPanel.tsx";
+import { BrowserPanel, BrowserTabTitle, browserResidentsOf, closeBrowser, newBrowserPage, subscribeBrowserResidents } from "../features/browser/index.ts";
+import { FileBrowser } from "../features/files/index.ts";
+import { FilePanel } from "../features/files/index.ts";
+import { SubAgentPanel } from "../features/subagents/index.ts";
+import { FileActions } from "../features/files/index.ts";
+import { FileTitle, FileTabTitle, closeFile } from "../features/files/index.ts";
+import { DiffView, GitPanel } from "../features/git/index.ts";
+import { SideChat, SideChatTitle, closeSideChat, confirmCloseSideChat } from "../features/sidechat/index.ts";
+import { TaskPanel } from "../features/task/index.ts";
+import { TerminalPane, TerminalTitle, closeTerminal, confirmCloseTerminal } from "../features/terminal/index.ts";
+import { announceUndo, Markdown, TrajectoryPanel, useDeliveryReview, useDeliveryUndos, usePathMenu, useSharedDeliveryTarget } from "../features/conversation/index.ts";
+import type { DeliveryFile, TurnDelivery } from "../../electron/delivery-record.ts";
+import { useI18n } from "../i18n/index.ts";
+import { relativeTo } from "../lib/paths.ts";
+import { bridge } from "../services/index.ts";
+import { useApp } from "../store/index.ts";
+import { useConfirmer } from "../ui/overlay/Confirm.tsx";
+import { PanelEmpty } from "../ui/layout/PanelEmpty.tsx";
+import { IconButton } from "../ui/primitives/IconButton.tsx";
+import { Scroller } from "../ui/scroll/Scroller.tsx";
+import { closeNow, openFilePane } from "../features/dock/index.ts";
+import { useDockScope, useScopedProjectPath, useScopedSessionId } from "./session-scope.tsx";
+import { registerPanels, type PanelDefinition } from "../features/dock/panels/registry.ts";
+import { PlanPanel } from "../features/dock/panels/PlanPanel.tsx";
 
 /**
  * 子智能体面板，带着「把一份文件打开到旁边」这件事。
  *
- * 那个域不能引 dock（dock 的门后面挂着整棵面板树，会绕回它自己），而操控框里点开一枚文件标记，
- * 该去的正是旁边的文件面板——和主输入框、侧边聊天一样。所以这件事由已经站在 dock 里的这一层替它做。
+ * 操控框里点开一枚文件标记，该去的正是旁边的文件面板——和主输入框、侧边聊天一样。
+ * 面板在这里组装，`openFilePane` 也就由这一层交给它。
  */
 function SubAgentPane() {
 	return (

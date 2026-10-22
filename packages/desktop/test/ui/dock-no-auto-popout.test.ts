@@ -13,7 +13,7 @@ import { test } from "node:test";
 import { openScopedPanel, popOutPanel, provideScope, showScopedPanel } from "../../src/features/dock/popout.ts";
 import { usePaneDock } from "../../src/features/dock/pane-store.ts";
 import { has } from "../../src/features/dock/tree.ts";
-import "../../src/features/dock/panels/builtin.tsx";
+import "../../src/app/panels.tsx";
 
 /** Every call the renderer could make to open one, recorded instead of performed. */
 function watchWindows(): { opened: unknown[] } {

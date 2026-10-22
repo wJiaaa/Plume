@@ -143,7 +143,7 @@ const problems: string[] = [];
 
 try {
 	await pause(3000);
-	// Git 面板走它自己的快捷键（⌘⇧R，见 `panels/builtin.tsx`），比在工具栏里认按钮稳。
+	// Git 面板走它自己的快捷键（⌘⇧R，见 `app/panels.tsx`），比在工具栏里认按钮稳。
 	for (const type of ["keyDown", "keyUp"]) {
 		await app.send("Input.dispatchKeyEvent", {
 			type,

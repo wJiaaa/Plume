@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { createElement as h } from "react";
 import { useShortcuts } from "../../src/app/shortcuts.ts";
 import { provideScope, usePaneDock } from "../../src/features/dock/index.ts";
+import "../../src/app/panels.tsx";
 
 /*
  * Panel shortcuts act on the screen the person is working in — the workspace answers which one.

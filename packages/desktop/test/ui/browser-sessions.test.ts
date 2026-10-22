@@ -22,6 +22,7 @@ import { mount, type Mounted } from "../helpers/mount.ts";
 import { SessionScope } from "../../src/app/session-scope.tsx";
 import { LayoutProvider } from "../../src/app/layout.tsx";
 import { DockView } from "../../src/features/dock/DockView.tsx";
+import "../../src/app/panels.tsx";
 import { usePaneDock } from "../../src/features/dock/pane-store.ts";
 import { usePanelWindows } from "../../src/features/dock/popout.ts";
 import { insertTab } from "../../src/features/dock/tabs.ts";

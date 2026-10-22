@@ -15,7 +15,7 @@
 
 import { useEffect } from "react";
 import { create } from "zustand";
-import type { TurnDelivery } from "../../../electron/turn-delivery.ts";
+import type { TurnDelivery } from "../../../electron/delivery-record.ts";
 
 interface DeliveryTarget {
 	sessionId: string;
