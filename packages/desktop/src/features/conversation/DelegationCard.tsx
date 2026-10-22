@@ -18,7 +18,7 @@ import type { AssistantContent, AssistantMessage, ToolResult } from "@plume/core
 import { useApp, type ToolRun } from "../../store/index.ts";
 import { useAgentAvatars } from "../../store/agent-avatars.ts";
 import { useSubAgents } from "../../store/subAgents.ts";
-import { useScopedMessages, useScopedRunning, useScopedSessionId, useScopedSubAgents } from "../../app/session-scope.tsx";
+import { useScopedRunning, useScopedSessionId, useScopedSubAgents, useScopedUserMessages } from "../../app/session-scope.tsx";
 import { deliveredReports, joinDispatches, type Dispatch } from "../../lib/dispatches.ts";
 import { AgentAvatar } from "../../ui/avatar/AgentAvatar.tsx";
 import { AvatarStack } from "../../ui/avatar/AvatarStack.tsx";
@@ -60,7 +60,8 @@ export function useDispatches(calls: readonly ToolCall[], runs?: Record<string, 
 
 /** 这场对话里送达过的后台结果——登记簿里没有它了的时候，转到后台的派发靠它知道怎么收场的。 */
 function useDelivered() {
-	const messages = useScopedMessages();
+	// 送达只挂在人那一侧的消息上：只拿那几条，流式输出时它们不变，这里就不跟着每一拍重扫、重画。
+	const messages = useScopedUserMessages();
 	return useMemo(() => deliveredReports(messages), [messages]);
 }
 

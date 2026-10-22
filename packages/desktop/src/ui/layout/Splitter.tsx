@@ -104,15 +104,13 @@ export function Splitter({
 		// Freezes the panes' own transitions, so they track the pointer instead of easing towards
 		// each intermediate share and never arriving — and refuses the text selection a drag across
 		// the panes would otherwise start. Both by naming things rather than by a flag above the
-		// transcript; see `motion-freeze.ts`.
+		// transcript; see `ui/motion/freeze.ts`.
 		const thaw = freezeMotion();
 		const release = hold.current?.();
-		document.documentElement.dataset.resizing = "";
 		return () => {
 			document.body.style.cursor = "";
 			thaw();
 			release?.();
-			delete document.documentElement.dataset.resizing;
 		};
 	}, [active, row]);
 

@@ -46,7 +46,7 @@ function beside(): Cache[string] {
 		{ role: "user", content: [{ type: "text", text: "乙的问题" }], timestamp: 1 },
 		{ role: "assistant", content: [ls, edit, shown], api: "anthropic-messages", provider: "qa", model: "model", usage, stopReason: "toolUse", timestamp: 2 },
 	];
-	return { meta: meta("b"), messages: said, toolRuns: RUNS, state: { running: false, approvals: [], todos: [], compactions: [], commandRuns: [], hiccups: [], stopped: null, retrying: null, capabilities: null, pendingUserMessage: null } };
+	return { meta: meta("b"), messages: said, toolRuns: RUNS, state: { running: false, approvals: [], todos: [], compactions: [], commandRuns: [], hiccups: [], stopped: null, retrying: null, capabilities: null, pendingUserMessage: null, hookRuns: [], compactedAt: null } };
 }
 
 let previous: AppState;

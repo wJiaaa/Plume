@@ -46,14 +46,14 @@ beforeEach(() => {
 	});
 	// 乙 holds the live slot; 甲 is on the other screen with the two agents it dispatched.
 	useApp.setState({ activeSessionId: "b", pendingSessionId: null, messages: [], running: false });
-	useSubAgents.setState({ agents: [], transcripts: {}, focused: null, loading: [], rosters: { a: [finished("a:sub:1", "找入口"), finished("a:sub:2", "找配置")] } });
+	useSubAgents.setState({ transcripts: {}, focused: null, loading: [], rosters: { a: [finished("a:sub:1", "找入口"), finished("a:sub:2", "找配置")] } });
 });
 
 afterEach(async () => {
 	await view?.unmount();
 	view = undefined;
 	useApp.setState(previous, true);
-	useSubAgents.setState({ agents: [], transcripts: {}, focused: null, loading: [], rosters: {} });
+	useSubAgents.setState({ transcripts: {}, focused: null, loading: [], rosters: {} });
 	Reflect.deleteProperty(window, "plume");
 });
 

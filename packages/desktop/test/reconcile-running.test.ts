@@ -61,6 +61,15 @@ describe("界面说在跑的时候", () => {
 		assert.deepEqual(asked, ["s-1"]);
 	});
 
+	it("放下来时这一轮的表一起收走，不留一份让下一条事件镜像回来", async () => {
+		stand({});
+		useApp.setState({ turnStartedAt: 1000, turnTokens: 50, turns: { "s-1": { startedAt: 1000, tokens: 50 }, other: { startedAt: 5, tokens: 1 } } });
+		await useApp.getState().reconcileRunning();
+		assert.equal(useApp.getState().turnStartedAt, null);
+		assert.equal(useApp.getState().turns["s-1"], undefined, "镜像清了、源头还在：下一次发送会接着一个早就停了的起点计时");
+		assert.ok(useApp.getState().turns.other, "别的会话的表不动");
+	});
+
 	it("主进程说还在跑，一个字都不动", async () => {
 		stand({});
 		answer = true;

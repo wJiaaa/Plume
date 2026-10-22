@@ -1,14 +1,8 @@
+import { memo } from "react";
 import { Play, RotateCcw } from "../../ui/icons/index.ts";
 import { translate } from "../../i18n/translate.ts";
 import { useSide, sideTasksOf } from "../dock/index.ts";
-import {
-	useScopedHiccups,
-	useScopedMessages,
-	useScopedWorking,
-	useScopedSessionId,
-	useScopedStopped,
-	useScopedTodos,
-} from "../../app/session-scope.tsx";
+import { useScopedHiccups, useScopedWorking, useScopedSessionId, useScopedStopped, useScopedTodos, useScopedFromMessages } from "../../app/session-scope.tsx";
 import { useApp } from "../../store/index.ts";
 import { useConfirmer } from "../../ui/overlay/Confirm.tsx";
 import { carryOnPrompt, hasRetryPoint } from "../../store/derive.ts";
@@ -32,7 +26,8 @@ import { IconButton } from "../../ui/primitives/IconButton.tsx";
  * grey at the same size: it is a footnote about what happened, not an alarm. Anything louder
  * would make an ordinary pause look like a failure.
  */
-export function ResumeRow() {
+// Memoized on props: its parent also renders the transcript, which re-renders on every streaming tick.
+export const ResumeRow = memo(function ResumeRow() {
 	const { t } = useI18n();
 	const send = useApp((s) => s.send);
 	const retryFrom = useApp((s) => s.retryFrom);
@@ -48,7 +43,9 @@ export function ResumeRow() {
 	// 后台的子智能体还在跑，就不是「停了」——结果回来主会话会接着干，这时候不该请人按「继续」。
 	const running = useScopedWorking();
 	const stopped = useScopedStopped();
-	const messages = useScopedMessages();
+	// 数和真假，不是转录本身：这一行挂在转录底下，拿整条的话流式输出时每一拍都重画。
+	const messageCount = useScopedFromMessages((all) => all.length);
+	const retryable = useScopedFromMessages(hasRetryPoint);
 	const todos = useScopedTodos();
 	const hiccups = useScopedHiccups();
 	const confirm = useConfirmer();
@@ -89,7 +86,7 @@ export function ResumeRow() {
 	 * `revertMessage` 现在会把 `stopped` 一起退回去，所以这条守卫多数时候不会触发。留着是因为
 	 * 它守的是这一行自己的前提：要接着的那一轮得真的在转录里。
 	 */
-	if (messages.length === 0) return null;
+	if (messageCount === 0) return null;
 	/*
 	 * 失败这件事，上面那条记录已经说过了。
 	 *
@@ -190,7 +187,7 @@ export function ResumeRow() {
 			 * be had again. The tooltip says which, because "重试" alone does not, and one of the
 			 * two is destructive.
 			 */}
-			{hasRetryPoint(messages) && (
+			{retryable && (
 				<IconButton
 					size="sm"
 					label={t("resume.regenerateHint")}
@@ -217,7 +214,7 @@ export function ResumeRow() {
 								</>
 							),
 							confirmLabel: t("resume.regenerate"),
-							onConfirm: () => void retryFrom(messages.length - 1, sessionId ?? undefined),
+							onConfirm: () => void retryFrom(messageCount - 1, sessionId ?? undefined),
 						})
 					}
 					icon={<RotateCcw size={11} strokeWidth={2} aria-hidden />}
@@ -226,4 +223,4 @@ export function ResumeRow() {
 			{confirm.element}
 		</div>
 	);
-}
+});

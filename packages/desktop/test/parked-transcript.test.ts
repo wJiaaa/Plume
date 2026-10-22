@@ -73,6 +73,7 @@ function afterEvent(event: AgentEvent): { parked: boolean; dirty: boolean } {
 	const state = {
 		activity: {},
 		turns: {},
+		carried: {},
 		sessions: [],
 		activeSessionId: "watching",
 		messages: [],
@@ -123,6 +124,7 @@ test("a conversation on screen keeps its cache — it is being kept up to date l
 	const state = {
 		activity: {},
 		turns: {},
+		carried: {},
 		sessions: [],
 		activeSessionId: "watching",
 		messages: [],
@@ -165,6 +167,7 @@ test("pendingUserMessage matches its own session and does not clear on events fr
 	const state = {
 		activity: {},
 		turns: {},
+		carried: {},
 		sessions: [],
 		activeSessionId: "session-a",
 		messages: [userMsg],
@@ -208,7 +211,7 @@ test("a compaction that starts after the turn has ended lights the window's runn
 	] as AgentEvent[]) {
 		let cached = cachedEvent({ meta, messages: [said("first"), reply], toolRuns: {} }, { type: "agent_end", reason: "done" });
 		const flushed: string[] = [];
-		const state = { activity: {}, turns: {}, sessions: [], activeSessionId: "watching", messages: [], toolRuns: {}, commandRuns: [], compactions: [], sessionCache: {}, running: false, flushQueue: async (id: string) => { flushed.push(id); } } as Record<string, unknown>;
+		const state = { activity: {}, turns: {}, carried: {}, sessions: [], activeSessionId: "watching", messages: [], toolRuns: {}, commandRuns: [], compactions: [], sessionCache: {}, running: false, flushQueue: async (id: string) => { flushed.push(id); } } as Record<string, unknown>;
 		const apply = (event: AgentEvent) => {
 			cached = cachedEvent(cached, event);
 			applyAgentEvent("watching", event, partial => Object.assign(state, typeof partial === "function" ? partial(state as never) : partial), () => state as never);

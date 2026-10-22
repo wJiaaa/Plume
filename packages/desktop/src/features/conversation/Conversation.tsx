@@ -12,6 +12,7 @@ import { RunningRow } from "./RunningRow.tsx";
 import { TaskList } from "../task/index.ts";
 import { environmentCard, useEnvironmentCard } from "../../store/environment-card.ts";
 import { clearTranscriptJump, useTranscriptJump } from "../../store/transcript-jump.ts";
+import { proseGrewAt } from "../../store/message-event.ts";
 import { GeneratedImages } from "./ImageCanvas.tsx";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { ActionSpinner } from "../../ui/motion/loaders.tsx";
@@ -37,26 +38,15 @@ import { useLayout } from "../../app/layout.tsx";
 import { useApp } from "../../store/index.ts";
 import {
 	useScopedCommandRuns,
-	useScopedCompactions,
 	useScopedHiccups,
 	useScopedLoading,
 	useScopedMessages,
 	useScopedRunning,
 	useScopedSessionId,
-	useScopedToolRuns,
+	useScopedFromToolRuns,
 } from "../../app/session-scope.tsx";
+import type { ToolRun } from "../../store/tool-run.ts";
 
-/**
- * Nothing about the window's shape belongs to the transcript.
- *
- * The transcript takes no props: everything it draws comes from the store, and the store tells it
- * directly when that changes. But it is mounted inside the dock, and the dock is re-rendered by
- * every drag — a pane's boundary, a pane being carried, the sidebar's edge — so a fresh element
- * was handed down forty-five times a second and React rebuilt several hundred rows behind it, each
- * one re-parsing its markdown. Dragging the sidebar across a long session cost 470KB of re-parsed
- * prose per gesture. A memo boundary here is one comparison of two empty objects, and it is where
- * the layout stops being the transcript's business.
- */
 /**
  * The width below which the question rail stops getting a column of its own.
  *
@@ -76,6 +66,16 @@ const ENVIRONMENT_CARD = 300;
 const ENVIRONMENT_LANE = ENVIRONMENT_CARD + 24;
 
 /**
+ * Nothing about the window's shape belongs to the transcript.
+ *
+ * The transcript takes no props: everything it draws comes from the store, and the store tells it
+ * directly when that changes. But it is mounted inside the dock, and the dock is re-rendered by
+ * every drag — a pane's boundary, a pane being carried, the sidebar's edge — so a fresh element
+ * was handed down forty-five times a second and React rebuilt several hundred rows behind it, each
+ * one re-parsing its markdown. Dragging the sidebar across a long session cost 470KB of re-parsed
+ * prose per gesture. A memo boundary here is one comparison of two empty objects, and it is where
+ * the layout stops being the transcript's business.
+ *
  * `side`：画的是一格侧边聊天（`SessionScope` 指向那个会话）。转录、工具卡、审批和主对话完全一样；
  * 主对话外围那几样——环境卡片、任务清单、「接着做」、问题导航、钩子提示、输入框——不画，输入框由
  * 侧边聊天自己摆在底下。
@@ -93,12 +93,11 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
   const rawMessages = useScopedMessages();
   const messages = useMemo(() => intact(rawMessages), [rawMessages]);
   const running = useScopedRunning();
-  const compactions = useScopedCompactions();
 	const commandRuns = useScopedCommandRuns();
 	/*
 	 * 这一轮里连接抖过没有，以及最后怎么了。
 	 *
-	 * 和压缩标记、命令边界一起交给 `runs`，因为它们是同一种东西：转录里按位置插进去的一条记录。
+	 * 和命令边界一起交给 `runs`，因为它们是同一种东西：转录里按位置插进去的一条记录。
 	 * 从前它是转录末尾单独的一丛，一律挂在运行指示器底下——那让一句「重连 2 次后恢复」站在了「此刻」
 	 * 的位置上，而它说的是四十分钟前的事。见 `HiccupTrace`。
 	 */
@@ -119,25 +118,16 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
    * Returned as a string so the selector compares by value; an object would be a new identity on
    * every store change and re-render the transcript for each one.
    */
-  const toolRuns = useScopedToolRuns();
-  const toolProgress = useMemo(() => {
-    let total = 0;
-    let settled = 0;
-    for (const run of Object.values(toolRuns)) {
-      total += 1;
-      if (run.status !== "running") settled += 1;
-    }
-    return `${total}/${settled}`;
-  }, [toolRuns]);
+  const toolProgress = useScopedFromToolRuns(toolProgressOf);
   const activeSessionId = useScopedSessionId();
   const loadingSession = useScopedLoading();
   const arrival = useArrival(`${activeSessionId}:${loadingSession}`);
   // 推理默认不画，见 `withoutThinking`。
   const showThinking = useApp((s) => s.settings?.showThinking === true);
   const allRuns = useMemo(() => {
-    const list = runs(messages, compactions, commandRuns, hiccups);
+    const list = runs(messages, commandRuns, hiccups);
     return showThinking ? list : withoutThinking(list);
-  }, [messages, compactions, commandRuns, hiccups, showThinking]);
+  }, [messages, commandRuns, hiccups, showThinking]);
   /*
    * 按内容记住，不按 `messages`：它每个 token 都换，跟着换的话 `draw` 也每个 token 都是新的，
    * `WorkStep` 的 memo 就形同虚设。
@@ -146,12 +136,8 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
   const separators = useMemo(() => new Set(separatorKey ? separatorKey.split(",").map(Number) : []), [separatorKey]);
   const questions = useMemo(() => questionsIn(messages), [messages]);
   // 一个 Run 画成哪一行。依赖齐了它才换，`WorkStep` 的 memo 拿它的引用判断画出来的推理行会不会变。
-  /*
-   * Automatic compaction belongs on the running indicator. An explicitly submitted
-   * command keeps its own result, so the user can verify the action they requested.
-   */
   const draw = useCallback((run: Run) =>
-  run.kind === "compaction" ? null : run.kind === "command" ? <CommandRunRow key={`${activeSessionId}:${runKey(run)}`} command={run.command} /> : run.kind === "hiccup" ? (
+  run.kind === "command" ? <CommandRunRow key={`${activeSessionId}:${runKey(run)}`} command={run.command} /> : run.kind === "hiccup" ? (
     <HiccupRow key={`${activeSessionId}:${runKey(run)}`} hiccup={run.hiccup} />
   ) : run.kind === "model" ? (
     <ModelSwitchRow key={`${activeSessionId}:${runKey(run)}`} from={run.from} to={run.to} />
@@ -228,40 +214,21 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
   useEffect(() => {
     const element = column.current;
     if (!element) return;
-    let frame = 0;
-    const read = () => {
+    // ResizeObserver 本来就一帧最多回调一次、回调时布局已经算好，拖动时不用再另外节流。
+    const measure = () => {
       setRoomToFloat(element.clientWidth >= 320 + 32 + 420);
       setRoomToDock(element.clientWidth >= ENVIRONMENT_LANE + NARROW_COLUMN);
       setNarrowColumn(element.clientWidth < NARROW_COLUMN);
     };
-    const measure = () => {
-      if (document.documentElement.hasAttribute("data-resizing")) {
-        // Debounce / coalesce measurement during resizing drags so we don't trigger layout thrashing
-        if (!frame) {
-          frame = requestAnimationFrame(() => {
-            frame = 0;
-            read();
-          });
-        }
-        return;
-      }
-      read();
-    };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
-    return () => {
-      if (frame) cancelAnimationFrame(frame);
-      observer.disconnect();
-    };
+    return () => observer.disconnect();
   }, []);
   /** 末尾正在流的正文像结论：运行行原地隐去，不跟着字一跳一跳。见 `RunningRow`。 */
   const answering = useMemo(() => looksLikeAnswer(messages), [messages]);
-  /** 末尾那条回复的正文写到了多少字：一阵子不长了，运行行就回来说耗时和速度，见 `RunningRow`。 */
-  const written = useMemo(() => {
-    const last = messages[messages.length - 1];
-    return last?.role === "assistant" ? last.content.reduce((sum, block) => sum + (block.type === "text" ? block.text.length : 0), 0) : 0;
-  }, [messages]);
+  /** 末尾那段正文上一次变长的时刻：一阵子不长了，运行行就回来说耗时和速度，见 `RunningRow`。 */
+  const grewAt = useMemo(() => proseGrewAt(messages[messages.length - 1]), [messages]);
   /** 最后一条是一段正常写完的回答：底下的操作行在这时长出来，运行行在同一帧让位，见 `RunningRow`。 */
   const answered = useMemo(() => {
     const last = messages[messages.length - 1];
@@ -276,9 +243,7 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
    * All of it used to be here: a `pinnedToBottom` ref recomputed from `scrollTop` on every event, a
    * hand-rolled glide, a `missed` flag set from the fact that the messages array had been
    * reassigned. Three surfaces had their own copy of it and none of them agreed. See
-   * `scroll/follow.ts` for the rule and `docs/2026-09-02-scroll-follow-design.md` for the four
-   * reported bugs that came out of deriving the reader's intention from pixels the program also
-   * writes.
+   * `scroll/follow.ts` for the rule.
    */
   const follow = useFollowBottom({
     surfaceId: activeSessionId,
@@ -317,13 +282,6 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
   }, [pending, compacting, returnToBottom]);
 
 
-  /*
-   * Recomputed when the transcript changes, not on every render.
-   *
-   * A streaming reply re-renders this component on every token; without the memo each one walked
-   * the whole message list again and handed every row a freshly built object, so React rebuilt
-   * three hundred rows to show one more word arriving.
-   */
   const hidden = range.start;
   /*
    * 分块只在转录变了的时候算一次。
@@ -390,7 +348,7 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
       range.later();
       return;
     }
-    scrollTo(top, true);
+    scrollTo(top);
     if (jump.flash) flash(target, motionReduced());
     setJump(null);
     // `range.later` is rebuilt every render; the window's own edges are what this reacts to.
@@ -464,7 +422,6 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
         onResize={follow.onResize}
         onUserScroll={follow.onUserScroll}
         onHold={follow.hold}
-        onSettle={follow.settle}
       >
         {/* 切进来、从隐藏里回来时，正在写的那条回复直接画出已有的字，见 `Arrival`。 */}
         <Arrival.Provider value={arrival}>
@@ -480,24 +437,6 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
           data-ly-session={activeSessionId ?? ""}
           aria-busy={loadingSession}
         >
-          {/*
-           * Runs of tool calls are gathered across messages, not just inside one.
-           *
-           * A model that calls a tool, reads the result and calls the next one produces a fresh
-           * assistant message every time. Grouping within a message therefore caught parallel
-           * batches and missed sequential ones — which is the common case, and the one that
-           * fills the transcript with a column of near-identical cards. A message carrying text
-           * ends the run, because that is the model saying something worth reading.
-           */}
-          {/*
-           * Only the tail is mounted until you ask for the rest.
-           *
-           * A day-long session runs to thousands of messages, each with its own cards and
-           * expanders. Mounting all of them costs memory that never comes back and makes every
-           * repaint walk the whole tree, which is what turns scrolling to treacle. The recent
-           * end is what anyone is reading; the rest is one click away and stays unmounted until
-           * then.
-           */}
           {loadingSession && (
             <div
               role="status"
@@ -511,6 +450,15 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
               <ActionSpinner size={allBlocks.length === 0 ? 20 : 14} className="text-ink-faint" />
             </div>
           )}
+          {/*
+           * Only the tail is mounted until you ask for the rest.
+           *
+           * A day-long session runs to thousands of messages, each with its own cards and
+           * expanders. Mounting all of them costs memory that never comes back and makes every
+           * repaint walk the whole tree, which is what turns scrolling to treacle. The recent
+           * end is what anyone is reading; the rest is one click away and stays unmounted until
+           * then.
+           */}
           {hidden > 0 && (
             /*
              * 这颗按钮说的是整句话，不是一个数字。
@@ -556,13 +504,6 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
           {blocks.map((block, at) => {
             if (block.kind === "plain") return draw(block.runs[0]);
             /*
-             * 不再有 `as Exclude<Run, { kind: "compaction" }>`。
-             *
-             * 那个断言是这次崩溃的来路：它把编译器的警告手动关掉了，而编译器警告的正是「这里可能
-             * 是一个压缩标记」——一旦真是，`runKey` 会去读它没有的 `message`，整页白掉。`runKey`
-             * 现在认得每一种 Run，断言也就没有存在的理由了。
-             */
-            /*
              * 按开这一轮的那句话起名，不按锚下面第一行：跑着的那一轮刚发出时下面是空的，第一行等它开口
              * 才有（见 `turnBlocks` 的 `live`）。按第一行起名，开口那一下整块就卸掉重建。没有开口那句的
              * （会话的第 0 轮）才退回第一行。
@@ -599,14 +540,6 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
           })}
           </div>
 
-          {/*
-           * Present for the whole turn, and out of sight while the conclusion is streaming in.
-           *
-           * It stays put through the parts of a turn: it used to appear only when the last message
-           * had settled, so it came and went with every tool call, and its 46px came and went with
-           * it, shifting the transcript up and down all through a turn. Hidden rather than folded
-           * while the conclusion streams, so the height does not change at all. See `RunningRow`.
-           */}
           {range.end < allBlocks.length && (
             <div className="my-3 flex items-center justify-center">
               <button
@@ -622,8 +555,11 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
             </div>
           )}
           {range.end === allBlocks.length && <>
-          {/* 结论在来的时候这一行只是看不见、高度不变，答完时当帧让位给操作行——为什么这样，见 `RunningRow`。 */}
-          <RunningRow running={running} answering={answering} written={written} answered={answered} compacting={compacting} />
+          {/*
+           * 一整轮都在，不随每次工具调用来去：从前只在最后一条定下来时出现，它的 46px 跟着进出，转录整轮
+           * 上下抖。结论在来的时候这一行只是看不见、高度不变，答完时当帧让位给操作行——见 `RunningRow`。
+           */}
+          <RunningRow running={running} answering={answering} grewAt={grewAt} answered={answered} compacting={compacting} />
           {/* Where the running indicator would have been, saying why it is not there. */}
           {!side && <ResumeRow />}
           {/*
@@ -685,6 +621,17 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
     </div>
   );
 });
+
+/** 工具调用一共几个、停下了几个，见 `toolProgress`。 */
+function toolProgressOf(toolRuns: Record<string, ToolRun>): string {
+  let total = 0;
+  let settled = 0;
+  for (const run of Object.values(toolRuns)) {
+    total += 1;
+    if (run.status !== "running") settled += 1;
+  }
+  return `${total}/${settled}`;
+}
 
 /**
  * 环境卡片，和开着它时的任务清单——叠成一列，卡片在上。

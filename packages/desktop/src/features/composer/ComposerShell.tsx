@@ -336,9 +336,9 @@ export function ComposerShell({
    * stops.
    *
    * But only when the row's markup changed: the box itself is the observer's job above, and the same
-   * markup lays out to the same widths. Reading `scrollWidth` lays out the whole page, and while
-   * replies stream the composer redraws for unrelated reasons — measuring on each of those was 6% of
-   * the renderer. The markup, not just the text: a class or an icon swapped in place changes a width
+   * markup lays out to the same widths. Reading `scrollWidth` lays out the whole page, and the
+   * composer redraws on every keystroke — when it also redrew with each streamed tick, measuring on
+   * each of those was 6% of the renderer. The markup, not just the text: a class or an icon swapped in place changes a width
    * without changing a word. Serialising a toolbar costs far less than the layout it saves.
    */
   const measuredFor = useRef<string | null>(null);

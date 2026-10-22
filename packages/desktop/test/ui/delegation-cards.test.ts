@@ -32,7 +32,7 @@ function summary(over: Partial<SubAgentSummary> & { id: string }): SubAgentSumma
 const calls = [task("c1", "找登录入口", "general"), task("c2", "审一遍鉴权", "simple"), task("c3", "规划迁移", "reason")];
 
 afterEach(() => {
-	useSubAgents.setState({ agents: [], transcripts: {}, focused: null, loading: [] });
+	useSubAgents.setState({ rosters: {}, transcripts: {}, focused: null, loading: [] });
 	useApp.setState({ toolRuns: {} });
 });
 
@@ -43,7 +43,7 @@ async function draw() {
 		capabilities: null,
 		toolRuns: Object.fromEntries(calls.map((call) => [call.id, { toolCallId: call.id, toolName: "task", summary: String(call.arguments.description), args: call.arguments, status: "running" as const, startedAt: started }])),
 	});
-	useSubAgents.setState({ agents: [summary({ id: "sub:1", description: "找登录入口", startedAt: started + 100 })], transcripts: {}, focused: null, loading: [] });
+	useSubAgents.setState({ rosters: { dispatch: [summary({ id: "sub:1", description: "找登录入口", startedAt: started + 100 })] }, transcripts: {}, focused: null, loading: [] });
 	return mount(h(ToolRun, { calls: calls.map((block) => ({ block, stopReason: "toolUse" as const })), live: true }));
 }
 
@@ -87,7 +87,7 @@ test("when the queued one gets its slot, its face wakes up without the line bein
 	try {
 		const stack = view.find("[data-avatar-stack]");
 		await act(async () => {
-			useSubAgents.setState({ agents: [summary({ id: "sub:1", description: "找登录入口", status: "done" }), summary({ id: "sub:2", agent: "simple", description: "审一遍鉴权" })] });
+			useSubAgents.setState({ rosters: { dispatch: [summary({ id: "sub:1", description: "找登录入口", status: "done" }), summary({ id: "sub:2", agent: "simple", description: "审一遍鉴权" })] } });
 		});
 		const moods = view.all<HTMLElement>("[data-stack-face] .ly-avatar").map((face) => face.dataset.mood);
 		assert.deepEqual(moods, ["done", "working", "waiting"]);

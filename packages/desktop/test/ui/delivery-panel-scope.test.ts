@@ -38,7 +38,7 @@ const said = (id: string): Message[] => [
 	{ role: "assistant", content: [{ type: "text", text: `${id} 的回答` }], api: "anthropic-messages", provider: "t", model: "t", usage, stopReason: "stop", timestamp: 2 },
 ];
 function parked(one: SessionMeta): Cache[string] {
-	return { meta: one, messages: said(one.id), toolRuns: {}, state: { running: false, approvals: [], todos: [], compactions: [], commandRuns: [], hiccups: [], stopped: null, retrying: null, capabilities: null, pendingUserMessage: null } };
+	return { meta: one, messages: said(one.id), toolRuns: {}, state: { running: false, approvals: [], todos: [], compactions: [], commandRuns: [], hiccups: [], stopped: null, retrying: null, capabilities: null, pendingUserMessage: null, hookRuns: [], compactedAt: null } };
 }
 const A = meta("a", ALPHA.path, ALPHA.name);
 const B = meta("b", BETA.path, BETA.name);

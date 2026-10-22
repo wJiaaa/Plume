@@ -13,6 +13,7 @@ import type { MessageAttachment, SessionMeta, ThinkingLevel, UserContent } from 
 import { translate } from "../../i18n/translate.ts";
 import { bridge } from "../../services/index.ts";
 import { useApp } from "../../store/index.ts";
+import { EMPTY_SLOT } from "../../store/derive.ts";
 import { readSideSession } from "../../store/session-read.ts";
 import { useSide } from "./sideStore.ts";
 
@@ -25,7 +26,7 @@ export async function loadSide(meta: SessionMeta): Promise<void> {
 		useApp.setState({
 			sessionCache: { ...state.sessionCache, [meta.id]: {
 				meta, messages: [], toolRuns: {},
-				state: { running: false, approvals: [], todos: [], compactions: [], stopped: null, retrying: null, capabilities: null, pendingUserMessage: null },
+				state: EMPTY_SLOT,
 			} },
 		});
 		return;

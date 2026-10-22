@@ -126,45 +126,6 @@
   {
     "type": "cycle",
     "from": "packages/desktop/src/store/apply-event.ts",
-    "to": "packages/desktop/src/store/apply-tool.ts",
-    "unresolvedTo": "./apply-tool.ts",
-    "dependencyTypes": [
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-circular"
-    },
-    "cycle": [
-      {
-        "name": "packages/desktop/src/store/apply-tool.ts",
-        "dependencyTypes": [
-          "local",
-          "import"
-        ]
-      },
-      {
-        "name": "packages/desktop/src/store/index.ts",
-        "dependencyTypes": [
-          "local",
-          "type-only",
-          "import",
-          "pre-compilation-only"
-        ]
-      },
-      {
-        "name": "packages/desktop/src/store/apply-event.ts",
-        "dependencyTypes": [
-          "local",
-          "import"
-        ]
-      }
-    ]
-  },
-  {
-    "type": "cycle",
-    "from": "packages/desktop/src/store/apply-event.ts",
     "to": "packages/desktop/src/store/cached-event.ts",
     "unresolvedTo": "./cached-event.ts",
     "dependencyTypes": [
@@ -392,38 +353,6 @@
   {
     "type": "cycle",
     "from": "packages/desktop/src/store/index.ts",
-    "to": "packages/desktop/src/store/session-read.ts",
-    "unresolvedTo": "./session-read.ts",
-    "dependencyTypes": [
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-circular"
-    },
-    "cycle": [
-      {
-        "name": "packages/desktop/src/store/session-read.ts",
-        "dependencyTypes": [
-          "local",
-          "import"
-        ]
-      },
-      {
-        "name": "packages/desktop/src/store/index.ts",
-        "dependencyTypes": [
-          "local",
-          "type-only",
-          "import",
-          "pre-compilation-only"
-        ]
-      }
-    ]
-  },
-  {
-    "type": "cycle",
-    "from": "packages/desktop/src/store/index.ts",
     "to": "packages/desktop/src/store/session-slice.ts",
     "unresolvedTo": "./session-slice.ts",
     "dependencyTypes": [
@@ -555,6 +484,13 @@
         ]
       },
       {
+        "name": "packages/desktop/src/store/session-slice.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
+        ]
+      },
+      {
         "name": "packages/desktop/src/store/session-read.ts",
         "dependencyTypes": [
           "local",
@@ -591,6 +527,13 @@
           "type-only",
           "import",
           "pre-compilation-only"
+        ]
+      },
+      {
+        "name": "packages/desktop/src/store/session-slice.ts",
+        "dependencyTypes": [
+          "local",
+          "import"
         ]
       },
       {
@@ -657,59 +600,6 @@
     "cycle": [
       {
         "name": "packages/desktop/src/store/session-changes.ts",
-        "dependencyTypes": [
-          "local",
-          "import"
-        ]
-      },
-      {
-        "name": "packages/desktop/src/store/index.ts",
-        "dependencyTypes": [
-          "local",
-          "type-only",
-          "import",
-          "pre-compilation-only"
-        ]
-      },
-      {
-        "name": "packages/desktop/src/store/session-slice.ts",
-        "dependencyTypes": [
-          "local",
-          "import"
-        ]
-      }
-    ]
-  },
-  {
-    "type": "cycle",
-    "from": "packages/desktop/src/store/session-slice.ts",
-    "to": "packages/desktop/src/store/session-read.ts",
-    "unresolvedTo": "./session-read.ts",
-    "dependencyTypes": [
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-circular"
-    },
-    "cycle": [
-      {
-        "name": "packages/desktop/src/store/session-read.ts",
-        "dependencyTypes": [
-          "local",
-          "import"
-        ]
-      },
-      {
-        "name": "packages/desktop/src/store/cached-event.ts",
-        "dependencyTypes": [
-          "local",
-          "import"
-        ]
-      },
-      {
-        "name": "packages/desktop/src/store/apply-tool.ts",
         "dependencyTypes": [
           "local",
           "import"

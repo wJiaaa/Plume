@@ -70,7 +70,7 @@ const said = (id: string): Message[] => [
 	{ role: "assistant", content: [{ type: "text", text: `${id} 的回答` }], api: "anthropic-messages", provider: "t", model: "t", usage, stopReason: "stop", timestamp: 2 },
 ];
 function parked(id: string, cwd: string): Cache[string] {
-	return { meta: meta(id, cwd), messages: said(id), toolRuns: {}, state: { running: false, approvals: [], todos: [], compactions: [], commandRuns: [], hiccups: [], stopped: null, retrying: null, capabilities: null, pendingUserMessage: null } };
+	return { meta: meta(id, cwd), messages: said(id), toolRuns: {}, state: { running: false, approvals: [], todos: [], compactions: [], commandRuns: [], hiccups: [], stopped: null, retrying: null, capabilities: null, pendingUserMessage: null, hookRuns: [], compactedAt: null } };
 }
 
 /** The paths handed to the window's one open-file store. */

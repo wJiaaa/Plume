@@ -26,7 +26,7 @@ import { useScopedFromMeta, useScopedSessionId } from "../../app/session-scope.t
 import { useI18n } from "../../i18n/index.ts";
 import { useApp } from "../../store/index.ts";
 import { sameStats, type TurnStats } from "./turns.ts";
-import { LiveToolCard, segments, ToolRun as ToolRunGroup } from "./runs.tsx";
+import { segments, ToolRun as ToolRunGroup } from "./runs.tsx";
 
 /**
  * A row only changes when its own message does.
@@ -190,14 +190,7 @@ function AssistantRow({
   // `empty:hidden`：只剩一块空正文的回复（想完开了个头、一个字没写就停了）什么也画不出，不该占一份行距。
   return (
     <div data-ly-quote="assistant" className="group/msg ly-enter flex flex-col gap-2.5 empty:hidden">
-      {/*
-       * Grouped before rendering, not after.
-       *
-       * A run of finished tool calls collapses into one line; anything else — text, thinking, a
-       * preview, or a call still going — stays exactly where it is. Whether a card can be folded
-       * away is a fact about the call, so it has to be decided here rather than by looking at
-       * rendered output that no longer knows what it came from.
-       */}
+      {/* Grouped before rendering: consecutive calls go together, text and thinking stay where they are. */}
       {/* 页脚那一行：话已经在上面画过了，这里只要它的字给复制用。 */}
       {!trailer && segments(own).map((segment, position) => {
         if (segment.kind === "block") {
@@ -220,15 +213,12 @@ function AssistantRow({
               />
             );
           }
-          if (block.type === "text") {
-            // 最终答复会把同一条回复里先播报过的话再说一遍，播报就不再画了，见 `restated`。
-            return block.text && !restated(block, message.content) ? (
-              <div key={at}>
-                <Markdown text={block.text} localImages streaming={message.stopReason === "pending" && at === message.content.length - 1} />
-              </div>
-            ) : null;
-          }
-          return <LiveToolCard key={block.id} block={block} stopReason={message.stopReason} />;
+          // 最终答复会把同一条回复里先播报过的话再说一遍，播报就不再画了，见 `restated`。
+          return block.text && !restated(block, message.content) ? (
+            <div key={at}>
+              <Markdown text={block.text} localImages streaming={message.stopReason === "pending" && at === message.content.length - 1} />
+            </div>
+          ) : null;
         }
 
         const calls = segment.blocks.map((block) => ({ block, stopReason: message.stopReason }));

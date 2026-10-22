@@ -5,7 +5,8 @@ import type { AssistantMessage, Message } from "@plume/core";
 
 import { emptyUsage } from "@plume/core";
 
-import { carryOnPrompt, hasRetryPoint, howItStopped, rebuildToolRuns, wasCutShort } from "../src/store/derive.ts";
+import { carryOnPrompt, hasRetryPoint, rebuildToolRuns } from "../src/store/derive.ts";
+import { howItStopped, wasCutShort } from "../src/store/turn-stop.ts";
 import { settleTail } from "../src/lib/transcript.ts";
 
 function reply(stopReason: AssistantMessage["stopReason"], text = "你好！"): AssistantMessage {

@@ -60,6 +60,8 @@ type Clock = {
 	 * 起走，中间那段就这么被跨过去了。
 	 */
 	halted: boolean;
+	/** 最近一份清单里还有没勾的。跨轮带着走：清单是会话的，不是哪一轮的。 */
+	openTodos: boolean;
 	requestMs: number;
 	sseDurationMs: number;
 	outputTokens: number;
@@ -68,8 +70,8 @@ type Clock = {
 };
 
 /** 一轮还什么都没发生。 */
-export function newClock(start = 0): Clock {
-	return { from: null, to: 0, closedMs: 0, halted: false, requestMs: 0, sseDurationMs: 0, outputTokens: 0, requestCount: 0, start };
+export function newClock(start = 0, openTodos = false): Clock {
+	return { from: null, to: 0, closedMs: 0, halted: false, openTodos, requestMs: 0, sseDurationMs: 0, outputTokens: 0, requestCount: 0, start };
 }
 
 /**
@@ -105,6 +107,12 @@ export function saw(clock: Clock, message: Message): void {
 	}
 	clock.halted = false;
 	clock.to = Math.max(clock.to, endOf(message));
+	// 和 `todosFrom` 认的是同一种清单：最新那份 `todo_write` 说了算，人清掉计划就没有清单了。
+	if (message.role === "user" && message.clearsTaskPlan === true) clock.openTodos = false;
+	if (message.role === "toolResult" && message.toolName === "todo_write" && !message.isError) {
+		const details = message.details as { kind?: string; todos?: ReturnType<typeof todosFrom> } | undefined;
+		if (details?.kind === "todo" && Array.isArray(details.todos)) clock.openTodos = details.todos.some((todo) => todo.status !== "completed");
+	}
 	if (message.role !== "assistant") return;
 	const duration = typeof message.durationMs === "number" && message.durationMs > 0 ? message.durationMs : 0;
 	const sse = typeof message.sseDurationMs === "number" && message.sseDurationMs > 0 ? message.sseDurationMs : 0;
@@ -114,10 +122,14 @@ export function saw(clock: Clock, message: Message): void {
 	clock.sseDurationMs += sse || duration;
 	clock.outputTokens += output;
 	clock.requestCount += 1;
-	// 这几种收场是「停下了」，不是「做完了」——和 `apply-event` 里冻结那块表的条件是同一对。
-	// 如果助手回复停下（包括普通的 stop）但上一轮工作计划中仍有未完成的 todo，也暂停时钟，
-	// 避免在「继续，把清单里没做完的做完」之前用户等待或阅读的停顿时间被计入耗时。
-	if (message.stopReason === "error" || message.stopReason === "aborted") {
+	/*
+	 * 这几种收场是「停下了」，不是「做完了」——和 `apply-event` 里冻结那块表的条件是同一组：出错、被按停、
+	 * 清单没勾完就收了尾。停在那里等人说「继续」的那段不算进这一轮。
+	 *
+	 * 清单只看收了尾的回复（`settled`）。从前对每一条回复都停，包括交给工具的那条，于是下一条工具结果
+	 * 来时重新起表，工具跑的那一整段被跨了过去：清单开着时一轮 66 秒的活，页脚只记 6 秒。
+	 */
+	if (message.stopReason === "error" || message.stopReason === "aborted" || (settled(message.stopReason) && clock.openTodos)) {
 		clock.halted = true;
 	}
 }
@@ -254,18 +266,7 @@ function clockThrough(messages: Message[], endMessageIndex: number): Clock {
 		}
 	}
 
-	const clock = newClock(startIndex);
-	let currentTodos: ReturnType<typeof todosFrom> = [];
-	for (let i = startIndex; i <= endMessageIndex && i < messages.length; i++) {
-		const msg = messages[i];
-		if (msg.role === "toolResult" && msg.toolName === "todo_write" && !msg.isError) {
-			const details = msg.details as { kind?: string; todos?: ReturnType<typeof todosFrom> } | undefined;
-			if (details?.kind === "todo" && Array.isArray(details.todos)) currentTodos = details.todos;
-		}
-		saw(clock, msg);
-		if (msg.role === "assistant" && currentTodos.some((t) => t.status !== "completed")) {
-			clock.halted = true;
-		}
-	}
+	const clock = newClock(startIndex, todosFrom(messages.slice(0, startIndex)).some((todo) => todo.status !== "completed"));
+	for (let i = startIndex; i <= endMessageIndex && i < messages.length; i++) saw(clock, messages[i]);
 	return clock;
 }

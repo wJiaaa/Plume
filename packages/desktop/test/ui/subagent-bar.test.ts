@@ -39,7 +39,7 @@ async function roster(agents: SubAgentSummary[]): Promise<void> {
 
 beforeEach(() => {
 	useApp.setState({ activeSessionId: "s1" });
-	useSubAgents.setState({ agents: [], transcripts: {}, focused: null, loading: [], settled: {}, rosters: {}, announced: null });
+	useSubAgents.setState({ transcripts: {}, focused: null, loading: [], settled: {}, rosters: {}, announced: null });
 });
 
 test("the first dispatch of a run opens the pane; the rest of the batch does not", async () => {
@@ -74,9 +74,9 @@ test("切回一个子智能体还在跑的会话：条本来就在、不播入�
 	 * 的逻辑也把「读回来」数成「又派了活」——人在侧边面板停着的那一页每次都被翻到子 Agent。
 	 */
 	await roster([summary({ id: "a" })]);
-	// 离开 s1、再切回来：会话切换先摆上它登记过的名单。会话页被 `RetainedViews` 卸下过的，这一条是重新挂上的。
+	// 离开 s1、再切回来：名单按会话记着，切回来就在。会话页被 `RetainedViews` 卸下过的，这一条是重新挂上的。
 	await act(async () => {
-		useSubAgents.getState().clear("s1");
+		useSubAgents.getState().clear();
 	});
 	let opened = 0;
 	const view = await mount(h(SubAgentBar, { onOpen: () => void (opened += 1) }));
@@ -204,7 +204,7 @@ test("都结束了、主智能体也把结果用上了（这一轮收尾），�
 			useSubAgents.getState().settle("s1");
 		});
 		assert.equal(shell().dataset.open, "false", "这一轮收尾了，这一行收起来");
-		assert.equal(useSubAgents.getState().agents.length, 1, "记录没丢：对话里的派发卡片一点，面板照样翻到它");
+		assert.equal(useSubAgents.getState().rosters.s1?.length, 1, "记录没丢：对话里的派发卡片一点，面板照样翻到它");
 
 		// 后台跑完、结果刚送回去的那个，主智能体还在用——在收尾之后结束的，这一行重新说它。
 		await act(async () => {

@@ -12,18 +12,22 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createElement as h } from "react";
 import { act } from "react";
-import type { SubAgentSummary } from "@plume/core";
+import type { Message, SubAgentSummary } from "@plume/core";
 import { useLiveRate, useProducedChars } from "../../src/features/conversation/useLiveRate.ts";
 import { useApp } from "../../src/store/index.ts";
 import { useSubAgents } from "../../src/store/subAgents.ts";
 import { mount, type Mounted } from "../helpers/mount.ts";
 
 function Probe({ chars, now, startedAt }: { chars: number; now: number; startedAt: number | null }) {
-	return h("output", {}, useLiveRate(chars, now, startedAt).toFixed(1));
+	return h("output", {}, useLiveRate(() => chars, now, startedAt).toFixed(1));
 }
 
+let readProduced: () => number = () => Number.NaN;
+let charsRenders = 0;
 function CharsProbe() {
-	return h("output", {}, String(useProducedChars()));
+	charsRenders++;
+	readProduced = useProducedChars();
+	return null;
 }
 
 /** 一个只有产出数字要紧的子代理记录。 */
@@ -195,21 +199,30 @@ test("委派出去的产出也算进这条线，主 Agent 在等的时候读数�
 	 * `useProducedChars` 从两个 store 各读一半，所以这里两个都摆上：主 Agent 那条消息已经收尾
 	 * （`stopReason` 不是 pending），它这一刻贡献 0；数字全从子代理来。
 	 */
-	useApp.setState({ messages: [] });
-	useSubAgents.setState({ agents: [], transcripts: {}, focused: null, loading: [] });
+	useApp.setState({ activeSessionId: "s", messages: [] });
+	useSubAgents.setState({ rosters: {}, transcripts: {}, focused: null, loading: [] });
 
 	const view = await mount(h(CharsProbe));
-	assert.equal(Number(view.text()), 0, "什么都没派、什么都没写，就是 0");
+	assert.equal(readProduced(), 0, "什么都没派、什么都没写，就是 0");
 
 	await act(async () => {
-		useSubAgents.setState({ agents: [subAgent("a", 1000), subAgent("b", 400)] });
+		useSubAgents.setState({ rosters: { s: [subAgent("a", 1000), subAgent("b", 400)] } });
 	});
 	// 1400 个 output token，按 3.5 字符一个折回去。
-	assert.equal(Number(view.text()), 1400 * 3.5, "两个子代理的产出都在里面");
+	assert.equal(readProduced(), 1400 * 3.5, "两个子代理的产出都在里面");
 
 	await act(async () => {
-		useSubAgents.setState({ agents: [subAgent("a", 1000), subAgent("b", 400), subAgent("c", 0, "done")] });
+		useSubAgents.setState({ rosters: { s: [subAgent("a", 1000), subAgent("b", 400), subAgent("c", 0, "done")] } });
 	});
-	assert.equal(Number(view.text()), 1400 * 3.5, "一个还没产出的不改变什么");
+	assert.equal(readProduced(), 1400 * 3.5, "一个还没产出的不改变什么");
+
+	// 只在心跳上读、不订阅：流式输出每一拍都在长字，运行指示器不该跟着每一拍整个重画。
+	const before = charsRenders;
+	const pending = { role: "assistant", content: [{ type: "text", text: "写到一半" }], stopReason: "pending", timestamp: 1 } as unknown as Message;
+	await act(async () => {
+		useApp.setState({ messages: [pending] });
+	});
+	assert.equal(charsRenders, before, "字数变了不该触发重画");
+	assert.equal(readProduced(), "写到一半".length + 1400 * 3.5, "读的时候拿到的是此刻的字数");
 	await view.unmount();
 });

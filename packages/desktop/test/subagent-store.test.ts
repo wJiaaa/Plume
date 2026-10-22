@@ -34,14 +34,14 @@ function said(text: string): Message {
 }
 
 beforeEach(() => {
-	useSubAgents.setState({ agents: [], transcripts: {}, hookRuns: {}, focused: null, loading: [], rosters: {} });
+	useSubAgents.setState({ transcripts: {}, hookRuns: {}, focused: null, loading: [], rosters: {} });
 });
 
 test("a roster event becomes the roster", () => {
-	useSubAgents.getState().sync([summary({ id: "s1" }), summary({ id: "s2", status: "done" })]);
+	useSubAgents.getState().sync([summary({ id: "s1" }), summary({ id: "s2", status: "done" })], "x");
 
 	assert.deepEqual(
-		useSubAgents.getState().agents.map((one) => [one.id, one.status]),
+		useSubAgents.getState().rosters.x?.map((one) => [one.id, one.status]),
 		[
 			["s1", "running"],
 			["s2", "done"],
@@ -56,10 +56,10 @@ test("the roster arriving does not move the pane off what is being read", () => 
 	 * sibling's tool call would yank the pane away mid-sentence.
 	 */
 	const store = useSubAgents.getState();
-	store.sync([summary({ id: "s1" }), summary({ id: "s2" })]);
+	store.sync([summary({ id: "s1" }), summary({ id: "s2" })], "x");
 	store.focus("s1");
 
-	useSubAgents.getState().sync([summary({ id: "s1", toolCalls: 3 }), summary({ id: "s2", toolCalls: 9 })]);
+	useSubAgents.getState().sync([summary({ id: "s1", toolCalls: 3 }), summary({ id: "s2", toolCalls: 9 })], "x");
 
 	assert.equal(useSubAgents.getState().focused, "s1");
 });
@@ -68,7 +68,7 @@ test("a message is kept only for a transcript somebody has opened", () => {
 	// Not a saving of memory so much as of correctness: a list built from the messages that happened
 	// to stream in while the pane was closed is a transcript with its beginning missing.
 	const store = useSubAgents.getState();
-	store.sync([summary({ id: "s1" })]);
+	store.sync([summary({ id: "s1" })], "x");
 
 	store.append("s1", said("嗯"));
 	assert.equal(useSubAgents.getState().transcripts.s1, undefined, "nothing was opened, so nothing is half-built");
@@ -102,31 +102,21 @@ test("a message the transcript read already carried is not added again when its 
 	assert.equal(useSubAgents.getState().transcripts.s1?.length, 2, "the same words said again later are a new message");
 });
 
-test("changing conversation drops the roster with it", () => {
+test("changing conversation drops what was opened with it", () => {
 	/*
-	 * The roster only arrives for the session that is running, so a stale one does not get
-	 * corrected — it simply sits there, showing the last conversation's delegated work under the
-	 * name of the one you just opened.
+	 * Rosters are kept by session, so nothing of the last conversation shows under the one you just
+	 * opened. What is not keyed — the transcripts opened and the one being read — goes with it.
 	 */
 	const store = useSubAgents.getState();
-	store.sync([summary({ id: "s1" })]);
+	store.sync([summary({ id: "s1" })], "x");
 	store.focus("s1");
 	useSubAgents.setState({ transcripts: { s1: [said("嗯")] } });
 
 	useSubAgents.getState().clear();
 
 	const after = useSubAgents.getState();
-	assert.deepEqual(after.agents, []);
 	assert.deepEqual(after.transcripts, {});
 	assert.equal(after.focused, null);
-});
-
-test("dismissFinished and newSession clear subagents roster and transcripts", () => {
-	useSubAgents.getState().sync([summary({ id: "s1", status: "done" })]);
-	assert.equal(useSubAgents.getState().agents.length, 1);
-
-	useSubAgents.getState().clear();
-	assert.equal(useSubAgents.getState().agents.length, 0);
 });
 
 test("running sub-agents sort first, oldest first within each group", () => {
@@ -226,7 +216,7 @@ test("a `subagents` event reaches the store through the real dispatcher", () => 
 	dispatch({ type: "subagents", agents: [summary({ id: "s1", description: "查一下缓存" })] });
 
 	assert.deepEqual(
-		useSubAgents.getState().agents.map((one) => one.description),
+		useSubAgents.getState().rosters.sess?.map((one) => one.description),
 		["查一下缓存"],
 	);
 });
@@ -303,7 +293,6 @@ test("a conversation on the other screen keeps its own roster, and the live one 
 	dispatchFor("other", { type: "subagents", agents: [summary({ id: "other-1", description: "另一屏的" })] });
 
 	const after = useSubAgents.getState();
-	assert.deepEqual(after.agents.map((one) => one.description), ["焦点这边的"], "the live slot is still the focused conversation's");
 	assert.deepEqual(after.rosters.other?.map((one) => one.description), ["另一屏的"]);
 	assert.deepEqual(after.rosters.sess?.map((one) => one.description), ["焦点这边的"], "and the live one is on record by id too");
 });
@@ -311,23 +300,10 @@ test("a conversation on the other screen keeps its own roster, and the live one 
 test("a conversation's roster survives the live slot moving to another one", () => {
 	dispatchFor("sess", { type: "subagents", agents: [summary({ id: "s1" })] });
 
-	// Focus moves to the other screen: the live slot is emptied for whoever comes next.
+	// Focus moves to the other screen: the opened transcripts go, the roster stays on record.
 	useSubAgents.getState().clear();
 
-	assert.deepEqual(useSubAgents.getState().agents, []);
 	assert.deepEqual(useSubAgents.getState().rosters.sess?.map((one) => one.id), ["s1"], "its screen can still show what it delegated");
-});
-
-test("putting finished sub-agents away does so for that conversation only", () => {
-	const store = useSubAgents.getState();
-	store.retain("a", [summary({ id: "a-run" }), summary({ id: "a-done", status: "done" })]);
-	store.retain("b", [summary({ id: "b-done", status: "done" })]);
-
-	useSubAgents.getState().forgetFinished("a");
-
-	const { rosters } = useSubAgents.getState();
-	assert.deepEqual(rosters.a?.map((one) => one.id), ["a-run"]);
-	assert.deepEqual(rosters.b?.map((one) => one.id), ["b-done"], "the other conversation's list is not touched");
 });
 
 function hook(id: string, status: HookRun["status"], at = 2): HookRun {

@@ -139,9 +139,8 @@ export function ResizeHandle({
 		// Freezes transitions for the length of the drag, so the pane tracks the pointer instead
 		// of easing towards each intermediate width and never arriving — and refuses the selection
 		// a drag across the content would start. Both by naming things rather than by a flag on the
-		// root, which sits above the transcript; see `motion-freeze.ts`.
+		// root, which sits above the transcript; see `ui/motion/freeze.ts`.
 		const thaw = freezeMotion();
-		document.documentElement.dataset.resizing = "";
 
 		return () => {
 			window.removeEventListener("mousemove", onMove);
@@ -150,7 +149,6 @@ export function ResizeHandle({
 			if (frame) cancelAnimationFrame(frame);
 			document.body.style.cursor = "";
 			thaw();
-			delete document.documentElement.dataset.resizing;
 		};
 	}, [active, edge, min, max, onResize]);
 

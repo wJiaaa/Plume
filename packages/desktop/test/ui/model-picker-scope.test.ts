@@ -45,7 +45,7 @@ const said = (id: string): Message[] => [
 	{ role: "assistant", content: [{ type: "text", text: `${id} 的回答` }], api: "anthropic-messages", provider: "qa", model: "model", usage, stopReason: "stop", timestamp: 2 },
 ];
 function parked(one: SessionMeta): Cache[string] {
-	return { meta: one, messages: said(one.id), toolRuns: {}, state: { running: false, approvals: [], todos: [], compactions: [], commandRuns: [], hiccups: [], stopped: null, retrying: null, capabilities: null, pendingUserMessage: null } };
+	return { meta: one, messages: said(one.id), toolRuns: {}, state: { running: false, approvals: [], todos: [], compactions: [], commandRuns: [], hiccups: [], stopped: null, retrying: null, capabilities: null, pendingUserMessage: null, hookRuns: [], compactedAt: null } };
 }
 
 let chosen: Array<[string, string]>;

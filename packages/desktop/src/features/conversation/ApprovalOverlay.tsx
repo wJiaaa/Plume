@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { useI18n } from "../../i18n/index.ts";
 import type { MessageKey } from "../../i18n/messages/index.ts";
 import { translate } from "../../i18n/translate.ts";
@@ -64,7 +64,8 @@ function Expiry({ at }: { at: number }) {
  *
  * 计划模式交上来的计划（core 的 `submit_plan`）是另一张卡，见 `PlanApproval`。
  */
-export function ApprovalOverlay() {
+// 按 props 记住：它和转录挂在同一个组件里，转录流式输出时每一拍都重画。
+export const ApprovalOverlay = memo(function ApprovalOverlay() {
 	const sessionId = useScopedSessionId();
 	const approvals = useScopedApprovals();
 	const respond = useApp(s => s.respondToApproval);
@@ -158,4 +159,4 @@ export function ApprovalOverlay() {
 			</>}</Collapse>
 		</div>
 	</div>;
-}
+});

@@ -1,6 +1,6 @@
 import { Layers } from "../../ui/icons/index.ts";
 import { useI18n } from "../../i18n/index.ts";
-import { useScopedSessionId, useScopedToolRuns } from "../../app/session-scope.tsx";
+import { useScopedSessionId, useScopedFromToolRuns } from "../../app/session-scope.tsx";
 import { useApp } from "../../store/index.ts";
 import { toggleEnvironmentCard, useEnvironmentCard } from "../../store/environment-card.ts";
 import { pendingSuggestions, useDismissedSuggestions } from "../../store/session-suggestions.ts";
@@ -20,10 +20,10 @@ export function EnvironmentToggle() {
 	const open = useEnvironmentCard((state) => state.open);
 	const sectionHidden = useEnvironmentCard((state) => state.hidden.includes("suggestions"));
 	const sessionId = useScopedSessionId();
-	const runs = useScopedToolRuns();
 	const sessions = useApp((s) => s.sessions);
 	const dismissed = useDismissedSuggestions((s) => s.ids);
-	const waiting = !open && !sectionHidden && sessionId ? pendingSuggestions(runs, sessions, sessionId, dismissed).length : 0;
+	// 数，不是记录表：订阅整张表的话，命令每吐一块输出这颗按钮就重画一次。
+	const waiting = useScopedFromToolRuns((runs) => (!open && !sectionHidden && sessionId ? pendingSuggestions(runs, sessions, sessionId, dismissed).length : 0));
 	const label = waiting ? `${t("environment.title")} · ${t("environment.pendingSuggestions", { n: waiting })}` : t("environment.title");
 	return (
 		<ToolbarButton label={label} active={open} onClick={toggleEnvironmentCard}>

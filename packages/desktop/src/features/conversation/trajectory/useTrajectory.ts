@@ -44,16 +44,12 @@ export function useTrajectory() {
 			finally { reading = false; if (live) setReadingKey(null); }
 		};
 		const off = bridge.agent.onEvent(payload => { if (payload.sessionId === sessionId && durable.has(payload.event.type)) void read(); });
-		// Reconnecting restores transcripts but cannot replay the durable events this panel missed.
-		const onConnection = (event: Event) => { if (event instanceof CustomEvent && event.detail === "connected") void read(); };
 		const onForeground = () => { if (document.visibilityState === "visible") void read(); };
-		window.addEventListener("plume:connection", onConnection);
 		window.addEventListener("focus", onForeground);
 		document.addEventListener("visibilitychange", onForeground);
 		void read();
 		return () => {
 			live = false; off();
-			window.removeEventListener("plume:connection", onConnection);
 			window.removeEventListener("focus", onForeground);
 			document.removeEventListener("visibilitychange", onForeground);
 		};

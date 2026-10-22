@@ -78,7 +78,6 @@ const T0 = 1_789_110_727_867;
 /** Rows reduced to what a reader would see change: the kind, and which calls are in it. */
 function shape(rows: Run[]): string[] {
 	return rows.map((row) => {
-		if (row.kind === "compaction") return "compaction";
 		if (row.kind === "command") return `command:${row.command.id}`;
 		if (row.kind === "hiccup") return `hiccup:${row.hiccup.id}`;
 		if (row.kind === "message") return `message@${row.index}:${row.upTo}`;
@@ -101,7 +100,7 @@ test("a call from a reply that is still streaming joins the run above, not a row
 
 test("a manual command remains before resumed tool work even when the continuation has no visible user message", () => {
 	const messages = [user("inspect"), assistant([call("a")], "aborted"), answered("a"), nudge(), assistant([call("b")], "pending")];
-	const rows = runs(messages, [], [{ id: "manual", name: "compact", input: "/compact", at: 3, timestamp: 3, status: "done", detail: "完成" }]);
+	const rows = runs(messages, [{ id: "manual", name: "compact", input: "/compact", at: 3, timestamp: 3, status: "done", detail: "完成" }]);
 	assert.deepEqual(shape(rows), ["message@0:1", "tools:a", "command:manual", "tools:b"]);
 });
 
@@ -120,26 +119,26 @@ function hiccup(id: string, at: number, outcome: "waiting" | "recovered" | "gave
 test("一次断线留在它发生的那一段旁边，后面来的消息不会把它挤到末尾", () => {
 	const messages = [user("跑个长活"), assistant([call("a")], "toolUse"), answered("a"), assistant([text("做完了")], "endTurn")];
 	// 断在第一条回复之后、后面那些还没来的时候。
-	const rows = runs(messages, [], [], [hiccup("h1", 2)]);
+	const rows = runs(messages, [], [hiccup("h1", 2)]);
 	assert.deepEqual(shape(rows), ["message@0:1", "tools:a", "hiccup:h1", "message@3:1"]);
 });
 
 test("还在等的那一条数出来正好是末尾，因为它确实正在此刻发生", () => {
 	const messages = [user("跑个长活"), assistant([call("a")], "toolUse"), answered("a")];
-	const rows = runs(messages, [], [], [hiccup("h1", messages.length, "waiting")]);
+	const rows = runs(messages, [], [hiccup("h1", messages.length, "waiting")]);
 	assert.deepEqual(shape(rows), ["message@0:1", "tools:a", "hiccup:h1"]);
 });
 
 test("断过两次就是两条，各自站在各自的位置上", () => {
 	const messages = [user("问一句"), assistant([text("答一句")], "endTurn"), user("再问一句"), assistant([text("再答一句")], "endTurn")];
-	const rows = runs(messages, [], [], [hiccup("h2", 3), hiccup("h1", 1)]);
+	const rows = runs(messages, [], [hiccup("h2", 3), hiccup("h1", 1)]);
 	// 传进来的顺序不算数，位置才算数。
 	assert.deepEqual(shape(rows), ["message@0:1", "hiccup:h1", "message@1:1", "message@2:1", "hiccup:h2", "message@3:1"]);
 });
 
 test("没有断过的转录，和从前一模一样", () => {
 	const messages = [user("问一句"), assistant([text("答一句")], "endTurn")];
-	assert.deepEqual(shape(runs(messages, [], [], [])), shape(runs(messages)));
+	assert.deepEqual(shape(runs(messages, [], [])), shape(runs(messages)));
 });
 
 test("finishing a reply does not move its calls into a different row", () => {
@@ -419,19 +418,6 @@ test("a real user message ends the run", () => {
 	assert.deepEqual(shape(rows), ["message@0:1", "tools:a", "message@3:1", "tools:b"]);
 });
 
-test("a compaction marker interrupts the run at the message it was taken from", () => {
-	const rows = runs(
-		[user("干活"), assistant([call("a")], "toolUse"), answered("a"), assistant([call("b")], "toolUse")],
-		[{ at: 3 }],
-	);
-	assert.deepEqual(shape(rows), ["message@0:1", "tools:a", "compaction", "tools:b"]);
-});
-
-test("a compaction recorded past the end still lands at the end", () => {
-	const rows = runs([user("干活"), assistant([call("a")], "toolUse")], [{ at: 9 }]);
-	assert.deepEqual(shape(rows), ["message@0:1", "tools:a", "compaction"]);
-});
-
 test("the reply carries the calls it made, so a live one reads as live", () => {
 	const rows = runs([user("跑"), assistant([call("a")], "toolUse"), answered("a"), assistant([call("b")], "pending")]);
 	const tools = rows[1];
@@ -495,6 +481,31 @@ test("工具在跑的时间全算这一轮头上", () => {
 	const stats = computeTurnStats(messages, 3);
 	assert.equal(stats.durationMs, 4 * MINUTE + SECOND);
 	assert.equal(stats.requestMs, 3 * SECOND);
+});
+
+/*
+ * 清单开着，只有收了尾的回复才停表。
+ *
+ * 从前每一条回复都停，包括交给工具的那条：下一条工具结果来时重新起表，工具跑的那一分钟整段被跨过去，
+ * 运行时报 66 秒的一轮，结束那一刻页脚变成 6 秒。停在清单没勾完、等人说「继续」的那段照旧不算。
+ */
+test("清单没勾完时工具在跑的时间照样算，等人说继续的那段不算", () => {
+	const plan: Message = { role: "toolResult", toolCallId: "t", toolName: "todo_write", content: [], isError: false, timestamp: T0 + 2 * SECOND, details: { kind: "todo", todos: [{ content: "跑脚本", status: "in_progress" }] } };
+	const messages: Message[] = [
+		user("跑一下那个脚本", T0),
+		spent(assistant([call("t", "todo_write")], "toolUse"), T0, SECOND),
+		plan,
+		spent(assistant([call("a", "bash")], "toolUse"), T0 + 2 * SECOND, SECOND),
+		answered("a", T0 + 62 * SECOND),
+		spent(assistant([text("脚本跑完了，清单还差一项")], "stop"), T0 + 62 * SECOND, 4 * SECOND),
+		user(CARRY_ON_PROMPTS[2], T0 + 10 * MINUTE),
+		spent(assistant([text("做完了")], "stop"), T0 + 10 * MINUTE, 2 * SECOND),
+	];
+
+	assert.equal(computeTurnStats(messages, 5).durationMs, 66 * SECOND);
+	assert.equal(computeTurnStats(messages, 7).durationMs, 68 * SECOND);
+	const last = runs(messages).findLast((run) => run.kind === "message" && run.index === 7);
+	assert.equal(last?.kind === "message" && last.turnStats?.durationMs, 68 * SECOND);
 });
 
 /*
@@ -723,7 +734,7 @@ test("继续 sent as a synthetic message neither shows nor restarts the turn", (
 	assert.equal(stats.outputTokens, 1200);
 
 	// And it is not a row: `runs` drops synthetic user messages entirely.
-	const rows = runs(messages, []);
+	const rows = runs(messages);
 	const shown = rows.filter((r) => r.kind === "message" && r.message.role === "user");
 	assert.equal(shown.length, 1, "只应该看到你真正写的那一条");
 });

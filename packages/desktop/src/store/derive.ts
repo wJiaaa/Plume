@@ -1,5 +1,4 @@
 import { translate } from "../i18n/translate.ts";
-import type { CommandRun, HookRun } from "@plume/core";
 /**
  * Reading state back out of a transcript.
  *
@@ -12,11 +11,51 @@ import type { CommandRun, HookRun } from "@plume/core";
 
 import type { Message, TodoItem } from "@plume/core";
 import type { SessionMeta } from "@plume/core";
+import type { TurnStop } from "./turn-stop.ts";
 import { routedMcpCall, summarizeToolCall } from "../lib/tool-summary.ts";
 import type { AppState } from "./index.ts";
 import type { ToolRun } from "./tool-run.ts";
 
-export type CachedSessionState = Pick<AppState, "running" | "todos" | "compactions" | "approvals" | "stopped" | "retrying" | "capabilities" | "pendingUserMessage"> & { commandRuns?: CommandRun[]; hookRuns?: HookRun[]; hiccups?: AppState["hiccups"]; compactedAt?: AppState["compactedAt"] };
+/** 一个会话这一轮的状态：屏上那个摊在 `AppState` 顶层，停在缓存里的放在 `state` 里，两边同一组字段。 */
+export type CachedSessionState = Pick<AppState, "running" | "todos" | "compactions" | "approvals" | "stopped" | "retrying" | "capabilities" | "pendingUserMessage" | "commandRuns" | "hookRuns" | "hiccups" | "compactedAt">;
+
+/** 什么都还没发生。数组是共用的同一份：各处只换不改，读的一方拿它当「空」时引用不变，不会白白重画。 */
+export const EMPTY_SLOT: CachedSessionState = {
+	running: false, todos: [], compactions: [], approvals: [], stopped: null, retrying: null,
+	capabilities: null, pendingUserMessage: null, commandRuns: [], hookRuns: [], hiccups: [], compactedAt: null,
+};
+
+/** 屏上那个会话的这一组字段，存进缓存时用。 */
+export function slotState(state: CachedSessionState): CachedSessionState {
+	return {
+		running: state.running, todos: state.todos, compactions: state.compactions, approvals: state.approvals, stopped: state.stopped,
+		retrying: state.retrying, capabilities: state.capabilities, pendingUserMessage: state.pendingUserMessage,
+		commandRuns: state.commandRuns, hookRuns: state.hookRuns, hiccups: state.hiccups, compactedAt: state.compactedAt,
+	};
+}
+
+/**
+ * The live slot holding nobody: what 新对话, a focused blank screen, and a conversation taken away
+ * under you all leave in it.
+ *
+ * Everything here belongs to the conversation being left, and carrying any of it into the blank one
+ * reports on the wrong conversation — a turn meter, a connection shown as broken, a pause offered
+ * for resuming.
+ */
+export function blankSlot(get: () => AppState): Partial<AppState> {
+	return {
+		...EMPTY_SLOT,
+		selectionEpoch: get().selectionEpoch + 1,
+		activeSessionId: null,
+		pendingSessionId: null,
+		meta: null,
+		messages: [],
+		toolRuns: {},
+		turnStartedAt: null,
+		turnTokens: 0,
+		loadingSession: false,
+	};
+}
 
 export type Cache = Record<
   string,
@@ -27,8 +66,6 @@ export type Cache = Record<
     state?: CachedSessionState;
 	/** Live events advance beyond the stored sequence until the next authoritative read. */
 	dirty?: boolean;
-    scrollTop?: number;
-    pinnedToBottom?: boolean;
   }
 >;
 
@@ -70,22 +107,6 @@ export function without<T>(cache: Record<string, T>, id: string): Record<string,
 
 
 /**
- * How the last turn ended, when it ended somewhere short of the end.
- *
- * `"user"` is the stop button: the work is fine, it is just not moving. `"interrupt"` is
- * everything that took the turn away without being asked — a crash, a quit, a machine going to
- * sleep. `"error"` is a request that failed: the relay was out of credentials, the key was
- * refused, the model was gone. `null` is a turn that finished.
- *
- * Three states rather than one because the offer reads differently in each. Being told
- * 「上次执行被中断」 about a pause you performed yourself a second ago is the app describing your
- * own click back to you as an accident; being told it about an HTTP 503 says nothing about the one
- * thing worth knowing, which is that the work is still there.
- */
-import type { TurnStop } from "./turn-stop.ts";
-export type { TurnStop };
-
-/**
  * The wordings 「继续」 sends, which are the same act as an automatic nudge.
  *
  * Constants rather than a sentence written next to each button, because `grouping.ts` matches
@@ -112,8 +133,8 @@ export const CARRY_ON_PROMPTS = [
 /**
  * What 「继续」 should say after a turn stopped this way — `null` when there is nothing to carry on.
  *
- * Lives next to `TurnStop` because it is the other half of the same distinction: the note above
- * says why the three stops read differently to a person, and this is what they mean to the model,
+ * The other half of the distinction `TurnStop` draws: that says why the three stops read differently
+ * to a person, and this is what they mean to the model,
  * which acts on the sentence. 「从中断的地方接着做」 about a pause you performed yourself is a
  * wrong account of where it stopped, and therefore a wrong instruction.
  *
@@ -131,22 +152,6 @@ export function carryOnPrompt(stopped: TurnStop, unfinished: number): (typeof CA
 }
 
 /**
- * The reason lives in two places, and both are needed.
- *
- * `agent_end` carries it exactly, but only while it is happening; the transcript carries it
- * afterwards, in a `stopReason` that survives being written to disk and read back next week. The
- * event wins where they differ, because a turn stopped while a tool was running has already had
- * its last reply settled as `toolUse` and leaves nothing in the log to say who stopped it.
- *
- * A failed request is the case this used to miss entirely, and it was the most common one. The
- * turn ends with an assistant message carrying `stopReason: "error"` and no tool calls, which
- * `wasCutShort` reads as a turn that finished — so nothing was offered, and a turn that had spent
- * a minute reading files could only be started over from the top. The work is on disk either way;
- * the only question is whether anything says so.
- */
-export { howItStopped } from "./turn-stop.ts";
-
-/**
  * Whether there is anything to re-ask.
  *
  * `retryFrom` walks back to the nearest message a person actually typed; with none in the
@@ -155,17 +160,6 @@ export { howItStopped } from "./turn-stop.ts";
 export function hasRetryPoint(messages: Message[]): boolean {
 	return messages.some((message) => message.role === "user" && !message.synthetic);
 }
-
-/*
- * 同上，实现在 `turn-stop.ts`。
- *
- * 这里一度留着一份自己的副本，而 `howItStopped` 搬走之后应用走的已经是那一份了——两份当天一字不差，
- * 谁先改谁就让另一份变成谎话。真正咬人的是测试：`test/transcript.test.ts` 从这个文件 import，于是
- * 它测的是应用不再执行的那一份，改坏 `turn-stop.ts` 照样全绿。
- *
- * 保留这个 re-export 而不是让调用方改路径：它是这个文件对外的一部分，而搬家的是实现，不是接口。
- */
-export { wasCutShort } from "./turn-stop.ts";
 
 /**
  * The last task list written in a conversation.

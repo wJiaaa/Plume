@@ -7,11 +7,10 @@
  * messages that stream in, because a delegated run can read forty files and broadcasting all of
  * that on every change would put the run on the wire dozens of times over.
  *
- * The live fields are keyed by nothing: they belong to the session in the live slot, and when that
- * changes they are emptied — a sub-agent belongs to the conversation that dispatched it, and
- * showing one under another conversation would be a lie about where the work came from. With two
- * screens the other conversation is on display too, so every roster is also kept by session id in
- * `rosters`, and a screen reads its own through `useScopedSubAgents`.
+ * Rosters are kept by session id: a sub-agent belongs to the conversation that dispatched it, and
+ * with two screens the other conversation is on display too, so a screen reads its own through
+ * `useScopedSubAgents`. The opened transcripts are keyed by nothing and belong to the conversation in
+ * the live slot; when that changes they are emptied.
  */
 
 import { create } from "zustand";
@@ -19,9 +18,7 @@ import type { HookRun, Message, SubAgentSummary } from "@plume/core";
 import { freshTokens } from "@plume/core/tokens";
 import { bridge } from "../services/index.ts";
 
-interface SubAgentState {
-	/** The roster, oldest first — the order a tab strip reads in. */
-	agents: SubAgentSummary[];
+export interface SubAgentState {
 	/** Transcripts, by sub-agent id, for the ones that have been opened. */
 	transcripts: Record<string, Message[]>;
 	/** 它们跑过的钩子，和转录同进同出：打开时一起读，之后跟着事件补。 */
@@ -37,11 +34,12 @@ interface SubAgentState {
 	 */
 	loading: string[];
 	/**
-	 * The last roster each conversation broadcast, by session id.
+	 * The last roster each conversation broadcast, by session id, oldest first — the order a tab strip
+	 * reads in.
 	 *
-	 * The fields above are the conversation in the live slot. With two screens the other one is on
-	 * screen too — its sub-agent bar and panel have to show *its* agents, not the focused
-	 * conversation's, and its broadcasts arrive while it is not the live one.
+	 * Re-sent on every tool call of every sub-agent, so nothing derived from it may move what the
+	 * pane is showing: jumping to the newest one because a *sibling* made a tool call would make
+	 * reading a long run impossible. `focused` is set only by a person.
 	 */
 	rosters: Record<string, SubAgentSummary[]>;
 	/**
@@ -55,16 +53,14 @@ interface SubAgentState {
 	settle(sessionId: string): void;
 
 	/**
-	 * Take the roster the session in the live slot just broadcast.
+	 * Take the roster the session in the live slot just broadcast, or just read back.
 	 *
 	 * `live`：这份名单是运行时刚广播出来的，而不是切回会话时从磁盘读回来的。只有前者能说「刚派了活」
 	 * （见 `announced`）。
 	 */
-	sync(agents: SubAgentSummary[], sessionId?: string, live?: boolean): void;
+	sync(agents: SubAgentSummary[], sessionId: string, live?: boolean): void;
 	/** Keep the roster a conversation that is not in the live slot just broadcast. */
 	retain(sessionId: string, agents: SubAgentSummary[]): void;
-	/** A conversation's finished sub-agents were put away. */
-	forgetFinished(sessionId: string): void;
 	/** One message, as the sub-agent writes it. Ignored for a transcript nobody has opened. */
 	append(id: string, message: Message): void;
 	/** One hook run, started or settled. Ignored for a transcript nobody has opened, like `append`. */
@@ -89,17 +85,11 @@ interface SubAgentState {
 	announced: { sessionId: string } | null;
 	/** Read one sub-agent's transcript. Idempotent while a read is in flight. */
 	load(sessionId: string, id: string): Promise<void>;
-	/**
-	 * A different conversation is in front of you; this one's delegated work is not.
-	 *
-	 * 换进来的会话（`next`）在别处登记过名单，就先摆上它：实时名单要等一次异步读才回来，空着的那
-	 * 一段里输入框上方那条会先收起、读回来再展开一遍。
-	 */
-	clear(next?: string): void;
+	/** A different conversation is in front of you: the transcripts opened for this one go. Rosters stay, by session. */
+	clear(): void;
 }
 
 export const useSubAgents = create<SubAgentState>((set, get) => ({
-	agents: [],
 	transcripts: {},
 	hookRuns: {},
 	focused: null,
@@ -121,28 +111,13 @@ export const useSubAgents = create<SubAgentState>((set, get) => ({
 		set({ rosters: { ...get().rosters, [sessionId]: agents } });
 	},
 
-	forgetFinished(sessionId) {
-		const kept = (get().rosters[sessionId] ?? []).filter((one) => isActive(one));
-		set({ rosters: { ...get().rosters, [sessionId]: kept } });
-	},
-
 	sync(agents, sessionId, live) {
-		const { focused } = get();
-		const known = new Set((sessionId ? get().rosters[sessionId] : undefined)?.map((one) => one.id) ?? []);
+		const known = new Set(get().rosters[sessionId]?.map((one) => one.id) ?? []);
 		const fresh = live === true && agents.some((one) => isActive(one) && !known.has(one.id));
 		set({
 			// 每次一个新对象：听的那一头按引用认「又派了一次」，同一毫秒里的两次也分得开。
-			...(fresh && sessionId ? { announced: { sessionId } } : {}),
-			...(sessionId ? { rosters: { ...get().rosters, [sessionId]: agents } } : {}),
-			agents,
-			/*
-			 * Keep looking at what you were looking at.
-			 *
-			 * The roster is re-sent on every tool call of every sub-agent, so anything derived from
-			 * it here has to be stable — moving the pane to the newest one because a *sibling* made
-			 * a tool call would make reading a long run impossible.
-			 */
-			focused: focused && agents.some((one) => one.id === focused) ? focused : (focused ?? null),
+			...(fresh ? { announced: { sessionId } } : {}),
+			rosters: { ...get().rosters, [sessionId]: agents },
 		});
 	},
 
@@ -197,8 +172,8 @@ export const useSubAgents = create<SubAgentState>((set, get) => ({
 		}
 	},
 
-	clear(next) {
-		set({ agents: (next ? get().rosters[next] : undefined) ?? [], transcripts: {}, hookRuns: {}, focused: null, loading: [] });
+	clear() {
+		set({ transcripts: {}, hookRuns: {}, focused: null, loading: [] });
 	},
 }));
 

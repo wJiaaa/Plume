@@ -1,5 +1,18 @@
 import type { Message } from "@plume/core";
 
+/**
+ * How the last turn ended, when it ended somewhere short of the end.
+ *
+ * `"user"` is the stop button: the work is fine, it is just not moving. `"interrupt"` is
+ * everything that took the turn away without being asked — a crash, a quit, a machine going to
+ * sleep. `"error"` is a request that failed: the relay was out of credentials, the key was
+ * refused, the model was gone. `null` is a turn that finished.
+ *
+ * Three states rather than one because the offer reads differently in each. Being told
+ * 「上次执行被中断」 about a pause you performed yourself a second ago is the app describing your
+ * own click back to you as an accident; being told it about an HTTP 503 says nothing about the one
+ * thing worth knowing, which is that the work is still there.
+ */
 export type TurnStop = "user" | "interrupt" | "error" | null;
 
 /**
@@ -9,9 +22,7 @@ export type TurnStop = "user" | "interrupt" | "error" | null;
  * finished reply whose tool calls have no results was cut off between asking for the tools and
  * running them. Either way the work stopped somewhere it did not choose to.
  *
- * Exported because `derive.ts` re-exports it and the tests drive it directly. It used to live
- * there and was copied here when `howItStopped` moved; one of the two had to go, and the one the
- * application actually runs is this one.
+ * Exported because the tests drive it directly.
  */
 export function wasCutShort(transcript: readonly Message[]): boolean {
 	const messages = beforePlanTick(transcript);
@@ -47,6 +58,16 @@ export function wasCutShort(transcript: readonly Message[]): boolean {
 
 /**
  * Why a turn ended, as the UI should describe it.
+ *
+ * The reason lives in two places, and both are needed. `agent_end` carries it exactly, but only
+ * while it is happening; the transcript carries it afterwards, in a `stopReason` that survives being
+ * written to disk and read back next week. The event wins where they differ, because a turn stopped
+ * while a tool was running has already had its last reply settled as `toolUse` and leaves nothing in
+ * the log to say who stopped it.
+ *
+ * A failed request is the case this used to miss entirely, and it was the most common one: the turn
+ * ends with an assistant message carrying `stopReason: "error"` and no tool calls, which
+ * `wasCutShort` reads as a turn that finished — so nothing was offered.
  */
 export function howItStopped(transcript: readonly Message[], reason?: string): TurnStop {
 	if (reason === "aborted") return "user";

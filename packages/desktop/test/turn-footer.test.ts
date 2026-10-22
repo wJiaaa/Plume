@@ -156,9 +156,9 @@ test("被停下的回复末尾挂着调用：页脚接在那几行后面，不�
 		{ ...user("先不要发布"), interrupting: true as const },
 		assistant([text("已暂停")], "stop"),
 	];
-	const rows = runs(messages, [{ at: 4 }]);
-	// 压缩标记站在两轮之间：页脚在它前面，不然就被分到了下一轮。
-	assert.deepEqual(shape(rows), ["人:0", "话:1", "活:a,b", "页脚:1", "compaction", "人:4", "话:5+页脚"]);
+	const rows = runs(messages, [{ at: 4, id: "c", name: "compact", status: "done" } as never]);
+	// 命令标记站在两轮之间：页脚在它前面，不然就被分到了下一轮。
+	assert.deepEqual(shape(rows), ["人:0", "话:1", "活:a,b", "页脚:1", "command", "人:4", "话:5+页脚"]);
 	assert.deepEqual(closing(rows), [1, 5]);
 });
 

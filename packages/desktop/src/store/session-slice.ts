@@ -10,11 +10,10 @@ import { applySessionChange } from "./session-changes.ts";
 
 import type { SessionMeta } from "@plume/core";
 import type { SessionActivity } from "@plume/core/activity";
-import { cacheIsFresh, prune, without, type Cache, type CachedSessionState } from "./derive.ts";
+import { blankSlot, cacheIsFresh, EMPTY_SLOT, prune, slotState, without, type Cache } from "./derive.ts";
 import type { AppState } from "./index.ts";
 import { useSubAgents } from "./subAgents.ts";
 import { bridge } from "../services/index.ts";
-import { loadCarried } from "./turn-meter.ts";
 import { flushCoalesced } from "./coalesce.ts";
 import { pendingPreload, preloadSession, readSelectedSession, restoreLiveState, takePreloaded } from "./session-read.ts";
 import { isProjectLess } from "../lib/project-scope.ts";
@@ -36,59 +35,15 @@ function lostSelection(get: Get, id: string): boolean {
 /** The live slot's transcript and turn state for `meta`, from its cache entry when there is one. */
 function slotFrom(meta: SessionMeta, cached: Cache[string] | undefined): Partial<AppState> {
 	return {
+		// 没有缓存的那几样从空的起：上一个会话的重连、刚压缩过、停在哪，都不是这个会话的。
+		...EMPTY_SLOT,
+		...cached?.state,
 		meta: cached?.meta ?? meta,
 		messages: cached?.messages ?? [],
 		toolRuns: cached?.toolRuns ?? {},
-		approvals: cached?.state?.approvals ?? [],
-		running: cached?.state?.running ?? false,
-		todos: cached?.state?.todos ?? [],
-		compactions: cached?.state?.compactions ?? [],
-		commandRuns: cached?.state?.commandRuns ?? [],
-		hookRuns: cached?.state?.hookRuns ?? [],
-		capabilities: cached?.state?.capabilities ?? null,
-		// Belongs to the turn being left behind; see the note in `newSession`.
-		retrying: cached?.state?.retrying ?? null,
-		// This conversation's own summary, if it has just had one — never the last conversation's.
-		compactedAt: cached?.state?.compactedAt ?? null,
-		hiccups: cached?.state?.hiccups ?? [],
-		stopped: cached?.state?.stopped ?? null,
 		// Only a session with nothing to show is "loading"; a cached one is already on screen
 		// and re-reads quietly behind it.
 		loadingSession: !cached,
-		pendingUserMessage: cached?.state?.pendingUserMessage ?? null,
-	};
-}
-
-/**
- * The live slot holding nobody: what 新对话 and a focused blank screen both leave in it.
- *
- * Everything here belongs to the conversation being left, and carrying any of it into the blank one
- * reports on the wrong conversation — a turn meter, a connection shown as broken, a pause offered
- * for resuming. See the notes in `newSession`.
- */
-function blankSlot(get: Get): Partial<AppState> {
-	return {
-		selectionEpoch: get().selectionEpoch + 1,
-		activeSessionId: null,
-		pendingSessionId: null,
-		meta: null,
-		messages: [],
-		toolRuns: {},
-		approvals: [],
-		running: false,
-		todos: [],
-		compactions: [],
-		commandRuns: [],
-		hookRuns: [],
-		turnStartedAt: null,
-		turnTokens: 0,
-		retrying: null,
-		compactedAt: null,
-		hiccups: [],
-		stopped: null,
-		loadingSession: false,
-		pendingUserMessage: null,
-		capabilities: null,
 	};
 }
 
@@ -116,7 +71,7 @@ export function sessionSlice(set: Set, get: Get) {
         ...without(previous.sessionCache, previous.activeSessionId),
         [previous.activeSessionId]: {
           meta: previous.meta, messages: previous.messages, toolRuns: previous.toolRuns,
-          state: cachedState(previous),
+          state: slotState(previous),
         },
       }, previous.activeSessionId) });
     }
@@ -201,12 +156,10 @@ export function sessionSlice(set: Set, get: Get) {
     if (previous.activeSessionId === null && previous.pendingSessionId === null) return;
     const leaving = previous.activeSessionId;
     if (leaving && previous.meta && !previous.loadingSession) {
-      const parked = previous.sessionCache[leaving];
       set({ sessionCache: prune({
         ...without(previous.sessionCache, leaving),
         [leaving]: {
-          meta: previous.meta, messages: previous.messages, toolRuns: previous.toolRuns, state: cachedState(previous),
-          scrollTop: parked?.scrollTop, pinnedToBottom: parked?.pinnedToBottom,
+          meta: previous.meta, messages: previous.messages, toolRuns: previous.toolRuns, state: slotState(previous),
         },
       }, leaving) });
     }
@@ -323,15 +276,12 @@ export function sessionSlice(set: Set, get: Get) {
       leavingMeta &&
       get().messages.length > 0 && !get().loadingSession
     ) {
-			const previous = cache[leaving];
       delete cache[leaving];
       cache[leaving] = {
         meta: leavingMeta,
         messages: get().messages,
         toolRuns: get().toolRuns,
-        state: cachedState(get()),
-				scrollTop: previous?.scrollTop,
-				pinnedToBottom: previous?.pinnedToBottom,
+        state: slotState(get()),
       };
     }
 
@@ -393,15 +343,8 @@ export function sessionSlice(set: Set, get: Get) {
        * two: the one thing a long turn needs to say is how long it has been going.
        *
        * So it is read back from `turns`, which `apply-event` keeps for every session including the
-      /*
-       * Load in-memory carried or persisted carried meter across restarts so continued turns work.
+       * ones not on screen.
        */
-      carried: {
-        ...get().carried,
-        ...(get().carried[meta.id] || !loadCarried(meta.id)
-          ? {}
-          : { [meta.id]: loadCarried(meta.id)! }),
-      },
       turnStartedAt: get().turns[meta.id]?.startedAt ?? null,
       turnTokens: get().turns[meta.id]?.tokens ?? 0,
       view: "chat",
@@ -415,7 +358,7 @@ export function sessionSlice(set: Set, get: Get) {
      * simply sit there — showing sub-agents from the conversation you just left, under the name of
      * the one you just opened.
      */
-    useSubAgents.getState().clear(meta.id);
+    useSubAgents.getState().clear();
 
     /*
      * The project, on its own errand — the transcript must never wait for it.
@@ -460,17 +403,6 @@ export function sessionSlice(set: Set, get: Get) {
     }
 
     /*
-     * `transcript`, not `open`: reading a conversation must not start an agent for it.
-     *
-     * Starting one loads skills and spawns MCP child processes — over a second, and pure waste
-     * when the click was "let me see what this said". The agent comes up on the first message.
-     *
-     * One read at a time; the newest pending click wins. Returning here is not dropping the click
-     * — the selection and the meta are already on screen from the state written above, and the
-     * read in flight will pick this up when it finishes. What is skipped is only the megabytes of
-     * duplicated work.
-     */
-    /*
      * A clean cache already has the transcript on screen. Reading the file again
      * clones megabytes onto the renderer in the same click — that is the hitch
      * after a session has already been opened. Dirty or a newer seq still refresh.
@@ -497,6 +429,16 @@ export function sessionSlice(set: Set, get: Get) {
         return;
       }
     }
+    /*
+     * `transcript`, not `open`: reading a conversation must not start an agent for it.
+     *
+     * Starting one loads skills and spawns MCP child processes — over a second, and pure waste
+     * when the click was "let me see what this said". The agent comes up on the first message.
+     *
+     * One read at a time; the newest pending click wins. A click while a read is in flight is not
+     * dropped — the selection and the meta are already on screen from the state written above, and
+     * the read in flight picks it up when it finishes (`drainQueued`).
+     */
     await readSelectedSession(meta, set, get);
   },
 
@@ -569,12 +511,4 @@ function readOutcome(
   const next = { ...activity };
   delete next[id];
   return next;
-}
-
-function cachedState(state: AppState): CachedSessionState {
-  return {
-    running: state.running, todos: state.todos, compactions: state.compactions, commandRuns: state.commandRuns, hookRuns: state.hookRuns,
-    approvals: state.approvals, stopped: state.stopped, retrying: state.retrying, hiccups: state.hiccups, compactedAt: state.compactedAt,
-		capabilities: state.capabilities, pendingUserMessage: state.pendingUserMessage,
-  };
 }

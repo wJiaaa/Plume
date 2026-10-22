@@ -25,7 +25,7 @@ import { ResumeRow } from "../../src/features/conversation/ResumeRow.tsx";
 import { LayoutProvider } from "../../src/app/layout.tsx";
 import { I18nProvider } from "../../src/i18n/index.ts";
 import { useApp } from "../../src/store/index.ts";
-import type { TurnStop } from "../../src/store/derive.ts";
+import type { TurnStop } from "../../src/store/turn-stop.ts";
 import { mount } from "../helpers/mount.ts";
 
 function reply(stopReason: AssistantMessage["stopReason"], text = "请问你想查询哪座城市的天气呢？"): Message {

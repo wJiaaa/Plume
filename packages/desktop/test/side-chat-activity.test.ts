@@ -22,7 +22,7 @@ function fold(state: Record<string, unknown>, sessionId: string, event: AgentEve
 }
 
 function freshState(): Record<string, unknown> {
-	return { activity: {}, turns: {}, sessions: [], activeSessionId: "main", messages: [], toolRuns: {}, commandRuns: [], compactions: [], sessionCache: {}, queued: {}, running: false, notify: () => {}, flushQueue: () => {} };
+	return { activity: {}, turns: {}, carried: {}, sessions: [], activeSessionId: "main", messages: [], toolRuns: {}, commandRuns: [], compactions: [], sessionCache: {}, queued: {}, running: false, notify: () => {}, flushQueue: () => {} };
 }
 
 beforeEach(() => {

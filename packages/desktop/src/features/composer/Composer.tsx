@@ -2,7 +2,9 @@
 import { translate } from "../../i18n/translate.ts";
 import { parseInvocation, parseSkillMention } from "@plume/core/commands-view";
 import { Camera, ChevronDown, CircleAlert, Folder, GitBranch, GitFork, MessageSquare, X } from "../../ui/icons/index.ts";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type ComponentProps, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
+import type { SessionMeta } from "@plume/core";
 import { motionReduced } from "../../ui/motion/reduced.ts";
 import { DURATION, EASING } from "../../ui/motion/tokens.ts";
 import { ChangeBar, useUpstreamDistance } from "../git/index.ts";
@@ -39,7 +41,7 @@ import type { DraftAttachment } from "./attachments/read.ts";
 import { useComposerAttachments } from "./useComposerAttachments.tsx";
 import { useDraft } from "./useDraft.ts";
 import { useApp } from "../../store/index.ts";
-import { focusScreenOf, useScopedFromMessages, useScopedMeta, useScopedRunning, useScopedSessionId, useScopedStopped, useScopedSubAgents, useScopedTodos, useScopedToolRuns, useScopedUserMessages, useScopedWorking, useScopedWorkspace } from "../../app/session-scope.tsx";
+import { focusScreenOf, useScopedFromMessages, useScopedFromMeta, useScopedFromToolRuns, useScopedMeta, useScopedRunning, useScopedSessionId, useScopedStopped, useScopedFromSubAgents, useScopedTodos, useScopedUserMessages, useScopedWorking, useScopedWorkspace } from "../../app/session-scope.tsx";
 import { awaitingSubAgents } from "../../store/subAgents.ts";
 import { awaitingSession } from "../../store/tool-run.ts";
 import { carryOnPrompt } from "../../store/derive.ts";
@@ -71,7 +73,35 @@ let sending = false;
 const ARRIVAL_WINDOW = 1000;
 const ARRIVAL_RISE = 16;
 
-export function Composer({ centered = false }: {
+/**
+ * 输入框用得到的那几样元数据，摊平了按值比。整份元数据每写一条记录就换一个新对象（见 `useScopedFromMeta`），
+ * 拿整份的话一轮里输入框跟着每条记录整个重画；`worktree` 过 IPC 每次也是新对象，所以拆成字段。
+ */
+function composerMeta(meta: SessionMeta | null) {
+	if (!meta) return null;
+	return {
+		id: meta.id,
+		modelId: meta.modelId,
+		planMode: meta.planMode,
+		archived: meta.archived,
+		worktreeError: meta.worktreeError,
+		worktreeProject: meta.worktree?.project,
+		worktreeBranch: meta.worktree?.branch,
+		worktreeBase: meta.worktree?.base,
+	};
+}
+
+/** 工作树菜单要整份元数据（归档、在访达里打开），只在它开着时才订阅。 */
+function ScopedWorktreeMenu(props: Omit<ComponentProps<typeof WorktreeMenu>, "meta">) {
+	const meta = useScopedMeta();
+	return meta?.worktree ? <WorktreeMenu {...props} meta={meta} /> : null;
+}
+
+/**
+ * 按 props 记住：它挂在转录里面，转录在流式输出时每一拍都重画，不记的话这一整块跟着每一拍重画一遍，
+ * 而它要的东西全是自己订阅的。
+ */
+export const Composer = memo(function Composer({ centered = false }: {
 	/** 欢迎页：排在标题下面那一列里，外边距由那一列给，不再是贴着底边的那一条。 */
 	centered?: boolean;
 } = {}) {
@@ -79,7 +109,13 @@ export function Composer({ centered = false }: {
 	// This screen's project, not the focused conversation's: a split shows several at once.
 	const { workspace, scratchCwd } = useScopedWorkspace();
 	const settings = useApp((s) => s.settings);
-	const meta = useScopedMeta();
+	const picked = useScopedFromMeta(useShallow(composerMeta));
+	const meta = useMemo(() => {
+		if (!picked) return null;
+		const { worktreeProject, worktreeBranch, worktreeBase, ...rest } = picked;
+		const worktree = worktreeProject === undefined || worktreeBranch === undefined ? undefined : { project: worktreeProject, branch: worktreeBranch, ...(worktreeBase === undefined ? {} : { base: worktreeBase }) };
+		return { ...rest, worktree };
+	}, [picked]);
 	const userMessages = useScopedUserMessages();
 	const messageCount = useScopedFromMessages((all) => all.length);
 	const running = useScopedRunning();
@@ -108,8 +144,8 @@ export function Composer({ centered = false }: {
 	 * 分钟。送进去之后运行时让主会话放手、先回应人，子智能体留在后台跑完（`delegation-waits.ts`）。
 	 * 在等另一个会话做完（`ask_session` / `wait_for_session`）也一样。
 	 */
-	const waitingOnSession = awaitingSession(useScopedToolRuns());
-	const parked = (awaitingSubAgents(useScopedSubAgents()) || waitingOnSession) && running;
+	const waitingOnSession = useScopedFromToolRuns(awaitingSession);
+	const parked = (useScopedFromSubAgents(awaitingSubAgents) || waitingOnSession) && running;
 	const { compact, dismissNav } = useLayout();
 	const column = useRef<HTMLDivElement>(null);
 	useLayoutEffect(() => {
@@ -908,7 +944,7 @@ export function Composer({ centered = false }: {
 			{projectMenu.open && <ProjectPicker anchor={projectMenu.anchor} onClose={projectMenu.close} />}
 			{branchMenu.open && <BranchMenu anchor={branchMenu.anchor} onClose={branchMenu.close} />}
 			{worktreeMenu.open && meta?.worktree && (
-				<WorktreeMenu anchor={worktreeMenu.anchor} onClose={worktreeMenu.close} meta={meta} view={worktree} running={running} />
+				<ScopedWorktreeMenu anchor={worktreeMenu.anchor} onClose={worktreeMenu.close} view={worktree} running={running} />
 			)}
 			{worktreeFailed.open && meta?.worktreeError && (
 				<WorktreeFailedNote anchor={worktreeFailed.anchor} onClose={worktreeFailed.close} reason={meta.worktreeError} />
@@ -917,4 +953,4 @@ export function Composer({ centered = false }: {
 			{kit.menu}
 		</div>
 	);
-}
+});

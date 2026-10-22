@@ -1,5 +1,5 @@
 import { useContext } from "react";
-import { SessionScope, usePanelKind, useScopedMeta, useScopedWorkspace } from "../../app/session-scope.tsx";
+import { SessionScope, usePanelKind, useScopedWorkspace, useScopedFromMeta } from "../../app/session-scope.tsx";
 import { panelInstance } from "../../lib/panel-instance.ts";
 import { useTerminals } from "../../store/terminals.ts";
 import { bridge } from "../../services/index.ts";
@@ -22,9 +22,9 @@ export function useTerminalScope() {
 	const kind = usePanelKind();
 	const instance = kind ? panelInstance(kind) : null;
 	const slot = terminalSlot(scope, instance);
-	const meta = useScopedMeta();
+	const cwd = useScopedFromMeta((meta) => meta?.cwd);
 	// A blank screen's shell starts in its own project, not in the one beside it that has focus.
 	const workspace = useScopedWorkspace().workspace?.path ?? "";
 	const active = useTerminals((state) => slot === undefined ? state.active : state.activeByScope[slot] ?? "");
-	return { scope, slot, instance, active, cwd: meta?.cwd ?? workspace };
+	return { scope, slot, instance, active, cwd: cwd ?? workspace };
 }

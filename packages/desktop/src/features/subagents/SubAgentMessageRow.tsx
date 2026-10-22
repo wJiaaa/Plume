@@ -71,7 +71,6 @@ export const SubAgentTranscript = memo(function SubAgentTranscript({
 		 */
 		<div className="flex flex-col gap-2.5">
 			{transcriptRuns.map((run) => {
-				if (run.kind === "compaction") return null;
 				if (run.kind === "model") return <ModelSwitchRow key={runKey(run)} from={run.from} to={run.to} />;
 
 				if (run.kind === "tools") {

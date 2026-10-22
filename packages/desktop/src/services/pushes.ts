@@ -42,12 +42,12 @@ export function afterPushes(settle: () => void): void {
 
 /** Apply `push` with the others that arrive before the next tick, in arrival order. */
 export function inFrame(push: () => void): void {
+	queue.push(push);
 	if (typeof requestAnimationFrame !== "function" || typeof document === "undefined" || document.visibilityState === "hidden") {
+		// 连同 `afterPushes` 一起落：暂存的流式更新只在一批收尾时落下，这里不收尾它就一直等着。
 		flushPushes();
-		apply(push);
 		return;
 	}
-	queue.push(push);
 	if (!tick) tick = requestTick(() => {
 		tick = 0;
 		flushPushes();

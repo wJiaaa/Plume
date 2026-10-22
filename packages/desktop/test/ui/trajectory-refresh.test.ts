@@ -48,7 +48,7 @@ test("durable events during a read are drained once; old-session responses canno
 	}
 });
 
-test("reconnect and foreground recovery share the incremental read drain and remove their listeners on unmount", async () => {
+test("foreground recovery shares the incremental read drain and removes its listeners on unmount", async () => {
 	const requests: { cursor?: string; resolve: (changes: TrajectoryChanges) => void }[] = [];
 	const listeners = new Set<(payload: { sessionId: string; event: AgentEvent }) => void>();
 	const meta: SessionMeta = { id: "trace-reconnect", projectId: "p", projectName: "QA", cwd: "/tmp", title: "Reconnect", createdAt: 1, updatedAt: 1, messageCount: 1, seq: 1, modelId: "qa", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } };
@@ -62,44 +62,38 @@ test("reconnect and foreground recovery share the incremental read drain and rem
 	useApp.setState({ meta });
 	const view = await mount(h(Probe));
 	const entry = (seq: number, detail: string): Entry => ({ seq, ts: seq, source: "compaction", detail, summary: detail });
-	const connection = (detail: string) => window.dispatchEvent(new CustomEvent("plume:connection", { detail }));
 	try {
 		assert.equal(requests.length, 1);
 		assert.equal(requests[0].cursor, undefined);
-		await act(async () => requests[0].resolve({ cursor: "epoch:1", reset: true, upserts: [entry(1, "before disconnect")], removals: [] }));
-		await act(async () => {
-			connection("reconnecting");
-			useApp.setState({ meta: { ...meta, seq: 2, updatedAt: 2 } });
-		});
+		await act(async () => requests[0].resolve({ cursor: "epoch:1", reset: true, upserts: [entry(1, "before leaving")], removals: [] }));
+		await act(async () => useApp.setState({ meta: { ...meta, seq: 2, updatedAt: 2 } }));
 		assert.equal(requests.length, 1, "metadata updates must not start a duplicate trajectory read");
-		await act(async () => connection("connected"));
-		assert.equal(requests.length, 2, "a connection recovery must fetch changes missed while offline");
+		await act(async () => window.dispatchEvent(new Event("focus")));
+		assert.equal(requests.length, 2, "coming back to the window must fetch changes missed while away");
 		assert.equal(requests[1].cursor, "epoch:1");
 		await act(async () => {
 			window.dispatchEvent(new Event("focus"));
 			document.dispatchEvent(new Event("visibilitychange"));
-			connection("connected");
 		});
 		assert.equal(requests.length, 2, "recovery events must join the existing in-flight read");
-		await act(async () => requests[1].resolve({ cursor: "epoch:2", reset: false, upserts: [entry(1, "after reconnect"), entry(2, "missed event")], removals: [] }));
+		await act(async () => requests[1].resolve({ cursor: "epoch:2", reset: false, upserts: [entry(1, "after return"), entry(2, "missed event")], removals: [] }));
 		assert.equal(requests.length, 3, "the recovery burst must drain in one follow-up read");
 		assert.equal(requests[2].cursor, "epoch:2");
 		await act(async () => requests[2].resolve({ cursor: "epoch:2", reset: false, upserts: [], removals: [] }));
-		assert.match(view.text(), /false::after reconnect,missed event/);
-		assert.ok(!view.text().includes("before disconnect"));
+		assert.match(view.text(), /false::after return,missed event/);
+		assert.ok(!view.text().includes("before leaving"));
 
 		Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
 		await act(async () => {
 			document.dispatchEvent(new Event("visibilitychange"));
 			window.dispatchEvent(new Event("focus"));
-			connection("offline");
 		});
-		assert.equal(requests.length, 3, "backgrounding and disconnecting do not issue reads");
+		assert.equal(requests.length, 3, "backgrounding does not issue reads");
 		Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
 		await act(async () => document.dispatchEvent(new Event("visibilitychange")));
 		assert.equal(requests.length, 4);
 		await act(async () => requests[3].resolve({ cursor: "epoch:3", reset: false, upserts: [entry(3, "visible again")], removals: [] }));
-		assert.match(view.text(), /after reconnect,missed event,visible again/);
+		assert.match(view.text(), /after return,missed event,visible again/);
 		await act(async () => window.dispatchEvent(new Event("focus")));
 		assert.equal(requests.length, 5);
 		assert.equal(requests[4].cursor, "epoch:3");
@@ -109,7 +103,6 @@ test("reconnect and foreground recovery share the incremental read drain and rem
 		await view.unmount();
 		const finished = requests.length;
 		await act(async () => {
-			connection("connected");
 			window.dispatchEvent(new Event("focus"));
 			document.dispatchEvent(new Event("visibilitychange"));
 		});

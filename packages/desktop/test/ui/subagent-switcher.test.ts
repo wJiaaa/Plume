@@ -34,7 +34,7 @@ function summary(over: Partial<SubAgentSummary> & { id: string; tokens?: number;
 const noop = () => {};
 
 beforeEach(() => {
-	useSubAgents.setState({ agents: [], transcripts: {}, focused: null, loading: [] });
+	useSubAgents.setState({ rosters: {}, transcripts: {}, focused: null, loading: [] });
 });
 
 test("不足一分钱写 <$0.01，没有价钱的只写 token——便宜不是免费，不知道也不是", async () => {

@@ -1,7 +1,7 @@
 import { useI18n } from "../../i18n/index.ts";
 import type { TodoItem } from "@plume/core";
 import { ChevronDown, ListTodo, Pause, Play, RotateCw } from "../../ui/icons/index.ts";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { ScrollText } from "../../ui/scroll/ScrollText.tsx";
 import { Text } from "../../ui/primitives/Text.tsx";
@@ -24,7 +24,8 @@ import { useDelayedOffer } from "./hover-offer.ts";
  * push the conversation off the screen. Folded it is a single line naming what is happening right
  * now, for when the plan is in the way.
  */
-export function TaskList({ placement }: { placement: "floating" | "inline" }) {
+// Memoized on props: its parent also renders the transcript, which re-renders on every streaming tick.
+export const TaskList = memo(function TaskList({ placement }: { placement: "floating" | "inline" }) {
 	const { t } = useI18n();
 	const todos = useScopedTodos();
 	/*
@@ -175,7 +176,7 @@ export function TaskList({ placement }: { placement: "floating" | "inline" }) {
 			{!open && pending > 0 && <span className="sr-only">{t("taskList.pending", { n: pending })}</span>}
 		</div>
 	);
-}
+});
 
 function Row({
 	todo,

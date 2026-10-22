@@ -209,7 +209,7 @@ function Transcript({ agent, agents, sessionId }: {
 				<div ref={follow.tailRef} aria-hidden className="h-px w-full shrink-0" />
 			</Scroller>
 			{/* A delegate streams like anything else, and scrolling up in one used to be a one-way trip. */}
-			<BackToLatest show={follow.away} unread={follow.unread} onClick={follow.returnToBottom} />
+			<BackToLatest show={follow.away} unread={follow.unread} onClick={() => follow.returnToBottom()} />
 			</div>
 			{agent.status === "running" && sessionId ? (
 				<Steer agent={agent} sessionId={sessionId} />

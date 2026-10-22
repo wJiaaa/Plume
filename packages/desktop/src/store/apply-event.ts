@@ -13,12 +13,10 @@ import type { AgentEvent } from "@plume/core";
 import { addTurnUsage, type TurnMeter, type CarriedTurn } from "./turn-meter.ts";
 import { nextActivity } from "@plume/core/activity";
 import { recordReadEvent } from "./read-events.ts";
-import { cachedEvent } from "./cached-event.ts";
-import { messageEvent } from "./message-event.ts";
+import { cachedEvent, foldEvent, type SessionSlot } from "./cached-event.ts";
 import { coalesce, flushCoalesced, flushCoalescedUnder } from "./coalesce.ts";
-import { applyToolEvent } from "./apply-tool.ts";
-import { howItStopped } from "./derive.ts";
-import { freeze, relight, saveCarried } from "./turn-meter.ts";
+import { slotState } from "./derive.ts";
+import { freeze, loadCarried, relight, saveCarried } from "./turn-meter.ts";
 /*
  * `sideStore.ts` directly, not the domain's index.
  *
@@ -33,11 +31,8 @@ import { freeze, relight, saveCarried } from "./turn-meter.ts";
 import { sideParentOf, useSide } from "../features/dock/sideStore.ts";
 import { awaitingSubAgents, delegating, useSubAgents } from "./subAgents.ts";
 import { waitsOnSession } from "./tool-run.ts";
-import { outlivingTurn } from "../lib/approval-scope.ts";
 import type { AppState } from "./index.ts";
-import { settleTail } from "../lib/transcript.ts";
 import { noticeText } from "../lib/notice-text.ts";
-import { foldRetry, settleHiccups } from "../lib/hiccup.ts";
 import { bridge } from "../services/index.ts";
 import { sessionTitle } from "../lib/session-title.ts";
 import { completionNotice } from "../lib/session-notifications.ts";
@@ -195,10 +190,14 @@ export function applyAgentEvent(sessionId: string, event: AgentEvent, set: Set, 
      */
     let carriedNext: CarriedTurn | null | undefined;
     if (event.type === "agent_start") {
-      // Kept if it is already running: a continuation is the same turn, not a new one.
-      // If not currently running but carried exists, relight from the carried meter so continuation preserves timing and tokens.
-      const carried = get().carried ?? {};
-      next = meter ?? (carried[sessionId] ? relight(carried[sessionId], Date.now()) : { startedAt: Date.now(), tokens: 0 });
+      /*
+       * Kept if it is already running: a continuation is the same turn, not a new one. A turn started
+       * from elsewhere (no `send` in this window to hand it a meter) picks up what a stop froze for
+       * 继续, and takes it off the shelf so it is not picked up twice. 重启之后架上的那份只在磁盘上。
+       */
+      const carried = get().carried[sessionId] ?? loadCarried(sessionId);
+      next = meter ?? relight(carried, Date.now());
+      if (carried) carriedNext = null;
     } else if (event.type === "message_end" && event.message.role === "assistant") {
       /*
        * Counted when the reply ends, because that is when there is anything to count.
@@ -271,10 +270,16 @@ export function applyAgentEvent(sessionId: string, event: AgentEvent, set: Set, 
       if (next) turns[sessionId] = next;
       else delete turns[sessionId];
       set({ turns });
-      // And mirror it onto the pair the running line reads, while this is the one on screen.
-      if (sessionId === get().activeSessionId) {
-        set({ turnStartedAt: next?.startedAt ?? null, turnTokens: next?.tokens ?? 0 });
-      }
+    }
+    /*
+     * And mirror it onto the pair the running line reads, while this is the one on screen.
+     *
+     * `agent_start` even when the meter did not change: the composer lit it when it sent, and the ~2s
+     * of setup before the agent starts is part of the wait — the pair has to say the meter's start,
+     * not the agent's. A turn driven from the scheduler has no composer, and gets the meter lit above.
+     */
+    if ((next !== meter || event.type === "agent_start") && sessionId === get().activeSessionId) {
+      set({ turnStartedAt: next?.startedAt ?? null, turnTokens: next?.tokens ?? 0 });
     }
 
     if (carriedNext !== undefined) {
@@ -284,14 +289,17 @@ export function applyAgentEvent(sessionId: string, event: AgentEvent, set: Set, 
       saveCarried(sessionId, carriedNext);
       set({ carried });
     }
+  }
 
-    // If we relighted from carried on agent_start, consume/clear carried so it won't linger
-    if (event.type === "agent_start" && get().carried?.[sessionId]) {
-      const carried = { ...get().carried };
-      delete carried[sessionId];
-      saveCarried(sessionId, null);
-      set({ carried });
-    }
+  /*
+   * 一轮收尾时读一次会话列表。排序和标题跟着 `sessions:changed` 走（见 `session-changes.ts`），不等这里；
+   * 侧边聊天的花销（`sideUsage`）只有读列表才算得出来，推送过来的变化里没有。侧边聊天不在列表上。
+   */
+  if (event.type === "agent_end" && !aside) {
+    void bridge.sessions.list().then(
+      (sessions) => set({ sessions }),
+      (cause: unknown) => get().notify(translate("applyEvent.refreshFailed", { reason: cause instanceof Error ? cause.message : String(cause) }), "error"),
+    );
   }
 
   if (sessionId !== get().activeSessionId) {
@@ -320,30 +328,9 @@ export function applyAgentEvent(sessionId: string, event: AgentEvent, set: Set, 
       flushCoalescedUnder(held);
       const cached = get().sessionCache[sessionId];
       if (cached) {
-        const settled = cachedEvent(cached, event);
-        const next = handoff && settled.state ? { ...settled, state: { ...settled.state, running: true, stopped: null } } : settled;
+        const next = cachedEvent(cached, event, handoff);
         if (next !== cached) set({ sessionCache: { ...get().sessionCache, [sessionId]: next } });
       }
-    }
-
-    if (event.type === "title") {
-      set({
-        sessions: get().sessions.map((s) =>
-          s.id === sessionId ? { ...s, title: event.title } : s,
-        ),
-      });
-      return;
-    }
-    // A turn driven from elsewhere still has to move the session up the sidebar and
-    // update its title, even though its transcript is not on screen. A side chat is not in the
-    // sidebar; what changes about it arrives through `sessions:changed`.
-    if (!aside && (event.type === "agent_end" || event.type === "turn_end")) {
-      void bridge.sessions
-        .list()
-				.then((sessions) => set({ sessions }))
-				.catch((cause: unknown) =>
-				get().notify(translate("applyEvent.refreshFailed", { reason: cause instanceof Error ? cause.message : String(cause) }), "error"),
-			);
     }
     return;
   }
@@ -367,46 +354,17 @@ export function applyAgentEvent(sessionId: string, event: AgentEvent, set: Set, 
    */
   if (event.type !== "message_update" && event.type !== "tool_update") flushCoalesced();
 
+  /** 这一条落到屏上这个会话，规则和停在缓存里的那些是同一份（`foldEvent`）。 */
+  const fold = () => {
+    const slot: SessionSlot = { ...slotState(get()), messages: get().messages, toolRuns: get().toolRuns };
+    const next = foldEvent(slot, event, sessionId, handoff);
+    if (next !== slot) set(next);
+  };
+
   switch (event.type) {
-    case "agent_start":
-      set({
-        running: true,
-        retrying: null,
-        /*
-         * 上一轮的波折不带进这一轮。
-         *
-         * 记录挂在转录末尾，说的是「这一轮发生了什么」。留着上一轮的，它就会显示在一段跟它无关的
-         * 回答下面——而那一轮的事，读的人已经在当时看过了。
-         */
-        hiccups: [],
-        stopped: null,
-        // The composer already started the clock when it sent, and the ~2s of session
-        // setup before the agent starts is part of the wait. Overwriting it here made
-        // the elapsed time jump backwards. A turn driven from the scheduler has no
-        // composer, so it starts the clock here instead.
-        turnStartedAt: get().turns?.[sessionId]?.startedAt ?? get().turnStartedAt ?? Date.now(),
-        turnTokens: get().turns?.[sessionId]?.tokens ?? get().turnTokens ?? 0,
-        /*
-         * The count is the meter's to set, and it has already set it, a few lines up.
-         *
-         * A flat zero here was the third place this turn's tokens were decided and the last one to
-         * run, so it quietly undid the others: the block above deliberately keeps a continuation's
-         * total — "a continuation is the same turn, not a new one" — and this threw that away on
-         * the very next statement. A turn resumed after a pause went back to zero however carefully
-         * the total had been carried to it.
-         */
-      });
-      break;
-
-    case "message_start":
-    case "message_end":
-      set(messageEvent(get(), event, sessionId));
-			if (event.message.role === "user" && event.message.clearsTaskPlan === true) set({ todos: [] });
-      break;
-
     case "message_update":
       coalesce(() => {
-        if (get().activeSessionId === sessionId) set(messageEvent(get(), event, sessionId));
+        if (get().activeSessionId === sessionId) fold();
       });
       break;
 
@@ -417,68 +375,15 @@ export function applyAgentEvent(sessionId: string, event: AgentEvent, set: Set, 
        * 它的 `tool_end` 照常先把它落下（上面的 `flushCoalesced`）。
        */
       coalesce(() => {
-        if (get().activeSessionId === sessionId) applyToolEvent(event, set, get);
+        if (get().activeSessionId === sessionId) fold();
       }, `tool:${event.toolCallId}`);
       break;
 
-    case "tool_start":
-    case "tool_end":
-      applyToolEvent(event, set, get);
+    case "agent_end":
+      fold();
+      // 被「现在就发」停下的那一轮：表也不收，新的一轮马上接上。
+      if (!handoff) set({ turnStartedAt: null });
       break;
-
-    case "approval_request":
-      set({
-        approvals: [
-          ...get().approvals,
-          {
-            id: event.requestId,
-            kind: event.kind,
-            title: event.title,
-            detail: event.detail,
-            ...(event.reason ? { reason: event.reason } : {}),
-            ...(event.risk ? { risk: event.risk } : {}),
-            subject: event.subject,
-            ...(event.escalation ? { escalation: event.escalation } : {}),
-            ...(event.fields ? { fields: event.fields } : {}),
-            ...(event.options ? { options: event.options } : {}), ...(event.allowCustomInput !== undefined ? { allowCustomInput: event.allowCustomInput } : {}), selectionMode: event.selectionMode, allowSkip: event.allowSkip, defaultOptionIndex: event.defaultOptionIndex,
-            // Rebuilt field by field, so anything added to the event has to be added here too.
-            ...(event.expiresAt !== undefined ? { expiresAt: event.expiresAt } : {}),
-            ...(event.from ? { from: event.from } : {}),
-          },
-        ],
-      });
-      break;
-
-    // 一张卡收场了（答了、超时、问它的子智能体停下了）——核心说一声，这里拿走。
-    case "approval_settled":
-      if (get().approvals.some((one) => one.id === event.requestId)) {
-        set({ approvals: get().approvals.filter((one) => one.id !== event.requestId) });
-      }
-      break;
-
-    case "rewound":
-      // The agent discarded a tail of history; match it exactly rather than guessing
-      // from the messages that arrive next.
-			set({ messages: get().messages.slice(0, event.messageCount),
-				commandRuns: get().commandRuns.filter((run) => run.at <= event.messageCount),
-				hookRuns: get().hookRuns.filter((run) => run.at <= event.messageCount),
-				compactions: get().compactions.filter((run) => run.at <= event.messageCount),
-				// 抖动记录也按位置活着（见 `lib/hiccup.ts` 的 `at`），所以被丢掉的那一截里发生过的
-				// 事情跟着一起走——留下来的话它会滑到转录末尾，说给一段已经不存在的工作。
-				hiccups: get().hiccups.filter((one) => one.at <= event.messageCount) });
-      break;
-
-    case "title": {
-      // Rename in place: the list is sorted by recency and this is not a new use.
-      const meta = get().meta;
-      set({
-        meta: meta ? { ...meta, title: event.title } : meta,
-        sessions: get().sessions.map((s) =>
-          s.id === sessionId ? { ...s, title: event.title } : s,
-        ),
-      });
-      break;
-    }
 
     case "tasks":
       // 记到这条事件自己的会话名下——分屏时屏上不止一个会话，「屏上那个」不再是唯一答案。
@@ -510,62 +415,6 @@ export function applyAgentEvent(sessionId: string, event: AgentEvent, set: Set, 
     // 子代理里跑的钩子归它自己的面板，不进上面主会话的 `hookRuns`。
     case "subagent_event":
       if (event.event.type === "hook_run") useSubAgents.getState().hookRun(event.id, event.event.run);
-      break;
-
-    case "retry":
-      // Stamped on arrival: the delay is counted from now, and the countdown reads the clock.
-      set({
-        retrying: {
-          attempt: event.attempt,
-          until: Date.now() + event.delayMs,
-          reason: event.reason,
-        },
-        // 同一次中断折进同一条记录，次数往上加；见 `hiccup.ts`。位置是转录此刻的末尾——断线
-        // 发生在这儿，记录也该留在这儿，而不是一路跟到这一轮的最下面。
-        hiccups: foldRetry(get().hiccups, event, Date.now(), get().messages.length),
-      });
-      break;
-
-    /*
-     * 那次中断收场了——接上了，还是没接上。
-     *
-     * `retrying` 之所以还要单独清一次，是因为它管的是运行行上那句「N 秒后重连」：接上之后那句话
-     * 必须立刻消失，而记录要留下。两件事，两个字段，同一个事件喂。
-     */
-    case "retry_settled":
-      set({ hiccups: settleHiccups(get().hiccups, event, get().messages.length), retrying: null });
-      break;
-
-		// 同一条钩子先报「开始」再报结局，按 id 替换，位置（`at`）以第一次为准——`SessionLog` 已经盖好了。
-		case "hook_run":
-			set({ hookRuns: [...get().hookRuns.filter((run) => run.id !== event.run.id), event.run] });
-			break;
-
-		case "command_status": {
-			// 一轮里的自动压缩跟着那一轮亮灭；一轮收尾后的那种（`automatic.idle`）外面没有轮，和手动压缩一样自己亮灭。
-			const own = !event.command.automatic || event.command.automatic.idle === true;
-			set({ ...(own ? { running: event.command.status === "running" } : {}), commandRuns: [...get().commandRuns.filter((run) => run.id !== event.command.id), event.command] });
-			break;
-		}
-
-    case "compacted":
-      /*
-       * A marker in the transcript, not a toast.
-       *
-       * Everything above this point is a summary as far as the model is concerned. That is a
-       * property of the conversation and belongs in it — a notice would say it once and then
-       * take the explanation away with it.
-       */
-      set({
-        ...(event.command ? { commandRuns: [...get().commandRuns.filter(run => run.id !== event.commandId), event.command] } : {}),
-        // 自动压缩的结局只有这一条，没有收尾的 `command_status`：收尾后的那种在这里熄灭「进行中」。
-        ...(event.command?.automatic?.idle ? { running: false } : {}),
-        compactions: [
-          ...get().compactions,
-          { at: get().messages.length, before: event.before, after: event.after },
-        ],
-        compactedAt: Date.now(),
-      });
       break;
 
     case "notice":
@@ -600,31 +449,7 @@ export function applyAgentEvent(sessionId: string, event: AgentEvent, set: Set, 
       break;
     }
 
-    case "agent_end": {
-      /*
-       * Settled first, then read — in that order, because the answer depends on it.
-       *
-       * `settleTail` is what turns the half-written reply into an `aborted` one; asking the old
-       * list how the turn stopped would be asking a message that still says `pending`.
-       */
-      const settled = settleTail(get().messages, event);
-      set({
-        // 被「现在就发」停下的那一轮：会话不放下，表也不收，新的一轮马上接上。
-        running: handoff,
-        retrying: null,
-        // 主会话自己的问题跟着这一轮走；后台子智能体的还等着人，见 `outlivingTurn`。
-        approvals: outlivingTurn(get().approvals),
-        compactedAt: null,
-        pendingUserMessage: null,
-        ...(handoff ? {} : { turnStartedAt: null }),
-        messages: settled,
-        commandRuns: get().commandRuns.map(run => run.automatic && run.status === "running" ? { ...run, status: "cancelled", detail: translate("compact.autoInterrupted") } : run),
-        stopped: handoff ? null : howItStopped(settled, event.reason),
-      });
-      void bridge.sessions
-        .list()
-				.then((sessions) => set({ sessions }));
-      break;
-    }
+    default:
+      fold();
   }
 }

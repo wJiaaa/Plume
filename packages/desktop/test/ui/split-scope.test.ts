@@ -39,7 +39,7 @@ beforeEach(() => {
 	const b = meta("b");
 	useApp.setState({
 		activeSessionId: "a", meta: a, messages: [said("甲的话")], sessions: [a, b], workspace: null, scratchCwd: "/test", scratchRoots: ["/test"],
-		sessionCache: { b: { meta: b, messages: [said("乙的话")], toolRuns: {}, state: { running: false, approvals: [], todos: [], compactions: [], stopped: null, retrying: null, capabilities: null, pendingUserMessage: null } } },
+		sessionCache: { b: { meta: b, messages: [said("乙的话")], toolRuns: {}, state: { running: false, approvals: [], todos: [], compactions: [], stopped: null, retrying: null, capabilities: null, pendingUserMessage: null, commandRuns: [], hookRuns: [], hiccups: [], compactedAt: null } } },
 		toolRuns: {}, running: false, pendingUserMessage: null, activity: {}, turns: {}, carried: {}, notices: [], settings: null, loadingSession: false,
 		composerDraft: { text: "", replace: false, attachments: [], sessionRefs: [] },
 	} as never);

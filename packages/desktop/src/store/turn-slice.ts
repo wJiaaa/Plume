@@ -9,7 +9,7 @@
 import { translate } from "../i18n/translate.ts";
 import type { ApprovalDecision, AssistantMessage, Message, MessageAttachment, SessionMeta, SpawnedFrom, ThinkingLevel, UserContent, UserMessage } from "@plume/core";
 import type { SessionSnapshot } from "@plume/contract";
-import { prune, rebuildToolRuns, todosFrom, without } from "./derive.ts";
+import { EMPTY_SLOT, prune, rebuildToolRuns, todosFrom, without } from "./derive.ts";
 import { howItStopped } from "./turn-stop.ts";
 import { loadCarried, meterFor, saveCarried, type TurnMeter } from "./turn-meter.ts";
 import type { AppState } from "./index.ts";
@@ -100,7 +100,7 @@ export function turnSlice(set: Set, get: Get) {
 			turns: { ...get().turns, [id]: meter },
 			sessionCache: prune({ ...get().sessionCache, [id]: {
 				meta: snapshot.meta, messages: snapshot.messages, toolRuns: {},
-				state: { running: true, approvals: [], todos: [], compactions: [], stopped: null, retrying: null, capabilities: null, pendingUserMessage: null },
+				state: { ...EMPTY_SLOT, running: true },
 			} }, id),
 		};
 	};

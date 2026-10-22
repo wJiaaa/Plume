@@ -5,8 +5,8 @@
  * needs a DOM: where the reader's intention is heard from, when the position is written, and how
  * the way back is animated.
  *
- * Three surfaces call this — the conversation, the side chat, a delegate's transcript — and before
- * it they each had their own near-copy. The copies had drifted: different slack, only one of them
+ * Every transcript calls this — the conversation (the side chat is one too) and a delegate's — and
+ * before it they each had their own near-copy. The copies had drifted: different slack, only one of them
  * watching for content resizing, only one offering a way back. Anything fixed in one stayed broken
  * in the other two, which is the actual reason this exists.
  */
@@ -111,7 +111,8 @@ export interface FollowBottom {
 	returnToBottom(instant?: boolean): void;
 	/** Explicit navigation owns the scroll position even while a reply is streaming. */
 	detach(): void;
-	scrollTo(top: number, instant?: boolean): void;
+	/** Jump there at once; navigation owns the position from then on. */
+	scrollTo(top: number): void;
 	/** Hand to `Scroller`'s `onScroll`. */
 	onScroll(el: HTMLDivElement): void;
 	/** Hand to `Scroller`'s `onResize`. */
@@ -134,13 +135,6 @@ export interface FollowBottom {
 	 * 跟随底部让路。没有它，点开历史里的一个工具组会把读者直接甩到转录末尾。
 	 */
 	hold(target: EventTarget | null): void;
-	/**
-	 * Hand to `Scroller`'s `onSettle`: run inside the resize callback, before the frame is painted.
-	 *
-	 * 和 `onResize` 是同一件事的两半。这一半只改 `scrollTop`，所以能同步跑在 `ResizeObserver`
-	 * 的回调里——展开动画每一帧都长高一点，修正晚一帧就是一串看得见的小抖。
-	 */
-	settle(el: HTMLDivElement): boolean;
 }
 
 export function useFollowBottom({
@@ -373,7 +367,6 @@ export function useFollowBottom({
 		(el: HTMLDivElement) => {
 			const reading = read(el);
 			const grew = reading.scrollHeight - size.current.content;
-			const known = size.current.content > 0;
 			const sameView = reading.clientHeight === size.current.view;
 			size.current = { content: reading.scrollHeight, view: reading.clientHeight };
 			const now = performance.now();
@@ -388,7 +381,7 @@ export function useFollowBottom({
 			// 窗口没焦点时不追，直接贴底：正文那时按 10Hz 长（`ticker.ts`），弹簧却照样每帧写 `scrollTop`，
 			// 失焦省下的那点几乎全被它吃掉。没人盯着看的时候，这一段滑不滑没有区别。
 			const slide =
-				!arriving.current.on && output && known && sameView && grew >= 0 && grew <= reading.clientHeight && target > reading.scrollTop && (moving || grew > 0) && !motionReduced() && windowFocused();
+				!arriving.current.on && output && sameView && grew >= 0 && grew <= reading.clientHeight && target > reading.scrollTop && (moving || grew > 0) && !motionReduced() && windowFocused();
 			if (!slide) {
 				cancelAnimationFrame(chase.current);
 				chase.current = 0;
@@ -598,6 +591,16 @@ export function useFollowBottom({
 		[publish, ready, surfaceId, remember],
 	);
 
+	/** 换过来以后头一次量到真尺寸：读者在这儿往上翻过的话，放回上次停的位置。只做一次。 */
+	const restoreOnce = useCallback(
+		(el: HTMLDivElement) => {
+			if (restoredSurface.current === surfaceId) return;
+			restoredSurface.current = surfaceId;
+			if (state.current === "detached" && restore.current) write(el, restore.current.scrollTop);
+		},
+		[surfaceId, write],
+	);
+
 	/**
 	 * The box or its contents changed size.
 	 *
@@ -608,25 +611,21 @@ export function useFollowBottom({
 	 */
 	const onResize = useCallback(
 		(el: HTMLDivElement) => {
+			// 手里按着东西的时候，跟随底部让路——细节见 `settle`。排在下面的门前面：会话还在读盘时点开
+			// 一段折叠区，也要把按到的那一块放回原处。
+			const held = settle(el);
 			if (!ready || selectedSurface.current !== surfaceId) return;
 			const reading = read(el);
 			if (isDegenerate(reading)) return;
-			if (restoredSurface.current !== surfaceId) {
-				restoredSurface.current = surfaceId;
-				if (state.current === "detached" && restore.current) write(el, restore.current.scrollTop);
+			restoreOnce(el);
+			if (!held) {
+				if (state.current === "following") pin(el);
+				else keepPlace(el);
 			}
-			// 手里按着东西的时候，跟随底部让路——细节见 `settle`。
-			if (settle(el)) {
-				remember(el);
-				publish(read(el));
-				return;
-			}
-			if (state.current === "following") pin(el);
-			else keepPlace(el);
 			remember(el);
 			publish(read(el));
 		},
-		[publish, write, ready, surfaceId, settle, pin, keepPlace, remember],
+		[publish, ready, surfaceId, settle, restoreOnce, pin, keepPlace, remember],
 	);
 
 	/**
@@ -703,12 +702,6 @@ export function useFollowBottom({
 		setAway(false);
 	}, [publish, write]);
 
-	useEffect(() => () => {
-		cancelAnimationFrame(glide.current);
-		cancelAnimationFrame(chase.current);
-		cancelAnimationFrame(clearWritten.current);
-	}, []);
-
 	// ---------------------------------------------------------------------------
 	// Catching up
 	// ---------------------------------------------------------------------------
@@ -754,9 +747,6 @@ export function useFollowBottom({
 	 * request view does to the whole transcript.
 	 */
 	useLayoutEffect(() => {
-		cancelAnimationFrame(glide.current);
-		cancelAnimationFrame(chase.current);
-		chase.current = 0;
 		size.current = { content: 0, view: 0 };
 		const arrival = arriving.current;
 		arrival.on = true;
@@ -765,7 +755,6 @@ export function useFollowBottom({
 				arrival.on = false;
 			});
 		});
-		cancelAnimationFrame(clearWritten.current);
 		written.current = null;
 		touchY.current = 0;
 		restoredSurface.current = undefined;
@@ -773,6 +762,9 @@ export function useFollowBottom({
 		place.current = null;
 		current.current = makeMarker(count, tail);
 		restore.current = surfaceId ? readFollow(namespace, surfaceId) : undefined;
+		// The incoming surface's own remembered intention, never the outgoing one's. Carrying the
+		// previous session's across is what made a transcript you had scrolled up in hand its
+		// position — and its unread dot — to whichever conversation you opened next.
 		state.current = restore.current?.following === false ? "detached" : "following";
 		seen.current = restore.current?.seen ?? null;
 		setUnread(0);
@@ -780,10 +772,12 @@ export function useFollowBottom({
 
 		return () => {
 			// A glide belongs to the outgoing surface. Its intention is saved below, while its frames
-			// must stop before the incoming surface reuses the same state and element refs.
+			// must stop before the incoming surface reuses the same state and element refs. Runs on
+			// unmount too, so this is the one place they are all stopped.
 			cancelAnimationFrame(glide.current);
 			cancelAnimationFrame(chase.current);
 			chase.current = 0;
+			cancelAnimationFrame(clearWritten.current);
 			cancelAnimationFrame(arrival.frame);
 			/*
 			 * The position comes from `lastTop`, not from the element.
@@ -825,10 +819,7 @@ export function useFollowBottom({
 		if (!el || !ready) return;
 		const reading = read(el);
 		if (isDegenerate(reading)) return;
-		if (restoredSurface.current !== surfaceId) {
-			restoredSurface.current = surfaceId;
-			if (state.current === "detached" && restore.current) write(el, restore.current.scrollTop);
-		}
+		restoreOnce(el);
 
 		if (state.current === "following") {
 			pin(el);
@@ -839,35 +830,20 @@ export function useFollowBottom({
 			setUnread(unreadSince(seen.current, current.current));
 		}
 		publish(read(el));
-	}, [count, tail, publish, write, ready, surfaceId, pin]);
+	}, [count, tail, publish, ready, restoreOnce, pin]);
 
 	const detach = useCallback(() => {
 		cancelAnimationFrame(glide.current);
 		state.current = "detached";
 	}, []);
-	const scrollTo = useCallback((top: number, instant = false) => {
+	const scrollTo = useCallback((top: number) => {
 		detach();
 		const el = scrollRef.current;
 		if (!el) return;
-		const target = Math.max(0, Math.min(top, el.scrollHeight - el.clientHeight));
-		if (instant || motionReduced()) {
-			write(el, target);
-			publish(read(el));
-			return;
-		}
-		// Native smooth scroll takes over a second across long answers; navigation shares the
-		// app's bounded glide and its cancellation on input, unmount and session selection.
-		const from = el.scrollTop;
-		const started = performance.now();
-		const step = (now: number) => {
-			const progress = Math.min(1, (now - started) / GLIDE_MS);
-			write(el, from + (target - from) * (1 - (1 - progress) ** 3));
-			publish(read(el));
-			if (progress < 1) glide.current = requestAnimationFrame(step);
-		};
-		glide.current = requestAnimationFrame(step);
+		write(el, Math.max(0, Math.min(top, el.scrollHeight - el.clientHeight)));
+		publish(read(el));
 	}, [detach, publish, write]);
-	return { scrollRef, tailRef, away, unread, returnToBottom, onScroll, onResize, onUserScroll: intend, detach, scrollTo, hold, settle };
+	return { scrollRef, tailRef, away, unread, returnToBottom, onScroll, onResize, onUserScroll: intend, detach, scrollTo, hold };
 }
 
 /**

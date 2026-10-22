@@ -7,7 +7,7 @@
  * 另一段。
  */
 
-import { useEffect, useState, type RefObject } from "react";
+import { memo, useEffect, useState, type RefObject } from "react";
 import { useScopedSessionId } from "../../app/session-scope.tsx";
 import { quoteInSideChat } from "../dock/index.ts";
 import { useI18n } from "../../i18n/index.ts";
@@ -49,7 +49,8 @@ function atOf(range: Range): Picked["at"] {
 	return { x: rect.left + rect.width / 2, y: rect.top };
 }
 
-export function QuoteMenu({ scrollRef }: { scrollRef: RefObject<HTMLDivElement | null> }) {
+// 按 props 记住：它和转录挂在同一个组件里，转录流式输出时每一拍都重画。
+export const QuoteMenu = memo(function QuoteMenu({ scrollRef }: { scrollRef: RefObject<HTMLDivElement | null> }) {
 	const { t } = useI18n();
 	const sessionId = useScopedSessionId();
 	const [picked, setPicked] = useState<Picked | null>(null);
@@ -161,4 +162,4 @@ export function QuoteMenu({ scrollRef }: { scrollRef: RefObject<HTMLDivElement |
 			</div>
 		</Popover>
 	);
-}
+});

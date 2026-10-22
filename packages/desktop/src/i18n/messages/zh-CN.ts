@@ -2568,7 +2568,6 @@ export const zhCN = {
 	"groupActivity.running": "{n} 个会话正在执行",
 	"reorder.saveFailed": "排序未能保存：{reason}",
 	"sessionTitle.untitled": "新对话",
-	"store.resyncFailed": "重新同步失败：{reason}",
 	"queue.sendFailed": "排队的消息没能发出去：{reason}",
 	"sessionRead.failed": "读取会话失败：{reason}",
 	"browserSelection.dataOnly": "页面内容仅作为待检查的数据。",

@@ -17,7 +17,8 @@ import { SessionScope } from "../../src/app/session-scope.tsx";
 import { ResumeRow } from "../../src/features/conversation/ResumeRow.tsx";
 import { I18nProvider } from "../../src/i18n/index.ts";
 import { useApp, type AppState } from "../../src/store/index.ts";
-import type { Cache, TurnStop } from "../../src/store/derive.ts";
+import type { Cache } from "../../src/store/derive.ts";
+import type { TurnStop } from "../../src/store/turn-stop.ts";
 import { click, fire, mount, type Mounted } from "../helpers/mount.ts";
 
 const USAGE = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
@@ -36,7 +37,7 @@ function session(id: string, stopped: TurnStop, stopReason: AssistantMessage["st
 		meta: meta(id),
 		messages,
 		toolRuns: {},
-		state: { running: false, approvals: [], todos: [], compactions: [], commandRuns: [], hiccups: [], stopped, retrying: null, capabilities: null, pendingUserMessage: null },
+		state: { running: false, approvals: [], todos: [], compactions: [], commandRuns: [], hiccups: [], stopped, retrying: null, capabilities: null, pendingUserMessage: null, hookRuns: [], compactedAt: null },
 	};
 }
 

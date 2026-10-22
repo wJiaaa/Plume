@@ -65,6 +65,8 @@ function loop(now: number): void {
 	// 每拍现读：挂扫光的那层可能比「开始运行」晚出现（摘要是流式写进来的）。
 	const found = [...entries].map((entry) => [entry, entry.ref.current?.getAnimations({ subtree: true }) ?? []] as const);
 	for (const [entry, animations] of found) {
+		// 换了一句话，扫光那层跟着重挂，旧的动画就没了：不清的话，一段活跑得越久这里攒得越多。
+		for (const animation of entry.clocks.keys()) if (!animations.includes(animation)) entry.clocks.delete(animation);
 		for (const animation of animations) {
 			// 只认 CSS 动画；按属性认而不是 `instanceof`，测试用的 DOM 里没有 `CSSAnimation` 这个类。
 			if (!("animationName" in animation) || !entry.names.has((animation as CSSAnimation).animationName)) continue;

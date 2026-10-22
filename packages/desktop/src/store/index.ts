@@ -1,6 +1,5 @@
 import type { TurnMeter, CarriedTurn } from "./turn-meter.ts";
 import type { ApprovalOrigin, ApprovalRequest, ApprovalRisk, QuestionFields } from "@plume/core";
-import { translate } from "../i18n/translate.ts";
 import { applySessionChange } from "./session-changes.ts";
 import type {
 	AgentCapabilities,
@@ -12,10 +11,9 @@ import type {
 import type { AgentEvent, ApprovalDecision, AssistantMessage, CommandRun, HookRun, Message, MessageAttachment, SessionMeta, Settings, SpawnedFrom, ThinkingLevel, UserContent, UserMessage } from "@plume/core";
 import { type SessionActivity } from "@plume/core/activity";
 import { applyAgentEvent } from "./apply-event.ts";
-import type { Cache, TurnStop } from "./derive.ts";
-import { howItStopped } from "./turn-stop.ts";
+import type { Cache } from "./derive.ts";
+import { howItStopped, type TurnStop } from "./turn-stop.ts";
 import { sessionSlice } from "./session-slice.ts";
-import { readSelectedSession, readSideSession } from "./session-read.ts";
 import { queueSlice, type QueueSlice } from "./queue-slice.ts";
 import { turnSlice } from "./turn-slice.ts";
 import { workspaceSlice } from "./workspace-slice.ts";
@@ -317,13 +315,6 @@ export interface AppState extends QueueSlice {
   sessionCache: Cache;
   running: boolean;
   /**
-   * When the turn in progress began, and what it has spent so far.
-   *
-   * A long turn is mostly silence — tool calls scrolling past with no sense of how long this
-   * has been going or what it is costing. Both are tracked from the agent's own events so the
-   * indicator reports the real thing rather than a guess.
-   */
-  /**
    * The turn meter for the conversation on screen: when it started, and what it has spent.
    *
    * Mirrors `turns[activeSessionId]` so the running line can read two plain values. See `turns`
@@ -525,12 +516,10 @@ export interface AppState extends QueueSlice {
    *
    * It reaches the model like any other, and the transcript does not draw it: putting words in
    * someone's mouth in their own voice is worse than the button having no visible effect.
-   */
-  /**
+   *
    * `carryOn` says this send continues a turn that stopped rather than starting a new one, so its
    * clock and token count are picked up from where the pause left them. See `turn-meter.ts`.
-   */
-  /**
+   *
    * `sessionId` 指定发给哪个会话，默认是屏幕上这个。
    *
    * 队列才需要它：排队的消息等的是「那一轮结束」，而那一轮结束时人可能已经切到别的对话去了——
@@ -539,8 +528,9 @@ export interface AppState extends QueueSlice {
    * `null` names the blank conversation: a new one is created, whatever holds the live slot. A split's
    * blank screen has no id to give, and leaving it out fell back to the live conversation — so what
    * was typed into a split's fresh screen went to whichever conversation had focus.
+   *
+   * `worktree`: for a new conversation, whether it gets a worktree of its own; absent follows the setting.
    */
-	/** `worktree`: for a new conversation, whether it gets a worktree of its own; absent follows the setting. */
 	send(content: UserContent[], options?: { synthetic?: boolean; carryOn?: boolean; deliver?: "steer" | "followUp" | "interrupt"; displayText?: string; skillRef?: { name: string; path?: string; pluginId?: string }; sessionRefs?: Array<{ id: string; title: string }>; attachments?: MessageAttachment[]; sessionId?: string | null; worktree?: boolean }): Promise<boolean>;
   /**
    * Start a conversation suggested by a `spawn_session` card, in the suggesting conversation's
@@ -675,7 +665,6 @@ export const useApp = create<AppState>((set, get) => ({
     if (booted) return;
     booted = true;
 		let initialComplete = false;
-		let connectionInterrupted = false;
 		const initialChanges: SessionChange[] = [];
 		// 这两路按帧合批，见 `services/pushes.ts`：开始一轮时它们在几十毫秒里连着来六七条。
 		bridge.sessions.onChanged((change) => inFrame(() => {
@@ -734,18 +723,6 @@ export const useApp = create<AppState>((set, get) => ({
 		bridge.agent.onEvent(({ sessionId, event }) => replies.read(sessionId, event));
 		// 推送本来就按拍成批，暂存的流式更新跟着这一批落下，不再另等一拍。
 		afterPushes(flushCoalesced);
-		if (typeof window !== "undefined") {
-			window.addEventListener("plume:connection", (event) => {
-				const status = event instanceof CustomEvent ? event.detail : null;
-				if (status === "reconnecting" || status === "offline") {
-					connectionInterrupted = true;
-					return;
-				}
-				if (status !== "connected" || !connectionInterrupted || !initialComplete) return;
-				connectionInterrupted = false;
-				void refreshRemoteState(set, get);
-			});
-		}
 
     const [settings, sessions] = await Promise.all([
       bridge.settings.get(),
@@ -757,8 +734,6 @@ export const useApp = create<AppState>((set, get) => ({
     const info = lastProject ? await bridge.workspace.info(lastProject.path) : null;
     // Which project, not only which folder: another project may share it. The folder only knows its basename.
     const workspace = info && lastProject ? { ...info, name: lastProject.name, projectId: lastProject.id } : null;
-    // Where pull request conversations live, so the sidebar can leave them out. One call, at
-    // boot: it is derived from the app's home and cannot change while running.
     // Where project-less conversations live, so the sidebar can leave them out. One call, at
     // boot: it is derived from the app's home and cannot change while running.
     const scratchRoots = await bridge.git.scratchRoots().catch(() => []);
@@ -838,7 +813,9 @@ export const useApp = create<AppState>((set, get) => ({
     // 期间切走了、换了一轮、或者已经自己停了，都不再动手。
     if (get().activeSessionId !== sessionId || !get().running || get().turnStartedAt !== asked) return;
     const settled = get().messages;
-    set({ running: false, retrying: null, turnStartedAt: null, stopped: howItStopped(settled) });
+    // 表一起收走：`turnStartedAt` 只是 `turns` 的镜像，留着那一份，下一条事件又把它镜像回来，
+    // 下一次发送也会接着一个早就停了的起点计时。
+    set({ running: false, retrying: null, turnStartedAt: null, turnTokens: 0, turns: Object.fromEntries(Object.entries(get().turns).filter(([id]) => id !== sessionId)), stopped: howItStopped(settled) });
   },
 
   dismissNotice: (id) =>
@@ -870,33 +847,4 @@ function scanKey(settings: Settings | null | undefined): string {
 	if (!settings) return "";
 	// 技能开关也算：同一个 SKILL.md 可能有符号链接的另一个路径，关掉一个，另一个的状态得从主进程重读。
 	return JSON.stringify([settings.mcpServers, settings.disabledPlugins, settings.disabledSkills]);
-}
-
-async function refreshRemoteState(
-	set: (partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)) => void,
-	get: () => AppState,
-): Promise<void> {
-	try {
-		const [settings, sessions] = await Promise.all([bridge.settings.get(), bridge.sessions.list()]);
-		set((state) => ({ settings, sessions, sessionCache: Object.fromEntries(
-			Object.entries(state.sessionCache).map(([id, cached]) => [id, { ...cached, dirty: true }]),
-		) }));
-		const active = get().meta;
-		if (active && get().activeSessionId === active.id) {
-			const current = sessions.find((session) => session.id === active.id);
-			// Gone, and only gone. A conversation that was archived elsewhere is still one you can be
-			// in — see the note in `session-changes`, which is where leaving it is decided.
-			if (!current) {
-				applySessionChange({ id: active.id, projectId: active.projectId, meta: null }, set, get);
-				return;
-			}
-			await readSelectedSession(current, set, get, true);
-			await useSide.getState().attach(active.id, true);
-			// 开着的侧边聊天也一样：断开的那段时间里到的事件没收到，按磁盘上的重读一遍。
-			const sides = Object.values(useSide.getState().sides[active.id] ?? {}).filter((side) => get().sessionCache[side.id]);
-			await Promise.all(sides.map((side) => readSideSession(side, set, get)));
-		}
-	} catch (cause) {
-		get().notify(translate("store.resyncFailed", { reason: cause instanceof Error ? cause.message : String(cause) }), "error");
-	}
 }

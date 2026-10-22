@@ -24,11 +24,9 @@ import {
 	isDegenerate,
 	marker,
 	nextState,
-	sameMarker,
 	targetScrollTop,
 	unreadSince,
 	visualBottom,
-	type FollowEvent,
 	type FollowState,
 	type Reading,
 } from "../src/ui/scroll/follow.ts";
@@ -112,13 +110,12 @@ test("a drag whose direction is not knowable is answered by where it ended", () 
 });
 
 // ---------------------------------------------------------------------------
-// Nothing else may change the intention
+// Nothing else may change the intention: geometry is applied as a position, never fed to the state
 // ---------------------------------------------------------------------------
 
-test("growing content does not decide anything", () => {
-	for (const state of ["following", "detached"] as FollowState[]) {
-		assert.equal(nextState(state, { kind: "tail-growth" }, at(BOTTOM - 400)), state);
-	}
+test("growing content moves a following surface and leaves a detached one where it is", () => {
+	assert.equal(targetScrollTop("following", at(BOTTOM - 400)), BOTTOM + 1);
+	assert.equal(targetScrollTop("detached", at(BOTTOM - 400)), null);
 });
 
 test("a shrinking viewport keeps following — the composer growing as you type", () => {
@@ -130,19 +127,12 @@ test("a shrinking viewport keeps following — the composer growing as you type"
 	 */
 	const squeezed = at(BOTTOM - 200);
 	assert.equal(atBottom(squeezed), false, "by distance alone it looks like the reader left");
-	assert.equal(nextState("following", { kind: "viewport" }, squeezed), "following");
 	assert.equal(targetScrollTop("following", squeezed), BOTTOM + 1, "and it is put back against the bottom");
-});
-
-test("a reflow above does not decide anything either", () => {
-	// A tool group folding open, an image landing, an estimated row cashing in its real height.
-	assert.equal(nextState("detached", { kind: "reflow" }, at(1000)), "detached");
-	assert.equal(nextState("following", { kind: "reflow" }, at(1000)), "following");
 });
 
 test("a hidden pane cannot change the state at all", () => {
 	const hidden = { scrollTop: 0, scrollHeight: 0, clientHeight: 0 };
-	assert.equal(nextState("detached", { kind: "viewport" }, hidden), "detached");
+	assert.equal(nextState("detached", { kind: "arrived" }, hidden), "detached");
 	assert.equal(nextState("detached", { kind: "user-scroll", direction: "down" }, hidden), "detached");
 	assert.equal(targetScrollTop("following", hidden), null, "and nothing is written to it");
 });
@@ -321,24 +311,6 @@ test("the write overshoots the end, because the integer bottom is short of it", 
 // Swapping surfaces
 // ---------------------------------------------------------------------------
 
-test("a swap takes the incoming surface's intention, never the outgoing one's", () => {
-	/*
-	 * `pinned` was a ref that outlived the conversation it described. Scroll up in one conversation,
-	 * open another, and the new one inherited "not following" — which is half of why the remembered
-	 * position never worked and all of why the unread dot appeared on a transcript nobody had added
-	 * anything to.
-	 */
-	assert.equal(nextState("detached", { kind: "surface-swap", following: true }, at(0)), "following");
-	assert.equal(nextState("following", { kind: "surface-swap", following: false }, at(0)), "detached");
-});
-
-test("a swap is decided even from a hidden pane", () => {
-	// The one event that must survive a degenerate reading: opening a conversation into a pane that
-	// has not been laid out yet is ordinary, and it still has to arrive following.
-	const hidden = { scrollTop: 0, scrollHeight: 0, clientHeight: 0 };
-	assert.equal(nextState("detached", { kind: "surface-swap", following: true }, hidden), "following");
-});
-
 test("a return in flight is remembered as an intention to follow", () => {
 	/*
 	 * Opening another conversation during the 420ms glide used to collapse `returning` to false.
@@ -470,7 +442,7 @@ test("the same transcript handed over twice is not new content — the reported 
 	 */
 	const before = marker(42, "assistant-1730000000000-41:900");
 	const after = marker(42, "assistant-1730000000000-41:900");
-	assert.equal(sameMarker(before, after), true, "different objects, same transcript");
+	assert.notEqual(before, after, "different objects, same transcript");
 	assert.equal(unreadSince(before, after), 0);
 });
 
@@ -504,21 +476,10 @@ test("scrolling up mid-reply, then the reply continuing", () => {
 	 * Frame by frame: a turn is streaming and pinned, the reader nudges up 40px to re-read
 	 * something, and three more tokens land. The nudge has to survive all three.
 	 */
-	let state: FollowState = "following";
-	const play = (event: FollowEvent, reading: Reading) => {
-		state = nextState(state, event, reading);
-		return state;
-	};
-
-	assert.equal(play({ kind: "tail-growth" }, at(BOTTOM)), "following");
-	assert.equal(play({ kind: "user-scroll", direction: "up" }, at(BOTTOM - 40)), "detached");
+	const state = nextState("following", { kind: "user-scroll", direction: "up" }, at(BOTTOM - 40));
+	assert.equal(state, "detached");
 	for (const content of [4200, 4400, 4600]) {
-		assert.equal(
-			play({ kind: "tail-growth" }, at(BOTTOM - 40, { content })),
-			"detached",
-			"the reader's nudge outranks every token that follows it",
-		);
-		assert.equal(targetScrollTop(state, at(BOTTOM - 40, { content })), null, "and nothing moves them");
+		assert.equal(targetScrollTop(state, at(BOTTOM - 40, { content })), null, "the reader's nudge outranks every token that follows it");
 	}
 });
 
@@ -533,9 +494,9 @@ test("scrolling up, switching away, and coming back", () => {
 
 	const parked = { following: state === "following", scrollTop: 1200, seen: marker(42, "a:900") };
 
-	// Somewhere else for a while, then back — and the transcript is unchanged.
-	state = nextState("following", { kind: "surface-swap", following: parked.following }, at(1200));
-	assert.equal(state, "detached", "still where the reader left it");
+	// Somewhere else for a while, then back — and the transcript is unchanged. Coming back takes the
+	// remembered intention, not whatever the outgoing surface was doing (see `useFollowBottom`).
+	assert.equal(parked.following, false, "still where the reader left it");
 	assert.equal(unreadSince(parked.seen, marker(42, "a:900")), 0, "and nothing claims to be new");
 
 	// Now the same return, but two replies did land while away.

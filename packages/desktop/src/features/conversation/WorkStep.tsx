@@ -1,5 +1,5 @@
 /**
- * 一段连着做的活，画成一行（怎么分段见 `grouping.ts` 的 `Step`）。
+ * 一段连着做的活，画成一行（怎么分段见 `turn-blocks.ts` 的 `Step`）。
  *
  * - **一次调用**：这一行就是那次调用自己，和从前的工具行一模一样。
  * - **几次调用，或者调用前想过**：跑着时这一行说的是正在跑的那一次调用（「读取文件 safety.md」，模型给了
@@ -27,11 +27,11 @@ import { translate } from "../../i18n/translate.ts";
 import { StepDispatchFaces } from "./DelegationCard.tsx";
 import { FlowRow } from "./FlowRow.tsx";
 import { LiveThought } from "./LiveThought.tsx";
-import { LiveToolCard } from "./runs.tsx";
+import { LiveToolCard, useDiffTotals } from "./runs.tsx";
 import { ToolIcon } from "./tool-icons.tsx";
 import { RollWords } from "../../ui/motion/RollWords.tsx";
 import { useHeldKey } from "../../ui/motion/held.ts";
-import { describeCalls, describeOne, diffOf, foldPolls, polledJob, startedJob } from "./call-words.ts";
+import { describeCalls, describeOne, foldPolls, polledJob, startedJob } from "./call-words.ts";
 import type { Call, Run } from "./grouping.ts";
 import { sameStep, thinkingLive, type Step } from "./turn-blocks.ts";
 import { useTranscriptDisclosure } from "./view-state.ts";
@@ -109,9 +109,8 @@ function StepGroup({ step, thought, live, thinking, from, draw }: {
 	const [open, setOpen] = useTranscriptDisclosure(step.key);
 	const { calls } = step;
 
-	// 数和字，不是记录表本身：选出对象的选择器每次都是新的，别的卡片冒一行输出就会把这一行重画一遍。
-	const added = useScopedFromToolRuns((runs) => calls.reduce((n, { block }) => n + diffOf(runs[block.id], "added"), 0));
-	const removed = useScopedFromToolRuns((runs) => calls.reduce((n, { block }) => n + diffOf(runs[block.id], "removed"), 0));
+	const { added, removed } = useDiffTotals(calls);
+	// 是不是出过错也只取一个布尔：选出对象的选择器每次都是新的，别的卡片冒一行输出就会把这一行重画一遍。
 	const errored = useScopedFromToolRuns((runs) => calls.some(({ block }) => runs[block.id]?.status === "error"));
 	// 后台命令回来时失败了也算：启动它的那次 bash 早就以「已放到后台」跑完了，记录上不会是错。
 	const failed = errored || step.members.some((member) => member.kind === "job" && member.run.message.role === "user" && member.run.message.delivery?.some((report) => report.status === "failed"));

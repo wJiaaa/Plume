@@ -64,7 +64,7 @@ const BROKEN: [string, unknown[]][] = [
 
 for (const [name, messages] of BROKEN) {
 	test(`转录画得出来：${name}`, () => {
-		const rows = quietly(() => runs(messages as never, [], [], []));
+		const rows = quietly(() => runs(messages as never, [], []));
 		assert.ok(Array.isArray(rows), "该交回一组行，而不是抛出去");
 	});
 }
@@ -90,7 +90,7 @@ test("没有损坏时交回同一个引用——否则整个转录的 memo 全�
 
 test("空转录也走得通", () => {
 	assert.equal(intact([]).length, 0);
-	assert.deepEqual(runs([], [], [], []), []);
+	assert.deepEqual(runs([], [], []), []);
 });
 
 test("坏记录会在控制台留下形状——下次报上来的不再只有一句报错", () => {

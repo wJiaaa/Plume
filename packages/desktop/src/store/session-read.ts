@@ -1,7 +1,8 @@
 import { translate } from "../i18n/translate.ts";
 import type { SessionMeta } from "@plume/core";
 import type { AppState } from "./index.ts";
-import { howItStopped, prune, rebuildToolRuns, todosFrom, type Cache } from "./derive.ts";
+import { EMPTY_SLOT, prune, rebuildToolRuns, slotState, todosFrom, type Cache, type CachedSessionState } from "./derive.ts";
+import { howItStopped } from "./turn-stop.ts";
 import { intact, withInFlight } from "../lib/transcript.ts";
 import { useSubAgents } from "./subAgents.ts";
 import { bridge } from "../services/index.ts";
@@ -11,61 +12,66 @@ import { flushCoalesced } from "./coalesce.ts";
 
 // Only one IPC payload is in flight. Intermediate selections collapse into the latest one.
 let reading: string | null = null;
-let queued: { meta: SessionMeta; resync: boolean; cacheOnly: boolean } | null = null;
+let queued: SessionMeta | null = null;
 
 type Get = () => AppState;
 type Set = (partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)) => void;
-
-export type SessionReadOptions = {
-	/** Write `sessionCache` only. The live transcript slot stays on the conversation that is already up. */
-	cacheOnly?: boolean;
-};
 
 function drainQueued(finishedId: string, set: Set, get: Get): void {
 	const next = queued;
 	queued = null;
 	if (!next) return;
-	if (next.cacheOnly) {
-		void readSelectedSession(next.meta, set, get, next.resync, { cacheOnly: true });
-		return;
-	}
-	if (get().activeSessionId !== next.meta.id) return;
-	if (next.meta.id === finishedId && !next.resync) return;
-	void readSelectedSession(next.meta, set, get, next.resync);
+	if (get().activeSessionId !== next.id) return;
+	if (next.id === finishedId) return;
+	void readSelectedSession(next, set, get);
 }
 
-function stashInCache(
-	meta: SessionMeta,
-	snapshot: NonNullable<Awaited<ReturnType<typeof bridge.sessions.transcript>>>,
-	events: ReturnType<typeof beginSessionRead>,
-	set: Set,
-	get: Get,
-): void {
-	const intactSnapshot = { ...snapshot, messages: intact(snapshot.messages) };
+type Snapshot = NonNullable<Awaited<ReturnType<typeof bridge.sessions.transcript>>>;
+
+/** 快照里那几样这一轮的状态，按磁盘上记的算。 */
+function snapshotState(snapshot: Snapshot, messages: Snapshot["messages"]): Pick<CachedSessionState, "running" | "commandRuns" | "hookRuns" | "todos" | "compactions" | "approvals" | "stopped"> {
+	return {
+		running: snapshot.running,
+		commandRuns: snapshot.commandRuns ?? [],
+		hookRuns: snapshot.hookRuns ?? [],
+		// Replayed from the log rather than the event stream: reopening a conversation does not
+		// re-run its tools, so the plan has to be recovered from where the tool wrote it.
+		todos: todosFrom(messages),
+		// Replayed from the log: the summary itself is not in the transcript, only the fact.
+		compactions: (snapshot.compactions ?? []).map((at) => ({ at, before: 0, after: 0 })),
+		approvals: snapshot.pendingApprovals,
+		// No event to go on here, so the transcript answers on its own: a reply the log records as
+		// `aborted` was stopped by hand, however long ago. 还在跑的会话没有「停在哪」：上一轮的报错不该
+		// 在这一轮跑着时冒出来。
+		stopped: snapshot.running ? null : howItStopped(messages),
+	};
+}
+
+/**
+ * 磁盘上读来的快照，叠上读盘期间到的事件。
+ *
+ * 快照已经包含的不再叠一遍：同一条消息的开头、已经写完的那条回复的更新、已经在等人的那张审批卡。
+ * `live` 是这个窗口手里已有的工具卡，见 `rebuildToolRuns`。
+ */
+function fromSnapshot(raw: Snapshot, events: ReturnType<typeof beginSessionRead>, live?: Cache[string]["toolRuns"]): Cache[string] {
+	const snapshot = { ...raw, messages: intact(raw.messages) };
 	let merged: Cache[string] = {
-		meta: intactSnapshot.meta,
-		messages: intactSnapshot.messages,
-		toolRuns: rebuildToolRuns(intactSnapshot.messages, intactSnapshot.running, get().sessionCache[meta.id]?.toolRuns),
-		state: {
-			running: intactSnapshot.running,
-			commandRuns: intactSnapshot.commandRuns ?? [],
-			hookRuns: intactSnapshot.hookRuns ?? [],
-			todos: todosFrom(intactSnapshot.messages),
-			compactions: (intactSnapshot.compactions ?? []).map((at) => ({ at, before: 0, after: 0 })),
-			approvals: intactSnapshot.pendingApprovals,
-			// 还在跑的会话没有「停在哪」：上一轮的报错不该在这一轮跑着时冒出来，和读当前会话那条路一样。
-			stopped: intactSnapshot.running ? null : howItStopped(intactSnapshot.messages),
-			retrying: null,
-			capabilities: null,
-			pendingUserMessage: null,
-		},
+		meta: snapshot.meta,
+		messages: snapshot.messages,
+		toolRuns: rebuildToolRuns(snapshot.messages, snapshot.running, live),
+		state: { ...EMPTY_SLOT, ...snapshotState(snapshot, snapshot.messages) },
 	};
 	for (const event of events) {
-		if (event.type === "message_start" && intactSnapshot.messages.some((message) => message.role === event.message.role && message.timestamp === event.message.timestamp)) continue;
-		if (event.type === "message_update" && intactSnapshot.messages.some((message) => message.role === "assistant" && message.timestamp === event.message.timestamp && message.stopReason !== "pending")) continue;
-		if (event.type === "approval_request" && intactSnapshot.pendingApprovals.some((approval) => approval.id === event.requestId)) continue;
+		if (event.type === "message_start" && snapshot.messages.some((message) => message.role === event.message.role && message.timestamp === event.message.timestamp)) continue;
+		if (event.type === "message_update" && snapshot.messages.some((message) => message.role === "assistant" && message.timestamp === event.message.timestamp && message.stopReason !== "pending")) continue;
+		if (event.type === "approval_request" && snapshot.pendingApprovals.some((approval) => approval.id === event.requestId)) continue;
 		merged = cachedEvent(merged, event);
 	}
+	return merged;
+}
+
+function stashInCache(meta: SessionMeta, snapshot: Snapshot, events: ReturnType<typeof beginSessionRead>, set: Set, get: Get): void {
+	const merged = fromSnapshot(snapshot, events, get().sessionCache[meta.id]?.toolRuns);
 	set({
 		sessionCache: prune({ ...get().sessionCache, [meta.id]: merged }, get().activeSessionId ?? meta.id),
 	});
@@ -158,15 +164,10 @@ export async function readSideSession(meta: SessionMeta, set: Set, get: Get): Pr
 	}
 }
 
-export async function readSelectedSession(meta: SessionMeta, set: Set, get: Get, resync = false, options: SessionReadOptions = {}): Promise<void> {
-	const cacheOnly = options.cacheOnly === true;
+export async function readSelectedSession(meta: SessionMeta, set: Set, get: Get): Promise<void> {
 	const cached = get().sessionCache[meta.id];
 	if (reading !== null) {
-		queued = {
-			meta,
-			resync: resync || (queued?.meta.id === meta.id && queued.resync),
-			cacheOnly: cacheOnly || (queued?.meta.id === meta.id && queued.cacheOnly),
-		};
+		queued = meta;
 		return;
 	}
 	reading = meta.id;
@@ -177,10 +178,8 @@ export async function readSelectedSession(meta: SessionMeta, set: Set, get: Get,
 	try {
 		snapshot = await bridge.sessions.transcript(meta.id);
 	} catch (cause) {
-		if (!cacheOnly && get().activeSessionId === meta.id) {
+		if (get().activeSessionId === meta.id) {
 			set({ loadingSession: false });
-			get().notify(translate("sessionRead.failed", { reason: cause instanceof Error ? cause.message : String(cause) }), "error");
-		} else if (cacheOnly && get().pendingSessionId === meta.id) {
 			get().notify(translate("sessionRead.failed", { reason: cause instanceof Error ? cause.message : String(cause) }), "error");
 		}
 		return;
@@ -191,10 +190,6 @@ export async function readSelectedSession(meta: SessionMeta, set: Set, get: Get,
 		drainQueued(meta.id, set, get);
 	}
 
-	if (cacheOnly) {
-		if (snapshot) stashInCache(meta, snapshot, events, set, get);
-		return;
-	}
 	// A second click while this was in flight wins; discard the stale arrival.
 	if (get().activeSessionId !== meta.id) return;
 	if (get().pendingSessionId && get().pendingSessionId !== meta.id) {
@@ -222,18 +217,8 @@ export async function readSelectedSession(meta: SessionMeta, set: Set, get: Get,
 	snapshot = { ...snapshot, messages: intact(snapshot.messages) };
 
 	// Cold visits need the disk prefix as well as events that arrived during the read.
-	if ((before.loadingSession || resync) && events.length) {
-		let merged: Cache[string] = {
-			meta: snapshot.meta, messages: snapshot.messages, toolRuns: rebuildToolRuns(snapshot.messages, snapshot.running),
-			state: { running: snapshot.running, commandRuns: snapshot.commandRuns ?? [], hookRuns: snapshot.hookRuns ?? [], todos: todosFrom(snapshot.messages), compactions: (snapshot.compactions ?? []).map((at) => ({ at, before: 0, after: 0 })),
-				approvals: snapshot.pendingApprovals, stopped: howItStopped(snapshot.messages), retrying: null, capabilities: null, pendingUserMessage: null },
-		};
-		for (const event of events) {
-			if (event.type === "message_start" && snapshot.messages.some((message) => message.role === event.message.role && message.timestamp === event.message.timestamp)) continue;
-			if (event.type === "message_update" && snapshot.messages.some((message) => message.role === "assistant" && message.timestamp === event.message.timestamp && message.stopReason !== "pending")) continue;
-			if (event.type === "approval_request" && snapshot.pendingApprovals.some((approval) => approval.id === event.requestId)) continue;
-			merged = cachedEvent(merged, event);
-		}
+	if (before.loadingSession && events.length) {
+		const merged = fromSnapshot(snapshot, events);
 		set({ ...merged.state, meta: merged.meta, messages: merged.messages, toolRuns: merged.toolRuns,
 			loadingSession: false, sessionCache: prune({ ...get().sessionCache, [meta.id]: merged }, meta.id) });
 		await restoreLiveState(meta.id, set, get);
@@ -245,7 +230,7 @@ export async function readSelectedSession(meta: SessionMeta, set: Set, get: Get,
 	// A warm transcript already contains the history. Events received during the IPC read
 	// are newer than that request, so refreshing must not roll them back.
 	const advanced =
-		!resync && !before.loadingSession &&
+		!before.loadingSession &&
 		(current.messages !== before.messages ||
 			current.toolRuns !== before.toolRuns ||
 			current.running !== before.running ||
@@ -264,46 +249,16 @@ export async function readSelectedSession(meta: SessionMeta, set: Set, get: Get,
 	// A running turn's snapshot lacks the streaming reply and anything sent into it; see `withInFlight`.
 	const messages = advanced ? current.messages : unchanged ? cached.messages : snapshot.running ? withInFlight(current.messages, snapshot.messages) : snapshot.messages;
 	const toolRuns = advanced ? current.toolRuns : unchanged ? cached.toolRuns : rebuildToolRuns(messages, snapshot.running, current.toolRuns);
+	// 读盘回来时屏上已经往前走了（`advanced`）就保留屏上的；否则按磁盘上的。转瞬即逝的那几样（重连、能力）只有屏上有。
+	const state: CachedSessionState = advanced ? slotState(current) : { ...slotState(current), ...snapshotState(snapshot, messages) };
 	set({
+		...state,
 		meta: advanced ? current.meta : snapshot.meta,
 		messages,
-		// Replayed from the log rather than the event stream: reopening a conversation does not
-		// re-run its tools, so the plan has to be recovered from where the tool wrote it.
-		todos: advanced ? current.todos : todosFrom(messages),
-		// Replayed from the log: the summary itself is not in the transcript, only the fact.
-		compactions: advanced
-			? current.compactions
-			: (snapshot.compactions ?? []).map((at) => ({ at, before: 0, after: 0 })),
-		// No event to go on here, so the transcript answers on its own: a reply the log records as
-		// `aborted` was stopped by hand, however long ago.
-		stopped: advanced ? current.stopped : snapshot.running ? null : howItStopped(messages),
-		running: advanced ? current.running : snapshot.running,
-		commandRuns: advanced ? current.commandRuns : snapshot.commandRuns ?? [],
-		hookRuns: advanced ? current.hookRuns : snapshot.hookRuns ?? [],
-		approvals: advanced ? current.approvals : snapshot.pendingApprovals,
 		toolRuns,
 		loadingSession: false,
 		sessionCache: prune(
-			{
-				...get().sessionCache,
-				[meta.id]: {
-					meta: advanced ? (current.meta ?? snapshot.meta) : snapshot.meta,
-					messages,
-					toolRuns,
-					state: {
-						running: advanced ? current.running : snapshot.running,
-						commandRuns: advanced ? current.commandRuns : snapshot.commandRuns ?? [],
-						hookRuns: advanced ? current.hookRuns : snapshot.hookRuns ?? [],
-						todos: advanced ? current.todos : todosFrom(messages),
-						compactions: advanced ? current.compactions : (snapshot.compactions ?? []).map((at) => ({ at, before: 0, after: 0 })),
-						approvals: advanced ? current.approvals : snapshot.pendingApprovals,
-						stopped: advanced ? current.stopped : snapshot.running ? null : howItStopped(messages),
-						retrying: current.retrying, hiccups: current.hiccups, capabilities: current.capabilities, pendingUserMessage: current.pendingUserMessage,
-					},
-					scrollTop: get().sessionCache[meta.id]?.scrollTop,
-					pinnedToBottom: get().sessionCache[meta.id]?.pinnedToBottom,
-				},
-			},
+			{ ...get().sessionCache, [meta.id]: { meta: advanced ? (current.meta ?? snapshot.meta) : snapshot.meta, messages, toolRuns, state } },
 			meta.id,
 		),
 	});

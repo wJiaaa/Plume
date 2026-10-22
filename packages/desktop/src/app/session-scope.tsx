@@ -20,9 +20,9 @@ import type { Message, SessionMeta, SubAgentSummary } from "@plume/core";
 import { isProjectLess } from "../lib/project-scope.ts";
 import { sessionProject } from "../lib/project-identity.ts";
 import { useApp, type AppState } from "../store/index.ts";
-import { useSubAgents } from "../store/subAgents.ts";
+import { type SubAgentState, useSubAgents } from "../store/subAgents.ts";
 import { worktreeWorkspace } from "../store/session-workspace.ts";
-import type { Cache } from "../store/derive.ts";
+import { EMPTY_SLOT, type Cache, type CachedSessionState } from "../store/derive.ts";
 import type { ToolRun } from "../store/tool-run.ts";
 
 export const SessionScope = createContext<string | null | undefined>(undefined);
@@ -71,10 +71,6 @@ export function focusScreenOf(sessionId: string | null): void {
 }
 
 const EMPTY_MESSAGES: Message[] = [];
-const EMPTY_TODOS: AppState["todos"] = [];
-const EMPTY_APPROVALS: AppState["approvals"] = [];
-const EMPTY_RUNS: AppState["commandRuns"] = [];
-const EMPTY_HICCUPS: AppState["hiccups"] = [];
 const EMPTY_TOOLS: Record<string, ToolRun> = {};
 const EMPTY_AGENTS: SubAgentSummary[] = [];
 
@@ -89,12 +85,14 @@ export function useScopedSessionId(): string | null {
 	return scoped === undefined ? active : scoped;
 }
 
+/** 这一屏的转录，不订阅。给只在自己的节拍上取样的地方用，见 `useProducedChars`。 */
+export function scopedMessages(s: AppState, id: string | null): Message[] {
+	return id === s.activeSessionId ? s.messages : (parked(s, id)?.messages ?? EMPTY_MESSAGES);
+}
+
 export function useScopedMessages(): Message[] {
 	const id = useScopedSessionId();
-	return useApp((s) => {
-		if (id === s.activeSessionId) return s.messages;
-		return parked(s, id)?.messages ?? EMPTY_MESSAGES;
-	});
+	return useApp((s) => scopedMessages(s, id));
 }
 
 /**
@@ -105,7 +103,7 @@ export function useScopedMessages(): Message[] {
  */
 export function useScopedFromMessages<T>(read: (messages: Message[]) => T): T {
 	const id = useScopedSessionId();
-	return useApp((s) => read(id === s.activeSessionId ? s.messages : (parked(s, id)?.messages ?? EMPTY_MESSAGES)));
+	return useApp((s) => read(scopedMessages(s, id)));
 }
 
 /**
@@ -116,7 +114,7 @@ export function useScopedFromMessages<T>(read: (messages: Message[]) => T): T {
  */
 export function useScopedUserMessages(): Message[] {
 	const id = useScopedSessionId();
-	return useApp(useShallow((s) => (id === s.activeSessionId ? s.messages : (parked(s, id)?.messages ?? EMPTY_MESSAGES)).filter((message) => message.role === "user")));
+	return useApp(useShallow((s) => scopedMessages(s, id).filter((message) => message.role === "user")));
 }
 
 export function useScopedRunning(): boolean {
@@ -138,67 +136,23 @@ export function useScopedRunning(): boolean {
  */
 export function useScopedWorking(): boolean {
 	const running = useScopedRunning();
-	const background = useScopedSubAgents().some((one) => one.background && (one.status === "running" || one.status === "queued"));
+	const background = useScopedFromSubAgents((agents) => agents.some((one) => one.background && (one.status === "running" || one.status === "queued")));
 	return running || background;
 }
 
-export function useScopedStopped() {
+/** 这一屏这一轮的一样状态：屏上那个读顶层，别的读它停在缓存里的那份，没有就是空的。 */
+function useScopedSlot<K extends keyof CachedSessionState>(key: K): CachedSessionState[K] {
 	const id = useScopedSessionId();
-	return useApp((s) => {
-		if (id === s.activeSessionId) return s.stopped;
-		return parked(s, id)?.state?.stopped ?? null;
-	});
+	return useApp((s) => (id === s.activeSessionId ? s[key] : (parked(s, id)?.state?.[key] ?? EMPTY_SLOT[key])));
 }
 
-export function useScopedTodos() {
-	const id = useScopedSessionId();
-	return useApp((s) => {
-		if (id === s.activeSessionId) return s.todos;
-		return parked(s, id)?.state?.todos ?? EMPTY_TODOS;
-	});
-}
-
-export function useScopedApprovals(): AppState["approvals"] {
-	const id = useScopedSessionId();
-	return useApp((s) => {
-		if (id === s.activeSessionId) return s.approvals;
-		return parked(s, id)?.state?.approvals ?? EMPTY_APPROVALS;
-	});
-}
-
-export function useScopedCompactions() {
-	const id = useScopedSessionId();
-	return useApp((s) => {
-		if (id === s.activeSessionId) return s.compactions;
-		return parked(s, id)?.state?.compactions ?? EMPTY_RUNS;
-	});
-}
-
-export function useScopedCommandRuns() {
-	const id = useScopedSessionId();
-	return useApp((s) => {
-		if (id === s.activeSessionId) return s.commandRuns;
-		return parked(s, id)?.state?.commandRuns ?? EMPTY_RUNS;
-	});
-}
-
-const EMPTY_HOOK_RUNS: AppState["hookRuns"] = [];
-
-export function useScopedHookRuns() {
-	const id = useScopedSessionId();
-	return useApp((s) => {
-		if (id === s.activeSessionId) return s.hookRuns;
-		return parked(s, id)?.state?.hookRuns ?? EMPTY_HOOK_RUNS;
-	});
-}
-
-export function useScopedHiccups() {
-	const id = useScopedSessionId();
-	return useApp((s) => {
-		if (id === s.activeSessionId) return s.hiccups;
-		return parked(s, id)?.state?.hiccups ?? EMPTY_HICCUPS;
-	});
-}
+export const useScopedStopped = () => useScopedSlot("stopped");
+export const useScopedTodos = () => useScopedSlot("todos");
+export const useScopedApprovals = (): AppState["approvals"] => useScopedSlot("approvals");
+export const useScopedCompactions = () => useScopedSlot("compactions");
+export const useScopedCommandRuns = () => useScopedSlot("commandRuns");
+export const useScopedHookRuns = () => useScopedSlot("hookRuns");
+export const useScopedHiccups = () => useScopedSlot("hiccups");
 
 export function useScopedToolRuns(): Record<string, ToolRun> {
 	const id = useScopedSessionId();
@@ -229,22 +183,16 @@ export function useScopedTurnMeter(): { startedAt: number | null; tokens: number
 }
 
 /** Whether this screen's turn is waiting out a dropped connection. */
-export function useScopedRetrying(): AppState["retrying"] {
-	const id = useScopedSessionId();
-	return useApp((s) => (id === s.activeSessionId ? s.retrying : (parked(s, id)?.state?.retrying ?? null)));
-}
+export const useScopedRetrying = () => useScopedSlot("retrying");
 
 /** When this screen's history was last summarised, for the running line's passing mention of it. */
-export function useScopedCompactedAt(): number | null {
-	const id = useScopedSessionId();
-	return useApp((s) => (id === s.activeSessionId ? s.compactedAt : (parked(s, id)?.state?.compactedAt ?? null)));
-}
+export const useScopedCompactedAt = () => useScopedSlot("compactedAt");
 
 export function useScopedMeta(): SessionMeta | null {
 	return useScopedFromMeta(whole);
 }
 
-const whole = (meta: SessionMeta | null) => meta;
+const whole = <T,>(value: T) => value;
 
 /**
  * 元数据里的一样东西，变了才重画。
@@ -276,12 +224,18 @@ export function useScopedLoading(): boolean {
  * it broadcast otherwise — a second screen shows its own delegated work, not the focused one's.
  */
 export function useScopedSubAgents(): SubAgentSummary[] {
+	return useScopedFromSubAgents(whole);
+}
+
+/** 这一屏的子智能体，不订阅。 */
+export function scopedSubAgents(state: SubAgentState, id: string | null): SubAgentSummary[] {
+	return (id ? state.rosters[id] : undefined) ?? EMPTY_AGENTS;
+}
+
+/** 子智能体里的一样东西，变了才重画——见 `useScopedFromMessages`。名册随每个子智能体的进度换新。 */
+export function useScopedFromSubAgents<T>(read: (agents: SubAgentSummary[]) => T): T {
 	const id = useScopedSessionId();
-	const active = useApp((s) => s.activeSessionId);
-	const live = useSubAgents((s) => s.agents);
-	const retained = useSubAgents((s) => (id ? s.rosters[id] : undefined));
-	if (id === active) return live;
-	return retained ?? EMPTY_AGENTS;
+	return useSubAgents((s) => read(scopedSubAgents(s, id)));
 }
 
 /**

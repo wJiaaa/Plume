@@ -27,7 +27,7 @@ const ask = (text: string, timestamp: number): UserMessageType => ({ role: "user
 const answer = (text: string, timestamp: number): Message => ({ role: "assistant", content: [{ type: "text", text }], api: "anthropic-messages", provider: "t", model: "t", usage, stopReason: "stop", timestamp });
 const said = (id: string): Message[] => [ask(`${id} 的第一个问题`, 10), answer("第一个回答", 11), ask(`${id} 的第二个问题`, 20), answer("第二个回答", 21)];
 function parked(id: string, running = false): Cache[string] {
-	return { meta: meta(id), messages: said(id), toolRuns: {}, state: { running, approvals: [], todos: [], compactions: [], commandRuns: [], hiccups: [], stopped: null, retrying: null, capabilities: null, pendingUserMessage: null } };
+	return { meta: meta(id), messages: said(id), toolRuns: {}, state: { running, approvals: [], todos: [], compactions: [], commandRuns: [], hiccups: [], stopped: null, retrying: null, capabilities: null, pendingUserMessage: null, hookRuns: [], compactedAt: null } };
 }
 
 const FORK = meta("fork", "b（分叉）");

@@ -40,7 +40,7 @@ const RUNS = [hook("h1", 2, "blocked", "子代理也不许"), hook("h2", 2, "suc
 
 async function show(status: SubAgentSummary["status"]) {
 	const agent: SubAgentSummary = { id: ID, agent: "general", description: "找登录入口", status, startedAt: 1000, toolCalls: 1, usage: zero, ...(status === "done" ? { endedAt: 9000 } : {}) };
-	useSubAgents.setState({ agents: [agent], transcripts: { [ID]: TRANSCRIPT }, hookRuns: { [ID]: RUNS }, focused: ID, loading: [] });
+	useSubAgents.setState({ rosters: { s: [agent] }, transcripts: { [ID]: TRANSCRIPT }, hookRuns: { [ID]: RUNS }, focused: ID, loading: [] });
 	return mount(h(SubAgentPanel));
 }
 
@@ -51,7 +51,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	useSubAgents.setState({ agents: [], transcripts: {}, hookRuns: {}, focused: null, loading: [] });
+	useSubAgents.setState({ rosters: {}, transcripts: {}, hookRuns: {}, focused: null, loading: [] });
 });
 
 test("跑完的子代理：出了岔子的那一段收尾处有按钮，全部顺利的那段不出", async () => {

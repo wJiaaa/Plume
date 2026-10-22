@@ -9,7 +9,6 @@
 import { translate } from "../i18n/translate.ts";
 import type { SessionMeta } from "@plume/core";
 import type { AppState } from "./index.ts";
-import { useSubAgents } from "./subAgents.ts";
 import { bridge } from "../services/index.ts";
 import { moveBeforeOrAfter, orderedSessions, type SessionSortKey } from "../lib/sidebar-order.ts";
 import { baseName } from "../lib/paths.ts";
@@ -150,19 +149,9 @@ export function workspaceSlice(set: Set, get: Get) {
     set({ selectionEpoch: epoch });
     const scratchCwd = await bridge.git.generalScratch().catch(() => null);
     if (get().selectionEpoch !== epoch) return;
-    set({
-      scratchCwd,
-      workspace: null,
-      activeSessionId: null,
-      pendingSessionId: null,
-      meta: null,
-      messages: [],
-      toolRuns: {},
-      approvals: [],
-      loadingSession: false,
-      pendingUserMessage: null,
-    });
-    useSubAgents.getState().clear();
+    set({ scratchCwd, workspace: null });
+    // 留下的空白对话和 新对话 是同一件事：上一个会话的状态一样不能带进来，它自己停回缓存里。
+    await get().newSession({ keepView: true });
   },
 
   /**
@@ -444,17 +433,8 @@ export function workspaceSlice(set: Set, get: Get) {
       ),
     });
     if (targets.some((s) => s.id === get().activeSessionId)) {
-      set({
-        activeSessionId: null,
-        pendingSessionId: null,
-        meta: null,
-        messages: [],
-        toolRuns: {},
-        approvals: [],
-        loadingSession: false,
-        pendingUserMessage: null,
-      });
-      useSubAgents.getState().clear();
+      // 和单条归档一样从它身上挪开，见 `session-changes`。
+      await get().newSession({ keepView: true });
     }
     // Sequential rather than parallel: each call rewrites the shared session index.
     let latest = get().sessions;

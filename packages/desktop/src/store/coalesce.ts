@@ -12,6 +12,12 @@
  * identical — the same final text, arriving at the same moment — because only the newest update
  * matters and it is the one that gets applied.
  *
+ * The tick is not kept here. Every event already reaches the store in a batch per tick
+ * (`services/pushes.ts`), and the store drains this at the end of each batch (`afterPushes`). What
+ * this adds is only the keying: within one batch, the newest update to a message replaces the
+ * others instead of each being its own store write. A tick of its own here was always cancelled by
+ * that drain before it fired.
+ *
  * Everything else flushes first. An update that has not landed yet, followed by the `message_end`
  * that settles it or a `tool_start` that comes after it, would otherwise be applied out of order —
  * and out-of-order is how a transcript ends up showing a card above the sentence introducing it.
@@ -22,43 +28,25 @@
  * newest update under its own key; the one on screen uses the default key.
  */
 
-import { cancelTick, requestTick } from "../ui/motion/ticker.ts";
-
 type Flush = () => void;
 
 const pending = new Map<string, Flush>();
-let frame: number | null = null;
-
-function runPending(): void {
-	const works = [...pending.values()];
-	pending.clear();
-	for (const work of works) work();
-}
 
 /**
- * Do this on the next frame, replacing anything else that was waiting under the same key.
+ * Do this when the batch drains, replacing anything else that was waiting under the same key.
  *
  * Replacing rather than queueing is the point: two updates to the same message are not two things
  * to do, they are one thing whose newer version won.
  */
 export function coalesce(work: Flush, key = ""): void {
 	pending.set(key, work);
-	if (frame !== null) return;
-	// A tick rather than a frame: the text is let out per tick anyway, so a write every frame only
-	// redraws each subscriber more often. Several replies streaming at once also land together, as one commit.
-	frame = requestTick(() => {
-		frame = null;
-		runPending();
-	});
 }
 
 /** Apply whatever is waiting, now, under every key. Call before anything that must land after it. */
 export function flushCoalesced(): void {
-	if (frame !== null) {
-		cancelTick(frame);
-		frame = null;
-	}
-	runPending();
+	const works = [...pending.values()];
+	pending.clear();
+	for (const work of works) work();
 }
 
 /**

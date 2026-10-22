@@ -149,7 +149,7 @@ export function LayoutProvider({ children, nav = true }: { children: React.React
 	 * overrides, so the panes trail the window instead of tracking it, and the composited
 	 * layers (the blur behind menus, the mask on the tab strip) smear over what has already
 	 * been repainted. Marking the drag lets CSS drop the animation and land on the final
-	 * geometry immediately; the flag clears shortly after the last resize event.
+	 * geometry immediately; the freeze lifts shortly after the last resize event.
 	 */
 	useEffect(() => {
 		let idle: number | undefined;
@@ -157,15 +157,13 @@ export function LayoutProvider({ children, nav = true }: { children: React.React
 		const onResize = () => {
 			setWidth(window.innerWidth);
 			// One freeze for the whole stream of resize events, released when they stop arriving.
-			// See `motion-freeze.ts` — this is a class on a handful of elements, not a flag on the
+			// See `ui/motion/freeze.ts` — this marks a handful of elements, not a flag on the
 			// root, because the root is above the transcript.
 			thaw ??= freezeMotion();
-			document.documentElement.dataset.resizing = "";
 			window.clearTimeout(idle);
 			idle = window.setTimeout(() => {
 				thaw?.();
 				thaw = null;
-				delete document.documentElement.dataset.resizing;
 			}, 140);
 		};
 		window.addEventListener("resize", onResize);
@@ -173,7 +171,6 @@ export function LayoutProvider({ children, nav = true }: { children: React.React
 			window.removeEventListener("resize", onResize);
 			window.clearTimeout(idle);
 			thaw?.();
-			delete document.documentElement.dataset.resizing;
 		};
 	}, []);
 

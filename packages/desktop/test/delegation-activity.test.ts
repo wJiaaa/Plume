@@ -24,7 +24,7 @@ function agent(status: SubAgentSummary["status"]): SubAgentSummary {
 function harness() {
 	const notices: string[] = [];
 	const state: Record<string, unknown> = {
-		activity: {}, turns: {}, sessions: [], activeSessionId: "main", messages: [], toolRuns: {}, commandRuns: [], compactions: [],
+		activity: {}, turns: {}, carried: {}, sessions: [], activeSessionId: "main", messages: [], toolRuns: {}, commandRuns: [], compactions: [],
 		sessionCache: {}, queued: {}, running: false, notify: (text: string) => notices.push(text), flushQueue: () => {},
 	};
 	const fold = (event: AgentEvent) =>

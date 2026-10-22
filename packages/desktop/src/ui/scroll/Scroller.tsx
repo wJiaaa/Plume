@@ -33,9 +33,7 @@ export function Scroller({
 	onResize,
 	onUserScroll,
 	onHold,
-	onSettle,
 	scrollRef,
-	scrollbar = true,
 }: {
 	children: React.ReactNode;
 	className?: string;
@@ -50,7 +48,7 @@ export function Scroller({
 	 *
 	 * 「滚不动的面要不要拦」不用在这里操心：它一律放行，见下面 `chain` 那段。
 	 */
-	overscroll?: "contain" | "auto" | "none";
+	overscroll?: "contain" | "auto";
 	/**
 	 * How the top edge ends.
 	 *
@@ -59,16 +57,13 @@ export function Scroller({
 	 * content's own alpha down rather than painting over it; see `.ly-fade-y` in styles.css for
 	 * why that distinction is the whole story.
 	 *
-	 * `"line"` is a hairline instead: the boundary stated rather than the content softened. For
-	 * places where the edge itself is the point — a toolbar you should read as a fixed rail.
-	 *
-	 * Either only appears once something has actually gone under, so a short list has no edge
+	 * It only appears once something has actually gone under, so a short list has no edge
 	 * treatment at all: a boundary is worth drawing when it is doing something.
 	 */
-	top?: "fade" | "line" | "none";
+	top?: "fade" | "none";
 	/** How deep the top fade reaches, in px, when the default does not suit this list. */
 	fadeTop?: number;
-	/** Same question at the bottom, minus the hairline: nothing is ever pinned below the content. */
+	/** Same question at the bottom. */
 	bottom?: "fade" | "none";
 	onScroll?: (element: HTMLDivElement) => void;
 	/** Called whenever content or viewport dimensions change. */
@@ -90,17 +85,8 @@ export function Scroller({
 	 * 到了」——两者在 `onResize` 里长得一模一样，而处理方式正好相反。
 	 */
 	onHold?: (target: EventTarget | null) => void;
-	/**
-	 * 长高的那一帧里，先把锚点放平。
-	 *
-	 * 在 `ResizeObserver` 的回调里同步调用，早于 `onResize`：那里是这一帧最后一次还来得及改
-	 * `scrollTop` 的地方。
-	 */
-	onSettle?: (element: HTMLDivElement) => boolean;
 	/** Exposed for callers that drive the scroll position themselves, like the transcript. */
 	scrollRef?: React.RefObject<HTMLDivElement | null>;
-	/** Narrow navigation rails use their own targets; an overlay thumb would intercept them. */
-	scrollbar?: boolean;
 }) {
 	const own = useRef<HTMLDivElement>(null);
 	const viewport = scrollRef ?? own;
@@ -203,17 +189,14 @@ export function Scroller({
 		 * 那些跟着重画的状态留在 rAF 里（它们不急，而且同步做会把布局搅乱）；位置不能等，展开动画
 		 * 每一帧都长高一点，晚一帧就是一串看得见的小抖。
 		 *
-		 * 上面这段话一直是对的，可只有锚点（`onSettle`）照着做了，贴底跟随（`onResize`）却被一起
+		 * 上面这段话一直是对的，可从前只有锚点照着做了，贴底跟随（`onResize`）却被一起
 		 * 推进了 rAF——于是内容长高的那一帧先按没补偿的位置画了出来，下一帧才拉回去。录屏里逮到过
 		 * 一次：运行行上「本轮 N tokens」冒出来的同一帧，整块转录往下掉 38px，再一帧弹回原位。一
 		 * 帧 16 毫秒，看着就是「闪了一下」。
 		 */
 		const observer = new ResizeObserver(() => {
 			const el = viewport.current;
-			if (el) {
-				onSettle?.(el);
-				onResize?.(el);
-			}
+			if (el) onResize?.(el);
 			scheduleMeasure();
 		});
 		const watch = () => {
@@ -234,11 +217,11 @@ export function Scroller({
 			observer.disconnect();
 			mutations.disconnect();
 		};
-	}, [measure, read, onResize, onSettle, viewport]);
+	}, [measure, read, onResize, viewport]);
 
 	// Dragging continues outside the thumb, so the listeners live on the window.
 	useEffect(() => {
-		if (!drag.current && !active) return;
+		if (!active) return;
 		let frame = 0;
 		let latestEvent: MouseEvent | null = null;
 
@@ -285,7 +268,6 @@ export function Scroller({
 			}
 			drag.current = null;
 			setActive(false);
-			if (frame) cancelAnimationFrame(frame);
 		};
 		window.addEventListener("mousemove", onMove);
 		window.addEventListener("mouseup", onUp);
@@ -306,15 +288,12 @@ export function Scroller({
 	 * 真窗口里拿真滚轮量过：滚不动的盒子挂 `contain`，外层一动不动；同一个盒子换成 `auto`，外层照常
 	 * 走 360px。两种溢出状态各试一遍才分得清——只测「可滚且到底」那一半，会把这个毛病当成 `contain`
 	 * 本来该做的事放过去。见 `e2e/overscroll-chain-probe.ts`。
-	 *
-	 * `none` 不在放行之列：那是调用方明说「这里一点都不要外溢」，和滚不滚得动无关。
 	 */
-	const chain = overscroll === "none" ? "overscroll-none" : overscroll === "auto" || !metrics.overflow ? "overscroll-auto" : "overscroll-contain";
+	const chain = overscroll === "auto" || !metrics.overflow ? "overscroll-auto" : "overscroll-contain";
 
 	// Both only mean anything once something is actually hidden that way.
 	const hiddenAbove = metrics.overflow && !metrics.atTop;
 	const showTopFade = top === "fade" && hiddenAbove;
-	const showTopLine = top === "line" && hiddenAbove;
 	const showBottomFade = bottom === "fade" && metrics.overflow && !metrics.atBottom;
 	const fades = top === "fade" || bottom === "fade";
 
@@ -391,15 +370,7 @@ export function Scroller({
 				{children}
 			</div>
 
-			{top === "line" && (
-				<div
-					aria-hidden
-					className="pointer-events-none absolute inset-x-0 top-0 h-px bg-line transition-opacity duration-[var(--ly-t-base)]"
-					style={{ opacity: showTopLine ? 1 : 0 }}
-				/>
-			)}
-
-			{scrollbar && metrics.overflow && (
+			{metrics.overflow && (
 				<div
 					/*
 					 * On the edge, above everything on it, and taking no clicks of its own.

@@ -26,20 +26,13 @@ const transcript: Message[] = [user("问", 1), reply("答", 2), user("再问", 3
 /** 一条转录能被喂进来的各种越界标记。`at` 是索引，而索引会过期。 */
 const OUT_OF_RANGE = [-1, 0, 3, 4, 5, 99, 1e6];
 
-test("压缩标记指向不存在的位置时，转录仍然画得出来", () => {
-	for (const at of OUT_OF_RANGE) {
-		assert.doesNotThrow(() => runs(transcript, [{ at }]), `压缩标记 at=${at}`);
-		assert.doesNotThrow(() => runs([], [{ at }]), `空转录 + 压缩标记 at=${at}`);
-	}
-});
-
-test("命令和抖动的位置过期了也一样", () => {
+test("命令和抖动的位置过期了，转录仍然画得出来", () => {
 	for (const at of OUT_OF_RANGE) {
 		const command = { at, id: `c${at}`, name: "compact", status: "done" } as never;
 		const hiccup = { at, id: `h${at}`, attempts: 2 } as never;
-		assert.doesNotThrow(() => runs(transcript, [], [command], []), `命令 at=${at}`);
-		assert.doesNotThrow(() => runs(transcript, [], [], [hiccup]), `抖动 at=${at}`);
-		assert.doesNotThrow(() => runs([], [], [command], [hiccup]), `空转录 at=${at}`);
+		assert.doesNotThrow(() => runs(transcript, [command], []), `命令 at=${at}`);
+		assert.doesNotThrow(() => runs(transcript, [], [hiccup]), `抖动 at=${at}`);
+		assert.doesNotThrow(() => runs([], [command], [hiccup]), `空转录 at=${at}`);
 	}
 });
 
@@ -59,23 +52,14 @@ test("数组里有窟窿时，闸门把它换成占位而不是让它穿过去",
 	assert.doesNotThrow(() => tailSignature(holed));
 });
 
-test("runKey 认得每一种 Run，压缩标记也不例外", () => {
+test("runKey 认得每一种 Run", () => {
 	/*
-	 * 这一条是第三次复发之后加的，而前两次都没查到这里。
-	 *
-	 * `runKey` 的签名曾经是 `Exclude<Run, { kind: "compaction" }>`——看起来压缩标记进不来。那只是
-	 * 一个类型：`Conversation` 里有一处 `as Exclude<Run, { kind: "compaction" }>`，一个断言就把它
-	 * 塞进来了，运行时什么都不拦。于是压缩过的会话一打开就整页白掉，报的还是那句
-	 * `Cannot read properties of undefined (reading 'role')`——因为前三个 if 全不匹配，最后一行去读
-	 * 了一个不存在的 `message`。
-	 *
-	 * 复现它需要一个真压缩过的会话：本机 245 个会话里只有一个，它压缩过六次（最后一次 315 条压到
-	 * 73 条）。所以这里直接喂形状，不依赖那份数据还在不在。
+	 * 这一条是第三次复发之后加的。漏掉一种 Run，最后一行就去读一个不存在的 `message`，整页白掉，报
+	 * `Cannot read properties of undefined (reading 'role')`。直接喂形状，不依赖哪份真会话还在不在。
 	 */
 	const keys = new Set<string>();
 	for (const run of [
-		{ kind: "compaction", at: 0 },
-		{ kind: "compaction", at: 7 },
+		{ kind: "model", at: 2, from: { provider: "a", model: "x" }, to: { provider: "b", model: "y" } },
 		{ kind: "command", command: { id: "c1" } },
 		{ kind: "hiccup", hiccup: { id: "h1" } },
 		{ kind: "message", message: user("问", 3), index: 0, upTo: 0 },
@@ -86,11 +70,6 @@ test("runKey 认得每一种 Run，压缩标记也不例外", () => {
 		assert.ok(!keys.has(key), `两种 Run 撞了同一个 key：${key}`);
 		keys.add(key);
 	}
-});
-
-test("压缩标记带着位置，两个标记分得开", () => {
-	// 没有 `at` 的话，一次会话压缩六次就有六个一模一样的 key，React 认不出谁是谁。
-	assert.notEqual(runKey({ kind: "compaction", at: 0 }), runKey({ kind: "compaction", at: 1 }));
 });
 
 test("工具组里一个调用都没有时，runKey 也不该崩", () => {

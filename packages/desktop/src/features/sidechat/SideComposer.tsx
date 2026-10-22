@@ -15,7 +15,7 @@ import { useShallow } from "zustand/react/shallow";
 import { findModel } from "../models/index.ts";
 import { askSide, openFilePane, setSideModel, setSideThinking, sideKey, useSide } from "../dock/index.ts";
 import { sideDraftKey, useSideTarget } from "./target.ts";
-import { useDockScope, useScopedMeta } from "../../app/session-scope.tsx";
+import { useDockScope, useScopedFromMeta } from "../../app/session-scope.tsx";
 import { useApp } from "../../store/index.ts";
 import { sessionThinking } from "../../lib/thinking.ts";
 import { withQuotes } from "../../lib/quote.ts";
@@ -54,7 +54,8 @@ export function SideComposer({
 	 * The conversation this side chat is beside, which is what 「跟随主会话」 follows. Not the live
 	 * slot's `meta`: under another screen that named the focused conversation's model and effort.
 	 */
-	const meta = useScopedMeta();
+	const parentModelId = useScopedFromMeta((meta) => meta?.modelId);
+	const parentThinking = useScopedFromMeta((meta) => meta?.thinking);
 	const { sessionId, sideId } = useSideTarget();
 	// The screen this side chat is docked in, where a file marked here opens — not the one with focus.
 	const screen = useDockScope();
@@ -177,7 +178,7 @@ export function SideComposer({
 	};
 
 	// Inheritance stays a policy; the trigger names the model used by the next request.
-	const model = findModel(settings, meta?.modelId ?? settings?.defaultModelId ?? null);
+	const model = findModel(settings, parentModelId ?? settings?.defaultModelId ?? null);
 	const modelName = model?.name ?? null;
 
 	/*
@@ -241,7 +242,7 @@ export function SideComposer({
 							disabled={disabled || loading}
 							selection={{
 								modelId: modelId || model?.id,
-								value: thinking ?? sessionThinking(meta, settings),
+								value: thinking ?? sessionThinking({ thinking: parentThinking }, settings),
 								onChange: (level) => {
 									if (sessionId) void setSideThinking(sessionId, sideId, level);
 								},

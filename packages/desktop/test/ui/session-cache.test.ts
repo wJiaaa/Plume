@@ -6,7 +6,6 @@ import { applyAgentEvent } from "../../src/store/apply-event.ts";
 import { flushCoalesced } from "../../src/store/coalesce.ts";
 import { prune, type Cache } from "../../src/store/derive.ts";
 import { afterPaint } from "../../src/lib/after-paint.ts";
-import { readSelectedSession } from "../../src/store/session-read.ts";
 import { applySessionChange } from "../../src/store/session-changes.ts";
 import { revealSession } from "../../src/features/split/actions.ts";
 import type { PlumeApi } from "@plume/contract";
@@ -573,38 +572,6 @@ test("a failed transcript read releases loading and preserves warm content", asy
 	assert.equal(useApp.getState().loadingSession, false);
 	assert.deepEqual(useApp.getState().messages[0].content, reply("b").content);
 	assert.ok(useApp.getState().notices.some((notice) => notice.message.includes("disk unavailable")));
-});
-
-test("reconnecting merges the missed history prefix with newly arriving live events", async () => {
-	const read = deferredRead();
-	readTranscript = () => read.promise;
-	const missed = { ...reply("written while offline"), timestamp: 20 };
-	const latest = { ...reply("live after reconnect"), timestamp: 30 };
-	const reading = readSelectedSession(meta("a"), useApp.setState, useApp.getState, true);
-	applyAgentEvent("a", { type: "message_start", message: latest }, useApp.setState, useApp.getState);
-	read.resolve({ meta: meta("a"), messages: [reply("a"), missed], running: true, pendingApprovals: [] });
-	await reading;
-	assert.deepEqual(useApp.getState().messages.map(message => message.timestamp), [10, 20, 30]);
-});
-
-test("reconnecting during an existing read queues a fresh snapshot for the same session", async () => {
-	const first = deferredRead();
-	const second = deferredRead();
-	let reads = 0;
-	readTranscript = () => (++reads === 1 ? first.promise : second.promise);
-	const opening = readSelectedSession(meta("a"), useApp.setState, useApp.getState);
-	await readSelectedSession(meta("a"), useApp.setState, useApp.getState, true);
-	first.resolve(snapshot("a"));
-	await opening;
-	// oxlint-disable-next-line no-unmodified-loop-condition -- `reads` increments when the queued IPC starts after paint
-	for (let i = 0; i < 10 && reads < 2; i++) await afterPaint();
-	assert.equal(reads, 2, "a response requested before reconnect cannot cover the offline gap");
-	const missed = { ...reply("offline history"), timestamp: 20 };
-	const live = { ...reply("after reconnect"), timestamp: 30 };
-	applyAgentEvent("a", { type: "message_start", message: live }, useApp.setState, useApp.getState);
-	second.resolve({ meta: meta("a"), messages: [reply("a"), missed], running: true, pendingApprovals: [] });
-	await new Promise((resolve) => setTimeout(resolve, 0));
-	assert.deepEqual(useApp.getState().messages.map(message => message.timestamp), [10, 20, 30]);
 });
 
 test("remote metadata updates the active picker, and deletion clears running state and cached content", () => {

@@ -12,7 +12,6 @@
  */
 import { routedBlock } from "../../lib/tool-summary.ts";
 import type { AssistantContent, AssistantMessage, CommandRun, Message } from "@plume/core";
-import { todosFrom } from "../../store/derive.ts";
 import { isPlanTick } from "../../store/turn-stop.ts";
 import { drawnAt } from "../../store/message-event.ts";
 import type { Hiccup } from "../../lib/hiccup.ts";
@@ -30,13 +29,6 @@ type ToolCallBlock = Extract<AssistantContent, { type: "toolCall" }>;
 export type Call = { block: ToolCallBlock; stopReason: AssistantMessage["stopReason"]; page?: PageState };
 
 export type Run =
-	/**
-	 * 压缩标记，带着它插在哪一条消息之前。
-	 *
-	 * `at` 不是装饰：`runKey` 要给每一行一个稳定的 key，而压缩标记原先除了 `kind` 什么都没有——
-	 * 没有任何字段能把两个压缩标记区分开。一次会话压缩过六次，转录里就有六个一模一样的东西。
-	 */
-	| { kind: "compaction"; at: number }
 	| { kind: "command"; command: CommandRun }
 	/** 连接抖了一下，画在它抖的那个位置上。见 `lib/hiccup.ts` 的 `at`。 */
 	| { kind: "hiccup"; hiccup: Hiccup }
@@ -87,7 +79,7 @@ export type Run =
 	/*
 	 * `shown` is a run of one: a page the agent put up for the reader with `preview`, or a suggested
 	 * session waiting on the reader's Start (`spawn_session`). Either is for the reader rather than
-	 * the turn's work, so it is never folded away with the work — see `isProcess`.
+	 * the turn's work, so it is never folded away with the work — see `turnBlocks`.
 	 */
 	| { kind: "tools"; calls: Call[]; live?: boolean; shown?: true };
 
@@ -97,17 +89,11 @@ export type ModelUsed = { provider: string; model: string };
 /**
  * A split reply has two identities; neither identity changes when more text arrives.
  *
- * **每一种 `Run` 都要有分支，包括压缩标记。** 这个函数的签名曾经是
- * `Exclude<Run, { kind: "compaction" }>`——看起来压缩标记进不来，而那只是一个类型：调用处写一个
- * `as` 就能把它塞进来，运行时什么都不拦。`Conversation` 里正好有那么一个 `as`，于是压缩过的会话
- * 一打开就整页白掉，报 `Cannot read properties of undefined (reading 'role')`：前三个 `if` 都不
- * 匹配，落到最后一行去读一个根本不存在的 `message`。
- *
- * 同一句报错被报上来三次才查到这里，原因是崩溃界面只给组件栈——它只说「崩在 Conversation 这棵树
- * 里」，而这里是一个有几十个 useMemo 的组件。真正指到这一行的是 `error.stack`。
+ * **每一种 `Run` 都要有分支。** 漏掉一种，它就落到最后一行去读一个根本不存在的 `message`：从前签名里
+ * `Exclude` 掉的一种被调用处一个 `as` 塞了进来，那种会话一打开就整页白掉，报
+ * `Cannot read properties of undefined (reading 'role')`。
  */
 export function runKey(run: Run): string {
-	if (run.kind === "compaction") return `compaction-${run.at}`;
 	if (run.kind === "command") return `command-${run.command.id}`;
 	if (run.kind === "hiccup") return `hiccup-${run.hiccup.id}`;
 	if (run.kind === "model") return `model-${run.at}`;
@@ -259,21 +245,23 @@ export function sameRun(
 /**
  * A message list, as rows.
  *
- * `compactions` are indices into `messages`: the marker goes where the summary was taken, not at
- * the end, because everything above it is a summary as far as the model is concerned.
+ * Runs of tool calls are gathered across messages, not just inside one. A model that calls a tool,
+ * reads the result and calls the next one produces a fresh assistant message every time, so grouping
+ * within a message caught parallel batches and missed sequential ones — the common case. A message
+ * carrying text ends the run, because that is the model saying something worth reading.
+ *
+ * 压缩不进转录：自动压缩归运行指示器，人自己敲的压缩命令是一条 `command`。
  */
-export function runs(messages: Message[], compactions?: { at: number }[]): Exclude<Run, { kind: "command" } | { kind: "hiccup" }>[];
-export function runs(messages: Message[], compactions: { at: number }[], commands: CommandRun[], hiccups?: Hiccup[]): Run[];
-export function runs(rawMessages: Message[], compactions: { at: number }[] = [], commands: CommandRun[] = [], hiccups: Hiccup[] = []): Run[] {
+export function runs(messages: Message[]): Exclude<Run, { kind: "command" } | { kind: "hiccup" }>[];
+export function runs(messages: Message[], commands: CommandRun[], hiccups?: Hiccup[]): Run[];
+export function runs(rawMessages: Message[], commands: CommandRun[] = [], hiccups: Hiccup[] = []): Run[] {
 	const messages = intact(rawMessages);
 	const out: Run[] = [];
 	// Sorted so the marks can be consumed in order as the transcript is walked.
-	const marks = [...compactions].map((c) => c.at).sort((a, b) => a - b);
-	let nextMark = 0;
 	const commandMarks = [...commands].sort((a, b) => a.at - b.at);
 	let nextCommand = 0;
 	/*
-	 * 断线也是一个标记，和上面两种一样按位置插。
+	 * 断线也是一个标记，和命令一样按位置插。
 	 *
 	 * 它们从前一律画在转录最下面、运行指示器底下，于是一轮跑四十分钟、中间断过两次又接上的那句
 	 * 「重连 2 次后恢复」贴在最后一行 loading 下面——说的是某个时刻的事，站的却是「此刻」的位置。
@@ -380,7 +368,6 @@ export function runs(rawMessages: Message[], compactions: { at: number }[] = [],
 	};
 
 	let clock = newClock();
-	let currentTodos: ReturnType<typeof todosFrom> = [];
 	for (const [index, message] of messages.entries()) {
 		/*
 		 * A person speaking starts a new turn; the runtime's own messages continue the one running.
@@ -390,11 +377,7 @@ export function runs(rawMessages: Message[], compactions: { at: number }[] = [],
 		 */
 		if (opensTurn(message) && !resumesTurn(messages, index)) {
 			closeTurn();
-			clock = newClock(index);
-		}
-		while (nextMark < marks.length && marks[nextMark] === index) {
-			out.push({ kind: "compaction", at: index });
-			nextMark++;
+			clock = newClock(index, clock.openTodos);
 		}
 		// Commands are visible boundaries, including between an interrupted tool run and its resume.
 		while (nextCommand < commandMarks.length && commandMarks[nextCommand].at <= index) {
@@ -404,10 +387,6 @@ export function runs(rawMessages: Message[], compactions: { at: number }[] = [],
 			out.push({ kind: "hiccup", hiccup: hiccupMarks[nextHiccup++] });
 		}
 
-		if (message.role === "toolResult" && message.toolName === "todo_write" && !message.isError) {
-			const details = message.details as { kind?: string; todos?: ReturnType<typeof todosFrom> } | undefined;
-			if (details?.kind === "todo" && Array.isArray(details.todos)) currentTodos = details.todos;
-		}
 		/*
 		 * 每一条都记进表里，包括下面那两种画不出行的。
 		 *
@@ -416,9 +395,6 @@ export function runs(rawMessages: Message[], compactions: { at: number }[] = [],
 		 * 是纯粹的渲染决定，把统计一起跳过去，正是时间丢掉的地方。
 		 */
 		saw(clock, message);
-		if (message.role === "assistant" && currentTodos.some((t) => t.status !== "completed")) {
-			clock.halted = true;
-		}
 
 		/*
 		 * Tool results are not entries in the transcript; they are the contents of a card.
@@ -439,7 +415,7 @@ export function runs(rawMessages: Message[], compactions: { at: number }[] = [],
 		/*
 		 * 送回来的结果和另一个会话的消息要画出来。把空闲的会话叫醒的那种是一道缝：不画，读的人看到的
 		 * 是主智能体说完一段话、隔了几分钟又自己动了起来。插在一轮中间的那种只是这段工作里的一步，
-		 * 见 `isProcess`。
+		 * 见 `turnBlocks`。
 		 */
 		if (message.role === "user" && message.synthetic && !message.delivery && !message.peer) continue;
 
@@ -547,11 +523,6 @@ export function runs(rawMessages: Message[], compactions: { at: number }[] = [],
 	const newest = closeTurn(!(latest?.role === "assistant" && !settled(latest.stopReason)));
 	if (newest) newest.newest = true;
 
-	// A compaction recorded after the last message still belongs at the end.
-	while (nextMark < marks.length) {
-		out.push({ kind: "compaction", at: messages.length + nextMark });
-		nextMark++;
-	}
 	while (nextCommand < commandMarks.length) out.push({ kind: "command", command: commandMarks[nextCommand++] });
 	// 还在等的那一条数出来正好落在这里——它确实正在此刻发生，末尾就是它的位置。
 	while (nextHiccup < hiccupMarks.length) out.push({ kind: "hiccup", hiccup: hiccupMarks[nextHiccup++] });

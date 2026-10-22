@@ -53,7 +53,7 @@ function meta(id: string, project: WorkspaceInfo): SessionMeta {
 }
 function parked(id: string, project: WorkspaceInfo, running: boolean): Cache[string] {
 	const messages: Message[] = [];
-	return { meta: meta(id, project), messages, toolRuns: {}, state: { running, approvals: [], todos: [], compactions: [], commandRuns: [], hiccups: [], stopped: null, retrying: null, capabilities: null, pendingUserMessage: null } };
+	return { meta: meta(id, project), messages, toolRuns: {}, state: { running, approvals: [], todos: [], compactions: [], commandRuns: [], hiccups: [], stopped: null, retrying: null, capabilities: null, pendingUserMessage: null, hookRuns: [], compactedAt: null } };
 }
 
 let listed: string[];

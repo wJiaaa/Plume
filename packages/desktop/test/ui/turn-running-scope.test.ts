@@ -40,7 +40,7 @@ const exchange = (id: string, turn: number): Message[] => [
 	{ role: "assistant", content: [{ type: "text", text: `${id} 的第 ${turn} 个回答` }], api: "anthropic-messages", provider: "qa", model: "model", usage, stopReason: "stop", timestamp: turn * 10 + 1 },
 ];
 function parked(id: string, messages: Message[], running: boolean): Cache[string] {
-	return { meta: meta(id), messages, toolRuns: {}, state: { running, approvals: [], todos: [], compactions: [], commandRuns: [], hiccups: [], stopped: null, retrying: null, capabilities: null, pendingUserMessage: null } };
+	return { meta: meta(id), messages, toolRuns: {}, state: { running, approvals: [], todos: [], compactions: [], commandRuns: [], hiccups: [], stopped: null, retrying: null, capabilities: null, pendingUserMessage: null, hookRuns: [], compactedAt: null } };
 }
 
 let reads: string[];

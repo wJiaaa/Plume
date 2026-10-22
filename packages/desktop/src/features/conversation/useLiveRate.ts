@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import { useScopedMessages, useScopedSubAgents } from "../../app/session-scope.tsx";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { scopedMessages, scopedSubAgents, useScopedSessionId } from "../../app/session-scope.tsx";
+import { useApp } from "../../store/index.ts";
+import { useSubAgents } from "../../store/subAgents.ts";
 import { CHARS_PER_TOKEN, pushSample, rateFrom, trustworthy, type RateSample } from "./live-rate.ts";
 
 /**
@@ -20,30 +22,38 @@ import { CHARS_PER_TOKEN, pushSample, rateFrom, trustworthy, type RateSample } f
  * 已经结束的那些也在里面，而它们的数字不再变——速率算的是窗口内的差值，不动的部分只是个常量底，
  * 换一轮时窗口整个重置，底也跟着换掉。
  */
-export function useProducedChars(): number {
+export function useProducedChars(): () => number {
 	/*
-	 * 正在写的这一条，到此刻为止有多少字。
-	 *
-	 * 思考和正文都算：两者都是模型这一刻正在产出的东西，速度是同一件事。工具调用的参数不算——它是
-	 * 一次落地的，把它算进来会让曲线在调用那一帧凭空冲高。
+	 * 交回的是一个读数的办法，不是数本身：字数每一拍都在长，订阅它的话运行指示器整个跟着每一拍重画，
+	 * 而速度本来只在 250ms 的心跳上取样。由指示器在心跳那一次渲染里读。
 	 */
 	// This screen's conversation — the indicator under one transcript must not read another's speed.
-	const messages = useScopedMessages();
-	const last = messages[messages.length - 1];
-	let live = 0;
-	if (last?.role === "assistant" && last.stopReason === "pending") {
-		for (const block of last.content) {
-			if (block.type === "text") live += block.text.length;
-			else if (block.type === "thinking") live += block.thinking.length;
+	const id = useScopedSessionId();
+	return useCallback(() => {
+		const state = useApp.getState();
+		/*
+		 * 正在写的这一条，到此刻为止有多少字。
+		 *
+		 * 思考和正文都算：两者都是模型这一刻正在产出的东西，速度是同一件事。工具调用的参数不算——它是
+		 * 一次落地的，把它算进来会让曲线在调用那一帧凭空冲高。
+		 */
+		const messages = scopedMessages(state, id);
+		const last = messages[messages.length - 1];
+		let live = 0;
+		if (last?.role === "assistant" && last.stopReason === "pending") {
+			for (const block of last.content) {
+				if (block.type === "text") live += block.text.length;
+				else if (block.type === "thinking") live += block.thinking.length;
+			}
 		}
-	}
-	const agents = useScopedSubAgents();
-	const delegated = agents.reduce((sum, one) => sum + (one.usage?.output ?? 0), 0) * CHARS_PER_TOKEN;
-	return live + delegated;
+		const agents = scopedSubAgents(useSubAgents.getState(), id);
+		const delegated = agents.reduce((sum, one) => sum + (one.usage?.output ?? 0), 0) * CHARS_PER_TOKEN;
+		return live + delegated;
+	}, [id]);
 }
 
 /**
- * 此刻的写入速度，跟着 `now` 一起走。
+ * 此刻的写入速度，跟着 `now` 一起走：每次心跳用 `read` 现读一次字数，作为这一刻的采样。
  *
  * 采样收在 ref 里而不是 state：它每 250ms 变一次，而运行指示器本来就因为 `now` 每 250ms 重渲染一次——再让
  * 采样也触发一次渲染，等于同一件事渲染两遍。
@@ -54,7 +64,7 @@ export function useProducedChars(): number {
  * 单独一个文件，是为了能在 `test/ui` 里挂起来量。留在组件里它就只能连着那颗 canvas 思考球一起挂，而要验
  * 的东西——「读数保持到被替换」——跟球画成什么样没有半点关系。
  */
-export function useLiveRate(chars: number, now: number, turnStartedAt: number | null): number {
+export function useLiveRate(read: () => number, now: number, turnStartedAt: number | null): number {
 	const samples = useRef<RateSample[]>([]);
 	const [held, setHeld] = useState(0);
 
@@ -79,9 +89,9 @@ export function useLiveRate(chars: number, now: number, turnStartedAt: number | 
 	 * 所以只在新窗口攒稳（`trustworthy`）时更新，其余时刻保持。
 	 */
 	useEffect(() => {
-		samples.current = pushSample(samples.current, now, chars);
+		samples.current = pushSample(samples.current, now, read());
 		if (trustworthy(samples.current)) setHeld(rateFrom(samples.current));
-	}, [chars, now]);
+	}, [read, now]);
 
 	return held;
 }

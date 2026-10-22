@@ -37,7 +37,7 @@ const shell: ToolRun = { toolCallId: "t1", toolName: "bash", args: { command: "s
 function beside(): Cache[string] {
 	return {
 		meta: meta("b"), messages: [asked("b"), typing], toolRuns: {},
-		state: { running: true, approvals: [], todos: [], compactions: [], commandRuns: [], hiccups: [], stopped: null, retrying: null, capabilities: null, pendingUserMessage: null },
+		state: { running: true, approvals: [], todos: [], compactions: [], commandRuns: [], hiccups: [], stopped: null, retrying: null, capabilities: null, pendingUserMessage: null, hookRuns: [], compactedAt: null },
 	};
 }
 

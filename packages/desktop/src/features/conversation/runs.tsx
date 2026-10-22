@@ -25,21 +25,19 @@ import { describeCalls, describeOne, describePolls, diffOf, pollOutput, polledJo
  * How much of a long transcript is mounted at once, and how much each "show more" adds — **in turns**.
  *
  * Counted in turns rather than in rows, and that unit is the whole point. The window used to step by
- * 60 `Run`s while the transcript draws in `TurnBlock`s (`grouping.ts`), and a turn can hold hundreds
+ * 60 `Run`s while the transcript draws in `TurnBlock`s (`turn-blocks.ts`), and a turn can hold hundreds
  * of runs: one session had 400 tool calls between two things the user typed. Paging by row into a
  * turn like that loads 60 rows straight into an already-collapsed block, so the only thing that
  * changes on screen is the number in 「调用工具 N 个」 — four clicks in a row, and the transcript does
  * not move. Now one click always brings whole turns, so it always brings something you can see.
  *
  * Twenty rather than sixty because a turn is worth several rows: its question, its answer, and the
- * one folded line standing in for everything in between. Collapsed turns cost nothing to keep
- * mounted (`TurnWork` renders nothing while closed), so this number is about how much a person
- * wants to take in at once, not about what the browser can hold.
+ * lines its work folded into.
  */
 export const WINDOW_TURNS = 20;
 
 export type Segment =
-  | { kind: "block"; block: AssistantContent; index: number }
+  | { kind: "block"; block: Exclude<AssistantContent, { type: "toolCall" }>; index: number }
   | { kind: "tools"; blocks: Extract<AssistantContent, { type: "toolCall" }>[] };
 
 /**
@@ -48,6 +46,19 @@ export type Segment =
  * Text between two calls is a break in the run — the model stopping to explain is exactly the
  * boundary a reader uses, so folding across it would join two things it deliberately separated.
  */
+/**
+ * How many lines a stretch of calls added and removed.
+ *
+ * Primitives, not the map. A selector returning an object builds a new one every time and so always
+ * looks changed; a number is compared by value, so this re-renders when what it shows changes and
+ * not when some other card emits a line of output.
+ */
+export function useDiffTotals(calls: readonly Pick<Call, "block">[], runs?: Record<string, ToolRunState>) {
+  const added = useScopedFromToolRuns((toolRuns) => calls.reduce((n, { block }) => n + diffOf((runs ?? toolRuns)[block.id], "added"), 0));
+  const removed = useScopedFromToolRuns((toolRuns) => calls.reduce((n, { block }) => n + diffOf((runs ?? toolRuns)[block.id], "removed"), 0));
+  return { added, removed };
+}
+
 export function segments(content: AssistantContent[]): Segment[] {
   const out: Segment[] = [];
   for (const [index, block] of content.entries()) {
@@ -222,13 +233,6 @@ const ToolRunGroup = function ToolRun({
   shown?: boolean;
 }) {
   /*
-   * Primitives, not the map.
-   *
-   * A selector returning an object builds a new one every time and so always looks changed; a
-   * number is compared by value, so this re-renders when what it shows changes and not when some
-   * other card emits a line of output.
-   */
-  /*
    * The glide asks one question: is this the run that is happening now.
    *
    * It used to also light up whenever a call in the group counted as live, and that turned out to
@@ -256,8 +260,7 @@ const ToolRunGroup = function ToolRun({
    */
   const summary = describeCalls(calls);
   // Totals across the run, so a fold does not hide how much changed — counted from this screen's records.
-  const added = useScopedFromToolRuns((toolRuns) => calls.reduce((n, { block }) => n + diffOf((runs ?? toolRuns)[block.id], "added"), 0));
-  const removed = useScopedFromToolRuns((toolRuns) => calls.reduce((n, { block }) => n + diffOf((runs ?? toolRuns)[block.id], "removed"), 0));
+  const { added, removed } = useDiffTotals(calls, runs);
 
   // 这一段里派出去的子智能体：整组一起对号，收起时行尾摆一排它们的脸。见 `useDispatches`。
   const dispatches = useDispatches(calls.map(({ block }) => block), runs);

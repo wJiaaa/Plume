@@ -6,7 +6,7 @@
  */
 
 import { Anchor, X } from "../../ui/icons/index.ts";
-import { useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useState } from "react";
 import { useI18n } from "../../i18n/index.ts";
 import { bridge } from "../../services/index.ts";
 import { useApp } from "../../store/index.ts";
@@ -21,7 +21,8 @@ import { Button } from "../../ui/primitives/Button.tsx";
  */
 const dismissed = new Set<string>();
 
-export function HookTrustBanner({ className = "" }: { className?: string }) {
+// 按 props 记住：它和转录挂在同一个组件里，转录流式输出时每一拍都重画。
+export const HookTrustBanner = memo(function HookTrustBanner({ className = "" }: { className?: string }) {
 	const { t } = useI18n();
 	const cwd = useApp((s) => s.workspace?.path) ?? null;
 	const [pending, setPending] = useState<{ key: string; count: number } | null>(null);
@@ -81,4 +82,4 @@ export function HookTrustBanner({ className = "" }: { className?: string }) {
 			</div>
 		</div>
 	);
-}
+});

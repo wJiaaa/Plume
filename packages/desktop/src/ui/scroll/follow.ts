@@ -4,7 +4,7 @@
  * Every transcript in the window — the conversation, the side chat, a delegate's log — wants the
  * same behaviour: ride the bottom while something is arriving, stay put when the reader has gone
  * up to look at something, and offer a way back. Three copies of that grew separately and drifted,
- * so this file is the rule and the three surfaces are callers.
+ * so this file is the rule and every surface is a caller.
  *
  * Nothing here touches the DOM. Everything is a pure function of a geometry reading and an event,
  * which is what lets the interesting cases — the ones that only happen on one frame in the middle
@@ -58,12 +58,6 @@ export function followsAfterRestore(state: FollowState): boolean {
 	return state !== "detached";
 }
 
-/** What a scroller looks like at one instant. The three numbers every decision here is made from. */
-export interface Geometry {
-	scrollTop: number;
-	scrollHeight: number;
-	clientHeight: number;
-}
 
 /**
  * How close to the bottom counts as "back with it", in pixels.
@@ -88,7 +82,7 @@ const FOLLOW_SLACK = 72;
 const AWAY_THRESHOLD = 160;
 
 /**
- * A reading of the surface that decisions are made against.
+ * What a scroller looks like at one instant: the three numbers every decision here is made from.
  *
  * Deliberately just the geometry. What floats over the last of the content — an approval card, the
  * way-back button — is handled where it belongs, as padding at the foot of the scrolled content
@@ -97,7 +91,11 @@ const AWAY_THRESHOLD = 160;
  * is wrong twice over: `scrollTop` cannot exceed `scrollHeight - clientHeight`, so a positive inset
  * would make `atBottom` unreachable and pin a transcript that can never satisfy its own test.
  */
-export type Reading = Geometry;
+export interface Reading {
+	scrollTop: number;
+	scrollHeight: number;
+	clientHeight: number;
+}
 
 /**
  * The scrollTop that puts the end of the content against the foot of the viewport.
@@ -117,7 +115,7 @@ export function distanceToBottom(reading: Reading): number {
 }
 
 /** Content that does not fill its viewport. Always "at the bottom", never worth a button. */
-export function fitsInView(reading: Geometry): boolean {
+export function fitsInView(reading: Reading): boolean {
 	return reading.scrollHeight - reading.clientHeight <= 1;
 }
 
@@ -130,7 +128,7 @@ export function fitsInView(reading: Geometry): boolean {
  * one is how switching panels used to overwrite a session's remembered position with "top of the
  * transcript, and counted as pinned".
  */
-export function isDegenerate(reading: Geometry): boolean {
+export function isDegenerate(reading: Reading): boolean {
 	return reading.clientHeight <= 0;
 }
 
@@ -163,13 +161,16 @@ export function isAway(reading: Reading): boolean {
  */
 export type Direction = "up" | "down" | "unknown";
 
+/**
+ * What may change the intention.
+ *
+ * Geometry is deliberately not here — content appended, something above folding, the composer
+ * growing. None of them may change the intention, and reading the new geometry back as an answer to
+ * "does the reader want to follow?" is how typing into a composer that grows by 200px produced a
+ * 「回到最新」 button, and how a pane briefly reporting 0×0 produced a pinned transcript scrolled to
+ * its top. They are applied as positions (`targetScrollTop`), never fed to `nextState`.
+ */
 export type FollowEvent =
-	/** Content appended at the end: a token, a tool card, a row settling. */
-	| { kind: "tail-growth" }
-	/** Something above changed size: a group folding, an image landing, an estimate cashing in. */
-	| { kind: "reflow" }
-	/** The box changed, not what is in it: the composer grew, a splitter moved, the window resized. */
-	| { kind: "viewport" }
 	/** The reader moved, and this is the only event that may end the intention to follow. */
 	| { kind: "user-scroll"; direction: Direction }
 	/**
@@ -186,9 +187,7 @@ export type FollowEvent =
 	/** The reader asked to go back: the button, End, sending a message. */
 	| { kind: "user-return" }
 	/** A glide arrived. */
-	| { kind: "settle" }
-	/** The surface now shows something else — another session, another delegate. */
-	| { kind: "surface-swap"; following: boolean };
+	| { kind: "settle" };
 
 /**
  * The whole state machine.
@@ -198,15 +197,9 @@ export type FollowEvent =
  */
 export function nextState(state: FollowState, event: FollowEvent, reading: Reading): FollowState {
 	// A reading taken while hidden is not evidence; hold whatever the reader last meant.
-	if (isDegenerate(reading) && event.kind !== "surface-swap") return state;
+	if (isDegenerate(reading)) return state;
 
 	switch (event.kind) {
-		case "surface-swap":
-			// The incoming surface's own remembered intention, never the outgoing one's. Carrying the
-			// previous session's `pinned` across is what made a transcript you had scrolled up in hand
-			// its position — and its unread dot — to whichever conversation you opened next.
-			return event.following ? "following" : "detached";
-
 		case "user-scroll":
 			// A gesture during the ride back is a change of mind, whichever way it points. Checked
 			// before the direction, so that a downward nudge mid-glide stops the animation rather
@@ -247,19 +240,6 @@ export function nextState(state: FollowState, event: FollowEvent, reading: Readi
 			// Only a glide that ran to completion lands here — an interrupted one has already been
 			// taken to `detached` by the gesture that interrupted it.
 			return state === "returning" ? "following" : state;
-
-		case "tail-growth":
-		case "reflow":
-		case "viewport":
-			/*
-			 * None of these may change the intention.
-			 *
-			 * This is the half of the rule that keeps being lost. Every one of them changes geometry,
-			 * and reading the new geometry back as an answer to "does the reader want to follow?" is
-			 * how typing into a composer that grows by 200px produced a 「回到最新」 button, and how a
-			 * pane briefly reporting 0×0 produced a pinned transcript scrolled to its top.
-			 */
-			return state;
 	}
 }
 
@@ -321,12 +301,6 @@ export interface Marker {
 
 export function marker(count: number, tail: string): Marker {
 	return { count, tail };
-}
-
-export function sameMarker(a: Marker | null, b: Marker | null): boolean {
-	if (a === b) return true;
-	if (!a || !b) return false;
-	return a.count === b.count && a.tail === b.tail;
 }
 
 /**

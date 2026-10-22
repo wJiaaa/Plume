@@ -93,29 +93,6 @@ function sameMessageRun(a: Extract<Run, { kind: "message" }>, b: Extract<Run, { 
 	return keys.every((key) => key === "turnStats" || Object.is(a[key], b[key])) && sameStats(a.turnStats, b.turnStats);
 }
 
-/** 这一条 run 是不是「过程」——相对于说出口的话。 */
-function isProcess(run: Run): boolean {
-	if (run.kind === "tools") return !run.shown;
-	if (run.kind === "compaction") return true;
-	/*
-	 * A dropped connection is process once it is over — recovered, or moved to another model — and
-	 * news while it is not. Waiting, it is the countdown to the retry; given up, it is the turn's last
-	 * word and carries its 继续. Either way it stays where it can be seen.
-	 */
-	if (run.kind === "hiccup") return run.hiccup.outcome !== "waiting" && run.hiccup.outcome !== "gave_up";
-	if (run.kind !== "message") return false;
-	/*
-	 * 插在一轮中间的送达是这段工作里的一步，和它前后的工具一起收。叫醒会话的那一种开了一轮
-	 * （`opensTurn`），留在外面；另一个会话的来信有正文要读，也留在外面。
-	 */
-	if (run.message.role === "user") return Boolean(run.message.delivery) && !run.message.peer && !opensTurn(run.message);
-	/*
-	 * `lead` 的行不因为是 `lead` 就算过程：开头单独拆出来的推理（见 `leadingThinking`）本来就只有推理；
-	 * 拆在页面前面的那一段（见 `runs` 里切页面那一步）可能有话，话不收。
-	 */
-	return thinkingOnly(run);
-}
-
 /**
  * A reply row that is nothing but reasoning — a reply that thought and then only called tools.
  *
@@ -150,7 +127,8 @@ export function withoutThinking<R extends Run>(list: R[]): R[] {
 
 /** 过程里的一次推理。同在过程里的送达不是。 */
 function reasoning(run: Run): run is Extract<Run, { kind: "message" }> {
-	return run.kind === "message" && run.message.role === "assistant" && thinkingOnly(run);
+	// `lead` 的行不因为是 `lead` 就算：开头单独拆出来的推理本来就只有推理；拆在页面前面的那一段可能有话，话不算。
+	return run.kind === "message" && thinkingOnly(run);
 }
 
 /** 一条 run 是不是「人开的口」——新一轮从这里开始。 */
@@ -210,7 +188,8 @@ function joins(step: Step, category: string): boolean {
  * 子代理的结果和另一个会话的来信不在此列：主智能体接下来那段话是就着它们说的，见 `DeliveryRow`。
  */
 function jobReturn(run: Run): run is Extract<Run, { kind: "message" }> {
-	if (run.kind !== "message" || run.message.role !== "user" || !isProcess(run)) return false;
+	// 叫醒会话的那一种开了一轮（`opensTurn`），不挂；另一个会话的来信有正文要读，也不挂。
+	if (run.kind !== "message" || run.message.role !== "user" || run.message.peer || opensTurn(run.message)) return false;
 	const reports = run.message.delivery ?? [];
 	return reports.length > 0 && reports.every((report) => report.kind === "job");
 }
@@ -254,12 +233,12 @@ export function turnBlocks(list: Run[], live = false): TurnBlock[] {
 		while (end < list.length && !opensBlock(list[end])) end++;
 		const body = list.slice(at, end);
 		/*
-		 * 只有重连、压缩这类标记、没有一次推理或工具的一轮，原样摊开。
+		 * 只有重连这类标记、没有一次推理或工具的一轮，原样摊开。
 		 *
 		 * 检查的那一页从写第一笔起就算：它后面要么是一次发布、要么是它自己收进过程，这一轮早晚是有过程的。
 		 * 等到那时才换成有过程的一轮，页面就换了一个父元素，重新挂一遍、闪一下。
 		 */
-		if ((live && asked && end === list.length) || body.some((run) => (isProcess(run) && (run.kind === "tools" || reasoning(run))) || (run.kind === "tools" && run.calls.some((call) => call.page)))) {
+		if ((live && asked && end === list.length) || body.some((run) => (run.kind === "tools" && (!run.shown || run.calls.some((call) => call.page))) || reasoning(run))) {
 			out.push({ kind: "work", runs: body, items: itemsOf(body), turn });
 		} else for (const run of body) plain(run);
 		at = end;
@@ -292,8 +271,6 @@ function itemsOf(body: Run[]): TurnItem[] {
 		thoughts = [];
 	};
 	for (const run of body) {
-		// 压缩标记画在运行指示上（见 `Conversation` 的 `draw`），在这里占一行只会多出一截空白。
-		if (run.kind === "compaction") continue;
 		if (run.kind === "tools" && !run.shown) {
 			for (const call of run.calls) {
 				if (unclassified(call)) continue;

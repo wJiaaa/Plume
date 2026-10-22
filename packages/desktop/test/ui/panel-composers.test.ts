@@ -78,7 +78,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	useSubAgents.setState({ agents: [], transcripts: {}, focused: null, loading: [] });
+	useSubAgents.setState({ rosters: {}, transcripts: {}, focused: null, loading: [] });
 	useSide.setState({ sides: {} });
 	useApp.setState({ sessionCache: {}, queued: {} });
 });
@@ -88,11 +88,11 @@ const side: SessionMeta = { id: "side1", parentId: "s", sideId: "default", title
 /** 侧边聊天那个会话在缓存里的样子——它从不上台，转录只在这里。 */
 function cacheSide(messages: Message[], running: boolean) {
 	useSide.setState({ sides: { s: { default: side } } });
-	useApp.setState({ sessionCache: { side1: { meta: side, messages, toolRuns: {}, state: { running, approvals: [], todos: [], compactions: [], stopped: null, retrying: null, capabilities: null, pendingUserMessage: null } } } });
+	useApp.setState({ sessionCache: { side1: { meta: side, messages, toolRuns: {}, state: { running, approvals: [], todos: [], compactions: [], stopped: null, retrying: null, capabilities: null, pendingUserMessage: null, commandRuns: [], hookRuns: [], hiccups: [], compactedAt: null } } } });
 }
 
 test("子智能体的草稿按子智能体存：给 A 写到一半切到 B，那半句话不跟过去", async () => {
-	useSubAgents.setState({ agents: [running("a"), running("b", { startedAt: Date.now() - 1000 })], transcripts: { a: [brief("去找 A")], b: [brief("去找 B")] }, focused: "a", loading: [] });
+	useSubAgents.setState({ rosters: { s: [running("a"), running("b", { startedAt: Date.now() - 1000 })] }, transcripts: { a: [brief("去找 A")], b: [brief("去找 B")] }, focused: "a", loading: [] });
 	const view = await mount(h(SubAgentPanel));
 	try {
 		const field = () => view.find<HTMLTextAreaElement>("textarea");
@@ -102,13 +102,13 @@ test("子智能体的草稿按子智能体存：给 A 写到一半切到 B，那
 		await act(async () => useSubAgents.getState().focus("a"));
 		assert.equal(field().value, "给 A 的半句", "回到 A，它还在");
 	} finally {
-		await act(async () => useSubAgents.setState({ agents: [running("a", { status: "done" }), running("b", { status: "done" })] }));
+		await act(async () => useSubAgents.setState({ rosters: { s: [running("a", { status: "done" }), running("b", { status: "done" })] } }));
 		await view.unmount();
 	}
 });
 
 test("子智能体的发送键就是发送键：带着给人看的那一份送出去，框清空", async () => {
-	useSubAgents.setState({ agents: [running("a")], transcripts: { a: [brief("去找")] }, focused: "a", loading: [] });
+	useSubAgents.setState({ rosters: { s: [running("a")] }, transcripts: { a: [brief("去找")] }, focused: "a", loading: [] });
 	const view = await mount(h(SubAgentPanel));
 	try {
 		const field = view.find<HTMLTextAreaElement>("textarea");
@@ -125,7 +125,7 @@ test("子智能体的发送键就是发送键：带着给人看的那一份送�
 		assert.equal(display.displayText, "别看测试目录", "给人看的那一份跟着走，面板才画得出这句话本身");
 		assert.equal(view.find<HTMLTextAreaElement>("textarea").value, "");
 	} finally {
-		await act(async () => useSubAgents.setState({ agents: [running("a", { status: "done" })] }));
+		await act(async () => useSubAgents.setState({ rosters: { s: [running("a", { status: "done" })] } }));
 		await view.unmount();
 	}
 });

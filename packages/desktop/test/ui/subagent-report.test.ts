@@ -24,7 +24,7 @@ function finished(over: Partial<SubAgentSummary>): SubAgentSummary {
 }
 
 async function show(agent: SubAgentSummary) {
-	useSubAgents.setState({ agents: [agent], transcripts: { [agent.id]: [] }, focused: agent.id, loading: [] });
+	useSubAgents.setState({ rosters: { s: [agent] }, transcripts: { [agent.id]: [] }, focused: agent.id, loading: [] });
 	return mount(h(SubAgentPanel));
 }
 
@@ -33,7 +33,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	useSubAgents.setState({ agents: [], transcripts: {}, focused: null, loading: [] });
+	useSubAgents.setState({ rosters: {}, transcripts: {}, focused: null, loading: [] });
 });
 
 test("声明了格式的回报只画一遍：对象画出来，底下不再重复那段给模型读的文字", async () => {

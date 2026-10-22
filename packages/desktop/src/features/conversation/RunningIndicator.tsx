@@ -1,5 +1,5 @@
 import { translate } from "../../i18n/translate.ts";
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { useCountUp } from "../../ui/primitives/useCountUp.ts";
 import { StatusSpinner } from "../../ui/motion/loaders.tsx";
 import { moodFor, phraseFor } from "../../lib/thinking-words.ts";
@@ -42,7 +42,11 @@ const TOOL_HOLD_MS = 2000;
  */
 const COMPACTED_NOTICE_MS = 8000;
 
-export function RunningIndicator() {
+/** 换一句的间隔：按这一轮已经跑了多久算，不另开一只钟。 */
+const PHRASE_MS = 4200;
+
+// 没有 props，记住它就和转录的重画脱开：转录流式输出时每一拍都重画，这一行要的全是自己订阅的。
+export const RunningIndicator = memo(function RunningIndicator() {
 	/*
 	 * This screen's turn, every part of it.
 	 *
@@ -70,14 +74,6 @@ export function RunningIndicator() {
 	 */
 	const waitingKind = !waiting ? null : waiting.kind === "interactive" && waiting.subject === "submit_plan" ? "plan" : waiting.kind === "interactive" || waiting.kind === "form" ? "question" : "approval";
 	const [now, setNow] = useState(() => Date.now());
-	/*
-	 * The phrase advances on its own clock, slower than the seconds.
-	 *
-	 * Tied to the timer it would change four times a second and read as noise; changed only when
-	 * the work changes it would sit still through a long install. Every few seconds is fast
-	 * enough to look alive and slow enough to be read.
-	 */
-	const [tick, setTick] = useState(0);
 	/**
 	 * The newest call, running or just finished, as `name \0 summary \0 finishedAt`.
 	 *
@@ -112,18 +108,14 @@ export function RunningIndicator() {
 		const block = last.content[last.content.length - 1];
 		return block?.type === "text" && block.text.length > 0;
 	});
-	// 这一轮此刻产出了多少字——主 Agent 的加上委派出去的。抽在 `useLiveRate.ts` 里，那里说明了为什么。
-	const producedChars = useProducedChars();
+	// 这一轮此刻产出了多少字——主 Agent 的加上委派出去的。只在心跳上读，不订阅，见 `useProducedChars`。
+	const readProduced = useProducedChars();
 
 	useEffect(() => {
 		if (!startedAt) return;
 		// Quarter-second so the seconds digit never appears to skip one.
 		const timer = setInterval(() => setNow(Date.now()), 250);
-		const words = setInterval(() => setTick((n) => n + 1), 4200);
-		return () => {
-			clearInterval(timer);
-			clearInterval(words);
-		};
+		return () => clearInterval(timer);
 	}, [startedAt]);
 
 	// The reply still streaming has usage of its own; counting it keeps the number moving
@@ -144,7 +136,7 @@ export function RunningIndicator() {
 	 * 压缩判断用的是同一把尺，至少全应用口径一致。回合结束后 `MessageActions` 那行显示的是服务商
 	 * 报的真数，两者会有出入——这是估算的代价，不是 bug。
 	 */
-	const rate = useLiveRate(producedChars, now, startedAt);
+	const rate = useLiveRate(readProduced, now, startedAt);
 
 	const [toolName, summary, finishedAt] = doing.split("\u0000");
 	/*
@@ -181,7 +173,14 @@ export function RunningIndicator() {
 	 * in progress would be the same moment told twice, one of them wrongly.
 	 */
 	const drawing = fresh && !finishedAt && toolName === "image_generate";
-	const phrase = retrying || drawing ? null : phraseFor(mood, tick, elapsed);
+	/*
+	 * The phrase advances on its own clock, slower than the seconds.
+	 *
+	 * Tied to the timer it would change four times a second and read as noise; changed only when
+	 * the work changes it would sit still through a long install. Every few seconds is fast
+	 * enough to look alive and slow enough to be read.
+	 */
+	const phrase = retrying || drawing ? null : phraseFor(mood, Math.floor(elapsed / PHRASE_MS), elapsed);
 
 	if (waitingKind) {
 		return (
@@ -238,8 +237,7 @@ export function RunningIndicator() {
 			 *
 			 * `20` rather than a scaled-down 64 — the two sizes are separate designs in that
 			 * library, each with its own dot count and speed, and this one is drawn to sit in a
-			 * line of text. Theme stays on `auto`, which reads the `dark`/`light` class this app
-			 * already puts on `<html>` and follows it live.
+			 * line of text. It follows the `dark` class on `<html>` by itself; see `ThinkingOrb`.
 			 */}
 			<ThinkingOrb state={mood} size={20} className="shrink-0" />
 			{/*
@@ -276,13 +274,6 @@ export function RunningIndicator() {
 			 */}
 			<LiveRate rate={rate} />
 			{/*
-			 * Why the wait is longer than it should be, on the line that is already counting it.
-			 *
-			 * A dropped connection is not an event of its own to be announced elsewhere — it is
-			 * the reason this particular turn is taking so long, and it stops being true the
-			 * moment the turn does.
-			 */}
-			{/*
 			 * Said once, where the turn's other business is said, and then gone.
 			 *
 			 * This used to be a rule drawn across the transcript, which is a permanent seam through
@@ -306,7 +297,7 @@ export function RunningIndicator() {
 			 */}
 		</div>
 	);
-}
+});
 
 /*
  * 下面两个数字是这一行上唯二逐拍在动的东西，所以各自单独一个组件。
