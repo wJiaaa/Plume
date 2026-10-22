@@ -2,6 +2,43 @@
 
 这个文件由 `pnpm release` 生成，条目来自提交信息。写得含糊的提交在这里也含糊，所以值得在提交时就写清楚。
 
+## [0.9.50](https://github.com/wJiaaa/Plume/releases/tag/v0.9.50) - 2026-10-22
+
+<!-- plume:notes en -->
+
+### Fixes
+
+- **The time under a turn could be a tenth of what it really took.** When the model stopped with items still open on its task list, the footer counted only up to that first stop: a turn that ran 66 s read 6 s. Tool calls that run after it now count; the time spent waiting for you to say "continue" still does not.
+- **Long pasted messages are no longer cut off at the edge of the bubble.** URLs, base64 and minified JSON have no spaces to break at, so they ran past the bubble and the overflow was clipped out of sight. They wrap now. A message longer than 14 lines shows its first 10 with **Show more**, so a 20,000-character paste no longer pushes the reply several screens away.
+- **Switching to a conversation that is streaming lands at the bottom.** It used to open 89–119 px short and then slide up for about 200 ms, because the text written while you were away was treated as text arriving right now.
+- **Scrolling up in a short conversation no longer stops it following.** One flick on the trackpad while the model was still thinking left the view stuck at the top while the reply grew past the window, and it came back there after switching away.
+- **The running line comes back when an answer stalls.** It hides while the answer streams so it does not jump along under the text, and the time and speed under a reply only appear when the turn ends, so a slow or stuck answer showed nothing but text. After 2 s without new text it now shows how long the turn has run and how fast; as soon as text arrives again it hides. The second or two some gateways leave between the last word and the end of the reply no longer counts as stalling, and switching away and back does not restart the wait.
+- **Text written while you were in another conversation no longer fades in as one block** when you come back.
+- **Editing and checking a preview over and over reads as one step.** A turn that edited a page and checked its preview twenty times was drawn as alternating command and preview rows (21 in one real turn); it is 6 now, broken only where the model says something.
+- **"Work outside a project" and archiving a whole project leave a clean conversation.** The blank conversation could keep the previous one's state: a stop button, its task list, its "paused" row.
+- **A turn the app found had already stopped no longer leaves its timer behind**, which made the next message continue from a start time long gone.
+- **"Back to bottom" in the subagent panel glides** instead of jumping.
+
+<!-- plume:notes zh-CN -->
+
+<details>
+<summary>中文（简体）</summary>
+
+### 修复
+
+- **一轮底下的耗时，可能只有实际的十分之一。** 模型停下时清单上还有没勾的，页脚只算到第一次停下：跑了 66 秒的一轮显示 6 秒。现在之后工具接着跑的时间照样算，等人说「继续」的那段仍然不算。
+- **长消息贴进来，不再被气泡边缘裁掉。** URL、base64、压成一行的 JSON 没有空格可断，顶出气泡后超出的部分被裁掉看不见。现在会折行。超过 14 行的消息只露出前 10 行，留一颗「展开全文」，两万字的一段粘贴不再把回复顶到好几屏以外。
+- **切进正在输出的会话，直接落在底部。** 原来先落后 89–119px，再花约 200ms 往上滑：离开期间写下的字被当成了此刻正在出的字。
+- **内容不满一屏时往上滚一下，不再从此不跟。** 模型还在想的时候碰一下触控板，回复写过几屏也停在顶上，切走再回来恢复的还是顶部。
+- **结论写着写着停住时，运行行回来。** 结论流出来时运行行会藏起来，免得挂在字底下一跳一跳；而回复底下的时间、速度要等这一轮结束才有。两头一夹，写得慢或卡住的结论屏幕上只有字。现在 2 秒没长新字，运行行就回来说跑了多久、多快；字一接着长，它又藏回去。有的网关在最后一个字和回复收尾之间空一两秒，这段不算停住；切走再切回来，也不会重新等这 2 秒。
+- **在别的会话时这里写下的字，切回来不再整段淡入。**
+- **改一次、看一次预览的反复，合成一行。** 改页面、检查预览来回二十次的一轮，原来画成命令、预览交替的一长串（真实会话里一轮 21 行），现在是 6 行，只在模型中途说话处断开。
+- **「不在项目中工作」和归档整个项目之后，留下的是一个干净的对话。** 原来空白对话上可能还挂着上一个会话的停止按钮、清单和「已暂停」那一行。
+- **发现某一轮其实已经停了时，计时一起收走。** 原来留着的那份会让下一条消息接着一个早就过去的起点计时。
+- **子智能体面板里的「回到底部」是滑过去的**，不再一下跳到底。
+
+</details>
+
 ## [0.9.49](https://github.com/wJiaaa/Plume/releases/tag/v0.9.49) - 2026-10-22
 
 <!-- plume:notes en -->
