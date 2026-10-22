@@ -18,7 +18,10 @@ import type { ResolvedThinking, VendorRule } from "./types.ts";
 const DEEPSEEK = /deepseek/i;
 const DEEPSEEK_THINKING = { anthropic: "enabled-effort", leadingReasoning: true } as const;
 const DEEPSEEK_SOURCE =
-	"Anthropic 格式：api-docs.deepseek.com anthropic_api（budget_tokens 被忽略，只认 output_config.effort）；Responses 格式：缺推理项时的 400，见 ~/.plume/scratch/deepseek-compaction-400.txt";
+	"Anthropic 格式：api-docs.deepseek.com anthropic_api（budget_tokens 被忽略，只认 output_config.effort）；Responses 格式：缺推理项时的 400，见 ~/.plume/scratch/deepseek-compaction-400.txt；" +
+	"缓存：api-docs.deepseek.com guides/kv_cache（不再使用后 usually within a few hours to a few days 才清，best-effort），本机日志隔 4.5 分钟到 1 小时 30/32 命中、超过 1 小时 1/3";
+/** 文档说几小时起，实测只到 1 小时以内可靠。 */
+const DEEPSEEK_CACHE_HOT_MS = 3_600_000;
 
 /** 顺序就是优先级：后面的规则覆盖前面的同一项。 */
 const RULES: readonly VendorRule[] = [
@@ -60,8 +63,8 @@ const RULES: readonly VendorRule[] = [
 		source: "platform.kimi.ai api/messages（output_config.effort: low/high/max）、api/models-overview（K3 不支持 thinking）、kimi-k3-quickstart（You can't — K3 always thinks）",
 	},
 	// 按模型名也认，覆盖转发它的中转；地址只要带 deepseek 就认，自建的转发常用别名起模型名。
-	{ model: DEEPSEEK, thinking: DEEPSEEK_THINKING, source: DEEPSEEK_SOURCE },
-	{ endpoint: DEEPSEEK, thinking: DEEPSEEK_THINKING, source: DEEPSEEK_SOURCE },
+	{ model: DEEPSEEK, thinking: DEEPSEEK_THINKING, cacheHotMs: DEEPSEEK_CACHE_HOT_MS, source: DEEPSEEK_SOURCE },
+	{ endpoint: DEEPSEEK, thinking: DEEPSEEK_THINKING, cacheHotMs: DEEPSEEK_CACHE_HOT_MS, source: DEEPSEEK_SOURCE },
 ];
 
 /** 没有任何规则命中时的写法，也就是各条链原来的行为。 */
@@ -73,15 +76,22 @@ const DEFAULT: ResolvedThinking = {
 	alwaysOn: false,
 };
 
+function applies(rule: VendorRule, endpoint: string, modelId: string): boolean {
+	return (!rule.model || rule.model.test(modelId)) && (!rule.endpoint || rule.endpoint.test(endpoint));
+}
+
 /** 这个端点上的这个模型，思考开关该怎么写。 */
 export function thinkingDialect(endpoint: string, modelId: string): ResolvedThinking {
 	let resolved = DEFAULT;
-	for (const rule of RULES) {
-		if (rule.model && !rule.model.test(modelId)) continue;
-		if (rule.endpoint && !rule.endpoint.test(endpoint)) continue;
-		resolved = { ...resolved, ...rule.thinking };
-	}
+	for (const rule of RULES) if (applies(rule, endpoint, modelId)) resolved = { ...resolved, ...rule.thinking };
 	return resolved;
+}
+
+/** 缓存在这一家能留多久；没有规则时是 undefined，由调用方用自己的默认值。 */
+export function cacheHotMs(endpoint: string, modelId: string): number | undefined {
+	let hot: number | undefined;
+	for (const rule of RULES) if (rule.cacheHotMs !== undefined && applies(rule, endpoint, modelId)) hot = rule.cacheHotMs;
+	return hot;
 }
 
 export type { ResolvedThinking } from "./types.ts";

@@ -12,9 +12,10 @@ import { runAgent } from "../src/agent/loop.ts";
 import { streamTurn } from "../src/agent/stream-turn.ts";
 import { streamAssistant } from "../src/ai/index.ts";
 import { compactIfNeeded, compactWith } from "../src/runtime/compaction/compaction.ts";
-import { FORK_HOT_MS } from "../src/runtime/compaction/compaction-fork.ts";
+import { FORK_HOT_MS, forkable } from "../src/runtime/compaction/compaction-fork.ts";
 import { SUMMARY_SYSTEM } from "../src/runtime/compaction/compaction-prompts.ts";
 import { emptyUsage, type AssistantMessage, type Message, type ModelConfig, type ProviderConfig } from "../src/types.ts";
+import type { CompactionLineage } from "../src/types/compaction.ts";
 import { runConfig } from "./run-config.ts";
 
 const MODEL: ModelConfig = {
@@ -201,6 +202,17 @@ test("no fork when the cache has gone cold or the last request went to another m
 			assert.equal(compacted?.via, "independent", variant);
 		});
 	}
+});
+
+test("a vendor whose cache is known to outlive five minutes still forks past the default line", () => {
+	const deepseek: ModelConfig = { ...MODEL, id: "relay/deepseek", modelId: "deepseek-v4.1-flash" };
+	const lineageOf = (model: ModelConfig): CompactionLineage => ({
+		sent: { providerId: PROVIDER.id, modelId: model.id, systemPrompt: SYSTEM, tools: [], thinking: undefined, temperature: undefined, maxTokens: undefined, cacheKey: undefined, at: 0 },
+		messages: [],
+	});
+	assert.equal(forkable(lineageOf(MODEL), PROVIDER, MODEL, FORK_HOT_MS + 1), false, "the default line still holds elsewhere");
+	assert.equal(forkable(lineageOf(deepseek), PROVIDER, deepseek, FORK_HOT_MS + 1), true, "DeepSeek's cache is still there");
+	assert.equal(forkable(lineageOf(deepseek), PROVIDER, deepseek, 3_600_001), false, "but not past the hour the logs bear out");
 });
 
 test("the loop forks from the request it last sent: same prompt, same tools, its messages first", async () => {

@@ -40,6 +40,11 @@ export interface VendorRule {
 	/** 端点地址（`provider.baseUrl`）。不写表示不看端点。 */
 	endpoint?: RegExp;
 	thinking: ThinkingDialect;
+	/**
+	 * 同一前缀隔多久以内多半还读得到缓存，毫秒。不写就用分叉的默认值（`compaction-fork.ts` 的 `FORK_HOT_MS`，
+	 * 按最短的常见有效期定）。写错的代价是一次压缩：分叉时缓存已凉，完整历史按原价读一遍。
+	 */
+	cacheHotMs?: number;
 	/** 出处：官方原话、实测记录。说不出出处的不要加。 */
 	source: string;
 }

@@ -18,6 +18,7 @@
 
 import { classifyFailure, failureOf } from "../../ai/failure.ts";
 import { comparePrefix, payloadSegments } from "../../ai/prefix-fingerprint.ts";
+import { cacheHotMs } from "../../ai/vendors/index.ts";
 import type { streamAssistant } from "../../ai/index.ts";
 import { contextMaxTokens, measureTotal, textTokens, toolTokens } from "../../tokens.ts";
 import type { CompactionFault, CompactionLineage, CompactionObserver } from "../../types/compaction.ts";
@@ -26,10 +27,12 @@ import { forkInstruction, hasSummary } from "./compaction-prompts.ts";
 import { summaryReplyTokens } from "./compaction-budget.ts";
 
 /**
- * 离上一次请求开始多久以内算缓存还热。
+ * 离上一次请求开始多久以内算缓存还热，没有厂商规则时的默认值。
  *
  * 常见服务商里最短的有效期是 Anthropic 默认的 5 分钟，留一成余量（同 pi 的判断）。别家留得更久，
  * 超过这条线时它们的缓存多半还在——但那时退回的独立请求就是改动前的做法，不会比原来更贵。
+ * 有文档和实测撑着、确实留得更久的，写在 `ai/vendors` 的 `cacheHotMs` 上（DeepSeek）；依据是
+ * `audit:sessions` 第 14 节。
  */
 export const FORK_HOT_MS = 270_000;
 
@@ -50,7 +53,7 @@ export function forkable(
 ): lineage is CompactionLineage {
 	if (!lineage) return false;
 	if (lineage.sent.providerId !== provider.id || lineage.sent.modelId !== model.id) return false;
-	return now - lineage.sent.at <= FORK_HOT_MS;
+	return now - lineage.sent.at <= (cacheHotMs(provider.baseUrl, model.modelId || model.id) ?? FORK_HOT_MS);
 }
 
 /** 分叉出去的那份请求：上一次的系统提示词、工具和消息原样，末尾接一条指令。 */
