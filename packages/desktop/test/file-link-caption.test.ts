@@ -67,6 +67,13 @@ test("line suffixes split off the path; :0 is no line, a reversed range reads fo
 	assert.deepEqual(splitLineSuffix("C:\\repo\\a.ts"), { path: "C:\\repo\\a.ts", lines: null });
 });
 
+test("GitHub line anchors count as lines; other anchors are dropped, a # inside a folder name is kept", () => {
+	assert.deepEqual(splitLineSuffix("backend/pricing.go#L449"), { path: "backend/pricing.go", lines: { from: 449, to: 449 } });
+	assert.deepEqual(splitLineSuffix("a.ts#L50-L42"), { path: "a.ts", lines: { from: 42, to: 50 } });
+	assert.deepEqual(splitLineSuffix("docs/routing.md#long_context_pricing"), { path: "docs/routing.md", lines: null });
+	assert.deepEqual(splitLineSuffix("src/C#/a.cs"), { path: "src/C#/a.cs", lines: null });
+});
+
 test("inline code that names a file is recognised, with its line suffix kept", async () => {
 	const { filePathInCode } = await import("../src/lib/markdown/file-link.ts");
 	for (const path of ["src/runBatch.js", "test/runBatch.test.js", "README.md", "packages/core/src/prompt/system.ts:148", "/Users/me/app/index.ts:3-9"]) {

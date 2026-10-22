@@ -4,19 +4,22 @@ export interface LineRange {
 	to: number;
 }
 
-const LINE_SUFFIX = /:(\d+)(?:-(\d+))?$/;
+const LINE_SUFFIX = /:(\d+)(?:-(\d+))?$|#L(\d+)(?:-L?(\d+))?$/;
+/** 文内锚点（`README.md#usage`）。只认最后一段里的 `#`，`src/C#/a.cs` 的目录名不是锚点。 */
+const ANCHOR = /#[^/\\#]*$/;
 
 /**
- * `src/a.ts:42`、`src/a.ts:42-50` 拆成路径和行号。
+ * `src/a.ts:42`、`src/a.ts:42-50`、GitHub 写法的 `src/a.ts#L42-L50` 拆成路径和行号，其余锚点去掉。
  *
- * `:0` 不算行号，但照样从路径上去掉：留着它，`a.ts:0` 会被当成一个叫这个名字的文件去找。
+ * `:0` 不算行号，但照样从路径上去掉：留着它，`a.ts:0` 会被当成一个叫这个名字的文件去找。锚点同理：
+ * 从前 `a.go#L224` 原样拿去项目里找，永远找不到，每次打开会话都为它再起一遍 git。
  */
 export function splitLineSuffix(text: string): { path: string; lines: LineRange | null } {
 	const match = LINE_SUFFIX.exec(text);
-	if (!match) return { path: text, lines: null };
+	if (!match) return { path: text.replace(ANCHOR, ""), lines: null };
 	const path = text.slice(0, match.index);
-	const from = Number(match[1]);
-	const to = match[2] ? Number(match[2]) : from;
+	const from = Number(match[1] ?? match[3]);
+	const to = Number(match[2] ?? match[4] ?? from);
 	if (from < 1) return { path, lines: null };
 	return { path, lines: { from: Math.min(from, to), to: Math.max(from, to) } };
 }
