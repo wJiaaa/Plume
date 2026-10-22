@@ -58,7 +58,7 @@ test("过程行停下来之后也是虚化加悬停自读", async () => {
 	assert.match(source, /ui\/scroll\/ScrollText/);
 	// 扫光挂在装字的那一层，不挂在外层：外层的 `background-clip: text` 裁不到悬停滚动时被单独合成的字，整句会消失。
 	assert.match(source, /<ScrollText text=\{summary\} textClassName=\{running \? "ly-glide" : ""\} \/>/);
-	assert.match(source, /<span className="ly-flow-summary">/);
+	assert.match(source, /<span ref=\{summaryBox\} className="ly-flow-summary">/);
 	const scroll = await read("src/ui/scroll/ScrollText.tsx");
 	assert.match(scroll, /<span ref=\{body\} className=\{`inline-block \$\{textClassName\}`\}>/);
 	assert.match(scroll, /className=\{`absolute top-0 inline-block invisible \$\{textClassName\}`\}/);

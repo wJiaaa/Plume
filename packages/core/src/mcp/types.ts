@@ -36,7 +36,7 @@ export interface McpNeed {
  * server that arrived in a git repository, and calling it a plugin is what put the same Context7
  * in two places at once, with two switches that could not see each other.
  */
-export interface McpOrigin {
+interface McpOrigin {
 	/** Directory name under `~/.plume/mcp`; also the entry's id in the registry it came from. */
 	bundle: string;
 	/** Which registry listed it, for telling two entries of the same name apart. */

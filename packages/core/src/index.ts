@@ -137,7 +137,7 @@ export {
 export { trustHookDigests, trustedHookDigests } from "./hooks/trust.ts";
 export { AgentSession, type AgentSessionOptions } from "./runtime/agent-session/session.ts";
 export { storedContextBreakdown } from "./runtime/agent-session/stored-context.ts";
-export { storedSubAgents, type StoredSubAgents } from "./runtime/agent-session/stored-sub-agents.ts";
+export { storedSubAgents } from "./runtime/agent-session/stored-sub-agents.ts";
 export { summarizeSession } from "./runtime/summary/session-summary.ts";
 export {
 	plumeHome,

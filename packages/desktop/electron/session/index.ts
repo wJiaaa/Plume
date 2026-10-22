@@ -13,7 +13,6 @@ export {
 	createSession,
 	disposeSession,
 	ensureLiveSession,
-	mcpPool,
 	promptSession,
 	sessions,
 	snapshot,

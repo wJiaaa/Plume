@@ -32,6 +32,8 @@
         "electron/sandbox-runner.ts",
         "test/**/*.test.{ts,tsx}",
         "e2e/**/*.ts",
+        // 本地一次性脚本，在 .gitignore 里、不进提交；只在某台机器上存在的文件不该决定检查过不过。
+        "!e2e/scratch/**",
         "scripts/*.mjs"
       ],
       "project": ["src/**/*.{ts,tsx}", "electron/**/*.ts", "shared/**/*.ts"]

@@ -291,7 +291,7 @@ export class McpPool implements SlotOwner {
 }
 
 /** 两份声明起出的进程、连到的地方是不是同一个：名字、来源、信任开关、常驻开关不算。 */
-export function launchOf({ name: _name, origin: _origin, trustReadOnly: _trust, pinned: _pinned, ...rest }: McpServerConfig): string {
+function launchOf({ name: _name, origin: _origin, trustReadOnly: _trust, pinned: _pinned, ...rest }: McpServerConfig): string {
 	return JSON.stringify(rest);
 }
 
