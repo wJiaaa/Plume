@@ -64,7 +64,9 @@ export async function check(force = false): Promise<void> {
 	if (force) set({ checking: true });
 	try {
 		const info = await bridge.updates.check(force);
-		set({ info });
+		// A failed check (`checked: false`) is not news that the update went away: taking it would
+		// drop the badge — and the dialog mounted inside it — the moment someone offline clicks it.
+		if (info.checked || !snapshot.info?.available) set({ info });
 	} catch {
 		// The check is the app's business; its failure is not the user's. Offline is a normal answer.
 	} finally {

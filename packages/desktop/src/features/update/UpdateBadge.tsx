@@ -31,7 +31,7 @@
 import { AlertTriangle, ArrowDownToLine, Pause, RefreshCw } from "../../ui/icons/index.ts";
 import { useState } from "react";
 
-import { useUpdate } from "./store.ts";
+import { check, useUpdate } from "./store.ts";
 import { fractionOf, labelFor, shouldShow, type Phase } from "./view.ts";
 import { UpdateDialog } from "./UpdateDialog.tsx";
 
@@ -66,7 +66,13 @@ export function UpdateBadge({ compact = false }: { compact?: boolean }) {
 		<>
 			<button
 				type="button"
-				onClick={() => setOpen(true)}
+				onClick={() => {
+					setOpen(true);
+					// The cached answer can be hours old, and a release published since would otherwise be
+					// offered — and downloaded — as the previous one. Only while idle: mid-download a fresh
+					// answer could swap out the version being fetched.
+					if (phase.at === "idle") void check(true);
+				}}
 				aria-label={labelFor(phase, info.latest)}
 				data-phase={phase.at}
 				style={{
