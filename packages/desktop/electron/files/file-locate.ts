@@ -27,36 +27,39 @@ const WALK_CAP = 50_000;
  */
 export async function locateInProject(root: string, relative: string): Promise<string[]> {
 	const clean = relative.replaceAll("\\", "/").replace(/^\.\//, "");
-	// 通配符会被 pathspec 当成模式；`..` 会走出项目。两种都不是「回复里提到的一个文件」。
+	// 通配符、走出项目的 `..`，都不是「回复里提到的一个文件」。
 	if (!clean || isAbsolute(clean) || /[*?[\]]/.test(clean) || clean.split("/").includes("..")) return [];
 
 	if ((await stat(join(root, clean)).catch(() => null))?.isFile()) return [clean];
 
-	// 交给 git 列：它认 .gitignore，`node_modules` 和构建产物里的同名文件不会混进来。
-	const listed = await git(root, ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", `:(glob)**/${clean}`]).catch(() => null);
-	if (listed !== null) return [...new Set(listed.split("\0").filter(Boolean))].slice(0, LIMIT);
-
-	/*
-	 * 不是 git 仓库（git 报错）：自己走目录，规矩和 core 的 `glob` 兜底一样，见 `SKIP_DIRS`。
-	 * 只靠 git 时，这种项目里只写文件名的链接一律拼到项目根上，点开就是「读不到」。
-	 */
 	const files = await projectFiles(root);
-	return files.filter((path) => path === clean || path.endsWith(`/${clean}`)).sort().slice(0, LIMIT);
+	return [...new Set(files.filter((path) => path === clean || path.endsWith(`/${clean}`)))].sort().slice(0, LIMIT);
 }
 
 /*
- * 同一个项目同时只走一遍。一段长对话里几十个只写了名字的链接是一起挂上来的，各走各的就是几十遍；
- * 走完就丢，不留缓存：文件可能是回复提到之后才写出来的，记住旧清单就再也找不到它。
+ * 同一个项目同时只列一遍。一段长对话里几十个只写了名字的链接是一起挂上来的。从前每个链接各起一个带
+ * glob 的 `git ls-files`，而每个 glob 都要扫一遍整个索引，和列一遍全部文件一样贵——打开一个会话起过
+ * 44 个 git。走完就丢，不留缓存：文件可能是回复提到之后才写出来的，记住旧清单就再也找不到它。
  */
-const walking = new Map<string, Promise<string[]>>();
+const listing = new Map<string, Promise<string[]>>();
 
 function projectFiles(root: string): Promise<string[]> {
-	let walk = walking.get(root);
-	if (!walk) {
-		walk = walkFiles(root).finally(() => walking.delete(root));
-		walking.set(root, walk);
+	let list = listing.get(root);
+	if (!list) {
+		list = listFiles(root).finally(() => listing.delete(root));
+		listing.set(root, list);
 	}
-	return walk;
+	return list;
+}
+
+/**
+ * 交给 git 列：它认 .gitignore，`node_modules` 和构建产物里的同名文件不会混进来。不是 git 仓库（git 报错）
+ * 时自己走目录，规矩和 core 的 `glob` 兜底一样，见 `SKIP_DIRS`。只靠 git 时，这种项目里只写文件名的链接
+ * 一律拼到项目根上，点开就是「读不到」。
+ */
+async function listFiles(root: string): Promise<string[]> {
+	const listed = await git(root, ["ls-files", "-z", "--cached", "--others", "--exclude-standard"]).catch(() => null);
+	return listed === null ? walkFiles(root) : listed.split("\0").filter(Boolean);
 }
 
 /** `root` 之下的文件，相对 `root`、用 `/` 分隔。不跟软链：一个指回上层的链接会让它绕不出来。 */
