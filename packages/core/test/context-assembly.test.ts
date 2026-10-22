@@ -12,6 +12,7 @@ import { buildContextBreakdown } from "../src/runtime/record/context.ts";
 import { textTokens, toolTokens } from "../src/tokens.ts";
 import { DEFAULT_SETTINGS } from "../src/config/settings.ts";
 import { AgentSession } from "../src/runtime/agent-session/session.ts";
+import { storedContextBreakdown } from "../src/runtime/agent-session/stored-context.ts";
 import { SessionLog } from "../src/runtime/record/session-log.ts";
 import { SessionStore } from "../src/session/store.ts";
 import { estimateTokens } from "../src/tokens.ts";
@@ -149,6 +150,11 @@ test("runtime statistics reuse filtered requests and recorded sources through re
 		const restored = await reopened.contextBreakdown();
 		assert.deepEqual(restored?.sources, detail.sources);
 		assert.deepEqual(restored?.memoryFiles, detail.memoryFiles);
+		// 没在跑的会话从日志读出来的，要和把它拉起来再量的一模一样：不然点开以后一发消息，表就跳一下。
+		assert.deepEqual(await storedContextBreakdown(store, session.meta.id, settings), restored);
+		const silent = await store.create(root, model.id);
+		assert.equal(await storedContextBreakdown(store, silent.id, settings), undefined, "nothing recorded yet: only a started session can assemble a preview");
+		assert.equal(await storedContextBreakdown(store, session.meta.id, { ...settings, providers: [] }), null, "a model no longer configured cannot be measured, started or not");
 		const frozen = sent.systemPrompt;
 		await session.prompt([{ type: "text", text: "next" }]);
 		// 会话内 system prompt 冻结，磁盘上改了的项目指令作为增量接在末尾（见 `prompt-freeze.test.ts`）。

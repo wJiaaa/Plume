@@ -12,6 +12,9 @@ import {
 	forkAfterMessage,
 	forkBeforeMessage,
 	readTrajectory,
+	storedContextBreakdown,
+	storedSubAgents,
+	type StoredSubAgents,
 	type ApprovalDecision,
 	type ContextBreakdown,
 	type SessionMeta,
@@ -44,6 +47,7 @@ import {
 	worktreeFollowsArchive,
 } from "../session/session-hub.ts";
 import { slimSnapshot } from "../session/display-transcript.ts";
+import { loadStoredHistory } from "../session/stored-history.ts";
 import { readSummary, summarize } from "../session/session-summary.ts";
 import { steerDisplay } from "../session/prompt-input.ts";
 import { ownWorkspace } from "../session/scratch.ts";
@@ -238,20 +242,55 @@ export function registerSessionsIpc({
 	});
 
 	/*
-	 * Starts the agent if it is not up yet, which is a real cost — skills, plugins, MCP child
-	 * processes — paid to answer a question about token counts.
+	 * A session that is not running is read from its log, and is not started.
 	 *
-	 * Worth it because clicking this is deliberate, and because the alternative is worse: opening
-	 * a session only reads its transcript, so on any conversation you have not yet written to,
-	 * the breakdown would be permanently empty. A panel that is blank exactly when you go looking
-	 * is not a cheaper panel, it is a broken one. Anyone opening it is about to use this session
-	 * anyway, so the agent it warms is one that was going to start moments later regardless.
+	 * This used to start the agent every time — skills, plugins, every MCP server — on the grounds
+	 * that asking was deliberate. It is not: the meter beside the composer asks as soon as it mounts,
+	 * so opening a conversation just to read it brought the whole runtime up, which is the very thing
+	 * `sessions:transcript` exists to avoid. Measurements are in docs/architecture/startup-and-switching.md.
+	 *
+	 * The log records the prompt and tool table each request actually sent, and a live session
+	 * reports exactly that, so the reading is the same (`storedContextBreakdown`). Only when the log
+	 * cannot answer — no request was ever sent, or it is a side chat — is the agent started as before:
+	 * a blank panel exactly when you go looking is not a cheaper panel, it is a broken one.
 	 */
+	/*
+	 * What a session that is not running reads from its log, kept until the log moves (`seq`) or the
+	 * settings are replaced. The meter and the sub-agent roster ask again on every visit, and each
+	 * reading parses the whole history — 20–30ms on this thread for a 5MB conversation.
+	 */
+	type StoredReadings = { seq: number; settings: Settings; context?: Promise<ContextBreakdown | null | undefined>; subAgents?: Promise<StoredSubAgents | null> };
+	const storedReadings = new Map<string, StoredReadings>();
+	const readStored = async (sessionId: string): Promise<StoredReadings> => {
+		const seq = (await store.get(sessionId))?.seq ?? -1;
+		const settings = readSettings();
+		const kept = storedReadings.get(sessionId);
+		if (kept && kept.seq === seq && kept.settings === settings) return kept;
+		const fresh: StoredReadings = { seq, settings };
+		storedReadings.delete(sessionId);
+		storedReadings.set(sessionId, fresh);
+		if (storedReadings.size > 32) storedReadings.delete(storedReadings.keys().next().value!);
+		return fresh;
+	};
+	// A read that failed is not kept: the next visit tries again instead of failing until the log moves.
+	const forgetIfFailed = <T,>(kept: StoredReadings, field: "context" | "subAgents", reading: Promise<T>) => {
+		reading.catch(() => { if (kept[field] === reading) kept[field] = undefined; });
+		return reading;
+	};
+	const storedContext = async (sessionId: string) => {
+		const kept = await readStored(sessionId);
+		return (kept.context ??= forgetIfFailed(kept, "context", storedContextBreakdown(store, sessionId, kept.settings, () => loadStoredHistory(store, sessionId, kept.seq))));
+	};
+	const storedRoster = async (sessionId: string) => {
+		const kept = await readStored(sessionId);
+		return (kept.subAgents ??= forgetIfFailed(kept, "subAgents", storedSubAgents(store, sessionId, kept.settings)));
+	};
 	ipcMain.handle(
 		"sessions:contextBreakdown",
 		async (_event, sessionId: string): Promise<ContextBreakdown | null> => {
-			const session = await ensureSession(sessionId);
-			const detail = session ? await session.contextBreakdown() : null;
+			const stored = sessions.has(sessionId) ? undefined : await storedContext(sessionId);
+			const session = stored === undefined ? await ensureSession(sessionId) : null;
+			const detail = stored !== undefined ? stored : session ? await session.contextBreakdown() : null;
 			for (const file of [...(detail?.memoryFiles ?? []), ...(detail?.projectMemoryFiles ?? [])]) grantArtifactRead(file.path);
 			return detail;
 		},
@@ -330,23 +369,30 @@ export function registerSessionsIpc({
 	 */
 	ipcMain.handle("subagents:detail", async (_event, sessionId: string, id: string) => {
 		const session = sessions.get(sessionId);
-		return session?.subAgents.detail(id) ?? null;
+		if (session) return session.subAgents.detail(id);
+		return (await storedRoster(sessionId))?.detail(id) ?? null;
 	});
 
 	ipcMain.handle("subagents:contextBreakdown", async (_event, sessionId: string, id: string) => {
 		const session = sessions.get(sessionId);
-		const detail = session ? await session.subAgentContextBreakdown(id) : null;
+		const detail = session ? await session.subAgentContextBreakdown(id) : await (await storedRoster(sessionId))?.contextBreakdown(id) ?? null;
 		for (const file of [...(detail?.memoryFiles ?? []), ...(detail?.projectMemoryFiles ?? [])]) grantArtifactRead(file.path);
 		return detail;
 	});
 
+	/*
+	 * A session that is not running answers from its log, like the meter above: the previous process's
+	 * sub-agents are on the roster the moment the conversation is opened, not once it is started.
+	 * Talking to one or taking it off the roster is acting on the conversation, so those start it.
+	 */
 	ipcMain.handle("subagents:list", async (_event, sessionId: string) => {
 		const session = sessions.get(sessionId);
-		return session?.subAgents.list() ?? [];
+		if (session) return session.subAgents.list();
+		return (await storedRoster(sessionId))?.list() ?? [];
 	});
 
 	ipcMain.handle("subagents:steer", async (_event, sessionId: string, id: string, said: string | UserContent[], display?: unknown) => {
-		const session = sessions.get(sessionId);
+		const session = await ensureSession(sessionId);
 		return session?.steerSubAgent(id, said, steerDisplay(display)) ?? false;
 	});
 
@@ -356,7 +402,7 @@ export function registerSessionsIpc({
 	});
 
 	ipcMain.handle("subagents:dismiss", async (_event, sessionId: string, id: string) => {
-		const session = sessions.get(sessionId);
+		const session = await ensureSession(sessionId);
 		return session?.dismissSubAgent(id) ?? "unknown";
 	});
 

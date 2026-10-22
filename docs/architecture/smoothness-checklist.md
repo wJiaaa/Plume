@@ -187,6 +187,8 @@ scroll anchoring（侧边栏是特意关掉的，理由见 `scroll.css`）。
 
 **现状**：✅ 缓存命中当帧画；没命中画骨架。主进程侧 61MB 会话冷读 103ms、热读 3ms，
 IPC 载荷 0.7MB。
+启动、打开大会话、来回切换三条路径的实测与约定（点开会话不拉起 agent）见
+[启动与切换](startup-and-switching.md)。
 
 **差距**：无。
 

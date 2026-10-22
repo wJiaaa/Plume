@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { DEFAULT_SETTINGS, type Settings } from "../src/config/settings.ts";
 import { AgentSession } from "../src/runtime/agent-session/session.ts";
+import { storedSubAgents } from "../src/runtime/agent-session/stored-sub-agents.ts";
 import { SessionStore } from "../src/session/store.ts";
 import { emptyUsage, type AssistantMessage, type LlmContext, type Message, type ModelConfig, type ProviderConfig } from "../src/types.ts";
 
@@ -127,6 +128,10 @@ test("a sub-agent running when the app quit is back on the roster after reopenin
 		const [row] = second.subAgents.list();
 		assert.equal(second.subAgents.list().length, 1);
 		assert.deepEqual({ id: row!.id, status: row!.status, resumable: row!.resumable }, { id: subId, status: "aborted", resumable: true }, "stopped by the exit, and resumable");
+		// 没拉起来的会话被点开看时，面板上的名单从日志读：要和拉起来以后的一模一样。
+		const stored = await storedSubAgents(after, sessionId, SETTINGS);
+		assert.deepEqual(stored?.list(), second.subAgents.list());
+		assert.deepEqual(stored?.detail(subId), second.subAgents.detail(subId));
 
 		await second.prompt([{ type: "text", text: "继续" }]);
 		const told = mainRequests[0]!.messages.find((message) => message.role === "user" && message.delivery);

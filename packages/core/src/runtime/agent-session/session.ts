@@ -37,11 +37,10 @@ import { scratchDir, sessionFacts } from "../record/session-facts.ts";
 import { SessionLog } from "../record/session-log.ts";
 import { PROJECT_MEMORY_ENABLED_KEY, projectMemoryEnabled } from "../memory/project-memory.ts";
 import { sessionPruner } from "../../agent/aged-prune.ts";
-import { driveTurn, historyFrom, modelHistory, SESSION_START_KEY } from "./session-turn.ts";
+import { driveTurn, modelHistory, SESSION_START_KEY } from "./session-turn.ts";
 import { loadHookRunner, runSessionEndHooks } from "../policy/hooks.ts";
-import { restoreSubAgents, type Rebuild } from "../sub-agent/sub-agent-restore.ts";
+import { readSubAgents } from "./stored-sub-agents.ts";
 import { exitCutDelivery } from "../sub-agent/exit-cut.ts";
-import { rehydrateMessages } from "../../session/payload.ts";
 import { SubAgentRegistry, type SteerDisplay } from "../sub-agent/sub-agents.ts";
 import { describeSubAgentContext, SubAgentContexts } from "../sub-agent/sub-agent-context.ts";
 import { DelegationWaits, type FinishedSession } from "../sub-agent/delegation-waits.ts";
@@ -611,29 +610,8 @@ export class AgentSession {
 	private async restoreSubAgents(): Promise<void> {
 		if (this.subAgentsRestored) return;
 		this.subAgentsRestored = true;
-		// `then` rather than a bare call: a store that cannot answer at all throws before there is a promise to catch.
-		const records = await Promise.resolve()
-			.then(() => this.store.subAgentRecords(this.log.meta.id))
-			.catch(() => []);
-		if (records.length === 0) return;
-		// 落盘时挪出去的图片接回来，跟主会话的消息同一条路（`store.load`）。
-		const said = records.flatMap((record) => (record.type === "event" && record.event.type === "subagent_message" && record.event.message ? [record.event.message] : []));
-		const hydrated = await rehydrateMessages(said).catch(() => said);
-		const back = new Map(said.map((message, index) => [message, hydrated[index] ?? message]));
-		const readable = records.map((record) =>
-			record.type === "event" && record.event.type === "subagent_message" && back.has(record.event.message)
-				? { ...record, event: { ...record.event, message: back.get(record.event.message)! } }
-				: record,
-		);
-		const fallback = resolveModel(this.settings, this.log.meta.modelId || this.settings.defaultModelId);
-		const rebuild: Rebuild = (ran) => {
-			// The model it ran on, so the prefix is the one it sent. Gone from settings: the session's, under no id, so `runSubAgent` strips the old handles.
-			const provider = this.settings.providers.find((one) => one.enabled && one.id === ran.provider);
-			const model = provider?.models.find((one) => one.modelId === ran.model);
-			const using = provider && model ? { provider, model } : fallback;
-			return using ? { model: provider && model ? model.id : "", history: (messages, boundary) => historyFrom(messages, boundary, using.provider, using.model) } : undefined;
-		};
-		const restored = restoreSubAgents(readable, rebuild);
+		const restored = await readSubAgents(this.store, this.log.meta, this.settings);
+		if (restored.length === 0) return;
 		this.subAgents.restore(restored);
 		this.exitCut = exitCutDelivery(restored, this.log.messages);
 	}

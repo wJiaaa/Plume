@@ -15,7 +15,7 @@ import type { Plugin, PluginDiagnostic } from "../../plugins/loader.ts";
 import type { Skill, SkillDiagnostic } from "../../skills/loader.ts";
 import type { SessionMeta } from "../../session/store.ts";
 import type { AgentDefinition } from "../../tools/task.ts";
-import type { Message, Tool } from "../../types.ts";
+import type { Message, ModelConfig, Tool } from "../../types.ts";
 import { buildContextBreakdown, type ContextBreakdown } from "./context.ts";
 import { loadPromptContext, promptCapabilities } from "../setup/prompt-context.ts";
 import { reconcilePrompt } from "../../prompt/context.ts";
@@ -71,6 +71,23 @@ export async function describeSession(session: SessionFacts): Promise<SessionSta
 }
 
 /**
+ * The reading built from a recorded prompt alone: no request in memory, no capabilities needed.
+ *
+ * Shared with `storedContextBreakdown`, which answers for a session that is not running — the two
+ * must agree, or the meter would jump the moment a session it was showing came to life.
+ */
+export function describeRecordedContext(recorded: RecordedContext, messages: Message[], model: ModelConfig): ContextBreakdown {
+	const mcpNames = new Set(recorded.mcpTools);
+	return buildContextBreakdown({
+		model, messages,
+		systemPrompt: recorded.systemPrompt, sections: recorded.sections,
+		builtinTools: recorded.schemas.filter(tool => !mcpNames.has(tool.name)),
+		mcpTools: recorded.schemas.filter(tool => mcpNames.has(tool.name)),
+		skillCatalogue: "", projectInstructions: [],
+	});
+}
+
+/**
  * Report the captured request; only sessions without a recorded prompt need a source preview.
  *
  * `resolved` is the model the session runs on, which only the session knows: a side chat follows its parent's.
@@ -78,6 +95,7 @@ export async function describeSession(session: SessionFacts): Promise<SessionSta
 export async function describeContext(session: SessionFacts, resolved: NonNullable<ReturnType<typeof resolveModel>>): Promise<ContextBreakdown> {
 	const recorded = await session.readContext();
 	const request = session.requestContext;
+	if (recorded && !request) return describeRecordedContext(recorded, session.messages, resolved.model);
 	let prompt;
 	let schemas;
 	let mcpNames;
