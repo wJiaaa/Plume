@@ -21,7 +21,7 @@ export function splitLineSuffix(text: string): { path: string; lines: LineRange 
 	return { path, lines: { from: Math.min(from, to), to: Math.max(from, to) } };
 }
 
-export function lineLabel(lines: LineRange): string {
+function lineLabel(lines: LineRange): string {
 	return lines.from === lines.to ? `${lines.from}` : `${lines.from}-${lines.to}`;
 }
 
