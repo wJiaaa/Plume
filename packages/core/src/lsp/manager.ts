@@ -12,7 +12,7 @@
  * moved on is worth less than a caveated one that arrives immediately.
  */
 
-import { extname } from "node:path";
+import { extname, resolve } from "node:path";
 import { LANGUAGE_SERVERS } from "./servers.ts";
 import { StdioLspBackend } from "./stdio.ts";
 import { TsServerBackend } from "./tsserver.ts";
@@ -144,11 +144,67 @@ function delay(ms: number): Promise<void> {
 
 export const CODE_INTEL_KEY = "codeIntel";
 
-/** 会话里那一个管理器：`lsp` 工具和编辑后的诊断共用，不各起一台服务器；会话结束时从 state 里取出来释放。 */
-export function codeIntelFor(state: Map<string, unknown>): CodeIntelManager {
+/** 一份 state 借着的那一套：在哪个目录。真正的管理器在 `shared` 里，几份 state 共用。 */
+class CodeIntelLease {
+	readonly root: string;
+	readonly manager: CodeIntelManager;
+
+	constructor(root: string, manager: CodeIntelManager) {
+		this.root = root;
+		this.manager = manager;
+	}
+}
+
+/**
+ * 每个目录一套，谁在用记在 `users` 里。
+ *
+ * 原来每个会话、每次派出去的子代理各起一套：同一个项目开三个会话就是三个 tsserver，每个几百兆；
+ * 子代理每派一次冷启动一次，跑完杀掉，下一次再冷启动。它们看的是同一个目录里的同一批文件，
+ * 一套就够。worktree 里的会话目录不同，照旧各用各的——那确实是另一批文件。
+ */
+const shared = new Map<string, { manager: CodeIntelManager; users: Set<Map<string, unknown>> }>();
+
+/**
+ * 这份 state 在 `root` 下用的管理器：`lsp` 工具和编辑后的诊断共用，同一个目录的会话和子代理也共用。
+ * 用完由 `releaseCodeIntel` 还回去。
+ *
+ * state 里已经放着一个管理器的（测试、宿主自己装的），就用它，不进共用的那份。
+ */
+export function codeIntelFor(state: Map<string, unknown>, root: string): CodeIntelManager {
 	const existing = state.get(CODE_INTEL_KEY);
 	if (existing instanceof CodeIntelManager) return existing;
-	const manager = new CodeIntelManager();
-	state.set(CODE_INTEL_KEY, manager);
-	return manager;
+	const key = resolve(root);
+	if (existing instanceof CodeIntelLease) {
+		if (existing.root === key) return existing.manager;
+		void releaseCodeIntel(state);
+	}
+	let entry = shared.get(key);
+	if (!entry) {
+		entry = { manager: new CodeIntelManager(), users: new Set() };
+		shared.set(key, entry);
+	}
+	entry.users.add(state);
+	state.set(CODE_INTEL_KEY, new CodeIntelLease(key, entry.manager));
+	return entry.manager;
+}
+
+/**
+ * 会话、子代理结束时：还回它借的那一套，最后一个还的把语言服务器停掉。自己装进去的管理器直接停。
+ *
+ * 语言服务器每个几百兆，不停的话会一直活到进程退出。
+ */
+export async function releaseCodeIntel(state: Map<string, unknown>): Promise<void> {
+	const existing = state.get(CODE_INTEL_KEY);
+	state.delete(CODE_INTEL_KEY);
+	if (existing instanceof CodeIntelManager) {
+		await existing.dispose().catch(() => {});
+		return;
+	}
+	if (!(existing instanceof CodeIntelLease)) return;
+	const entry = shared.get(existing.root);
+	if (!entry || entry.manager !== existing.manager) return;
+	entry.users.delete(state);
+	if (entry.users.size > 0) return;
+	shared.delete(existing.root);
+	await entry.manager.dispose().catch(() => {});
 }

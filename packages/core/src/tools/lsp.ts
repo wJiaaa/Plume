@@ -69,7 +69,7 @@ export const lspTool: Tool<LspArgs> = {
 		if (!authorized.ok) return errorResult(authorized.message);
 		const absolute = authorized.absolute;
 
-		const manager = codeIntelFor(ctx.state);
+		const manager = codeIntelFor(ctx.state, ctx.cwd);
 		const backend = await manager.acquire(absolute, ctx.cwd).catch(() => null);
 		// 没有服务器时那句「为什么」：没装什么、还在启动。模型据此知道下面是文本搜索，也能转告人去装。
 		const why = backend ? null : await manager.unavailable(absolute).catch(() => null);

@@ -151,6 +151,8 @@ npm 装的 `.cmd` 并经 `cmd.exe` 启动，回收时按进程树结束。找不
 写明「这个语言没有可用的语言服务器（需要安装 …）」；`rename` 在没有服务器时照旧拒绝。
 
 每台服务器第一次被问才起，起不来三秒内就先给文本答案，空闲十分钟回收（`lsp/manager.ts`）。
+同一个目录只起一套：开在同一个项目里的会话和它们派出的子代理共用，最后一个用完的会话或子代理结束时才停；
+worktree 里的会话目录不同，各用各的。
 每次提问前从磁盘重读文件，变了就整篇 `didChange`（tsserver 是 `reload`），所以 agent 改过文件后
 的回答不按旧内容算。tsserver 的诊断同时取语法和语义两类，缺括号这类语法错误也会报出来。
 发给服务器的路径换成真实路径、收回来再换回项目根，避免符号链接下的项目（macOS 的 `/var` →
@@ -164,7 +166,8 @@ npm 装的 `.cmd` 并经 `cmd.exe` 启动，回收时按进程树结束。找不
 回归入口：`packages/core/test/lsp-stdio.test.ts`（路由、降级提示、URI 与 Windows 路径、分帧）、
 `packages/core/test/lsp-stdio-server.test.ts`（对着假服务器走完握手、改文件后重问、诊断、回收）、
 `packages/core/test/tsserver-diagnostics.test.ts`（真 tsserver 上改文件后重问、语法错误）、
-`packages/core/test/edit-diagnostics.test.ts`（编辑后附诊断的各个分支）。
+`packages/core/test/edit-diagnostics.test.ts`（编辑后附诊断的各个分支）、
+`packages/core/test/lsp-shared.test.ts`（按目录共用、最后一个还回去才停）。
 
 ### 快照与撤销
 

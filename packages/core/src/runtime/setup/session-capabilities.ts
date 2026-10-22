@@ -11,7 +11,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { CODE_INTEL_KEY, CodeIntelManager } from "../../lsp/manager.ts";
+import { releaseCodeIntel } from "../../lsp/manager.ts";
 import { McpManager, type McpServerConfig, type McpServerStatus } from "../../mcp/client.ts";
 import type { McpPool } from "../../mcp/pool.ts";
 import type { AskPerson } from "../../mcp/elicitation.ts";
@@ -276,11 +276,10 @@ export class SessionCapabilities {
 			await this.mcp.dispose();
 			/*
 			 * Language servers are hundreds of megabytes each and outlive the session that started them
-			 * unless something kills them. The manager is created lazily by the `lsp` tool and parked in
-			 * this state map, so this is the only place that knows whether there is one to stop.
+			 * unless something stops them. The `lsp` tool borrows one lazily through this state map, so
+			 * this is the only place that knows whether there is one to give back.
 			 */
-			const codeIntel = this.state.get(CODE_INTEL_KEY);
-			if (codeIntel instanceof CodeIntelManager) await codeIntel.dispose().catch(() => {});
+			await releaseCodeIntel(this.state);
 		}
 	}
 }

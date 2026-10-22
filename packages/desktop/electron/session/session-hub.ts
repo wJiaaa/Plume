@@ -377,10 +377,15 @@ export async function getOrCreateSession(cwd: string, _modelId: string, project?
 /**
  * How many sessions stay warm.
  *
- * Each one owns a visible browser tab, its language servers and its `perSession` MCP servers — real
- * child processes — so an unbounded map meant an afternoon of browsing left a dozen sets of them
- * running. Eight keeps the conversations you are actually moving between instant without hoarding
- * processes. Shared MCP servers are not counted here: they belong to `mcpPool`, one per server.
+ * Each one used to own its MCP servers and language servers — real child processes — so an
+ * unbounded map meant an afternoon of browsing left a dozen sets of them running. Those are shared
+ * now (`mcpPool`, and one language server per directory); what a session still owns is a visible
+ * browser tab and its `perSession` MCP servers.
+ *
+ * Measured once MCP and language servers were shared (2026-10): an idle live session holds about
+ * twice its history in memory — 1MB for a short one, 4MB at 2MB of history — and bringing an
+ * evicted one back takes about 10ms. Both ends are small enough that neither a wider cap nor an
+ * idle timer was worth building; revisit if a session starts holding something heavier again.
  */
 const MAX_LIVE_SESSIONS = 8;
 

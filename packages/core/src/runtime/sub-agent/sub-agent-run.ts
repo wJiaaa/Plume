@@ -10,7 +10,7 @@ import { sessionPruner } from "../../agent/aged-prune.ts";
 import type { AgentEventSink } from "../../agent/events.ts";
 import type { AgentRunResult } from "../../agent/run-config.ts";
 import { runTurn } from "../../agent/runner.ts";
-import { CODE_INTEL_KEY, CodeIntelManager } from "../../lsp/manager.ts";
+import { releaseCodeIntel } from "../../lsp/manager.ts";
 import type { PromptContext } from "../../prompt/context.ts";
 import { errorResult } from "../../tools/result.ts";
 import { toolTable } from "../../tools/mcp-search.ts";
@@ -249,17 +249,15 @@ export async function runDispatched(
 		release?.();
 		detach();
 		/*
-		 * A delegated run has its own state map, so anything heavy it started is its own to stop.
+		 * A delegated run has its own state map, so what it borrowed is its own to give back.
 		 *
 		 * The session's `dispose` cannot reach this one — it looks at the session's map, and a
 		 * sub-agent's is deliberately separate so its file reads and todo list stay out of the
-		 * parent's. Which means a sub-agent that called `lsp` would leave a language server running
-		 * for the life of the process, once per dispatch.
+		 * parent's. Without this a sub-agent that called `lsp` would hold a language server for the
+		 * life of the process, once per dispatch. The server itself is shared by directory, so one
+		 * the parent is also using keeps running; a continued run borrows it again.
 		 */
-		const codeIntel = subState.get(CODE_INTEL_KEY);
-		if (codeIntel instanceof CodeIntelManager) await codeIntel.dispose().catch(() => {});
-		// 状态图会留下来给续跑用，一个已经关掉的语言服务不能跟着留下——续跑时要用，就让它重新起一个。
-		subState.delete(CODE_INTEL_KEY);
+		await releaseCodeIntel(subState);
 	}
 	return { result, produced, view, salvaged, steps };
 }

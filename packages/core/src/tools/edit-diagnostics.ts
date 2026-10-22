@@ -28,7 +28,7 @@ const WAIT_MS = 2000;
 const MAX_SHOWN = 10;
 
 export async function withDiagnostics(ctx: ToolContext, file: string, result: ToolResult): Promise<ToolResult> {
-	const manager = codeIntelFor(ctx.state);
+	const manager = codeIntelFor(ctx.state, ctx.cwd);
 	const backend = manager.backendFor(file);
 	if (!backend || !(await backend.available().catch(() => false))) return result;
 	if (!backend.ready()) {
