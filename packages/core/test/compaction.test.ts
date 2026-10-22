@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { compactIfNeeded } from "../src/runtime/compaction/compaction.ts";
-import { compactionTriggerTokens, compactionWindow, COMPACTION_BUFFER_TOKENS, COMPACTION_RATIO, summaryHeadroom } from "../src/runtime/compaction/compaction-budget.ts";
+import { compactionTriggerTokens, compactionWindow, COMPACTION_BUFFER_TOKENS, COMPACTION_RATIO, MIN_TIER_LINE, summaryHeadroom } from "../src/runtime/compaction/compaction-budget.ts";
 import { summaryMessages } from "../src/runtime/compaction/compaction-head.ts";
 import { PRUNE_THRESHOLD_CHARS, pruneText, pruneToolResults } from "../src/agent/prune.ts";
 import { measureTotal } from "../src/tokens.ts";
@@ -463,14 +463,28 @@ test("a price tier below the line becomes the line: the window compaction plans 
 	assert.equal(compactionWindow({ ...tiered, contextWindow: 300_000 }), 300_000, "a tier past the ratio line changes nothing");
 	assert.equal(compactionWindow({ ...tiered, pricing: { ...tiered.pricing, tiers: [{ ...tier, aboveTokens: 500_000 }, tier] } }), Math.floor(272_000 / COMPACTION_RATIO), "the lowest tier counts");
 
-	// 历史约 51k：越过 40k 的分档线，离 100k 窗口的 90% 还远。只有带分档的那个模型压缩。
-	const messages = conversation(15, 6000);
-	const plain: ModelConfig = { ...MODEL, contextWindow: 100_000, maxOutputTokens: 8000 };
-	const priced: ModelConfig = { ...plain, pricing: { input: 1, output: 1, tiers: [{ aboveTokens: 40_000, input: 2, output: 2 }] } };
-	assert.ok(estimateTokens(messages) > 40_000 && estimateTokens(messages) < compactionTriggerTokens(plain.contextWindow), "precondition: between the tier and the ratio line");
+	// 历史约 150k：越过 128k 的分档线，离 200k 窗口的 90% 还远。只有带分档的那个模型压缩。
+	const messages = conversation(44, 6000);
+	const plain: ModelConfig = { ...MODEL, contextWindow: 200_000, maxOutputTokens: 8000 };
+	const priced: ModelConfig = { ...plain, pricing: { input: 1, output: 1, tiers: [{ aboveTokens: MIN_TIER_LINE, input: 2, output: 2 }] } };
+	assert.ok(estimateTokens(messages) > MIN_TIER_LINE && estimateTokens(messages) < compactionTriggerTokens(plain.contextWindow), "precondition: between the tier and the ratio line");
 	assert.equal(await compactIfNeeded({ messages, model: plain, provider: PROVIDER, streamFn: fakeStream("摘要") as never }), null);
 	const result = await compactIfNeeded({ messages, model: priced, provider: PROVIDER, streamFn: fakeStream("摘要") as never });
-	assert.ok(result && estimateTokens(result.messages) < 40_000, "compacted back under the tier");
+	assert.ok(result && estimateTokens(result.messages) < MIN_TIER_LINE, "compacted back under the tier");
+});
+
+test("a tier line far below the window does not shrink it: a 1M model would summarise every turn at 32k", () => {
+	const low = { aboveTokens: 32_000, input: 4, output: 15 };
+	const pricing = { input: 2, output: 10, tiers: [low] };
+	assert.equal(compactionWindow({ contextWindow: 1_000_000, pricing }), 1_000_000, "32k tier on a 1M window: the window stays");
+	assert.equal(compactionWindow({ contextWindow: 256_000, pricing: { ...pricing, tiers: [{ ...low, aboveTokens: 31_999 }] } }), 256_000, "31999 on 256k: same");
+	assert.equal(compactionWindow({ contextWindow: 1_000_000, pricing: { ...pricing, tiers: [{ ...low, aboveTokens: 100_000 }] } }), 1_000_000, "100k is still under the floor");
+	assert.equal(
+		compactionWindow({ contextWindow: 1_000_000, pricing: { ...pricing, tiers: [low, { ...low, aboveTokens: 272_000 }] } }),
+		Math.floor(272_000 / COMPACTION_RATIO),
+		"a low line is skipped, the lowest line at or above the floor still counts",
+	);
+	assert.equal(compactionWindow({ contextWindow: 1_000_000, pricing: { ...pricing, tiers: [{ ...low, aboveTokens: MIN_TIER_LINE }] } }), Math.floor(MIN_TIER_LINE / COMPACTION_RATIO), "the floor itself counts");
 });
 
 test("an oversized result keeps its head and its tail, and says what went", () => {

@@ -93,7 +93,16 @@ export function compactionTriggerTokens(contextWindow: number): number {
 }
 
 /**
- * 压缩按多大的窗口算：模型有价格分档时，第一条分档线以上不当作可用的窗口。
+ * 低于这条线的价格分档不缩压缩窗口。
+ *
+ * 目录里有 32k、100k 的分档线挂在 256k、1M 窗口的模型上（qwen、1M 的 Haiku）。按线压，1M 的模型在 32k 就压，
+ * 扣掉提示词和工具定义，对话只剩 4k 上下，几乎每轮都在摘要、每次都丢信息——这比越线多付的那一档贵。
+ * 128k 以上的线（gpt-6.1-sol 的 272k、Gemini/Grok 的 200k）留出的对话空间够干活，照旧按线压。
+ */
+export const MIN_TIER_LINE = 128_000;
+
+/**
+ * 压缩按多大的窗口算：模型有价格分档时，不低于 `MIN_TIER_LINE` 的最低一条分档线以上不当作可用的窗口。
  *
  * 一次请求的输入越过分档线，这一整次都按高一档计（gpt-6.1-sol 过 272k 输入和缓存读翻倍），之后每一轮
  * 都在线上方，多付的那一倍是确定的；压缩一次的代价是一次摘要。本机 5 天里越线的请求 72 次、$8.12。
@@ -101,7 +110,8 @@ export function compactionTriggerTokens(contextWindow: number): number {
  * 越线只剩摘要请求本身那一次：它带着触发压缩的那段历史再加一条指令。
  */
 export function compactionWindow(model: Pick<ModelConfig, "contextWindow" | "pricing">): number {
-	const line = model.pricing?.tiers?.reduce((lowest, tier) => Math.min(lowest, tier.aboveTokens), Infinity) ?? Infinity;
+	// 跳过太低的线而不是整体作废：一个模型可能 32k、272k 两条线都有，272k 那条照样值得守。
+	const line = model.pricing?.tiers?.reduce((lowest, tier) => (tier.aboveTokens < MIN_TIER_LINE ? lowest : Math.min(lowest, tier.aboveTokens)), Infinity) ?? Infinity;
 	return line < model.contextWindow * COMPACTION_RATIO ? Math.floor(line / COMPACTION_RATIO) : model.contextWindow;
 }
 

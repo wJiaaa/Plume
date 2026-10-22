@@ -50,6 +50,8 @@ import {
 import { afterCompaction, cacheLifetime, LIFETIME_BUCKETS, type AuditBoundary } from "./audit-compaction.ts";
 import { isFork, withoutCopies } from "./audit-copies.ts";
 import { KEEP_MIN } from "../packages/core/src/runtime/compaction/compaction-budget.ts";
+import { catalogModelFor } from "../packages/core/src/model-catalog.ts";
+import { loadCachedModelCatalog } from "../packages/core/src/model-catalog-sync.ts";
 import type { Message } from "../packages/core/src/types.ts";
 
 /** 字符数换算 token 的粗系数。绝对值不重要，前后两次用同一个就行。 */
@@ -641,13 +643,25 @@ const contextSpend = CONTEXT_BUCKETS.slice(0, -1).map((from, i) => {
 	return { from, to, requests: inBucket.length, cost: inBucket.reduce((sum, turn) => sum + turn.cost, 0) };
 });
 /*
- * 越过价格分档线的请求：上下文过了 200k（目录里最低的分档线），输入单价又比同一模型 200k 以下的
- * 请求都贵。不能只比「最便宜的那档」：DeepSeek 有分时折扣，同样的上下文白天和夜里单价不同。
+ * 越过价格分档线的请求：上下文过了这个模型在目录里最低的分档线，输入单价又比同一模型线以下的请求
+ * 都贵。线按模型查，不写死：目录里有 32k、100k、128k、200k、272k 各种线。目录里没有分档的模型不参与。
+ * 不能只比「最便宜的那档」：DeepSeek 有分时折扣，同样的上下文白天和夜里单价不同。
  */
-const LOWEST_TIER_LINE = 200_000;
+await loadCachedModelCatalog();
+const tierLines = new Map<string, number>();
+const tierLineOf = (model: string): number => {
+	let line = tierLines.get(model);
+	if (line === undefined) {
+		// 日志里只有模型 ID，没有端点，按目录的参考条目（厂商官方或 OpenRouter）查。
+		const entry = catalogModelFor({ baseUrl: "" }, model)?.model;
+		line = entry?.tiers?.reduce((lowest, tier) => Math.min(lowest, tier.aboveTokens), Infinity) ?? Infinity;
+		tierLines.set(model, line);
+	}
+	return line;
+};
 const baseRate = new Map<string, number>();
-for (const turn of allTurns) if (contextOf(turn) <= LOWEST_TIER_LINE) baseRate.set(turn.model, Math.max(baseRate.get(turn.model) ?? 0, turn.inputRate));
-const tiered = allTurns.filter((turn) => contextOf(turn) > LOWEST_TIER_LINE && turn.inputRate > (baseRate.get(turn.model) ?? Infinity));
+for (const turn of allTurns) if (contextOf(turn) <= tierLineOf(turn.model)) baseRate.set(turn.model, Math.max(baseRate.get(turn.model) ?? 0, turn.inputRate));
+const tiered = allTurns.filter((turn) => contextOf(turn) > tierLineOf(turn.model) && turn.inputRate > (baseRate.get(turn.model) ?? Infinity));
 const tieredByModel = new Map<string, { requests: number; cost: number }>();
 for (const turn of tiered) {
 	const row = tieredByModel.get(turn.model) ?? { requests: 0, cost: 0 };
