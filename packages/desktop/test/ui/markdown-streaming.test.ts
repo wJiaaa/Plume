@@ -11,9 +11,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { act, Activity, createElement as h, StrictMode } from "react";
 import type { AssistantMessage } from "@plume/core";
-import { Markdown } from "../../src/features/conversation/Markdown.tsx";
+import { Markdown } from "../../src/features/markdown/Markdown.tsx";
 import { MessageRow } from "../../src/features/conversation/rows.tsx";
-import { Arrival, useArrival } from "../../src/features/conversation/useSmoothText.ts";
+import { Arrival, useArrival } from "../../src/features/markdown/useSmoothText.ts";
 import { I18nProvider } from "../../src/i18n/index.ts";
 import { mount } from "../helpers/mount.ts";
 

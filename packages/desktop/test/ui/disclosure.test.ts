@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createElement as h } from "react";
-import { Markdown } from "../../src/features/conversation/Markdown.tsx";
+import { Markdown } from "../../src/features/markdown/Markdown.tsx";
 import { Disclosure } from "../../src/ui/layout/Disclosure.tsx";
 import { click, mount } from "../helpers/mount.ts";
 

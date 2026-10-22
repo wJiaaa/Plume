@@ -6,7 +6,7 @@ import { useI18n } from "../../i18n/index.ts";
 import { Collapse } from "../../ui/layout/Collapse.tsx";
 import { Button } from "../../ui/primitives/Button.tsx";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
-import { Markdown } from "../conversation/index.ts";
+import { Markdown } from "../markdown/index.ts";
 
 /** How many show before the rest are folded away. */
 const SHOWN = 3;

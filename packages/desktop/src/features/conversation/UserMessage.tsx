@@ -13,7 +13,7 @@ import { isAttachmentBody } from "../../lib/attachment-placeholders.ts";
 import { useMemo, useRef, useState } from "react";
 import { BubbleText } from "./BubbleText.tsx";
 import { jumpToSession } from "./jump-to-session.ts";
-import { Markdown } from "./Markdown.tsx";
+import { Markdown } from "../markdown/index.ts";
 import { MessageActions } from "./MessageActions.tsx";
 import { ForkAction } from "./ForkAction.tsx";
 import { MessageEditor } from "./message/MessageEditor.tsx";

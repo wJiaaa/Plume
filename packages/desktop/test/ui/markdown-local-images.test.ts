@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { act, createElement as h } from "react";
-import { Markdown } from "../../src/features/conversation/Markdown.tsx";
+import { Markdown } from "../../src/features/markdown/Markdown.tsx";
 import { fire, mount } from "../helpers/mount.ts";
 
 const QR = "/Users/me/.plume/workspaces/chats/2026-10-19/badaf2f3/feishu-auth-qr.png";

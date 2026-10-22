@@ -146,7 +146,7 @@ test("break opportunities go only into long runs, never into ordinary words or n
 });
 
 test("lines the caller broke on purpose stay broken, and each is evened on its own", () => {
-	const label = "#12 read · 读取 packages/desktop/src/features/conversation/Markdown.tsx 的前 200 行\n1.2s";
+	const label = "#12 read · 读取 packages/desktop/src/features/markdown/Markdown.tsx 的前 200 行\n1.2s";
 	const lines = laidOut(label, CAP);
 	assert.equal(lines.at(-1), "1.2s", `the caller's second line is kept: ${JSON.stringify(lines)}`);
 	assert.ok(

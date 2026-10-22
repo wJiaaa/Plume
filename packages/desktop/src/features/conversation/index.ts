@@ -8,7 +8,6 @@
  */
 
 export { BackToLatest } from "./BackToLatest.tsx";
-export { Markdown } from "./Markdown.tsx";
 export { MessageActions } from "./MessageActions.tsx";
 export { HookRunsButton, hasTroubledHooks } from "./HookRunsAction.tsx";
 export { formatTokens } from "../../lib/format-tokens.ts";
@@ -25,7 +24,6 @@ export { SpokenBubble, spokenText } from "./SpokenBubble.tsx";
 export { TrajectoryPanel } from "./trajectory/TrajectoryPanel.tsx";
 export { useDeliveryReview, useSharedDeliveryTarget } from "./delivery-review.ts";
 export { announceUndo, useDeliveryUndos } from "./delivery-undo.ts";
-export { usePathMenu } from "./PathMenu.tsx";
 export { TraceText } from "./detail/TraceText.tsx";
 export { showTrace } from "./trajectory/navigation.ts";
 /* 画廊里点「在对话中查看」：那个对话一读完，就把那张图滚到中间、闪一下。 */

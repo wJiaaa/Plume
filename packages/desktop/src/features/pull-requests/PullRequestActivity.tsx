@@ -17,7 +17,7 @@
 import { translate } from "../../i18n/translate.ts";
 import { ExternalLink, GitCommitHorizontal, GitPullRequest } from "../../ui/icons/index.ts";
 import { useState } from "react";
-import { Markdown } from "../conversation/index.ts";
+import { Markdown } from "../markdown/index.ts";
 import { relativeTime } from "../../lib/relative-time.ts";
 import { type ActivityEntry, firstLine } from "./activity.ts";
 import { Avatar } from "./Avatar.tsx";

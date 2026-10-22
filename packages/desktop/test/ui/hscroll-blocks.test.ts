@@ -15,7 +15,7 @@ import { test } from "node:test";
 const read = (path: string) => readFileSync(join(import.meta.dirname, "../../src", path), "utf8");
 
 test("each block that scrolls sideways draws the overlay thumb over its own scroller", () => {
-	for (const file of ["features/conversation/CodeBlock.tsx", "features/conversation/Markdown.tsx", "features/conversation/MermaidBlock.tsx"]) {
+	for (const file of ["features/markdown/CodeBlock.tsx", "features/markdown/Markdown.tsx", "features/markdown/MermaidBlock.tsx"]) {
 		const source = read(file);
 		assert.match(source, /<OverlayScrollbar viewport=\{viewport\} orientation="horizontal" \/>/, file);
 		assert.match(source, /ly-hscroll-own/, file);

@@ -1,7 +1,7 @@
 import { translate } from "../../../i18n/translate.ts";
 import { Check, ChevronLeft, ChevronRight, Copy } from "../../../ui/icons/index.ts";
 import { useEffect, useState } from "react";
-import { Markdown } from "../Markdown.tsx";
+import { Markdown } from "../../markdown/index.ts";
 import { CodeText } from "./CodeText.tsx";
 import { Section } from "./Section.tsx";
 import { IconButton } from "../../../ui/primitives/IconButton.tsx";

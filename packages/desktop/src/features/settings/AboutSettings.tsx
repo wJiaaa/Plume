@@ -8,7 +8,7 @@ import { bridge } from "../../services/index.ts";
 import { useApp } from "../../store/index.ts";
 import { ActionSpinner } from "../../ui/motion/loaders.tsx";
 import { Button } from "../../ui/primitives/Button.tsx";
-import { Markdown } from "../conversation/index.ts";
+import { Markdown } from "../markdown/index.ts";
 import { UpdateDialog, check, labelFor, notesForLocale, useUpdate } from "../update/index.ts";
 import { Card, InlineSelect, Row, SectionTitle } from "./controls.tsx";
 

@@ -14,7 +14,7 @@ import { notesForLocale } from "./notes-locale.ts";
 import { confirmLabel, controlsFor, failureDetail, fractionOf, mb, publishedOn, readyNote, type Phase } from "./view.ts";
 import { useI18n } from "../../i18n/index.ts";
 import { Dialog, DialogAction } from "../../ui/overlay/Dialog.tsx";
-import { Markdown } from "../conversation/index.ts";
+import { Markdown } from "../markdown/index.ts";
 import { bridge } from "../../services/index.ts";
 
 function metaLine(info: Info, locale: string, current: string): string {

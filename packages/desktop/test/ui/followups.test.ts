@@ -8,7 +8,7 @@ import { test } from "node:test";
 import { createElement as h } from "react";
 import type { AssistantMessage, Message } from "@plume/core";
 import { Composer } from "../../src/features/composer/Composer.tsx";
-import { Markdown } from "../../src/features/conversation/Markdown.tsx";
+import { Markdown } from "../../src/features/markdown/Markdown.tsx";
 import { LayoutProvider } from "../../src/app/layout.tsx";
 import { I18nProvider } from "../../src/i18n/index.ts";
 import { useApp } from "../../src/store/index.ts";

@@ -40,7 +40,7 @@ const PATH = "docs/issue/2026-09-16-2220-01-tasklist-false-paused-on-unfinished-
 // `pane.moveHint` with its label filled in: the longest real tooltip in the Chinese catalogue.
 const SENTENCE = "移动文件：拖动或按方向键；垂直于排列方向的按键预览分屏，Enter 确认，Escape 取消";
 // The shape of `timeline.entryTip`: a summary line and a duration line.
-const MULTILINE = "#12 read · 读取 packages/desktop/src/features/conversation/Markdown.tsx 的前 200 行\n1.2s";
+const MULTILINE = "#12 read · 读取 packages/desktop/src/features/markdown/Markdown.tsx 的前 200 行\n1.2s";
 
 const REPLY = [
 	`[${LONG}](${LONG}) 是这次需求的原始文档，先读它，再对照下面几份。`,

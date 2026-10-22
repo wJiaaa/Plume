@@ -16,8 +16,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createElement as h } from "react";
-import { Markdown } from "../../src/features/conversation/Markdown.tsx";
-import { isMermaid } from "../../src/features/conversation/MermaidBlock.tsx";
+import { Markdown } from "../../src/features/markdown/Markdown.tsx";
+import { isMermaid } from "../../src/features/markdown/MermaidBlock.tsx";
 import { mount } from "../helpers/mount.ts";
 
 const DIAGRAM = ["```mermaid", "graph TD", "  A[开始] --> B[结束]", "```"].join("\n");

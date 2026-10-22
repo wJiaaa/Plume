@@ -4,7 +4,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { copyableReply, interfaceText } from "../src/features/conversation/interface/interface-text.ts";
+import { copyableReply, interfaceText } from "../src/features/markdown/interface/interface-text.ts";
 
 const BLOCK = `<Card title="本周">
   <Grid cols={3}>

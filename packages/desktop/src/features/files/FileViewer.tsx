@@ -6,7 +6,7 @@ import { documentKind } from "../../../shared/document-kind.ts";
 import { PdfView, WordView } from "./DocumentView.tsx";
 import { ImagePane } from "./ImagePane.tsx";
 import { SheetView } from "./SheetView.tsx";
-import { Markdown } from "../conversation/index.ts";
+import { Markdown } from "../markdown/index.ts";
 import { directoryOf } from "../../lib/markdown/assets.ts";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { useOpenFile } from "../../store/openFile.ts";

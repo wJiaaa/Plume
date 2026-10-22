@@ -58,7 +58,7 @@ function Control({ control, value, onChange }: { control: TweakControl; value: T
  * The design controls a page offered, under the page.
  *
  * Under it, not over it: the reader is adjusting the page and has to see all of it while they do.
- * The app's own controls, as an interface block's are (`features/conversation/interface/controls.tsx`),
+ * The app's own controls, as an interface block's are (`features/markdown/interface/controls.tsx`),
  * so a slider here is the slider everywhere else. Moving one changes the page at once and costs
  * nothing; only the last button says anything to the model, and only what was changed.
  *

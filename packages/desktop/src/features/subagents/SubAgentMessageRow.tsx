@@ -18,7 +18,7 @@ import { Fragment, memo, useMemo, useState } from "react";
 import type { HookRun, Message, UserMessage } from "@plume/core";
 import { hasTroubledHooks, HookRunsButton, MessageActions, ModelSwitchRow, runs, runKey, segments, SpokenBubble, spokenText, ToolRun, withoutThinking } from "../conversation/index.ts";
 import { useApp } from "../../store/index.ts";
-import { Markdown } from "../conversation/index.ts";
+import { Markdown } from "../markdown/index.ts";
 import { ThinkingBlock } from "../conversation/index.ts";
 import { subAgentRuns } from "./runs.ts";
 

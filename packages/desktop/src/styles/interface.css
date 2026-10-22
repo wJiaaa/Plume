@@ -1,5 +1,5 @@
 /*
- * Interface blocks in a reply (`features/conversation/interface/`). Their chart hues and warning
+ * Interface blocks in a reply (`features/markdown/interface/`). Their chart hues and warning
  * colour are tokens (`--ly-chart-*`, `--ly-warning` in `tokens.css`), shared with preview pages.
  */
 

@@ -13,7 +13,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createElement as h } from "react";
-import { Markdown } from "../../src/features/conversation/Markdown.tsx";
+import { Markdown } from "../../src/features/markdown/Markdown.tsx";
 import { click, mount } from "../helpers/mount.ts";
 
 const TABLE = ["| 字段 | 本次处理 |", "| --- | --- |", "| User-Agent | 统一网页与原生请求 |"].join("\n");

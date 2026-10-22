@@ -4,7 +4,7 @@ import { Brain } from "../../ui/icons/index.ts";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { FlowRow } from "./FlowRow.tsx";
-import { Markdown } from "./Markdown.tsx";
+import { Markdown } from "../markdown/index.ts";
 import { thinkingTail } from "./thinking-ticker.ts";
 import { LiveThought } from "./LiveThought.tsx";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";

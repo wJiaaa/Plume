@@ -47,7 +47,7 @@ import type { Plugin } from "@plume/core";
 import type { Skill } from "@plume/core";
 import type { AgentCapabilities } from "../../../electron/ipc-types.ts";
 import { bridge } from "../../services/index.ts";
-import { Markdown } from "../conversation/index.ts";
+import { Markdown } from "../markdown/index.ts";
 import { Readme } from "./Readme.tsx";
 import { useReadme, type ReadmeResult } from "./useReadme.ts";
 

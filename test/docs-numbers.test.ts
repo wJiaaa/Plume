@@ -53,7 +53,7 @@ test("包的数目", () => {
 
 test("功能域的数目", () => {
 	const actual = dirsIn("packages/desktop/src/features").length;
-	assert.equal(actual, 25);
+	assert.equal(actual, 26);
 	for (const source of [agents, architecture, read("docs/adr/0011-renderer-is-nine-directories.md")]) {
 		for (const written of counts(source, "个功能域").concat(counts(source, "个用户看得见的域"))) {
 			assert.equal(written, actual);

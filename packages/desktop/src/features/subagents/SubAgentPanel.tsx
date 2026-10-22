@@ -35,7 +35,7 @@ import {
 	useDraft,
 	useInputHistory,
 } from "../composer/index.ts";
-import { Markdown } from "../conversation/index.ts";
+import { Markdown } from "../markdown/index.ts";
 import { PanelEmpty } from "../../ui/layout/PanelEmpty.tsx";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { useFollowBottom } from "../../ui/scroll/useFollowBottom.ts";

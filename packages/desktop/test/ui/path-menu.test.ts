@@ -12,7 +12,7 @@ import type { TurnDelivery } from "../../electron/delivery-record.ts";
 import { LayoutProvider } from "../../src/app/layout.tsx";
 import { DockScope, SessionScope } from "../../src/app/session-scope.tsx";
 import { useDeliveryReview } from "../../src/features/conversation/delivery-review.ts";
-import { Markdown } from "../../src/features/conversation/Markdown.tsx";
+import { Markdown } from "../../src/features/markdown/Markdown.tsx";
 import { TurnDeliveryCard } from "../../src/features/conversation/TurnDelivery.tsx";
 import "../../src/app/panels.tsx";
 import { allPanels } from "../../src/features/dock/panels/registry.ts";

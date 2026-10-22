@@ -18,7 +18,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReleaseInfo, WorkflowRunStatus } from "../../../electron/ipc-types.ts";
 import { useI18n } from "../../i18n/index.ts";
 import { useApp } from "../../store/index.ts";
-import { Markdown } from "../conversation/index.ts";
+import { Markdown } from "../markdown/index.ts";
 import { releaseNotes } from "./release-notes.ts";
 import { DialogAction, DialogFrame } from "../../ui/overlay/Dialog.tsx";
 import { MenuBody, MenuItem } from "../../ui/overlay/Menu.tsx";

@@ -30,7 +30,7 @@ import { useTranscriptWindow } from "./view-state.ts";
 import { flash, settleReveal, useDrawingReveal } from "./reveal.ts";
 import { motionReduced } from "../../ui/motion/reduced.ts";
 import { useFollowBottom } from "../../ui/scroll/useFollowBottom.ts";
-import { Arrival, useArrival } from "./useSmoothText.ts";
+import { Arrival, useArrival } from "../markdown/index.ts";
 import { tailSignature } from "../../ui/scroll/signature.ts";
 import { useLayout } from "../../app/layout.tsx";
 import { useApp } from "../../store/index.ts";

@@ -17,7 +17,7 @@ import { latestDeliveryTimestamp } from "./delivery-state.ts";
 import { peekDelivery, rememberDelivery } from "./delivery-cache.ts";
 import { useDeliveryReview } from "./delivery-review.ts";
 import { announceUndo, useDeliveryUndos } from "./delivery-undo.ts";
-import { usePathMenu } from "./PathMenu.tsx";
+import { usePathMenu } from "../markdown/index.ts";
 import { useI18n } from "../../i18n/index.ts";
 
 const PREVIEW_FILES = 3;
