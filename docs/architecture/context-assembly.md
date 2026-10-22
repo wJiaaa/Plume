@@ -88,7 +88,8 @@ provider 接口。provider 缓存由各适配器处理。
   开着、又画得出界面块时才加。
 - **触发线给摘要留位置**：`min(90% 窗口, 窗口 − 摘要空间)`，摘要空间是 8k（窗口的四分之一封顶）
   加 2k 余量。大窗口上是 90%（200k 在 180k）；32k 窗口在 22.4k，不然分叉请求放不下摘要。理由见
-  [成本与停止机制](agent-cost-and-stopping.md) 的 A5。
+  [成本与停止机制](agent-cost-and-stopping.md) 的 A5。模型定价有分档（`pricing.tiers`）且最低一档的线
+  在 90% 以内时，窗口按「那条线 ÷ 0.9」算，触发线正好落在分档线上（`compactionWindow`）。
 - **已知的放不下**：Anthropic 的 `budget_tokens` 不能超过 `max_tokens`，而 `max_tokens` 按窗口剩余
   折算。thinking 预算大于窗口剩余（xhigh、max 档配 200k 窗口）时，主请求和分叉请求的预算都被压低且
   每次不同，核对会在 `params` 段拦下分叉。这也让主循环在临近触发线的那几轮里 messages 段缓存逐轮

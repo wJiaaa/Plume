@@ -48,6 +48,7 @@ import {
 	type CacheRequestDiagnosis,
 } from "../packages/core/src/runtime/record/cache-diagnostics.ts";
 import { afterCompaction, cacheLifetime, LIFETIME_BUCKETS, type AuditBoundary } from "./audit-compaction.ts";
+import { isFork, withoutCopies } from "./audit-copies.ts";
 import { KEEP_MIN } from "../packages/core/src/runtime/compaction/compaction-budget.ts";
 import type { Message } from "../packages/core/src/types.ts";
 
@@ -78,6 +79,15 @@ interface Turn {
 	cacheRead: number;
 	cacheWrite: number;
 	cost: number;
+	/** 这次请求按哪档输入单价计的；同一模型里比最低档贵，就是越过了价格分档线。没定价为 0。 */
+	inputRate: number;
+}
+
+/** 子代理的一次回复，按它是哪种子代理归类。 */
+interface SubTurn extends Turn {
+	agent: string;
+	/** 哪一个子代理（`subagent` 事件的 id），数「派了几个」用。 */
+	run: string;
 }
 
 interface UserPrompt {
@@ -103,6 +113,9 @@ interface Session {
 	stops: string[];
 	runtimeStops: string[];
 	turns: Turn[];
+	subTurns: SubTurn[];
+	/** 不属于任何一条对话的请求（标题、下一句建议、压缩摘要……），按 `usage` 记录的 `source` 分。 */
+	auxCost: Map<string, number>;
 	userPrompts: UserPrompt[];
 	finalTodos?: { content: string; status: string }[];
 	fileEdits: Map<string, number>;
@@ -146,14 +159,17 @@ function loadSessions(): Session[] {
 	// Read-only: the app may be running, and an audit must never be the thing that writes.
 	const db = new DatabaseSync(DB, { readOnly: true });
 	const records = db.prepare("SELECT body FROM records WHERE session_id = ? ORDER BY seq");
-	const ids = (db.prepare("SELECT id FROM sessions ORDER BY created_at").all() as { id: string }[]).map((row) => row.id);
-	for (const file of ids) {
-		const lines = (records.all(file) as { body: string }[]).map((row) => row.body);
+	const rows = db.prepare("SELECT id, created_at, meta FROM sessions ORDER BY created_at").all() as { id: string; created_at: number; meta: string }[];
+	for (const { id: file, created_at: createdAt, meta } of rows) {
+		const lines = withoutCopies((records.all(file) as { body: string }[]).map((row) => row.body), createdAt, isFork(meta));
 		const calls: Call[] = [];
 		const results = new Map<string, Message>();
 		const stops: string[] = [];
 		const runtimeStops: string[] = [];
 		const turns: Turn[] = [];
+		const subTurns: SubTurn[] = [];
+		const subAgents = new Map<string, string>();
+		const auxCost = new Map<string, number>();
 		const userPrompts: UserPrompt[] = [];
 		let finalTodos: { content: string; status: string }[] | undefined;
 		const fileEdits = new Map<string, number>();
@@ -185,6 +201,7 @@ function loadSessions(): Session[] {
 					message?: Message;
 					event?: { type?: string };
 					command?: { id: string; name: string; timestamp: number; status: string; automatic?: unknown };
+					agent?: string;
 				};
 			};
 			try {
@@ -193,6 +210,12 @@ function loadSessions(): Session[] {
 				continue;
 			}
 			if (entry.type === "event" && entry.event?.type === "agent_end" && entry.event.reason) runtimeStops.push(entry.event.reason);
+			if (entry.type === "usage") {
+				const source = (entry as { source?: string }).source ?? "(unknown)";
+				const total = ((entry as { usage?: { cost?: { total?: number } } }).usage?.cost?.total) ?? 0;
+				auxCost.set(source, (auxCost.get(source) ?? 0) + total);
+			}
+			if (entry.type === "event" && entry.event?.type === "subagent" && entry.event.id) subAgents.set(entry.event.id, entry.event.agent ?? "(unknown)");
 			if (entry.type === "usage" && (entry as { source?: string }).source === "compaction") {
 				const u = ((entry as { usage?: Record<string, unknown> }).usage ?? {}) as Record<string, number | { total?: number }>;
 				billed = {
@@ -229,8 +252,11 @@ function loadSessions(): Session[] {
 			// 模型看到的历史被有意改写的地方：压缩（含只剪枝不移边界的那种）与撤回
 			if (entry.type === "event" && entry.event?.type === "compacted") mainStream.boundaries.push({ at: mainStream.messages.length, kind: "compaction" });
 			if (entry.type === "truncate") mainStream.boundaries.push({ at: mainStream.messages.length, kind: "rewind" });
-			if (entry.type === "event" && entry.event?.type === "subagent_message" && entry.event.id && entry.event.message)
+			if (entry.type === "event" && entry.event?.type === "subagent_message" && entry.event.id && entry.event.message) {
 				subStream(entry.event.id).messages.push(entry.event.message);
+				const reply = entry.event.message as unknown as Record<string, unknown>;
+				if (reply.role === "assistant" && reply.usage) subTurns.push({ ...turnOf(reply, 0), agent: subAgents.get(entry.event.id) ?? "(unknown)", run: entry.event.id });
+			}
 			if (entry.type === "event" && entry.event?.type === "subagent_event" && entry.event.id && entry.event.event?.type === "compacted") {
 				const stream = subStream(entry.event.id);
 				stream.boundaries.push({ at: stream.messages.length, kind: "compaction" });
@@ -266,16 +292,7 @@ function loadSessions(): Session[] {
 						}
 					}
 				}
-				const u = (message.usage ?? {}) as Record<string, number | { total?: number }>;
-				turns.push({
-					model: String(message.model ?? "(unknown)"),
-					toolCalls: inRound,
-					input: Number(u.input ?? 0),
-					output: Number(u.output ?? 0),
-					cacheRead: Number(u.cacheRead ?? 0),
-					cacheWrite: Number(u.cacheWrite ?? 0),
-					cost: Number((u.cost as { total?: number } | undefined)?.total ?? 0),
-				});
+				turns.push(turnOf(message, inRound));
 			} else if (message?.role === "toolResult" && typeof message.toolCallId === "string") {
 				results.set(message.toolCallId, message as unknown as Message);
 			}
@@ -290,6 +307,8 @@ function loadSessions(): Session[] {
 				stops,
 				runtimeStops,
 				turns,
+				subTurns,
+				auxCost,
 				userPrompts,
 				finalTodos,
 				fileEdits,
@@ -300,6 +319,21 @@ function loadSessions(): Session[] {
 	}
 	db.close();
 	return out;
+}
+
+function turnOf(message: Record<string, unknown>, toolCalls: number): Turn {
+	const u = (message.usage ?? {}) as Record<string, number | { total?: number; rates?: { input?: number } }>;
+	const cost = u.cost as { total?: number; rates?: { input?: number } } | undefined;
+	return {
+		model: String(message.model ?? "(unknown)"),
+		toolCalls,
+		input: Number(u.input ?? 0),
+		output: Number(u.output ?? 0),
+		cacheRead: Number(u.cacheRead ?? 0),
+		cacheWrite: Number(u.cacheWrite ?? 0),
+		cost: Number(cost?.total ?? 0),
+		inputRate: Number(cost?.rates?.input ?? 0),
+	};
 }
 
 /** 一条工具结果的正文长度——模型真正要为之付钱的部分。 */
@@ -575,15 +609,61 @@ let cacheWrite = 0;
 let rawInput = 0;
 let output = 0;
 let cost = 0;
-for (const session of sessions)
-	for (const turn of session.turns) {
-		cacheRead += turn.cacheRead;
-		cacheWrite += turn.cacheWrite;
-		rawInput += turn.input;
-		output += turn.output;
-		cost += turn.cost;
-	}
+/*
+ * 主会话、子代理、辅助请求三份加起来才是账单。从前只数主会话：本机子代理占两成多（$42.58），在这一节
+ * 里看不见，改子代理的东西前后对照不出任何变化。
+ */
+const spendBy = { main: 0, subagent: 0, aux: 0 };
+const allTurns = sessions.flatMap((session) => [...session.turns, ...session.subTurns]);
+for (const session of sessions) {
+	for (const turn of session.turns) spendBy.main += turn.cost;
+	for (const turn of session.subTurns) spendBy.subagent += turn.cost;
+	for (const value of session.auxCost.values()) spendBy.aux += value;
+}
+for (const turn of allTurns) {
+	cacheRead += turn.cacheRead;
+	cacheWrite += turn.cacheWrite;
+	rawInput += turn.input;
+	output += turn.output;
+}
+cost = spendBy.main + spendBy.subagent + spendBy.aux;
 const billed = rawInput + cacheRead + cacheWrite;
+
+/*
+ * 每次请求的花费按它带了多少上下文分桶。cacheRead 的钱和上下文大小成正比，大窗口模型压缩线
+ * 靠后时，钱集中在最上面几桶——压缩线怎么定，看这里的前后对照。
+ */
+const contextOf = (turn: Turn) => turn.input + turn.cacheRead + turn.cacheWrite;
+const CONTEXT_BUCKETS = [0, 50_000, 100_000, 200_000, 300_000, Infinity];
+const contextSpend = CONTEXT_BUCKETS.slice(0, -1).map((from, i) => {
+	const to = CONTEXT_BUCKETS[i + 1];
+	const inBucket = allTurns.filter((turn) => contextOf(turn) >= from && contextOf(turn) < to);
+	return { from, to, requests: inBucket.length, cost: inBucket.reduce((sum, turn) => sum + turn.cost, 0) };
+});
+/*
+ * 越过价格分档线的请求：上下文过了 200k（目录里最低的分档线），输入单价又比同一模型 200k 以下的
+ * 请求都贵。不能只比「最便宜的那档」：DeepSeek 有分时折扣，同样的上下文白天和夜里单价不同。
+ */
+const LOWEST_TIER_LINE = 200_000;
+const baseRate = new Map<string, number>();
+for (const turn of allTurns) if (contextOf(turn) <= LOWEST_TIER_LINE) baseRate.set(turn.model, Math.max(baseRate.get(turn.model) ?? 0, turn.inputRate));
+const tiered = allTurns.filter((turn) => contextOf(turn) > LOWEST_TIER_LINE && turn.inputRate > (baseRate.get(turn.model) ?? Infinity));
+const tieredByModel = new Map<string, { requests: number; cost: number }>();
+for (const turn of tiered) {
+	const row = tieredByModel.get(turn.model) ?? { requests: 0, cost: 0 };
+	row.requests++;
+	row.cost += turn.cost;
+	tieredByModel.set(turn.model, row);
+}
+const subagentSpend = new Map<string, { runs: Set<string>; requests: number; cost: number }>();
+for (const session of sessions)
+	for (const turn of session.subTurns) {
+		const row = subagentSpend.get(turn.agent) ?? { runs: new Set<string>(), requests: 0, cost: 0 };
+		row.runs.add(`${session.id}:${turn.run}`);
+		row.requests++;
+		row.cost += turn.cost;
+		subagentSpend.set(turn.agent, row);
+	}
 
 // ---------------------------------------------------------------------------
 // 9. 任务完成质量与用户体验（守卫第一原则：省 token 不能伤及完成质量）
@@ -772,7 +852,12 @@ if (asJson) {
 						]),
 					),
 				},
-				spend: { rawInput, cacheRead, cacheWrite, output, cost: +cost.toFixed(2), cacheReadShare: share(cacheRead, billed), cacheWriteShare: share(cacheWrite, billed) },
+				spend: { rawInput, cacheRead, cacheWrite, output, cost: +cost.toFixed(2), cacheReadShare: share(cacheRead, billed), cacheWriteShare: share(cacheWrite, billed),
+					bySource: { main: +spendBy.main.toFixed(2), subagent: +spendBy.subagent.toFixed(2), aux: +spendBy.aux.toFixed(2) },
+					byContext: contextSpend.map((row) => ({ from: row.from, to: row.to === Infinity ? null : row.to, requests: row.requests, cost: +row.cost.toFixed(2) })),
+					tiered: { requests: tiered.length, cost: +tiered.reduce((sum, turn) => sum + turn.cost, 0).toFixed(2), byModel: Object.fromEntries([...tieredByModel].map(([model, row]) => [model, { requests: row.requests, cost: +row.cost.toFixed(2) }])) },
+					subagents: Object.fromEntries([...subagentSpend].map(([agent, row]) => [agent, { runs: row.runs.size, requests: row.requests, cost: +row.cost.toFixed(2) }])),
+				},
 				quality: {
 					totalUserPrompts,
 					frustrationPrompts,
@@ -896,7 +981,23 @@ console.log(`  被规则挡回、白费一整轮的调用：${blockedTurns} 次`
 console.log("\n── 8. 缓存与花销（A1 验收看这里） ──");
 console.log(`  计费 token：未命中 ${rawInput.toLocaleString()}｜cacheRead ${cacheRead.toLocaleString()}｜cacheWrite ${cacheWrite.toLocaleString()}｜输出 ${output.toLocaleString()}`);
 console.log(`  cacheRead 占输入侧 ${share(cacheRead, billed)}，cacheWrite 占 ${share(cacheWrite, billed)}`);
-console.log(`  记录在案的花销合计 $${cost.toFixed(2)}`);
+console.log(`  记录在案的花销合计 $${cost.toFixed(2)}：主会话 $${spendBy.main.toFixed(2)}｜子代理 $${spendBy.subagent.toFixed(2)} (${share(spendBy.subagent, cost)})｜辅助请求 $${spendBy.aux.toFixed(2)}（分叉抄来的历史不算）`);
+console.log("  按每次请求带的上下文分桶（含子代理）：");
+const allRequests = contextSpend.reduce((sum, row) => sum + row.requests, 0);
+const replyCost = spendBy.main + spendBy.subagent;
+for (const row of contextSpend)
+	console.log(
+		`    ${pad(`${row.from / 1000}k–${row.to === Infinity ? "" : `${row.to / 1000}k`}`, 10)}  ${pad(row.requests, 5)} 次 (${pad(share(row.requests, allRequests), 6)})  $${pad(row.cost.toFixed(2), 7)} (${share(row.cost, replyCost)})`,
+	);
+console.log(
+	`  越过价格分档线、按高一档计费的请求：${tiered.length} 次，$${tiered.reduce((sum, turn) => sum + turn.cost, 0).toFixed(2)}` +
+		(tiered.length ? `（${[...tieredByModel].map(([model, row]) => `${model} ${row.requests} 次`).join("，")}）` : ""),
+);
+if (subagentSpend.size) {
+	console.log("  子代理按类型：");
+	for (const [agent, row] of [...subagentSpend].sort((a, b) => b[1].cost - a[1].cost))
+		console.log(`    ${agent.padEnd(10)} ${pad(row.runs.size, 3)} 个  ${pad(row.requests, 5)} 次请求  $${pad(row.cost.toFixed(2), 7)}  每个 $${(row.cost / row.runs.size).toFixed(2)}`);
+}
 if (cacheWrite === 0)
 	console.log("  ⚠ cacheWrite 恒为 0：openai-chat-completions/responses 两条链路都不上报它，所以**它不能用作验收指标**。");
 console.log(`  ⚠ 看 cacheRead 占比（现在 ${share(cacheRead, billed)}）：改动后它明显下降 = 前缀缓存被反复打断，`);

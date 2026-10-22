@@ -162,7 +162,7 @@ export async function compactIfNeeded(request: CompactionRequest): Promise<Compa
 	const originalMessages = messages;
 	// Before the first measured reply (and after compaction), schemas and instructions still count.
 	const used = measured.tokens + (measured.measured ? 0 : overhead);
-	const budget = compactionBudget(model.contextWindow, overhead, force ? Math.max(0, used - overhead) : undefined);
+	const budget = compactionBudget(model, overhead, force ? Math.max(0, used - overhead) : undefined);
 	if (!force && used < budget.trigger) return null;
 
 	/*

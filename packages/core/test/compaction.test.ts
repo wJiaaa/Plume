@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { compactIfNeeded } from "../src/runtime/compaction/compaction.ts";
-import { compactionTriggerTokens, COMPACTION_BUFFER_TOKENS, COMPACTION_RATIO, summaryHeadroom } from "../src/runtime/compaction/compaction-budget.ts";
+import { compactionTriggerTokens, compactionWindow, COMPACTION_BUFFER_TOKENS, COMPACTION_RATIO, summaryHeadroom } from "../src/runtime/compaction/compaction-budget.ts";
 import { summaryMessages } from "../src/runtime/compaction/compaction-head.ts";
 import { PRUNE_THRESHOLD_CHARS, pruneText, pruneToolResults } from "../src/agent/prune.ts";
 import { measureTotal } from "../src/tokens.ts";
@@ -453,6 +453,24 @@ test("on a small window the line leaves room for the summary a fork request has 
 		assert.ok(compactionTriggerTokens(window) <= window * COMPACTION_RATIO, `${window}: never later than the ratio`);
 	}
 	assert.equal(compactionTriggerTokens(1_000_000), 900_000, "a large window keeps the ratio, not window minus a fixed reserve");
+});
+
+test("a price tier below the line becomes the line: the window compaction plans for ends there", async () => {
+	const tier = { aboveTokens: 272_000, input: 4, output: 15, cacheRead: 0.2 };
+	const tiered = { contextWindow: 1_000_000, pricing: { input: 2, output: 10, cacheRead: 0.1, tiers: [tier] } };
+	assert.ok(Math.abs(compactionTriggerTokens(compactionWindow(tiered)) - 272_000) <= 1, "the trigger lands on the tier");
+	assert.equal(compactionWindow({ contextWindow: 1_000_000 }), 1_000_000, "no pricing, no change");
+	assert.equal(compactionWindow({ ...tiered, contextWindow: 300_000 }), 300_000, "a tier past the ratio line changes nothing");
+	assert.equal(compactionWindow({ ...tiered, pricing: { ...tiered.pricing, tiers: [{ ...tier, aboveTokens: 500_000 }, tier] } }), Math.floor(272_000 / COMPACTION_RATIO), "the lowest tier counts");
+
+	// 历史约 51k：越过 40k 的分档线，离 100k 窗口的 90% 还远。只有带分档的那个模型压缩。
+	const messages = conversation(15, 6000);
+	const plain: ModelConfig = { ...MODEL, contextWindow: 100_000, maxOutputTokens: 8000 };
+	const priced: ModelConfig = { ...plain, pricing: { input: 1, output: 1, tiers: [{ aboveTokens: 40_000, input: 2, output: 2 }] } };
+	assert.ok(estimateTokens(messages) > 40_000 && estimateTokens(messages) < compactionTriggerTokens(plain.contextWindow), "precondition: between the tier and the ratio line");
+	assert.equal(await compactIfNeeded({ messages, model: plain, provider: PROVIDER, streamFn: fakeStream("摘要") as never }), null);
+	const result = await compactIfNeeded({ messages, model: priced, provider: PROVIDER, streamFn: fakeStream("摘要") as never });
+	assert.ok(result && estimateTokens(result.messages) < 40_000, "compacted back under the tier");
 });
 
 test("an oversized result keeps its head and its tail, and says what went", () => {

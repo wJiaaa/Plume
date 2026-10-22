@@ -92,6 +92,19 @@ export function compactionTriggerTokens(contextWindow: number): number {
 	return Math.max(0, Math.floor(Math.min(contextWindow * COMPACTION_RATIO, contextWindow - summaryHeadroom(contextWindow))));
 }
 
+/**
+ * 压缩按多大的窗口算：模型有价格分档时，第一条分档线以上不当作可用的窗口。
+ *
+ * 一次请求的输入越过分档线，这一整次都按高一档计（gpt-6.1-sol 过 272k 输入和缓存读翻倍），之后每一轮
+ * 都在线上方，多付的那一倍是确定的；压缩一次的代价是一次摘要。本机 5 天里越线的请求 72 次、$8.12。
+ * 把线换算成窗口（触发线正好落在线上），尾部、余量、按条丢弃都跟着按比例缩，不必各自再改一遍。
+ * 越线只剩摘要请求本身那一次：它带着触发压缩的那段历史再加一条指令。
+ */
+export function compactionWindow(model: Pick<ModelConfig, "contextWindow" | "pricing">): number {
+	const line = model.pricing?.tiers?.reduce((lowest, tier) => Math.min(lowest, tier.aboveTokens), Infinity) ?? Infinity;
+	return line < model.contextWindow * COMPACTION_RATIO ? Math.floor(line / COMPACTION_RATIO) : model.contextWindow;
+}
+
 export interface CompactionBudget {
 	/** 整份请求（开销加历史）到这里就压。 */
 	trigger: number;
@@ -109,7 +122,8 @@ export interface CompactionBudget {
  * `retiring`：手动压缩时这段对话本身的大小。`/compact` 是要把做完的事收起来，哪怕窗口还很空，
  * 尾部预算按对话而不是窗口算。
  */
-export function compactionBudget(contextWindow: number, overhead: number, retiring?: number): CompactionBudget {
+export function compactionBudget(model: Pick<ModelConfig, "contextWindow" | "pricing">, overhead: number, retiring?: number): CompactionBudget {
+	const contextWindow = compactionWindow(model);
 	const trigger = compactionTriggerTokens(contextWindow);
 	const keep = contextWindow * KEEP_BUDGET;
 	return {
