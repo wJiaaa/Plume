@@ -257,6 +257,11 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
   }, []);
   /** 末尾正在流的正文像结论：运行行原地隐去，不跟着字一跳一跳。见 `RunningRow`。 */
   const answering = useMemo(() => looksLikeAnswer(messages), [messages]);
+  /** 末尾那条回复的正文写到了多少字：一阵子不长了，运行行就回来说耗时和速度，见 `RunningRow`。 */
+  const written = useMemo(() => {
+    const last = messages[messages.length - 1];
+    return last?.role === "assistant" ? last.content.reduce((sum, block) => sum + (block.type === "text" ? block.text.length : 0), 0) : 0;
+  }, [messages]);
   /** 最后一条是一段正常写完的回答：底下的操作行在这时长出来，运行行在同一帧让位，见 `RunningRow`。 */
   const answered = useMemo(() => {
     const last = messages[messages.length - 1];
@@ -618,7 +623,7 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
           )}
           {range.end === allBlocks.length && <>
           {/* 结论在来的时候这一行只是看不见、高度不变，答完时当帧让位给操作行——为什么这样，见 `RunningRow`。 */}
-          <RunningRow running={running} answering={answering} answered={answered} compacting={compacting} />
+          <RunningRow running={running} answering={answering} written={written} answered={answered} compacting={compacting} />
           {/* Where the running indicator would have been, saying why it is not there. */}
           {!side && <ResumeRow />}
           {/*

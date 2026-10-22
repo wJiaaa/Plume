@@ -9,9 +9,9 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createElement as h } from "react";
+import { act, createElement as h } from "react";
 
-import { RunningRow } from "../../src/features/conversation/RunningRow.tsx";
+import { RunningRow, STALL_MS } from "../../src/features/conversation/RunningRow.tsx";
 import { fire, mount } from "../helpers/mount.ts";
 
 /** happy-dom's `TransitionEvent` drops `propertyName` from its init, so it is put on by hand. */
@@ -22,13 +22,13 @@ function foldEnds(row: Element, propertyName: string) {
 }
 
 test("a turn that ends without an answer folds the row with the indicator still in it", async () => {
-	const view = await mount(h(RunningRow, { running: true, answering: false, answered: false, compacting: false }));
+	const view = await mount(h(RunningRow, { running: true, answering: false, written: 0, answered: false, compacting: false }));
 	try {
 		const row = view.find(".ly-reveal");
 		assert.equal(row.dataset.open, "true");
 		assert.ok(view.host.querySelector("[data-ly-running]"), "the indicator shows while the turn runs");
 
-		await view.rerender(h(RunningRow, { running: false, answering: false, answered: false, compacting: false }));
+		await view.rerender(h(RunningRow, { running: false, answering: false, written: 0, answered: false, compacting: false }));
 		assert.equal(row.dataset.open, "false", "the fold starts at once");
 		assert.ok(view.host.querySelector("[data-ly-running]"), "emptied in the frame the fold began");
 
@@ -42,9 +42,9 @@ test("a turn that ends without an answer folds the row with the indicator still 
 });
 
 test("a compaction starting folds the row the same way", async () => {
-	const view = await mount(h(RunningRow, { running: true, answering: false, answered: false, compacting: false }));
+	const view = await mount(h(RunningRow, { running: true, answering: false, written: 0, answered: false, compacting: false }));
 	try {
-		await view.rerender(h(RunningRow, { running: true, answering: false, answered: false, compacting: true }));
+		await view.rerender(h(RunningRow, { running: true, answering: false, written: 0, answered: false, compacting: true }));
 		const row = view.find(".ly-reveal");
 		assert.equal(row.dataset.open, "false");
 		assert.ok(view.host.querySelector("[data-ly-running]"));
@@ -56,16 +56,16 @@ test("a compaction starting folds the row the same way", async () => {
 });
 
 test("while the conclusion streams the row is only hidden: it keeps its height, and is back when a tool call follows", async () => {
-	const view = await mount(h(RunningRow, { running: true, answering: false, answered: false, compacting: false }));
+	const view = await mount(h(RunningRow, { running: true, answering: false, written: 0, answered: false, compacting: false }));
 	try {
 		const row = view.find(".ly-reveal");
-		await view.rerender(h(RunningRow, { running: true, answering: true, answered: false, compacting: false }));
+		await view.rerender(h(RunningRow, { running: true, answering: true, written: 0, answered: false, compacting: false }));
 		assert.equal(row.dataset.open, "true", "folding here moved the transcript before the first words were drawn");
 		assert.ok(view.host.querySelector("[data-ly-running-quiet]"), "hidden while the conclusion is landing");
 		assert.ok(view.host.querySelector("[data-ly-running]"), "still drawn, so its height stays");
 
 		// 写着写着接上了工具调用：同一格里亮回来，高度没动过。
-		await view.rerender(h(RunningRow, { running: true, answering: false, answered: false, compacting: false }));
+		await view.rerender(h(RunningRow, { running: true, answering: false, written: 0, answered: false, compacting: false }));
 		assert.equal(row.dataset.open, "true");
 		assert.ok(!view.host.querySelector("[data-ly-running-quiet]"));
 	} finally {
@@ -74,13 +74,13 @@ test("while the conclusion streams the row is only hidden: it keeps its height, 
 });
 
 test("stopped while the conclusion streams, the row folds away still hidden instead of fading the indicator back in", async () => {
-	const view = await mount(h(RunningRow, { running: true, answering: true, answered: false, compacting: false }));
+	const view = await mount(h(RunningRow, { running: true, answering: true, written: 0, answered: false, compacting: false }));
 	try {
 		const row = view.find(".ly-reveal");
 		assert.ok(view.host.querySelector("[data-ly-running-quiet]"));
 
 		// 停止：`running` 落下，被中断的回答不算写完（`answered` 为 false），于是走动画收起。
-		await view.rerender(h(RunningRow, { running: false, answering: false, answered: false, compacting: false }));
+		await view.rerender(h(RunningRow, { running: false, answering: false, written: 0, answered: false, compacting: false }));
 		assert.equal(row.dataset.open, "false");
 		assert.ok(view.host.querySelector("[data-ly-running]"), "the fold still has its content");
 		assert.ok(view.host.querySelector("[data-ly-running-quiet]"), "the indicator faded back in over the fold, right after the stop");
@@ -89,7 +89,7 @@ test("stopped while the conclusion streams, the row folds away still hidden inst
 		assert.ok(!view.host.querySelector("[data-ly-running]"));
 
 		// 下一轮照常展开，不带着上一轮收起时的隐。
-		await view.rerender(h(RunningRow, { running: true, answering: false, answered: false, compacting: false }));
+		await view.rerender(h(RunningRow, { running: true, answering: false, written: 0, answered: false, compacting: false }));
 		assert.equal(row.dataset.open, "true");
 		assert.ok(view.host.querySelector("[data-ly-running]"));
 		assert.ok(!view.host.querySelector("[data-ly-running-quiet]"), "the next turn opened with the indicator hidden");
@@ -99,24 +99,53 @@ test("stopped while the conclusion streams, the row folds away still hidden inst
 });
 
 test("a finished answer takes the row's place in one frame, with nothing left behind", async () => {
-	const view = await mount(h(RunningRow, { running: true, answering: true, answered: false, compacting: false }));
+	const view = await mount(h(RunningRow, { running: true, answering: true, written: 0, answered: false, compacting: false }));
 	try {
 		const row = view.find(".ly-reveal");
 		// 消息先定稿，`running` 晚一步才落下；回答底下的操作行要等 `running` 落下才长出来。
-		await view.rerender(h(RunningRow, { running: true, answering: false, answered: true, compacting: false }));
+		await view.rerender(h(RunningRow, { running: true, answering: false, written: 0, answered: true, compacting: false }));
 		assert.equal(row.dataset.open, "true", "folding before the action row grows drops a pinned transcript by the row's height");
 		assert.ok(view.host.querySelector("[data-ly-running-quiet]"), "not flashed back in before the turn ends");
 
-		await view.rerender(h(RunningRow, { running: false, answering: false, answered: true, compacting: false }));
+		await view.rerender(h(RunningRow, { running: false, answering: false, written: 0, answered: true, compacting: false }));
 		assert.equal(row.dataset.open, "false", "the reply's action row is growing in this same commit");
 		assert.equal(row.style.transition, "none", "an animated fold would sink the answer after the action row lifted it");
 		assert.ok(!view.host.querySelector("[data-ly-running]"), "an indicator stayed mounted after the turn");
 
 		// 下一轮开始：最后一条成了人说的话，照常展开。
-		await view.rerender(h(RunningRow, { running: true, answering: false, answered: false, compacting: false }));
+		await view.rerender(h(RunningRow, { running: true, answering: false, written: 0, answered: false, compacting: false }));
 		assert.equal(row.dataset.open, "true");
 		assert.equal(row.style.transition, "", "the next turn opens with the usual reveal");
 	} finally {
 		await view.unmount();
+	}
+});
+
+/*
+ * 一段写得慢的结论：藏到写完的话，从第一段末尾起屏幕上就不说耗时和速度，也看不出是在写还是卡住了。
+ */
+test("a conclusion that stops growing brings the row back, and the next words hide it again in the same frame", async (t) => {
+	t.mock.timers.enable({ apis: ["setTimeout"] });
+	const view = await mount(h(RunningRow, { running: true, answering: true, written: 200, answered: false, compacting: false }));
+	try {
+		assert.ok(view.host.querySelector("[data-ly-running-quiet]"), "hidden while the conclusion is landing");
+
+		await act(async () => t.mock.timers.tick(STALL_MS - 1));
+		assert.ok(view.host.querySelector("[data-ly-running-quiet]"), "back before the words had stopped long enough");
+
+		// 还在长：每来一段就重新等。
+		await view.rerender(h(RunningRow, { running: true, answering: true, written: 260, answered: false, compacting: false }));
+		await act(async () => t.mock.timers.tick(STALL_MS - 1));
+		assert.ok(view.host.querySelector("[data-ly-running-quiet]"), "the wait did not restart when more words came");
+
+		await act(async () => t.mock.timers.tick(1));
+		assert.ok(!view.host.querySelector("[data-ly-running-quiet]"), "still hidden after the conclusion stalled");
+		assert.ok(view.host.querySelector("[data-ly-running]"));
+
+		await view.rerender(h(RunningRow, { running: true, answering: true, written: 300, answered: false, compacting: false }));
+		assert.ok(view.host.querySelector("[data-ly-running-quiet]"), "left showing under words that are growing again");
+	} finally {
+		await view.unmount();
+		t.mock.timers.reset();
 	}
 });

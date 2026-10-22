@@ -197,6 +197,8 @@ interface Claim {
 	toolCard: boolean;
 	/** The third reply has broken into paragraphs. */
 	paragraphs: boolean;
+	/** The third reply's last paragraph is on screen: after it the stream stays open and says nothing. */
+	lastParagraph: boolean;
 	/** In the tree at all, as against folded to nothing — the two are worth telling apart in a failure. */
 	mounted: boolean;
 	/** The fold's measured height, so a failure says how shut it was rather than only that it was. */
@@ -225,6 +227,7 @@ const READ_CLAIM = `(() => {
 		stopButton: Boolean(document.querySelector('main button[aria-label="停止"]')),
 		prose: text.includes(${JSON.stringify(PROSE)}),
 		paragraphs: text.includes("第 1 段："),
+		lastParagraph: text.includes("第 10 段："),
 		toolCard: Boolean(document.querySelector("main [data-ly-tool]")),
 		mounted: Boolean(line),
 		foldHeight: fold ? Math.round(fold.getBoundingClientRect().height) : -1,
@@ -351,4 +354,17 @@ test("while a conclusion in paragraphs streams, the line stays out of the way", 
 	const shown = streamed.filter((c) => c.line);
 	assert.equal(shown.length, 0, `the running line was under the conclusion while it streamed: ${JSON.stringify(shown)}`);
 	assert.ok(streamed.every((c) => c.mounted && c.foldHeight > 1), "hidden in place, not folded: folding moves the transcript");
+
+	/*
+	 * 十段写完，流还开着、不再来字：一段停住的结论。藏到这一轮结束的话，从这里起屏幕上既不说耗时、
+	 * 也不说速度，看不出是在写还是卡住了。停够 `STALL_MS`（2 秒）它回来；屏幕上的字比到达晚，所以从
+	 * 最后一段画出来算，等的时间会比 2 秒短一点，但不会是马上。
+	 */
+	await until((c) => c.lastParagraph);
+	const lastWords = Date.now();
+	const back = await until((c) => c.line || !c.stopButton, 10_000);
+	const waited = Date.now() - lastWords;
+	assert.equal(back.stopButton, true, "the turn ended before the stall could be read");
+	assert.equal(back.line, true, `the running line stayed hidden under a conclusion that had stopped: ${JSON.stringify(back)}`);
+	assert.ok(waited >= 1_000, `the running line came back ${waited}ms after the last words, before they had stopped long enough`);
 });
