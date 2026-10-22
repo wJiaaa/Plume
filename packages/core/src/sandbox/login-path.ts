@@ -28,7 +28,7 @@
  * well as the system four, so that test said "a shell built this" and never asked — and nvm's node,
  * configured in `~/.bashrc` like everywhere else, was `command not found` in every session.
  *
- * `electron/git-exec.ts` solved the `PATH` half for the built-in git panel by appending a list of
+ * `electron/git/git-exec.ts` solved the `PATH` half for the built-in git panel by appending a list of
  * likely directories. That list is the fallback here, because a list cannot know where fnm put
  * tonight's node, and asking the shell can.
  */

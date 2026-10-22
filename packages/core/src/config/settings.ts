@@ -305,7 +305,7 @@ export interface Settings {
 	/**
 	 * Plume 开着的时候，别让这台电脑睡。
 	 *
-	 * 开着的时候主进程持有一个系统级的「别休眠」声明（`electron/keep-awake.ts`），保证不息屏、
+	 * 开着的时候主进程持有一个系统级的「别休眠」声明（`electron/app/keep-awake.ts`），保证不息屏、
 	 * 不因为闲置而休眠——长任务跑一夜、离开工位回来它还在那儿。
 	 *
 	 * **不含合盖。** 两个平台的合盖动作都不归应用管（macOS 要 `pmset disablesleep`，Windows 是

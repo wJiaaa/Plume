@@ -22,7 +22,7 @@ import { openRepo, withRepoView } from "./host-git.ts";
 
 /**
  * 不在 git 仓库里、只能自己走目录时跳过的目录：依赖、构建产物、缓存。仓库里认 `.gitignore`，用不到它。
- * `glob`、`grep` 的兜底和桌面端回复链接的查找（`electron/file-locate.ts`）共用这一张，免得同一个项目
+ * `glob`、`grep` 的兜底和桌面端回复链接的查找（`electron/files/file-locate.ts`）共用这一张，免得同一个项目
  * 里模型搜得到的文件，点链接却找不到。
  */
 export const SKIP_DIRS: ReadonlySet<string> = new Set([

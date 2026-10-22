@@ -9,7 +9,7 @@
  *   「在哪一块干活」，这是一段话里最先该交代的。
  * - **覆盖到哪**用消息的 `timestamp` 记：消息没有 id，而下标会被截断、回退打乱。
  *
- * 什么时候生成、存在哪，是调用方的事（桌面端主进程，见 `electron/session-summary.ts`）。
+ * 什么时候生成、存在哪，是调用方的事（桌面端主进程，见 `electron/session/session-summary.ts`）。
  */
 
 import type { RetryPolicySource } from "../../config/retry-policy.ts";

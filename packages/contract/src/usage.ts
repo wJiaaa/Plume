@@ -6,7 +6,7 @@
 import type { CacheCause, Gallery, UsageReplayRow } from "@plume/core/contract-types";
 
 /**
- * 本该从缓存读到、却按全价重算的那部分，见 core 的 `runtime/cache-diagnostics.ts`。
+ * 本该从缓存读到、却按全价重算的那部分，见 core 的 `runtime/record/cache-diagnostics.ts`。
  *
  * 只记有未命中的原因；一次都没漏过的桶不带这一项。
  */
