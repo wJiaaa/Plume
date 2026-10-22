@@ -20,6 +20,7 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import type { CodeIntelBackend, CodeLocation, Diagnostic, TextEdit } from "./types.ts";
 
@@ -47,8 +48,8 @@ export class TsServerBackend implements CodeIntelBackend {
 	private seq = 1;
 	private buffer = "";
 	private readonly pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>();
-	/** Files opened with the server, which it needs before it will answer about them. */
-	private readonly open = new Set<string>();
+	/** Files opened with the server, and the text it was last given for each. */
+	private readonly open = new Map<string, string>();
 	private started = false;
 	private root = "";
 
@@ -173,19 +174,27 @@ export class TsServerBackend implements CodeIntelBackend {
 	}
 
 	/**
-	 * The server answers nothing about a file it has not been told to open.
+	 * Make the server's copy of `file` match the disk before asking about it.
 	 *
-	 * Tracked rather than sent every time: `open` on an already-open file makes the server discard
-	 * and rebuild its view of it, which on a large project costs more than the call being made.
+	 * The server answers nothing about a file it has not been told to open, and once a file is open
+	 * it stops reading it from disk: the client owns it. Opening once and never again left every
+	 * answer after an edit about the text as first opened — diagnostics said "none" for a type error
+	 * just written. So the text is compared each time and `reload` sent only when it changed; `open`
+	 * again would make the server rebuild its view, which on a large project costs more than the call.
 	 */
-	private async ensureOpen(file: string): Promise<void> {
-		if (this.open.has(file)) return;
-		await this.send("open", { file }, false);
-		this.open.add(file);
+	private async sync(file: string): Promise<void> {
+		const text = await readFile(file, "utf8").catch(() => null);
+		const known = this.open.get(file);
+		if (known === undefined) {
+			await this.send("open", { file }, false);
+		} else if (text !== null && text !== known) {
+			await this.send("reload", { file, tmpfile: file }, true);
+		}
+		if (text !== null) this.open.set(file, text);
 	}
 
 	async references(file: string, line: number, column: number): Promise<CodeLocation[]> {
-		await this.ensureOpen(file);
+		await this.sync(file);
 		const body = (await this.send("references", { file, line, offset: column }, true)) as
 			| { refs?: { file: string; start: { line: number; offset: number }; lineText?: string }[] }
 			| undefined;
@@ -198,7 +207,7 @@ export class TsServerBackend implements CodeIntelBackend {
 	}
 
 	async definition(file: string, line: number, column: number): Promise<CodeLocation[]> {
-		await this.ensureOpen(file);
+		await this.sync(file);
 		const body = (await this.send("definition", { file, line, offset: column }, true)) as
 			| { file: string; start: { line: number; offset: number } }[]
 			| undefined;
@@ -206,11 +215,12 @@ export class TsServerBackend implements CodeIntelBackend {
 	}
 
 	async diagnostics(file: string): Promise<Diagnostic[]> {
-		await this.ensureOpen(file);
-		const body = (await this.send("semanticDiagnosticsSync", { file }, true)) as
-			| { start: { line: number; offset: number }; text: string; code?: number; category?: string }[]
-			| undefined;
-		return (body ?? []).map((entry) => ({
+		await this.sync(file);
+		type Entry = { start: { line: number; offset: number }; text: string; code?: number; category?: string };
+		// Semantic diagnostics leave out syntax errors — a missing brace came back as "none" — so both are asked, syntax first.
+		const syntactic = ((await this.send("syntacticDiagnosticsSync", { file }, true)) as Entry[] | undefined) ?? [];
+		const semantic = ((await this.send("semanticDiagnosticsSync", { file }, true)) as Entry[] | undefined) ?? [];
+		return [...syntactic, ...semantic].map((entry) => ({
 			path: file,
 			line: entry.start.line,
 			column: entry.start.offset,
@@ -221,7 +231,7 @@ export class TsServerBackend implements CodeIntelBackend {
 	}
 
 	async rename(file: string, line: number, column: number, newName: string): Promise<TextEdit[]> {
-		await this.ensureOpen(file);
+		await this.sync(file);
 		const body = (await this.send("rename", { file, line, offset: column, findInStrings: false, findInComments: false }, true)) as
 			| { info?: { canRename?: boolean; localizedErrorMessage?: string }; locs?: { file: string; locs: { start: { line: number; offset: number }; end: { line: number; offset: number } }[] }[] }
 			| undefined;

@@ -151,12 +151,14 @@ npm 装的 `.cmd` 并经 `cmd.exe` 启动，回收时按进程树结束。找不
 写明「这个语言没有可用的语言服务器（需要安装 …）」；`rename` 在没有服务器时照旧拒绝。
 
 每台服务器第一次被问才起，起不来三秒内就先给文本答案，空闲十分钟回收（`lsp/manager.ts`）。
-每次提问前从磁盘重读文件，变了就整篇 `didChange`，所以 agent 改过文件后的回答不按旧内容算。
+每次提问前从磁盘重读文件，变了就整篇 `didChange`（tsserver 是 `reload`），所以 agent 改过文件后
+的回答不按旧内容算。tsserver 的诊断同时取语法和语义两类，缺括号这类语法错误也会报出来。
 发给服务器的路径换成真实路径、收回来再换回项目根，避免符号链接下的项目（macOS 的 `/var` →
 `/private/var`）同一个文件被当成两个。clangd 会在项目里写 `.cache/clangd/index`，这是它自己的行为。
 
 回归入口：`packages/core/test/lsp-stdio.test.ts`（路由、降级提示、URI 与 Windows 路径、分帧）、
-`packages/core/test/lsp-stdio-server.test.ts`（对着假服务器走完握手、改文件后重问、诊断、回收）。
+`packages/core/test/lsp-stdio-server.test.ts`（对着假服务器走完握手、改文件后重问、诊断、回收）、
+`packages/core/test/tsserver-diagnostics.test.ts`（真 tsserver 上改文件后重问、语法错误）。
 
 ### 快照与撤销
 
