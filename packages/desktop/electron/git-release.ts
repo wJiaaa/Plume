@@ -8,9 +8,11 @@
 
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
-import { git } from "./git-exec.ts";
-import { isGitRepo } from "./git-probe.ts";
-import { listAccounts, tokenFor } from "./forge/vault.ts";
+import { git, runRemote } from "./git-exec.ts";
+import { PUSH_PULL_TIMEOUT_MS } from "./git-history.ts";
+import { gitBranch, isGitRepo } from "./git-probe.ts";
+import { parseRemote, type RemoteRepo } from "./git-remote.ts";
+import { connectByHost } from "./forge/index.ts";
 import { json as forgeJson } from "./forge/http.ts";
 import type { ForgeConnection } from "./forge/types.ts";
 
@@ -187,84 +189,41 @@ export async function bumpVersionFiles(cwd: string, newVersion: string): Promise
 	}
 }
 
-/**
- * Parse remote origin URL into host and owner/repo.
- * Supports:
- * - git@github.com:owner/repo.git
- * - https://github.com/owner/repo.git
- * - ssh://git@github.com/owner/repo.git
- */
-export async function getRepoInfo(cwd: string): Promise<{ owner: string; name: string; host: string } | null> {
-	try {
-		const rawUrl = await git(cwd, ["remote", "get-url", "origin"]).then((s) => s.trim());
-		if (!rawUrl) return null;
-
-		// Match SCP-like git@host:owner/repo.git
-		const scpMatch = rawUrl.match(/^(?:[\w-]+@)?([\w.-]+):([^\s/]+)\/([^\s/]+?)(?:\.git)?$/);
-		if (scpMatch) {
-			return { host: scpMatch[1], owner: scpMatch[2], name: scpMatch[3] };
-		}
-
-		// Match standard URLs (https://, http://, ssh://)
-		const url = new URL(rawUrl.includes("://") ? rawUrl : `ssh://${rawUrl}`);
-		const parts = url.pathname.replace(/^\/+/, "").replace(/\.git$/, "").split("/");
-		if (parts.length >= 2) {
-			return { host: url.hostname, owner: parts[parts.length - 2], name: parts[parts.length - 1] };
-		}
-		return null;
-	} catch {
-		return null;
-	}
+/** The `origin` remote, split into host, owner and name; null without one. */
+export async function getRepoInfo(cwd: string): Promise<RemoteRepo | null> {
+	return git(cwd, ["remote", "get-url", "origin"]).then(parseRemote, () => null);
 }
 
 /**
- * Get forge connection / token for the repository.
- * Searches configured Forge accounts for matching host, or falls back to GITHUB_TOKEN environment variable.
+ * How to reach the GitHub API for this host.
+ *
+ * A signed-in account on the host first, then `GITHUB_TOKEN`/`GH_TOKEN`, then no token at all — the
+ * read-only calls still answer for a public repository. The last two have no account behind them,
+ * so one is described for the request layer, which only reads `kind` and `baseUrl`.
  */
-async function getGithubConnection(host = "github.com"): Promise<ForgeConnection | null> {
-	try {
-		const accounts = await listAccounts();
-		const matching = accounts.find((a) => a.kind === "github" && (a.baseUrl.includes(host) || (host === "github.com" && a.baseUrl.includes("github.com"))));
-		if (matching) {
-			const token = await tokenFor(matching.id);
-			if (token) {
-				return { account: matching, token };
-			}
-		}
-	} catch {
-		// Forge account lookup failed
-	}
-
-	const envToken = process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
-	if (envToken) {
-		return {
-			account: {
-				id: "env-github",
-				kind: "github",
-				label: "GitHub (Environment)",
-				baseUrl: host === "github.com" ? "https://github.com" : `https://${host}`,
-				login: "env-user",
-				avatarUrl: null,
-				enabled: true,
-			},
-			token: envToken,
-		};
-	}
-
-	// Anonymous / public connection for open source repositories
+async function githubConnection(host: string): Promise<ForgeConnection> {
+	const signedIn = await connectByHost("github", host).catch(() => null);
+	if (signedIn) return signedIn;
+	const token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || "";
 	return {
 		account: {
-			id: "anonymous",
+			id: token ? "env-github" : "anonymous",
 			kind: "github",
 			label: "GitHub",
-			baseUrl: host === "github.com" ? "https://github.com" : `https://${host}`,
-			login: "anonymous",
+			baseUrl: `https://${host}`,
+			login: token ? "env-user" : "anonymous",
 			avatarUrl: null,
 			enabled: true,
 		},
-		token: "",
+		token,
 	};
 }
+
+/**
+ * The workflow a dry run dispatches: the packaging workflow, which run by hand builds the
+ * installers and uploads them as artifacts without publishing a release.
+ */
+const DRY_RUN_WORKFLOW = "package.yml";
 
 /**
  * Trigger GitHub Actions Release Dry Run workflow via native GitHub REST API.
@@ -276,23 +235,23 @@ export async function triggerReleaseDryRun(cwd: string): Promise<{ ok: boolean; 
 			return { ok: false, error: "未能识别当前仓库的 Git Remote 远程地址" };
 		}
 
-		const conn = await getGithubConnection(repoInfo.host);
-		if (!conn || !conn.token) {
+		const conn = await githubConnection(repoInfo.host);
+		if (!conn.token) {
 			return {
 				ok: false,
 				error: "触发流水线需要 GitHub 访问令牌，请在代码托管设置中添加 GitHub 账号或设置 GITHUB_TOKEN 环境变量",
 			};
 		}
 
-		const currentBranch = (await git(cwd, ["rev-parse", "--abbrev-ref", "HEAD"]).catch(() => "main")).trim();
+		const currentBranch = await gitBranch(cwd);
 
 		// Trigger workflow_dispatch REST API
 		await forgeJson(
 			conn,
-			`/repos/${encodeURIComponent(repoInfo.owner)}/${encodeURIComponent(repoInfo.name)}/actions/workflows/release-dryrun.yml/dispatches`,
+			`/repos/${encodeURIComponent(repoInfo.owner)}/${encodeURIComponent(repoInfo.name)}/actions/workflows/${DRY_RUN_WORKFLOW}/dispatches`,
 			{
 				method: "POST",
-				body: { ref: currentBranch || "main" },
+				body: { ref: currentBranch || "main", inputs: { platform: "all" } },
 			},
 		);
 
@@ -301,7 +260,7 @@ export async function triggerReleaseDryRun(cwd: string): Promise<{ ok: boolean; 
 			await new Promise((resolve) => setTimeout(resolve, 1500));
 			const res = await forgeJson<{ workflow_runs?: { id: number; status: string; html_url: string }[] }>(
 				conn,
-				`/repos/${encodeURIComponent(repoInfo.owner)}/${encodeURIComponent(repoInfo.name)}/actions/workflows/release-dryrun.yml/runs`,
+				`/repos/${encodeURIComponent(repoInfo.owner)}/${encodeURIComponent(repoInfo.name)}/actions/workflows/${DRY_RUN_WORKFLOW}/runs`,
 				{
 					query: { per_page: 1 },
 				},
@@ -329,8 +288,7 @@ export async function listWorkflowRuns(cwd: string, limit = 20): Promise<Workflo
 		const repoInfo = await getRepoInfo(cwd);
 		if (!repoInfo) return [];
 
-		const conn = await getGithubConnection(repoInfo.host);
-		if (!conn) return [];
+		const conn = await githubConnection(repoInfo.host);
 
 		const res = await forgeJson<{
 			workflow_runs?: {
@@ -376,8 +334,7 @@ export async function getWorkflowRunStatus(cwd: string, runId: number): Promise<
 		const repoInfo = await getRepoInfo(cwd);
 		if (!repoInfo) return null;
 
-		const conn = await getGithubConnection(repoInfo.host);
-		if (!conn) return null;
+		const conn = await githubConnection(repoInfo.host);
 
 		const [runData, jobsData] = await Promise.all([
 			forgeJson<{
@@ -481,13 +438,15 @@ export async function publishReleaseTag(
 		if (statusOut.includes("package.json")) {
 			await git(cwd, ["add", "package.json", "packages/*/package.json"]);
 			await git(cwd, ["commit", "-m", `chore(release): bump version to ${version.replace(/^v/, "")}`]);
-			await git(cwd, ["push"]);
+			const pushed = await runRemote(cwd, ["push"], { timeoutMs: PUSH_PULL_TIMEOUT_MS });
+			if (!pushed.ok) return { ok: false, error: pushed.error };
 		}
 
-		// Create and push tag
+		// Create and push tag. Through `runRemote`, like every push: bounded, and never waiting on a
+		// credential prompt that has nowhere to appear.
 		await git(cwd, ["tag", tag]);
-		await git(cwd, ["push", "origin", tag]);
-		return { ok: true, tag };
+		const pushed = await runRemote(cwd, ["push", "origin", tag], { timeoutMs: PUSH_PULL_TIMEOUT_MS });
+		return pushed.ok ? { ok: true, tag } : { ok: false, error: pushed.error };
 	} catch (err) {
 		return { ok: false, error: err instanceof Error ? err.message : String(err) };
 	}

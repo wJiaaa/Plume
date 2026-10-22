@@ -11,6 +11,7 @@
 
 import { existsSync } from "node:fs";
 import { git, run } from "./git-exec.ts";
+import { worktreeRecords } from "./git-probe.ts";
 import { samePath } from "./path-key.ts";
 import { baseOf, conflictedFiles, countCommits, isMerging, repoRoot, uncommittedFiles, worktreeRootOf, type Owned } from "./worktree-lifecycle.ts";
 import type { MergeOutcome, Refusal, SyncOutcome } from "./worktree-types.ts";
@@ -33,13 +34,7 @@ async function locate(meta: Owned): Promise<Located | Refused> {
 
 /** Which of `repo`'s worktrees has `branch` checked out, the main one included; null when none does. */
 async function checkedOutAt(repo: string, branch: string): Promise<string | null> {
-	const listed = await git(repo, ["worktree", "list", "--porcelain"]).catch(() => "");
-	let path: string | null = null;
-	for (const line of listed.split("\n")) {
-		if (line.startsWith("worktree ")) path = line.slice("worktree ".length);
-		else if (line === `branch refs/heads/${branch}` && path) return path;
-	}
-	return null;
+	return (await worktreeRecords(repo)).find((tree) => tree.branch === branch)?.path ?? null;
 }
 
 export async function mergeIntoBase(meta: Owned): Promise<MergeOutcome> {

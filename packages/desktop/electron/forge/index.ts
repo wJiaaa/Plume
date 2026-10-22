@@ -13,7 +13,7 @@
 import { randomUUID } from "node:crypto";
 import { nativeText } from "../i18n.ts";
 import type { PullRequestDetail, PullRequestSummary, WorkspaceDiffFile } from "../ipc-shapes.ts";
-import { defaultLabel, normalizeServer, sameIdentity } from "./accounts.ts";
+import { defaultLabel, hostOf, normalizeServer, sameIdentity } from "./accounts.ts";
 import { describe } from "./errors.ts";
 import { gitea } from "./gitea.ts";
 import { gitee } from "./gitee.ts";
@@ -45,6 +45,18 @@ async function connect(accountId: string): Promise<ForgeConnection> {
 	const token = await tokenFor(accountId);
 	if (!token) throw new Error(nativeText("forge.tokenUnreadable", { account: account.label }));
 	return { account, token };
+}
+
+/**
+ * The connection of a signed-in, enabled account on `host`, or null when there is none to use.
+ *
+ * For callers that start from a repository's remote rather than from a row that carries an account
+ * id. Compared by host, exactly: `ghe.example.com` is not an account on `example.com`.
+ */
+export async function connectByHost(kind: ForgeKind, host: string): Promise<ForgeConnection | null> {
+	const account = (await listAccounts()).find((a) => a.kind === kind && a.enabled && hostOf(a.baseUrl) === host);
+	const token = account ? await tokenFor(account.id) : null;
+	return account && token ? { account, token } : null;
 }
 
 const driverFor = (kind: ForgeKind): ForgeDriver => DRIVERS[kind];

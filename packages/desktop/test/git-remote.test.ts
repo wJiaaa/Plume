@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { repoFromRemote } from "../electron/git-remote.ts";
+import { parseRemote, repoFromRemote } from "../electron/git-remote.ts";
 
 test("the two forms git hands out", () => {
 	assert.equal(repoFromRemote("git@github.com:kittors/plume.git"), "kittors/plume");
@@ -46,4 +46,17 @@ test("a local path is not a remote we can match on", () => {
 	// A `file:` or plain path remote has no owner, so there is nothing to compare against a
 	// GitHub repository — and guessing from the directory name is exactly the wrong answer.
 	assert.equal(repoFromRemote("/Users/me/code/plume"), null);
+});
+
+test("the host comes with it, from every spelling", () => {
+	assert.deepEqual(parseRemote("git@github.com:kittors/plume.git"), { host: "github.com", owner: "kittors", name: "plume" });
+	assert.deepEqual(parseRemote("github.com:kittors/plume"), { host: "github.com", owner: "kittors", name: "plume" });
+	assert.deepEqual(parseRemote("ssh://git@git.example.com:2222/group/plume.git"), { host: "git.example.com", owner: "group", name: "plume" });
+	assert.deepEqual(parseRemote("https://ghe.example.com/kittors/plume"), { host: "ghe.example.com", owner: "kittors", name: "plume" });
+});
+
+test("a Windows path is not an scp remote", () => {
+	// `C:` looks like `host:` to a pattern that does not know a drive letter when it sees one.
+	assert.equal(parseRemote("C:/Users/me/code/plume"), null);
+	assert.equal(parseRemote("C:\\Users\\me\\code\\plume"), null);
 });

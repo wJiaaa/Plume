@@ -8,12 +8,12 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
-import { pathKey, samePath } from "../electron/path-key.ts";
+import { canonicalPath, pathKey, samePath } from "../electron/path-key.ts";
 
 const made: string[] = [];
 after(async () => {
@@ -63,4 +63,15 @@ test("a real directory reached by going down and back up is the same directory",
 test("the key is idempotent", () => {
 	const once = pathKey("/tmp/a/b/../c");
 	assert.equal(pathKey(once), once);
+});
+
+test("a path that does not exist yet is spelled through its nearest real ancestor", async () => {
+	// The file a create is about to make, under a project reached through a symlink: the ancestor
+	// resolves, the missing tail is joined back on, and the answer agrees with the project's own.
+	const dir = await mkdtemp(join(tmpdir(), "plume-pathkey-"));
+	made.push(dir);
+	await mkdir(join(dir, "real"));
+	// A junction on Windows, which needs no elevation; the type is ignored elsewhere.
+	await symlink(join(dir, "real"), join(dir, "link"), "junction");
+	assert.equal(canonicalPath(join(dir, "link", "new", "file.ts")), join(canonicalPath(join(dir, "real")), "new", "file.ts"));
 });

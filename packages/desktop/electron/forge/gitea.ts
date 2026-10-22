@@ -17,6 +17,7 @@ import type { PullRequestDetail, PullRequestSummary, WorkspaceDiffFile } from ".
 import type { Relation } from "../pr-summary.ts";
 import { DIFF_TIMEOUT_MS, json, text } from "./http.ts";
 import { ForgeError } from "./errors.ts";
+import { splitRepo } from "./accounts.ts";
 import type { ForgeConnection, ForgeDriver, ForgeIdentity, ReviewVerdict } from "./types.ts";
 
 const PER_BUCKET = 30;
@@ -61,12 +62,6 @@ interface RawPull {
 	base?: { ref?: string } | null;
 	labels?: { name?: string }[] | null;
 	requested_reviewers?: ({ login?: string } | null)[] | null;
-}
-
-function split(repo: string): { owner: string; name: string } {
-	const parts = repo.split("/").filter(Boolean);
-	if (parts.length < 2) throw new ForgeError(nativeText("forge.badRepoName", { repo }), 0);
-	return { owner: parts[parts.length - 2], name: parts[parts.length - 1] };
 }
 
 function repoOf(issue: RawIssue): string {
@@ -143,7 +138,7 @@ export const gitea: ForgeDriver = {
 	},
 
 	async detail(conn: ForgeConnection, repo: string, number: number): Promise<PullRequestDetail> {
-		const { owner, name } = split(repo);
+		const { owner, name } = splitRepo(repo);
 		const at = `/repos/${owner}/${name}`;
 		const pull = await json<RawPull>(conn, `${at}/pulls/${number}`);
 
@@ -211,7 +206,7 @@ export const gitea: ForgeDriver = {
 	},
 
 	async diff(conn: ForgeConnection, repo: string, number: number): Promise<WorkspaceDiffFile[]> {
-		const { owner, name } = split(repo);
+		const { owner, name } = splitRepo(repo);
 		const raw = await text(conn, `/repos/${owner}/${name}/pulls/${number}.diff`, {
 			accept: "text/plain",
 			timeoutMs: DIFF_TIMEOUT_MS,
@@ -220,12 +215,12 @@ export const gitea: ForgeDriver = {
 	},
 
 	async comment(conn: ForgeConnection, repo: string, number: number, body: string): Promise<void> {
-		const { owner, name } = split(repo);
+		const { owner, name } = splitRepo(repo);
 		await json(conn, `/repos/${owner}/${name}/issues/${number}/comments`, { method: "POST", body: { body } });
 	},
 
 	async review(conn: ForgeConnection, repo: string, number: number, verdict: ReviewVerdict, body: string): Promise<void> {
-		const { owner, name } = split(repo);
+		const { owner, name } = splitRepo(repo);
 		const event = verdict === "approve" ? "APPROVED" : verdict === "request-changes" ? "REQUEST_CHANGES" : "COMMENT";
 		await json(conn, `/repos/${owner}/${name}/pulls/${number}/reviews`, { method: "POST", body: { event, body } });
 	},

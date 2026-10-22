@@ -11,9 +11,9 @@ import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import type { Settings } from "@plume/core";
 import { git } from "./git-exec.ts";
-import { isGitRepo } from "./git-probe.ts";
+import { gitBranch, isGitRepo, worktreeRecords } from "./git-probe.ts";
 import { canonicalPath } from "./path-key.ts";
-import { uncommittedFiles } from "./worktree-lifecycle.ts";
+import { repoRoot, uncommittedFiles } from "./worktree-lifecycle.ts";
 
 export interface WorktreeCreateOptions {
 	/**
@@ -114,12 +114,8 @@ export async function createWorktree(
  * 往往是拼出来的——`创建` 那一侧的注释说过同一件事。
  */
 async function isKnownWorktree(cwd: string, target: string): Promise<boolean> {
-	const listed = await git(cwd, ["worktree", "list", "--porcelain"]).catch(() => "");
 	const want = canonicalPath(target);
-	return listed
-		.split("\n")
-		.filter((line) => line.startsWith("worktree "))
-		.some((line) => canonicalPath(line.slice("worktree ".length).trim()) === want);
+	return (await worktreeRecords(cwd)).some((tree) => canonicalPath(tree.path) === want);
 }
 
 /**
@@ -187,16 +183,12 @@ export async function autoCreateSessionWorktree(
 	}
 
 	const branchName = `plume/session-${sessionId.slice(0, 8)}`;
-	const root = await git(projectCwd, ["rev-parse", "--show-toplevel"])
-		.then((out) => out.trim())
-		.catch(() => projectCwd);
+	const root = (await repoRoot(projectCwd)) ?? projectCwd;
 	const repoName = basename(root) || "repo";
 
 	const targetDir = join(resolveWorktreesRoot(settings.worktrees?.rootDir), `${repoName}-${sessionId.slice(0, 8)}`);
 	// What the copy is cut from, so merging it back has somewhere to go; nothing from a detached HEAD.
-	const base = await git(projectCwd, ["symbolic-ref", "--quiet", "--short", "HEAD"])
-		.then((out) => out.trim() || undefined)
-		.catch(() => undefined);
+	const base = (await gitBranch(projectCwd)) ?? undefined;
 
 	const result = await createWorktree(projectCwd, branchName, {
 		targetDir,
@@ -230,19 +222,12 @@ export async function cleanOldWorktrees(
 	if (!settings.worktrees?.autoCleanOld) return 0;
 	if (!(await isGitRepo(repoCwd))) return 0;
 	const keepLimit = Math.max(1, settings.worktrees.keepLimit ?? 15);
-	const listed = await git(repoCwd, ["worktree", "list", "--porcelain"]).catch(() => "");
-	// One record per worktree, blank-line separated; the first is the main checkout, which is never ours to remove.
-	const ours = listed
-		.split("\n\n")
+	// The first is the main checkout, which is never ours to remove. `lyra/` is the same prefix from
+	// before the rename to Plume.
+	const ours = (await worktreeRecords(repoCwd))
 		.slice(1)
-		.map((record) => {
-			const lines = record.split("\n");
-			const path = lines.find((line) => line.startsWith("worktree "))?.slice("worktree ".length);
-			const branch = lines.find((line) => line.startsWith("branch "))?.slice("branch ".length);
-			// `lyra/` is the same prefix from before the rename to Plume.
-			return path && /^refs\/heads\/(plume|lyra)\/session-/.test(branch ?? "") ? path : null;
-		})
-		.filter((path): path is string => path !== null);
+		.filter((tree) => /^(plume|lyra)\/session-/.test(tree.branch ?? ""))
+		.map((tree) => tree.path);
 	if (ours.length <= keepLimit) return 0;
 
 	/*

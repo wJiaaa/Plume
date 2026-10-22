@@ -8,23 +8,9 @@
 import { readdir, stat } from "node:fs/promises";
 import { basename, join, relative } from "node:path";
 import { git } from "./git-exec.ts";
-import { gitBranch, isGitRepo } from "./git-probe.ts";
+import { gitBranch, isGitRepo, worktreeRecords } from "./git-probe.ts";
+import type { RepoRef } from "./ipc-shapes.ts";
 import { canonicalPath } from "./path-key.ts";
-import { removeWorktree } from "./git-worktrees.ts";
-
-export { removeWorktree };
-
-/** Runs a git command for its effect, turning failure into readable text rather than a throw. */
-
-export interface RepoRef {
-	/** Absolute path to the working directory of this repository. */
-	path: string;
-	/** Path relative to the workspace, or the folder name for the workspace root itself. */
-	label: string;
-	branch: string | null;
-	/** True when this is a linked worktree rather than the main checkout. */
-	worktree: boolean;
-}
 
 /** Directories never worth descending into when looking for repositories. */
 const SKIP_DIRS = new Set(["node_modules", ".git", "dist", "out", "build", "target", "vendor", ".next", ".venv"]);
@@ -84,35 +70,13 @@ export async function listRepos(root: string): Promise<RepoRef[]> {
  */
 export async function listWorktrees(cwd: string): Promise<RepoRef[]> {
 	if (!(await isGitRepo(cwd))) return [];
-	const out = await git(cwd, ["worktree", "list", "--porcelain"]).catch(() => "");
-	const trees: RepoRef[] = [];
-	let path: string | null = null;
-	let branch: string | null = null;
-
-	const flush = (isMain: boolean) => {
-		if (!path) return;
-		// Canonical, so a caller can compare this against a path it built itself — git prints
-		// forward slashes even on Windows, where nothing else in the app does. See `path-key.ts`.
-		const at = canonicalPath(path);
-		trees.push({ path: at, label: basename(at), branch, worktree: !isMain });
-		path = null;
-		branch = null;
-	};
-
-	for (const line of out.split("\n")) {
-		if (line.startsWith("worktree ")) {
-			flush(trees.length === 0);
-			path = line.slice("worktree ".length);
-		} else if (line.startsWith("branch ")) {
-			branch = line.slice("branch ".length).replace(/^refs\/heads\//, "");
-		} else if (line.startsWith("detached")) {
-			branch = null;
-		}
-	}
-	flush(trees.length === 0);
-
-	// The first entry is the main checkout; the rest are the linked ones.
-	return trees.map((tree, index) => ({ ...tree, worktree: index > 0 }));
+	// The first entry is the main checkout; the rest are the linked ones. Canonical, so a caller can
+	// compare this against a path it built itself — git prints forward slashes even on Windows,
+	// where nothing else in the app does. See `path-key.ts`.
+	return (await worktreeRecords(cwd)).map((tree, index) => {
+		const at = canonicalPath(tree.path);
+		return { path: at, label: basename(at), branch: tree.branch, worktree: index > 0 };
+	});
 }
 
 /**

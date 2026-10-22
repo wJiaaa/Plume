@@ -22,6 +22,7 @@ import type { PullRequestDetail, PullRequestSummary, WorkspaceDiffFile } from ".
 import { ForgeError } from "./errors.ts";
 import { assembleDiff, type PatchFile } from "./patch.ts";
 import { DIFF_TIMEOUT_MS, json, pooled } from "./http.ts";
+import { splitRepo } from "./accounts.ts";
 import type { ForgeConnection, ForgeDriver, ForgeIdentity, ReviewVerdict } from "./types.ts";
 
 /**
@@ -58,12 +59,6 @@ interface RawPull {
 	assignees?: ({ login?: string } | null)[] | null;
 	testers?: ({ login?: string } | null)[] | null;
 	labels?: { name?: string }[] | null;
-}
-
-function split(repo: string): { owner: string; name: string } {
-	const parts = repo.split("/").filter(Boolean);
-	if (parts.length < 2) throw new ForgeError(nativeText("forge.badRepoName", { repo }), 0);
-	return { owner: parts[parts.length - 2], name: parts[parts.length - 1] };
 }
 
 /** The repositories to scan, cached so a periodic refresh does not re-list them every time. */
@@ -121,7 +116,7 @@ export const gitee: ForgeDriver = {
 		const repos = await repositories(conn);
 
 		const perRepo = await pooled(repos, CONCURRENCY, async (repo) => {
-			const { owner, name } = split(repo);
+			const { owner, name } = splitRepo(repo);
 			/*
 			 * One request per repository, then sorted out here.
 			 *
@@ -146,7 +141,7 @@ export const gitee: ForgeDriver = {
 	},
 
 	async detail(conn: ForgeConnection, repo: string, number: number): Promise<PullRequestDetail> {
-		const { owner, name } = split(repo);
+		const { owner, name } = splitRepo(repo);
 		const at = `/repos/${owner}/${name}/pulls/${number}`;
 		const [pull, comments, commits] = await Promise.all([
 			json<RawPull>(conn, at),
@@ -203,7 +198,7 @@ export const gitee: ForgeDriver = {
 	 * nothing to show.
 	 */
 	async diff(conn: ForgeConnection, repo: string, number: number): Promise<WorkspaceDiffFile[]> {
-		const { owner, name } = split(repo);
+		const { owner, name } = splitRepo(repo);
 		const files = await json<RawFile[]>(conn, `/repos/${owner}/${name}/pulls/${number}/files`, {
 			timeoutMs: DIFF_TIMEOUT_MS,
 		});
@@ -211,7 +206,7 @@ export const gitee: ForgeDriver = {
 	},
 
 	async comment(conn: ForgeConnection, repo: string, number: number, body: string): Promise<void> {
-		const { owner, name } = split(repo);
+		const { owner, name } = splitRepo(repo);
 		await json(conn, `/repos/${owner}/${name}/pulls/${number}/comments`, { method: "POST", body: { body } });
 	},
 
@@ -223,7 +218,7 @@ export const gitee: ForgeDriver = {
 	 * pretending there is a verdict behind it would be a claim this app cannot back up.
 	 */
 	async review(conn: ForgeConnection, repo: string, number: number, verdict: ReviewVerdict, body: string): Promise<void> {
-		const { owner, name } = split(repo);
+		const { owner, name } = splitRepo(repo);
 		const at = `/repos/${owner}/${name}/pulls/${number}`;
 		if (body.trim()) await json(conn, `${at}/comments`, { method: "POST", body: { body } });
 		if (verdict === "approve") await json(conn, `${at}/review`, { method: "POST" });

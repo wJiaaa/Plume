@@ -6,11 +6,11 @@
  * 不在项目目录里——不认它的话，「几个 worktree 并行干活、干完交接」这件最常见的事恰好做不了。
  *
  * 比较前一律过 `pathKey`：`/var` 与 `/private/var`、软链、Windows 的大小写和分隔符，都是同一个
- * 目录的不同写法。包含判断用 core 的 `pathWithin`，`p-old` 不算在 `p` 里。
+ * 目录的不同写法。包含判断用 core 的 `withinOrIs`，`p-old` 不算在 `p` 里。
  */
 
 import { dirname } from "node:path";
-import { pathWithin, projectRootsFor, type ProjectEntry } from "@plume/core";
+import { projectRootsFor, withinOrIs, type ProjectEntry } from "@plume/core";
 import { git } from "./git-exec.ts";
 import { pathKey } from "./path-key.ts";
 
@@ -48,5 +48,5 @@ export async function sessionRoots(
 
 /** 两组目录里有没有一对是同一个、或一个包含另一个。两边都要先过 `pathKey`。 */
 export function rootsOverlap(a: readonly string[], b: readonly string[]): boolean {
-	return a.some((x) => b.some((y) => pathWithin(x, y) || pathWithin(y, x)));
+	return a.some((x) => b.some((y) => withinOrIs(x, y) || withinOrIs(y, x)));
 }

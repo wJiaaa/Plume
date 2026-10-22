@@ -8,6 +8,8 @@
  * reach anything.
  */
 
+import { nativeText } from "../i18n.ts";
+import { ForgeError } from "./errors.ts";
 import type { ForgeAccount, ForgeIdentity, ForgeKind } from "./types.ts";
 
 /**
@@ -186,4 +188,11 @@ export function upsert(accounts: ForgeAccount[], next: ForgeAccount): ForgeAccou
 	// The existing id wins, so the token already filed under it stays reachable.
 	merged[at] = { ...next, id: accounts[at].id };
 	return merged;
+}
+
+/** `owner/name`, refused rather than guessed at — every driver's request path interpolates both halves. */
+export function splitRepo(repo: string): { owner: string; name: string } {
+	const parts = repo.split("/").filter(Boolean);
+	if (parts.length < 2) throw new ForgeError(nativeText("forge.badRepoName", { repo }), 0);
+	return { owner: parts[parts.length - 2], name: parts[parts.length - 1] };
 }

@@ -4,7 +4,7 @@
  * See `methods.ts` for what is here and why it is one file rather than two.
  */
 
-export { CHANNELS, METHODS, type Method } from "./methods.ts";
+export { CHANNELS, METHODS } from "./methods.ts";
 export { MOBILE_METHODS, type MobileMethod, type MobileAccessStatus } from "./mobile.ts";
 
 /**

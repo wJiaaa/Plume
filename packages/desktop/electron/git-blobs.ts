@@ -13,8 +13,7 @@
  * all of them into memory and then throw them away for being too large to diff.
  */
 
-import { spawn } from "node:child_process";
-import { MAX_BLOB_BYTES } from "./git-exec.ts";
+import { MAX_BLOB_BYTES, spawnGit } from "./git-exec.ts";
 
 /**
  * One blob, as much of it as is worth having.
@@ -34,13 +33,13 @@ const MAX_BATCH_BYTES = 64 * 1024 * 1024;
 /**
  * Run `git cat-file` over a list of revisions and hand back its raw stdout.
  *
- * The list goes in on stdin — one revision per line — which is why this is `spawn` rather than the
- * `execFile` everything else here uses. A path containing a newline would break that framing, so
+ * The list goes in on stdin — one revision per line — which is why this is `spawnGit` rather than
+ * the `git` everything else here uses. A path containing a newline would break that framing, so
  * callers must filter those out; `readBlobs` does.
  */
 function catFile(cwd: string, revs: string[], args: string[]): Promise<Buffer> {
 	return new Promise((resolve, reject) => {
-		const child = spawn("git", ["cat-file", ...args, "--buffer"], { cwd });
+		const child = spawnGit(cwd, ["cat-file", ...args, "--buffer"]);
 		const chunks: Buffer[] = [];
 		let size = 0;
 		let done = false;

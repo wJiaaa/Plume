@@ -12,24 +12,18 @@ import type { SessionChange } from "./ipc-shapes.ts";
 import type { FilePanelState, FilePanelVersion } from "../shared/file-panel-state.ts";
 import type { TrajectoryEntry, TrajectoryChanges, AgentDefinitionRecord, AgentDefinitionSave, Gallery } from "@plume/core";
 import type { ForgeAccount, ForgeKind, ForgeKindInfo } from "./forge/types.ts";
-import type {
-	BranchList,
-	GitCommit,
-	GitOperation,
-	GitStatus,
-	ReleaseInfo,
-	RemoteResult,
-	RemoteState,
-	RepoRef,
-	WorkflowRunStatus,
-	WorkflowRunSummary,
-} from "./git.ts";
+import type { BranchList, GitCommit, GitStatus, GitStatusFile, RepoRef } from "./ipc-shapes.ts";
+import type { RemoteResult } from "./git-exec.ts";
+import type { GitOperation, RemoteState } from "./git-remote-state.ts";
+import type { ReleaseInfo, WorkflowRunStatus, WorkflowRunSummary } from "./git-release.ts";
 export type {
 	BranchList,
 	GitCommit,
 	GitOperation,
 	GitStatus,
+	GitStatusFile,
 	ReleaseInfo,
+	RepoRef,
 	RemoteState,
 	WorkflowRunStatus,
 	WorkflowRunSummary,
@@ -388,8 +382,6 @@ export interface PlumeApi {
 		 */
 		/** `project` is the project it is started in (`SessionMeta.project`); absent files it by its folder. */
 		create(cwd: string, modelId: string, initial?: { content: UserContent[]; synthetic?: boolean; displayText?: string; skillRef?: { name: string; path?: string; pluginId?: string }; sessionRefs?: Array<{ id: string; title: string }>; attachments?: MessageAttachment[]; planMode?: boolean; worktree?: boolean; spawnedFrom?: SpawnedFrom; title?: string; project?: string }): Promise<SessionSnapshot>;
-		/** Start the agent for this session — skills, MCP servers, the lot. For running things. */
-		open(sessionId: string): Promise<SessionSnapshot | null>;
 		/**
 		 * 这个会话此刻在不在跑，问主进程要权威答案。
 		 *
@@ -399,7 +391,7 @@ export interface PlumeApi {
 		running(sessionId: string): Promise<boolean>;
 		/** Read the stored transcript without starting anything. For looking at things. */
 		transcript(sessionId: string): Promise<SessionSnapshot | null>;
-		/** The same log, read as a trajectory: one entry per thing that happened, by source. */
+		/** The same log, read as a trajectory: one entry per thing that happened, by source. Only e2e calls it. */
 		trajectory(sessionId: string): Promise<TrajectoryEntry[]>;
 		trajectoryChanges(sessionId: string, cursor?: string): Promise<TrajectoryChanges>;
 		/** Write the session out to a temporary file and return its path. `jsonl` is the raw records. */
@@ -997,6 +989,7 @@ export interface PlumeApi {
 		 */
 		pin(dataUrl: string, at?: { x: number; y: number; width: number; height: number }): Promise<{ ok: boolean }>;
 		/** How many pinned pictures are on screen. For tests; nothing in the app reads it. */
+		/** Only e2e calls it: whether a closed pin is really gone from the main process. */
 		pinnedCount(): Promise<number>;
 		pickDirectory(): Promise<string | null>;
 		onInit(

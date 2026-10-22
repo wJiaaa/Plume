@@ -6,7 +6,7 @@
  * great deal on stderr that is not an error, so the exit code is what decides.
  */
 
-import { execFile } from "node:child_process";
+import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { delimiter } from "node:path";
 import { promisify } from "node:util";
 
@@ -131,9 +131,19 @@ export async function mapLimit<T, R>(items: T[], run: (item: T) => Promise<R>): 
 	return out;
 }
 
-export async function git(cwd: string, args: string[]): Promise<string> {
-	const { stdout } = await execFileAsync("git", args, { cwd, maxBuffer: 32 * 1024 * 1024, env: GIT_ENV });
+export async function git(cwd: string, args: string[], { timeoutMs }: { timeoutMs?: number } = {}): Promise<string> {
+	const { stdout } = await execFileAsync("git", args, { cwd, maxBuffer: 32 * 1024 * 1024, env: GIT_ENV, timeout: timeoutMs });
 	return stdout;
+}
+
+/**
+ * Git as a child process, for the one caller that has to write to its stdin (`cat-file --batch`).
+ *
+ * Here rather than a bare `spawn` at that caller so it gets the same environment as everything
+ * else: started without it, an inherited `GIT_DIR` made it read blobs from another repository.
+ */
+export function spawnGit(cwd: string, args: string[]): ChildProcessWithoutNullStreams {
+	return spawn("git", args, { cwd, env: GIT_ENV });
 }
 
 /**

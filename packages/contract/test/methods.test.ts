@@ -59,10 +59,8 @@ test("preload 是从契约生成的，而不是另抄一份", async () => {
 /**
  * 主进程注册的 channel。
  *
- * 大多是 `ipcMain.handle("git:stat", …)` 这样的字面量；`git.ts` 里有一处是从一张
- * `[["git:stage", stagePaths], …] as const` 的表上循环注册的，所以名字仍是字面量，只是不在
- * `handle(` 后面。两种都收，另外把「channel 是个变量」的调用点数出来——那种形状这套读源码的
- * 检查看不见，允许存在但不允许悄悄变多。
+ * 都是 `ipcMain.handle("git:stat", …)` 这样的字面量。另外把「channel 是个变量」的调用点数出来
+ * ——那种形状这套读源码的检查看不见，不允许出现。
  */
 async function registeredChannels(): Promise<{ channels: Set<string>; dynamic: number }> {
 	const files = (await readdir(DESKTOP, { recursive: true, withFileTypes: true }))
@@ -74,9 +72,8 @@ async function registeredChannels(): Promise<{ channels: Set<string>; dynamic: n
 	for (const file of files) {
 		const text = await readFile(file, "utf8");
 		for (const match of text.matchAll(/ipcMain\.handle(?:Once)?\(\s*"([^"]+)"/g)) channels.add(match[1] as string);
-		// `ipcMain.handle(channel, …)` — 名字不在这一行，它在同一文件的表里。
+		// `ipcMain.handle(channel, …)`：名字不在调用处，这套检查对不上它。
 		dynamic += [...text.matchAll(/ipcMain\.handle(?:Once)?\(\s*[A-Za-z_$][\w$]*/g)].length;
-		for (const match of text.matchAll(/\[\s*"([a-z]+:[a-zA-Z-]+)"\s*,\s*\w+\s*\]/g)) channels.add(match[1] as string);
 	}
 	return { channels, dynamic };
 }
@@ -102,17 +99,17 @@ test("主进程注册的 channel 和契约一一对应", async () => {
 	assert.deepEqual(undeclared, [], "主进程注册了契约里没有的 channel——它要么是死代码，要么绕过了契约");
 
 	assert.equal(channels.size, CHANNELS.length, "数量也要对上");
-	assert.equal(dynamic, 1, "`ipcMain.handle(变量)` 的调用点只有 git.ts 那一处表驱动；多出来的这套检查看不见");
+	assert.equal(dynamic, 0, "`ipcMain.handle(变量)` 的调用点这套检查看不见，channel 要写成字面量");
 });
 
 test("channel 不重名", () => {
 	const seen = new Map<string, string>();
 	const clashes: string[] = [];
 	for (const [group, methods] of Object.entries(METHODS)) {
-		for (const [name, method] of Object.entries(methods)) {
-			const previous = seen.get(method.channel);
-			if (previous) clashes.push(`${method.channel}: ${previous} 与 ${group}.${name}`);
-			else seen.set(method.channel, `${group}.${name}`);
+		for (const [name, channel] of Object.entries(methods)) {
+			const previous = seen.get(channel);
+			if (previous) clashes.push(`${channel}: ${previous} 与 ${group}.${name}`);
+			else seen.set(channel, `${group}.${name}`);
 		}
 	}
 	assert.deepEqual(clashes, [], "两个方法用了同一个 channel，后注册的会覆盖先注册的");

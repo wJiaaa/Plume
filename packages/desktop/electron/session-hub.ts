@@ -377,7 +377,7 @@ export async function getOrCreateSession(cwd: string, _modelId: string, project?
  * How many sessions stay warm.
  *
  * Each one owns its MCP servers — real child processes — plus a visible browser tabs, so an
- * unbounded map meant an afternoon of browsing left a dozen sets of them running. Three keeps
+ * unbounded map meant an afternoon of browsing left a dozen sets of them running. Eight keeps
  * the conversations you are actually moving between instant without hoarding processes.
  */
 const MAX_LIVE_SESSIONS = 8;
@@ -622,13 +622,14 @@ export async function deleteIdleSessions(ids: string[]): Promise<string[]> {
 async function evictStaleSessions(keep: string): Promise<void> {
 	// Snapshotted with `entries()`, not spread: this loop deletes from the map as it goes.
 	/*
-	 * 侧边聊天不占名额、也不单独回收：它跟着父会话起落。旁边开着侧边聊天的会话不回收——那是一段
-	 * 正在进行的对话，和正在跑的一轮一样。
+	 * 侧边聊天不占名额、也不单独回收：它跟着父会话起落。正在答的侧边聊天由 `sessionBusy` 挡住；
+	 * 空着的不挡——「旁边活着侧边聊天就不回收」让看过一眼侧边聊天的会话连同两份 MCP 子进程
+	 * 一直留到退出，名额形同虚设。收掉的侧边聊天记录还在盘上，再问一句时重新拉起。
 	 */
 	const counted = () => Array.from(sessions.values()).filter((session) => !session.parent).length;
 	for (const [id, session] of Array.from(sessions.entries())) {
 		if (counted() <= MAX_LIVE_SESSIONS) break;
-		if (session.parent || id === keep || sessionBusy(id) || liveSides(id).length > 0) continue;
+		if (session.parent || id === keep || sessionBusy(id)) continue;
 		if (browserState().tabs.some((tab) => tab.sessionId === id)) continue;
 		await disposeSession(id, "evicted");
 	}

@@ -7,13 +7,12 @@
 
 import { access, readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
-import type { GitCommit, GitStatus, GitStatusFile } from "./ipc-shapes.ts";
+import type { GitStatus, GitStatusFile } from "./ipc-shapes.ts";
 import { git, run, mapLimit, MAX_BLOB_BYTES, MAX_FILES } from "./git-exec.ts";
 import { classify } from "./git-diff.ts";
+import { parseNumstat, parseStatusZ } from "./git-parse.ts";
 import { classifyRemote, type GitOperation } from "./git-remote-state.ts";
 import { gitBranch, isGitRepo } from "./git-probe.ts";
-
-export type { GitCommit, GitStatus, GitStatusFile };
 
 /**
  * How much is uncommitted, without building the diffs.
@@ -52,28 +51,17 @@ export async function workspaceStat(
 		git(cwd, ["status", "--porcelain=v1", "-uall", "-z"]).catch(() => ""),
 		git(cwd, ["rev-parse", "--verify", "HEAD"]).then(() => true).catch(() => false),
 	]);
-	const entries = status.split("\0").filter(Boolean).slice(0, MAX_FILES);
+	const entries = parseStatusZ(status).entries.slice(0, MAX_FILES);
 
-	// One `--numstat` for every tracked change, rather than a git call per file.
-	const tracked = new Map<string, { added: number; removed: number }>();
-	if (hasHead) {
-		const numstat = await git(cwd, ["diff", "--numstat", "HEAD"]).catch(() => "");
-		for (const line of numstat.split("\n")) {
-			if (!line.trim()) continue;
-			const [plus, minus, path] = line.split("\t");
-			// Binary files report "-" for both counts; they change, but not by a line count.
-			if (path) tracked.set(path, { added: Number.parseInt(plus, 10) || 0, removed: Number.parseInt(minus, 10) || 0 });
-		}
-	}
+	// One `--numstat` for every tracked change, rather than a git call per file. Binary files count
+	// as zero lines: they change, but not by a line count.
+	const tracked = hasHead ? await numstat(cwd, ["diff", "--numstat", "-z", "HEAD"]) : new Map<string, never>();
 
 	let added = 0;
 	let removed = 0;
 
 	const fresh: string[] = [];
-	for (const entry of entries) {
-		const path = entry.slice(3);
-		if (!path) continue;
-
+	for (const { path } of entries) {
 		const known = tracked.get(path);
 		if (known) {
 			added += known.added;
@@ -215,15 +203,14 @@ export async function gitStatus(cwd: string): Promise<GitStatus> {
 	]);
 	const remotes = remoteList.split("\n").map((name) => name.trim()).filter(Boolean);
 
-	const parts = porcelain.split("\0").filter(Boolean);
-	const header = parts[0]?.startsWith("## ") ? parts.shift()!.slice(3) : "";
+	const { header, entries } = parseStatusZ(porcelain);
 	const upstreamMatch = header.match(/\.\.\.(\S+)/);
 	const aheadMatch = header.match(/ahead (\d+)/);
 	const behindMatch = header.match(/behind (\d+)/);
 
 	const [stagedStat, unstagedStat] = await Promise.all([
-		numstat(cwd, ["diff", "--numstat", "--cached"]),
-		numstat(cwd, ["diff", "--numstat"]),
+		numstat(cwd, ["diff", "--numstat", "-z", "--cached"]),
+		numstat(cwd, ["diff", "--numstat", "-z"]),
 	]);
 
 	const staged: GitStatusFile[] = [];
@@ -237,13 +224,9 @@ export async function gitStatus(cwd: string): Promise<GitStatus> {
 	 * whole cost of the call. The second pass reads them together; see `mapLimit`.
 	 */
 	const fresh: GitStatusFile[] = [];
-	for (const entry of parts.slice(0, MAX_FILES)) {
-		const index = entry[0];
-		const tree = entry[1];
-		// A rename's porcelain entry carries both paths separated by a NUL, already split above.
-		const path = entry.slice(3);
-		if (!path) continue;
-
+	for (const { code, path } of entries.slice(0, MAX_FILES)) {
+		const index = code[0];
+		const tree = code[1];
 		if (index && index !== " " && index !== "?") {
 			staged.push({
 				path,
@@ -314,14 +297,7 @@ export async function gitStatus(cwd: string): Promise<GitStatus> {
 }
 
 async function numstat(cwd: string, args: string[]): Promise<Map<string, { added: number; removed: number }>> {
-	const out = await git(cwd, args).catch(() => "");
-	const map = new Map<string, { added: number; removed: number }>();
-	for (const line of out.split("\n")) {
-		if (!line.trim()) continue;
-		const [plus, minus, path] = line.split("\t");
-		if (path) map.set(path, { added: Number.parseInt(plus, 10) || 0, removed: Number.parseInt(minus, 10) || 0 });
-	}
-	return map;
+	return parseNumstat(await git(cwd, args).catch(() => ""));
 }
 
 /** An untracked file has no other side to diff against, so every line counts as added. */

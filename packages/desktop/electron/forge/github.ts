@@ -17,14 +17,8 @@ import { nativeText } from "../i18n.ts";
 import { ForgeError } from "./errors.ts";
 import { DETAIL_QUERY, type DetailNode, toDetail } from "./github-gql.ts";
 import { DIFF_TIMEOUT_MS, json, text } from "./http.ts";
+import { splitRepo } from "./accounts.ts";
 import type { ForgeConnection, ForgeDriver, ForgeIdentity, ReviewVerdict } from "./types.ts";
-
-/** `owner/name`, refused rather than guessed at — every path below interpolates both halves. */
-function split(repo: string): { owner: string; name: string } {
-	const parts = repo.split("/").filter(Boolean);
-	if (parts.length < 2) throw new ForgeError(nativeText("forge.badRepoName", { repo }), 0);
-	return { owner: parts[parts.length - 2], name: parts[parts.length - 1] };
-}
 
 /** Where this instance answers GraphQL, which is not under the REST root on Enterprise. */
 function graphqlRoot(conn: ForgeConnection): string {
@@ -81,7 +75,7 @@ export const github: ForgeDriver = {
 	},
 
 	async detail(conn: ForgeConnection, repo: string, number: number): Promise<PullRequestDetail> {
-		const { owner, name } = split(repo);
+		const { owner, name } = splitRepo(repo);
 		const data = await graphql<{ repository?: { pullRequest?: DetailNode | null } | null }>(conn, DETAIL_QUERY, {
 			owner,
 			name,
@@ -100,7 +94,7 @@ export const github: ForgeDriver = {
 	 * hundred files to rebuild something GitHub will hand over whole.
 	 */
 	async diff(conn: ForgeConnection, repo: string, number: number): Promise<WorkspaceDiffFile[]> {
-		const { owner, name } = split(repo);
+		const { owner, name } = splitRepo(repo);
 		const raw = await text(conn, `/repos/${owner}/${name}/pulls/${number}`, {
 			accept: "application/vnd.github.diff",
 			timeoutMs: DIFF_TIMEOUT_MS,
@@ -109,14 +103,14 @@ export const github: ForgeDriver = {
 	},
 
 	async comment(conn: ForgeConnection, repo: string, number: number, body: string): Promise<void> {
-		const { owner, name } = split(repo);
+		const { owner, name } = splitRepo(repo);
 		// The issues endpoint, not the pulls one: on GitHub a conversation comment belongs to the
 		// issue behind the pull request, and `/pulls/{n}/comments` is for comments on lines of code.
 		await json(conn, `/repos/${owner}/${name}/issues/${number}/comments`, { method: "POST", body: { body } });
 	},
 
 	async review(conn: ForgeConnection, repo: string, number: number, verdict: ReviewVerdict, body: string): Promise<void> {
-		const { owner, name } = split(repo);
+		const { owner, name } = splitRepo(repo);
 		const event = verdict === "approve" ? "APPROVE" : verdict === "request-changes" ? "REQUEST_CHANGES" : "COMMENT";
 		await json(conn, `/repos/${owner}/${name}/pulls/${number}/reviews`, {
 			method: "POST",

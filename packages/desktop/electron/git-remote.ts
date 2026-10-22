@@ -12,46 +12,54 @@
  * it would be quietly wrong in exactly the way that is hard to notice.
  */
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { git } from "./git-exec.ts";
 
-const execFileAsync = promisify(execFile);
+/** Where a remote lives and which repository it is. */
+export interface RemoteRepo {
+	host: string;
+	owner: string;
+	name: string;
+}
 
 /**
- * `owner/name` from a remote URL, or null if it is not one we recognise.
+ * Host, owner and name from a remote URL, or null if it is not one we recognise.
  *
  * Both forms git hands out, plus the `ssh://` spelling that some hosts use:
  *
  *   git@github.com:owner/name.git
  *   https://github.com/owner/name.git
- *   ssh://git@github.com/owner/name
+ *   ssh://git@github.com:2222/owner/name
+ *
+ * The last two path segments are owner and name; anything before them is a hosting path (GitLab
+ * subgroups). A local path is not a remote: it has no owner to match, and guessing one from the
+ * directory name is exactly the wrong answer. A one-letter "host" is a Windows drive, not scp.
+ */
+export function parseRemote(url: string): RemoteRepo | null {
+	const trimmed = url.trim().replace(/\.git$/, "").replace(/\/+$/, "");
+	// scp-like: [user@]host:owner/name, which is not a URL and cannot be parsed as one.
+	const located =
+		/^(?:[^/@\s]+@)?([^:/\s]{2,}):(?!\/\/)(.+)$/.exec(trimmed) ??
+		/^[a-z+]+:\/\/(?:[^/@]+@)?([^/:]+)(?::\d+)?\/(.+)$/i.exec(trimmed);
+	if (!located) return null;
+	const parts = located[2].split("/").filter(Boolean);
+	if (parts.length < 2) return null;
+	return { host: located[1], owner: parts[parts.length - 2], name: parts[parts.length - 1] };
+}
+
+/**
+ * `owner/name`, for matching against a pull request.
  *
  * Case is preserved but comparison is not — GitHub treats owner and repository names
  * case-insensitively, and a remote written in the other case is the same repository.
  */
 export function repoFromRemote(url: string): string | null {
-	const trimmed = url.trim().replace(/\.git$/, "").replace(/\/+$/, "");
-	if (!trimmed) return null;
-
-	// scp-like: host:owner/name, which is not a URL and cannot be parsed as one.
-	const scp = /^[^/]+@[^:/]+:(.+)$/.exec(trimmed);
-	const path = scp ? scp[1] : trimmed.replace(/^[a-z+]+:\/\/[^/]+\//i, "");
-	if (path === trimmed && !scp) return null;
-
-	const parts = path.split("/").filter(Boolean);
-	if (parts.length < 2) return null;
-	// The last two are owner and name; anything before is a hosting path (GitLab subgroups).
-	return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
+	const remote = parseRemote(url);
+	return remote ? `${remote.owner}/${remote.name}` : null;
 }
 
 /** The `origin` of a checkout, or null when there is none or it is not a repository. */
 async function originOf(dir: string): Promise<string | null> {
-	try {
-		const { stdout } = await execFileAsync("git", ["-C", dir, "remote", "get-url", "origin"], { timeout: 3000 });
-		return repoFromRemote(stdout);
-	} catch {
-		return null;
-	}
+	return git(dir, ["remote", "get-url", "origin"], { timeoutMs: 3000 }).then(repoFromRemote, () => null);
 }
 
 /**

@@ -12,6 +12,7 @@ import { computeDiff, type DiffHunk } from "@plume/core";
 import type { WorkspaceDiffFile } from "./ipc-shapes.ts";
 import { readBlobs, type BlobRead } from "./git-blobs.ts";
 import { git, gitBuffer, mapLimit, MAX_BLOB_BYTES, MAX_FILES } from "./git-exec.ts";
+import { parseStatusZ } from "./git-parse.ts";
 import { gitBranch, isGitRepo } from "./git-probe.ts";
 import { resolveInside } from "./file-ops.ts";
 
@@ -39,18 +40,12 @@ export async function collectWorkspaceDiff(
 	 * since counting walks the real file list.
 	 */
 	const status = await git(cwd, ["status", "--porcelain=v1", "-uall", "-z"]).catch(() => "");
-	const entries = status.split("\0").filter(Boolean);
 
 	const changed: { path: string; beforePath: string; kind: WorkspaceDiffFile["status"] }[] = [];
-	for (let i = 0; i < entries.length && changed.length < MAX_FILES; i++) {
-		const entry = entries[i];
-		const path = entry.slice(3);
-		// Porcelain -z puts a rename's source in the next field, not in another status row.
-		const renamed = /[RC]/.test(entry.slice(0, 2));
-		const source = renamed ? entries[++i] : path;
-		if (!path || (base === "index" && entry[1] === " ")) continue;
-		changed.push({ path, beforePath: base === "head" ? source : path,
-			kind: classify(base === "index" ? entry[1] : entry.slice(0, 2)) });
+	for (const { code, path, source } of parseStatusZ(status).entries) {
+		if (changed.length >= MAX_FILES) break;
+		if (base === "index" && code[1] === " ") continue;
+		changed.push({ path, beforePath: base === "head" ? source : path, kind: classify(base === "index" ? code[1] : code) });
 	}
 
 	/*

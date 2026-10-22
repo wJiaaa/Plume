@@ -27,8 +27,8 @@ import {
 	getOrCreateSession,
 	sessions,
 } from "./session-hub.ts";
-import { canonicalPath } from "./canonical-path.ts";
 import { resolveInside } from "./file-ops.ts";
+import { canonicalPath } from "./path-key.ts";
 import { resolveReadablePath } from "./file-read-service.ts";
 import { loadUserImagesAt } from "./display-image.ts";
 import { captureLog } from "./screenshot-debug.ts";
@@ -37,7 +37,7 @@ import { registerFilesIpc } from "./ipc/files.ts";
 import { registerFileOpsIpc } from "./ipc/file-ops.ts";
 import { scratchRoots } from "./scratch.ts";
 import { resolveWorktreesRoot } from "./git-worktrees.ts";
-import { applySettings, loadAppSettings, onSettingsChanged } from "./app-settings.ts";
+import { applySettings, getSettings, loadAppSettings, onSettingsChanged, settings } from "./app-settings.ts";
 import { loadCachedModelCatalog, MODEL_CATALOG_SYNC_INTERVAL_MS, syncModelCatalog } from "@plume/core/model-catalog-sync";
 import { createKeepAwake, installKeepAwake } from "./keep-awake.ts";
 import { registerServicesIpc } from "./ipc/services.ts";
@@ -122,7 +122,7 @@ const spawnPty = lazyPty(
 	(error) => {
 		const reason = (error instanceof Error ? error.message : String(error)).split("\n")[0];
 		console.error("[terminal] node-pty 加载失败:", error);
-		return `${nativeTranslator(settings?.uiLocale ?? "system", app.getLocale())("terminal.unavailable")}\n${reason}`;
+		return `${nativeTranslator(getSettings()?.uiLocale ?? "system", app.getLocale())("terminal.unavailable")}\n${reason}`;
 	},
 );
 
@@ -194,27 +194,6 @@ app.on("open-url", (event, url) => {
 const BROWSER_PARTITION = "persist:ly-browser";
 
 /**
- * A path inside a project the user has opened, normalised — or null.
- *
- * The file panel exists to look at what you are working on. Without this check the renderer
- * could ask for any path on the disk, which is a materially different capability from the one
- * the panel advertises — and one the agent's own file tools gate behind approvals.
- *
- * Module scope because the IPC handlers and the media protocol both need it, and they must
- * agree: a boundary enforced in one of two doorways is not a boundary.
- *
- * `resolveInside` returns the resolved path so callers do their IO against the string that was
- * actually checked — see the note there on why comparing the raw one let `..` walk out.
- */
-/**
- * 两侧都规范化之后再比。
- *
- * 目录列举交给渲染进程的是规范路径，配置里存的是用户当初选中的写法——macOS 上一个位于 `/tmp`
- * 或任何软链下的项目，一边 `/private/var/…`、另一边 `/var/…`，同一个目录的两种写法。只 `resolve`
- * 的话 `relative()` 会算出一串 `../..`，新建、重命名、删除、复制粘贴全被判在项目之外，而且判完
- * 一声不吭。`file-read-service.ts` 早就在读文件那条路上这么做了，这里补上其余的门。
- */
-/**
  * All directories the desktop treats as legitimate workspaces:
  * explicitly opened projects, scratch/session workspaces, and managed git worktrees.
  */
@@ -230,12 +209,33 @@ function allowedRoots(): string[] {
 	 *
 	 * It is the user's own list, typed into 编辑项目, and it only ever grows by their choosing.
 	 */
-	const projectPaths = (settings?.projects ?? []).flatMap((project) => projectFolders(project));
-	const worktreeRoot = resolveWorktreesRoot(settings?.worktrees?.rootDir);
+	const projectPaths = (getSettings()?.projects ?? []).flatMap((project) => projectFolders(project));
+	const worktreeRoot = resolveWorktreesRoot(getSettings()?.worktrees?.rootDir);
 	return [...projectPaths, ...scratchRoots(), worktreeRoot];
 }
 
+/**
+ * A path inside a project the user has opened, normalised — or null.
+ *
+ * The file panel exists to look at what you are working on. Without this check the renderer
+ * could ask for any path on the disk, which is a materially different capability from the one
+ * the panel advertises — and one the agent's own file tools gate behind approvals.
+ *
+ * Module scope because the IPC handlers and the media protocol both need it, and they must
+ * agree: a boundary enforced in one of two doorways is not a boundary.
+ *
+ * `resolveInside` returns the resolved path so callers do their IO against the string that was
+ * actually checked — see the note there on why comparing the raw one let `..` walk out.
+ */
 function projectPath(target: string): string | null {
+	/*
+	 * 两侧都规范化之后再比。
+	 *
+	 * 目录列举交给渲染进程的是规范路径，配置里存的是用户当初选中的写法——macOS 上一个位于 `/tmp`
+	 * 或任何软链下的项目，一边 `/private/var/…`、另一边 `/var/…`，同一个目录的两种写法。只 `resolve`
+	 * 的话 `relative()` 会算出一串 `../..`，新建、重命名、删除、复制粘贴全被判在项目之外，而且判完
+	 * 一声不吭。`file-read-service.ts` 早就在读文件那条路上这么做了，这里补上其余的门。
+	 */
 	return resolveInside(canonicalPath(target), allowedRoots().map((root) => canonicalPath(root)));
 }
 
@@ -255,14 +255,15 @@ let store: SessionStorage = new SessionStore();
 
 /** The capability context: what the app can do, assembled from plugins at boot. */
 let kernel: HostKernel | null = null;
-/** Per-session browser instances, disposed alongside the session that owns them. */
 /**
  * Live pseudo-terminals, one per project directory. Killed when the app quits.
  *
  * Deliberately outliving the panes that show them — see `ipc/terminal.ts` for why.
  */
 const terminals = new Map<string, LiveTerminal>();
-let settings: Settings;
+
+/** For the services that save settings: they wait for the save, not for its result. */
+const saveSettings = async (next: Settings): Promise<void> => void (await applySettings(next));
 
 let scheduler: Scheduler | null = null;
 
@@ -479,9 +480,8 @@ app.whenReady().then(async () => {
 	 */
 	// 先换上缓存的模型目录，读设置时套的目录值才是最新的一份。
 	await loadCachedModelCatalog();
-	settings = await loadAppSettings();
 	// Built from the default set plus whatever the user has installed; see `bootHostKernel`.
-	kernel = await bootHostKernel(settings);
+	kernel = await bootHostKernel(await loadAppSettings());
 	store = observeSessionStorage(kernel.storage, broadcastSessionChange);
 	/*
 	 * The conversations have to open before any window does.
@@ -494,7 +494,7 @@ app.whenReady().then(async () => {
 	try {
 		await store.listSessions();
 	} catch (cause) {
-		const t = nativeTranslator(settings.uiLocale, app.getLocale());
+		const t = nativeTranslator(settings().uiLocale, app.getLocale());
 		const where = cause instanceof SessionDbUnavailable ? cause : { path: plumeHome(), reason: cause instanceof Error ? cause.message : String(cause) };
 		dialog.showErrorBox(t("sessions.unavailableTitle"), t("sessions.unavailable", { path: where.path, reason: where.reason }));
 		app.exit(1);
@@ -511,7 +511,7 @@ app.whenReady().then(async () => {
  */
 function bindScreenshotShortcut(): void {
 	const outcome = registerScreenshotShortcut(
-		() => settings,
+		settings,
 		() => {
 			const win = getWindow();
 			if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
@@ -529,7 +529,7 @@ function bindScreenshotShortcut(): void {
 	 */
 	const failure = shortcutFailureKey(outcome);
 	if (failure && failure !== announcedShortcutFailure && (outcome.state === "taken" || outcome.state === "invalid")) {
-		const t = nativeTranslator(settings.uiLocale, app.getLocale());
+		const t = nativeTranslator(settings().uiLocale, app.getLocale());
 		tellPrimaryWindow(t(outcome.state === "taken" ? "shortcut.taken" : "shortcut.invalid").replace("{shortcut}", outcome.shortcut));
 	}
 	announcedShortcutFailure = failure;
@@ -542,7 +542,6 @@ function bindScreenshotShortcut(): void {
 	 * setting appears not to work.
 	 */
 	onSettingsChanged(async (next) => {
-		settings = next;
 		mobileBroadcast({ type: "bootstrap_changed" });
 		applyNativeAppearance();
 		refreshMenu();
@@ -559,11 +558,11 @@ function bindScreenshotShortcut(): void {
 		void syncModelCatalog();
 		setInterval(() => void syncModelCatalog(), MODEL_CATALOG_SYNC_INTERVAL_MS).unref();
 	}
-	useSettingsSource(() => settings);
-	configureHub({ store: () => store, settings: () => settings, window: getWindow, remoteEvent: mobileBroadcast });
+	useSettingsSource(settings);
+	configureHub({ store: () => store, settings, window: getWindow, remoteEvent: mobileBroadcast });
 	await configureMobileAccess(join(plumeHome(), "mobile-access.json"), {
-		store: () => store, settings: () => settings,
-		saveSettings: async (next) => void (await applySettings(next)),
+		store: () => store, settings,
+		saveSettings,
 	}).catch((cause) => console.error("Mobile access could not start:", cause));
 	// Before the window exists, so its very first frame gets the right material.
 	applyNativeAppearance();
@@ -643,7 +642,7 @@ function bindScreenshotShortcut(): void {
 		.catch(() => {});
 	void pruneThumbs(sessionMediaHome()).catch(() => {});
 	void pruneIndexes().catch(() => {});
-	registerDefaultSearchProviders(() => settings?.searchApiKeys);
+	registerDefaultSearchProviders(() => getSettings()?.searchApiKeys);
 
 	registerIpc();
 	createWindow();
@@ -661,8 +660,8 @@ function bindScreenshotShortcut(): void {
 	setTimeout(warmScreenshotOverlay, 3000);
 
 	scheduler = new Scheduler({
-		getSettings: () => settings,
-		saveSettings: async (next) => void (await applySettings(next)),
+		getSettings: settings,
+		saveSettings,
 		createSession: (cwd, modelId, project) => getOrCreateSession(cwd, modelId, project),
 		notify: (message, level, about) => {
 			const win = getWindow();
@@ -768,7 +767,7 @@ configureNotify({
  * errors the file tree, the pull request panel and the update dialog show. Read for each message, so
  * a language change needs nothing re-wired.
  */
-setInterfaceLocaleSource(() => resolveNativeLocale(settings?.uiLocale ?? "system", app.getLocale()));
+setInterfaceLocaleSource(() => resolveNativeLocale(getSettings()?.uiLocale ?? "system", app.getLocale()));
 
 app.on("window-all-closed", () => {
 	/*
@@ -866,7 +865,7 @@ function registerIpc(): void {
 	registerMobileIpc();
 	registerDeliveryIpc(() => store);
 	registerRunningServicesIpc();
-	registerBrowserIpc(getPrimaryWindow, () => settings.browser ?? {});
+	registerBrowserIpc(getPrimaryWindow, () => settings().browser ?? {});
 	registerWorkspaceIpc({ workspaceInfo });
 
 	registerWindowIpc();
@@ -874,8 +873,8 @@ function registerIpc(): void {
 
 	registerSessionsIpc({
 		store: () => store,
-		settings: () => settings,
-		saveSettings: async (next) => void (await applySettings(next)),
+		settings,
+		saveSettings,
 	});
 
 	registerSideChatIpc();
@@ -889,7 +888,7 @@ function registerIpc(): void {
 		projectPath,
 		insideAProject,
 		eachWindow: eachAppWindow,
-		locale: () => resolveNativeLocale(settings?.uiLocale ?? "system", app.getLocale()),
+		locale: () => resolveNativeLocale(getSettings()?.uiLocale ?? "system", app.getLocale()),
 	});
 	registerUpdateIpc();
 
@@ -900,8 +899,8 @@ function registerIpc(): void {
 	});
 
 	registerScreenshotIpc({
-		settings: () => settings,
-		saveSettings: async (next) => void (await applySettings(next)),
+		settings,
+		saveSettings,
 	});
 
 	registerGitIpc({ insideAProject });

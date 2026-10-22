@@ -1,12 +1,13 @@
 /**
  * Is this a repository, and which branch is it on.
  *
- * The two questions every other git module asks before doing its own work. They sit apart from
- * `git.ts` because that file also re-exports those modules: when they asked it, every one of them
- * closed a cycle through it.
+ * The questions every other git module asks before doing its own work. They sit in a module of
+ * their own, depending on nothing but `git-exec`, so any git module can ask them without closing a
+ * cycle through another.
  */
 
 import { git } from "./git-exec.ts";
+import { parseWorktreeList, type WorktreeRecord } from "./git-parse.ts";
 
 /**
  * Whether this directory is inside a working tree — and if git would not say, why not.
@@ -83,4 +84,14 @@ export async function gitBranch(cwd: string): Promise<string | null> {
 	return git(cwd, ["symbolic-ref", "--quiet", "--short", "HEAD"])
 		.then((out) => out.trim() || null)
 		.catch(() => null);
+}
+
+/**
+ * Every checkout of this repository, the main one first; empty when git will not say.
+ *
+ * Asked of git rather than inferred from folder names: only what git lists is a worktree, and
+ * removing anything else is deleting a directory.
+ */
+export async function worktreeRecords(cwd: string): Promise<WorktreeRecord[]> {
+	return parseWorktreeList(await git(cwd, ["worktree", "list", "--porcelain"]).catch(() => ""));
 }

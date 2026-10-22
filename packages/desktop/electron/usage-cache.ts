@@ -31,69 +31,26 @@ interface UsageCache extends UsageTally {
  */
 export const USAGE_CACHE_VERSION = 13 as const;
 
-const BUCKET_NUMBERS: (keyof UsageBucket)[] = [
-	"input", "output", "cacheRead", "cacheWrite", "reasoning", "cost", "inputCost", "outputCost",
-	"cacheReadCost", "cacheWriteCost", "rawCost", "cacheSavings", "providerPricedTokens",
-	"catalogPricedTokens", "manualPricedTokens", "recordedPricedTokens", "unpricedTokens", "replies",
-];
-
-const REQUEST_NUMBERS: (keyof UsageRequestBucket)[] = [
-	"requests", "input", "output", "cacheRead", "cacheWrite", "cost", "unpriced", "timed", "timedOutput",
-	"streamMs", "firstTokens", "firstTokenMs",
-];
-const REQUEST_STRINGS: (keyof UsageRequestBucket)[] = ["hour", "provider", "model"];
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-	return typeof value === "object" && value !== null ? Object.fromEntries(Object.entries(value)) : null;
-}
-
-function isUsageBucket(value: unknown): value is UsageBucket {
-	const bucket = asRecord(value);
-	if (!bucket || typeof bucket.day !== "string" || typeof bucket.key !== "string" || typeof bucket.provider !== "string" || typeof bucket.model !== "string") return false;
-	return (
-		BUCKET_NUMBERS.every((key) => {
-			const field = bucket[key];
-			return typeof field === "number" && Number.isFinite(field);
-		}) &&
-		(bucket.cacheMiss === undefined || isCacheMiss(bucket.cacheMiss))
-	);
-}
-
-function isRequestBucket(value: unknown): value is UsageRequestBucket {
-	const bucket = asRecord(value);
-	return (
-		Boolean(bucket) &&
-		REQUEST_STRINGS.every((key) => typeof bucket?.[key] === "string") &&
-		REQUEST_NUMBERS.every((key) => {
-			const field = bucket?.[key];
-			return typeof field === "number" && Number.isFinite(field);
-		}) &&
-		(bucket?.cacheMiss === undefined || isCacheMiss(bucket.cacheMiss))
-	);
-}
-
-function isCacheMiss(value: unknown): boolean {
-	const miss = asRecord(value);
-	const byCause = asRecord(miss?.byCause);
-	return (
-		Boolean(miss && byCause) &&
-		[miss?.tokens, miss?.cost, miss?.unpriced, ...Object.values(byCause ?? {})].every((field) => typeof field === "number" && Number.isFinite(field))
-	);
-}
-
+/**
+ * Whether this file is a cache this build wrote, for these prices and this database.
+ *
+ * Only the header and the shape are checked, not every field of every bucket: the file is this
+ * process's own output, a format change bumps `USAGE_CACHE_VERSION`, and a write cut short fails at
+ * `JSON.parse`. Each of those ends in a rebuild.
+ */
 function isUsageCache(value: unknown, expectedPricingKey: string, expectedSource: string): value is UsageCache {
-	const cache = asRecord(value);
-	if (!cache || cache.version !== USAGE_CACHE_VERSION || cache.pricingKey !== expectedPricingKey || cache.source !== expectedSource) return false;
-	const streams = asRecord(cache.streams);
+	if (typeof value !== "object" || value === null) return false;
+	const cache = value as Partial<Record<keyof UsageCache, unknown>>;
 	return (
+		cache.version === USAGE_CACHE_VERSION &&
+		cache.pricingKey === expectedPricingKey &&
+		cache.source === expectedSource &&
 		typeof cache.afterId === "number" &&
 		typeof cache.rows === "number" &&
 		Array.isArray(cache.buckets) &&
-		cache.buckets.every(isUsageBucket) &&
 		Array.isArray(cache.requests) &&
-		cache.requests.every(isRequestBucket) &&
-		Boolean(streams) &&
-		Object.values(streams ?? {}).every((state) => Array.isArray(asRecord(state)?.reported) && typeof asRecord(state)?.requests === "number")
+		typeof cache.streams === "object" &&
+		cache.streams !== null
 	);
 }
 

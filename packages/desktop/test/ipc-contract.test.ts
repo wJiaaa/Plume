@@ -54,10 +54,10 @@ test("契约里的每个 channel 都真的被主进程注册着", async () => {
 	const owners = new Map<string, string>();
 	const shared: string[] = [];
 	for (const [group, methods] of Object.entries(METHODS)) {
-		for (const [name, method] of Object.entries(methods)) {
-			const previous = owners.get(method.channel);
-			if (previous) shared.push(`${method.channel}: ${previous} 与 ${group}.${name}`);
-			else owners.set(method.channel, `${group}.${name}`);
+		for (const [name, channel] of Object.entries(methods)) {
+			const previous = owners.get(channel);
+			if (previous) shared.push(`${channel}: ${previous} 与 ${group}.${name}`);
+			else owners.set(channel, `${group}.${name}`);
 		}
 	}
 	assert.deepEqual(shared, [], "两个方法共用一个 channel");

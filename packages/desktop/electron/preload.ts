@@ -109,8 +109,8 @@ function invokers(): Record<string, unknown> {
 	const built: Record<string, Record<string, unknown>> = {};
 	for (const [group, methods] of Object.entries(METHODS)) {
 		built[group] = {};
-		for (const [name, method] of Object.entries(methods)) {
-			built[group][name] = (...args: unknown[]) => ipcRenderer.invoke(method.channel, ...args);
+		for (const [name, channel] of Object.entries(methods)) {
+			built[group][name] = (...args: unknown[]) => ipcRenderer.invoke(channel, ...args);
 		}
 	}
 	return built;

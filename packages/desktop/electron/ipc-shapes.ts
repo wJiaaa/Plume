@@ -278,8 +278,19 @@ export type { MergeOutcome, SyncOutcome, WorktreeState } from "./worktree-types.
 /*
  * Git's answers, defined here rather than next to the code that produces them: the git modules
  * read `WorkspaceDiffFile` from this file, so when these lived there each one closed a cycle back
- * through it. `git.ts` and `git-status.ts` re-export them for their callers.
+ * through it.
  */
+
+/** A repository or worktree the Git panel can switch to. */
+export interface RepoRef {
+	/** Absolute path to the working directory of this repository. */
+	path: string;
+	/** Path relative to the workspace, or the folder name for the workspace root itself. */
+	label: string;
+	branch: string | null;
+	/** True when this is a linked worktree rather than the main checkout. */
+	worktree: boolean;
+}
 
 export interface GitStatusFile {
 	path: string;

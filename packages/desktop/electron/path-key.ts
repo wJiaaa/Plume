@@ -17,23 +17,29 @@
  */
 
 import { realpathSync } from "node:fs";
-import { resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 /**
  * A path in the form this platform writes it: real separators, no `..`, no short names.
  *
  * `realpath` rather than `resolve` alone, because it is what expands an 8.3 short name, follows a
- * symlink and settles the true case of every segment. It needs the path to exist, so a deleted or
- * not-yet-created directory falls back to `resolve`, which still fixes the separators and the `..`.
+ * symlink and settles the true case of every segment. It needs the path to exist, so for a deleted
+ * or not-yet-created one the nearest ancestor that does exist is resolved and the rest joined back
+ * on. Falling back to `resolve` for the whole path instead gave `/var/…` for a new file under a
+ * project whose listing said `/private/var/…`, and the boundary check called the two different
+ * places — every create in a project under `/tmp` was refused.
  *
  * The case is left as the filesystem reports it. This is the form to hand back to a caller or put
  * on screen — `pathKey` is the one to compare with.
  */
 export function canonicalPath(input: string): string {
+	const full = resolve(input);
 	try {
-		return realpathSync.native(input);
+		return realpathSync.native(full);
 	} catch {
-		return resolve(input);
+		const parent = dirname(full);
+		// At the root there is nothing left to resolve; the literal is all there is.
+		return parent === full ? full : join(canonicalPath(parent), basename(full));
 	}
 }
 

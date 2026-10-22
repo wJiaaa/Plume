@@ -12,7 +12,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { GitStatus, GitStatusFile } from "../electron/git-status.ts";
+import type { GitStatus, GitStatusFile } from "../electron/ipc-shapes.ts";
 import { sameStatus } from "../src/features/git/sameStatus.ts";
 
 function file(path: string, over: Partial<GitStatusFile> = {}): GitStatusFile {

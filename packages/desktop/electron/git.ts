@@ -1,64 +1,14 @@
 /**
- * Branches, and the door to everything else git-related.
+ * Branches: listing them for the switcher and switching between them.
  *
- * Branch operations live here because they are what the panel opens on. The rest — status, diffs,
- * history, repositories — is re-exported from the modules that own it, so a caller says
- * `from "./git.ts"` and does not have to know which file a function moved to.
+ * The rest of git lives in the module that owns it — `git-status`, `git-diff`, `git-history`,
+ * `git-repos`, `git-release` — and callers import from there. This file used to re-export all of
+ * them, and every git module that reached back through it closed a cycle.
  */
 
 import { git } from "./git-exec.ts";
 import { gitBranch, isGitRepo } from "./git-probe.ts";
 import type { BranchList } from "./ipc-shapes.ts";
-
-export { type RemoteResult } from "./git-exec.ts";
-export { type GitOperation, type RemoteState } from "./git-remote-state.ts";
-export { collectWorkspaceDiff, readDiffBlob, type DiffBlob } from "./git-diff.ts";
-export {
-	discardPaths,
-	gitStatus,
-	stagePaths,
-	unstagePaths,
-	upstreamDistance,
-	workspaceStat,
-	type GitCommit,
-	type GitStatus,
-	type GitStatusFile,
-} from "./git-status.ts";
-export {
-	commitDiff,
-	commitDiffSummary,
-	commitStaged,
-	createBranch,
-	deleteBranch,
-	diffRefs,
-	gitLog,
-	fetchRemotes,
-	pullBranch,
-	pushBranch,
-	FETCH_TIMEOUT_MS,
-	QUIET_FETCH_TIMEOUT_MS,
-} from "./git-history.ts";
-export {
-	initRepo,
-	listRepos,
-	listWorktrees,
-	removeWorktree,
-	type RepoRef,
-} from "./git-repos.ts";
-export {
-	bumpVersionFiles,
-	getReleaseInfo,
-	getWorkflowRunStatus,
-	listWorkflowRuns,
-	publishReleaseTag,
-	triggerReleaseDryRun,
-	type ReleaseInfo,
-	type WorkflowRunStatus,
-	type WorkflowRunSummary,
-} from "./git-release.ts";
-export { generateCommitMessage } from "./git-commit-message.ts";
-export { gitBranch } from "./git-probe.ts";
-export type { BranchList };
 
 /** Local and remote branches, for the switcher in the composer. */
 export async function listBranches(cwd: string): Promise<BranchList> {

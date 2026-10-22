@@ -6,12 +6,13 @@
  */
 
 import { computeDiff } from "@plume/core";
-import type { WorkspaceDiffFile } from "./ipc-shapes.ts";
+import type { GitCommit, WorkspaceDiffFile } from "./ipc-shapes.ts";
 import { readBlobs, type BlobRead } from "./git-blobs.ts";
 import { git, run, runRemote, MAX_FILES, type RemoteResult } from "./git-exec.ts";
 import { capHunks, classify } from "./git-diff.ts";
+import { parseNumstat } from "./git-parse.ts";
 import { defaultRemote } from "./git-remote-state.ts";
-import { EMPTY_TREE, LOG_FORMAT, type GitCommit } from "./git-status.ts";
+import { EMPTY_TREE, LOG_FORMAT } from "./git-status.ts";
 import { gitBranch, isGitRepo } from "./git-probe.ts";
 
 export async function gitLog(cwd: string, limit = 60, ref?: string): Promise<GitCommit[]> {
@@ -66,38 +67,6 @@ function parseNameStatus(names: string): { path: string; status: WorkspaceDiffFi
 		wanted.push({ path, status: classify(code[0]) });
 	}
 	return wanted;
-}
-
-/**
- * Line counts per path, from `--numstat -z`.
- *
- * The format writes `added\tremoved\tpath\0` for an ordinary change, and for a rename writes the
- * counts followed by an empty path field and then the two paths as their own NUL-terminated fields
- * — so the record length is not fixed and the walk has to look at what it just read. A binary file
- * has `-` for both counts, which is git saying there is no line to count rather than zero of them.
- *
- * Keyed by the destination path, which is what `--name-status` reports and what is shown.
- */
-export function parseNumstat(stats: string): Map<string, { added: number; removed: number; binary: boolean }> {
-	const counts = new Map<string, { added: number; removed: number; binary: boolean }>();
-	const fields = stats.split("\0");
-	for (let i = 0; i < fields.length; i++) {
-		const field = fields[i];
-		if (!field) continue;
-		const match = /^(-|\d+)\t(-|\d+)\t(.*)$/.exec(field);
-		if (!match) continue;
-		const [, addedRaw, removedRaw, inline] = match;
-		// An empty trailing path means the two rename paths follow as their own fields.
-		const path = inline || fields[i + 2];
-		if (!inline) i += 2;
-		if (!path) continue;
-		counts.set(path, {
-			added: addedRaw === "-" ? 0 : Number(addedRaw),
-			removed: removedRaw === "-" ? 0 : Number(removedRaw),
-			binary: addedRaw === "-",
-		});
-	}
-	return counts;
 }
 
 /**
@@ -258,7 +227,7 @@ export async function deleteBranch(cwd: string, name: string, force = false) {
  */
 export const QUIET_FETCH_TIMEOUT_MS = 8_000;
 export const FETCH_TIMEOUT_MS = 20_000;
-const PUSH_PULL_TIMEOUT_MS = 120_000;
+export const PUSH_PULL_TIMEOUT_MS = 120_000;
 
 /** The remotes this repository has, in config order. */
 async function remoteNames(cwd: string): Promise<string[]> {

@@ -151,3 +151,25 @@ test("deleting a conversation takes what it wrote outside the project", async ()
 	for (const dir of left) await assert.rejects(stat(dir), `${dir} belonged to the deleted conversation`);
 	await stat(join(home, "scratch", "kept1"));
 });
+
+test("名额满了，旁边只挂着空闲侧边聊天的会话照样回收，侧边聊天跟着走；侧边聊天在答就留着", async () => {
+	hub.sessions.clear();
+	const disposed: string[] = [];
+	const dispose = async function (this: { meta: { id: string } }) { disposed.push(this.meta.id); };
+	const withSide = async (running: boolean) => {
+		const parent = await idleSession({ dispose });
+		const side = await sideChatOpen(parent, DEFAULT_SIDE_CHAT_ID);
+		hub.sessions.set(side.id, { meta: side, parent: hub.sessions.get(parent), running, idle: !running, can: { state: new Map() }, subAgents: { list: () => [] }, dispose } as never);
+		return { parent, side: side.id };
+	};
+	// 最久没碰的两个：一个侧边聊天空着，一个侧边聊天在答。
+	const quiet = await withSide(false);
+	const talking = await withSide(true);
+	for (let i = 0; i < 7; i++) await idleSession({ dispose });
+	await hub.ensureLiveSession(await idleSession({ dispose }));
+
+	assert.ok(!hub.sessions.has(quiet.parent) && !hub.sessions.has(quiet.side), "an idle side chat no longer pins its parent");
+	assert.ok(disposed.includes(quiet.side), "the side chat's own MCP servers go with it");
+	assert.ok(hub.sessions.has(talking.parent) && hub.sessions.has(talking.side), "a side chat mid-answer still does");
+	assert.equal(Array.from(hub.sessions.values()).filter((session) => !session.parent).length, 8);
+});

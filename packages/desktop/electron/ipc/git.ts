@@ -1,8 +1,8 @@
 /**
  * Git over IPC.
  *
- * Thin on purpose: every handler here is a name, a guard and a call into `../git.ts`. The work is
- * there; what belongs at this layer is only the decision about which requests are allowed to reach
+ * Thin on purpose: every handler here is a name, a guard and a call into the git module that owns
+ * the work; what belongs at this layer is only the decision about which requests are allowed to reach
  * it — the renderer can name any path, and a repository the user never opened is not one of them.
  */
 
@@ -10,42 +10,34 @@ import { ipcMain } from "electron";
 import { avatarsFor } from "../avatars.ts";
 import { findLocalCheckout } from "../git-remote.ts";
 import { generalScratchDir, type PrBrief, prScratchDir, scratchRoots, writePrBrief } from "../scratch.ts";
+import { listBranches, switchBranch } from "../git.ts";
+import { collectWorkspaceDiff, readDiffBlob, type DiffBlob } from "../git-diff.ts";
+import { discardPaths, gitStatus, stagePaths, unstagePaths, upstreamDistance, workspaceStat } from "../git-status.ts";
 import {
-	collectWorkspaceDiff,
-	readDiffBlob,
-	type DiffBlob,
 	commitDiff,
 	commitDiffSummary,
 	commitStaged,
 	createBranch,
 	deleteBranch,
 	diffRefs,
+	fetchRemotes,
 	gitLog,
-	gitStatus,
-	initRepo,
-	listBranches,
-	listRepos,
-	listWorktrees,
 	pullBranch,
 	pushBranch,
-	fetchRemotes,
 	FETCH_TIMEOUT_MS,
 	QUIET_FETCH_TIMEOUT_MS,
-	removeWorktree,
-	stagePaths,
-	switchBranch,
-	discardPaths,
-	unstagePaths,
-	upstreamDistance,
-	workspaceStat,
-	getReleaseInfo,
+} from "../git-history.ts";
+import { initRepo, listRepos, listWorktrees } from "../git-repos.ts";
+import { removeWorktree } from "../git-worktrees.ts";
+import {
 	bumpVersionFiles,
-	triggerReleaseDryRun,
+	getReleaseInfo,
 	getWorkflowRunStatus,
 	listWorkflowRuns,
 	publishReleaseTag,
-	generateCommitMessage,
-} from "../git.ts";
+	triggerReleaseDryRun,
+} from "../git-release.ts";
+import { generateCommitMessage } from "../git-commit-message.ts";
 import {
 	accounts,
 	commentOnPullRequest,
@@ -61,6 +53,7 @@ import {
 
 import { FORGE_KINDS, type ForgeKind, type ReviewVerdict } from "../forge/types.ts";
 import { RemoteCalls } from "../remote-calls.ts";
+import { nativeText } from "../i18n.ts";
 
 export interface GitIpcDeps {
 	/** Whether a path lies inside a project the user has opened. */
@@ -68,6 +61,17 @@ export interface GitIpcDeps {
 }
 
 export function registerGitIpc({ insideAProject }: GitIpcDeps): void {
+	const denied = () => ({ ok: false as const, error: nativeText("files.outsideProject") });
+	/**
+	 * A handler that writes: it runs only for a directory inside a project the user opened. The
+	 * renderer's arguments go through as they are, so wrap an action whose trailing parameters are
+	 * not the renderer's to set.
+	 */
+	const guarded =
+		<A extends unknown[], R>(action: (cwd: string, ...rest: A) => R) =>
+		async (_event: unknown, cwd: string, ...rest: A) =>
+			insideAProject(cwd) ? action(cwd, ...rest) : denied();
+
 	ipcMain.handle("git:myPullRequests", async () => listPullRequests());
 
 	/*
@@ -129,16 +133,11 @@ export function registerGitIpc({ insideAProject }: GitIpcDeps): void {
 	 * （只删 `git worktree list` 认得的路径），这里是同一件事的第二层：先问它在不在已打开的
 	 * 项目里。
 	 */
-	ipcMain.handle("git:switchBranch", async (_event, cwd: string, branch: string) => {
-		if (!insideAProject(cwd)) return { ok: false, error: "该目录不在已打开的项目内" };
-		return switchBranch(cwd, branch);
-	});
+	ipcMain.handle("git:switchBranch", guarded(switchBranch));
 
 	ipcMain.handle("git:removeWorktree", async (_event, cwd: string, worktreePath: string) => {
 		// 两个路径都要问：`cwd` 决定问哪个仓库，`worktreePath` 是真正会被删掉的那个。
-		if (!insideAProject(cwd) || !insideAProject(worktreePath)) {
-			return { ok: false, error: "该目录不在已打开的项目内" };
-		}
+		if (!insideAProject(cwd) || !insideAProject(worktreePath)) return denied();
 		return removeWorktree(cwd, worktreePath);
 	});
 
@@ -151,7 +150,7 @@ export function registerGitIpc({ insideAProject }: GitIpcDeps): void {
 	ipcMain.handle("git:init", async (_event, cwd: string) => {
 		// 在任意目录上造一个仓库也是写。这一条服务的场景是「面板正看着一个刚建出来的项目」，
 		// 那个目录本来就是已打开的项目，所以守卫不挡正常用法。
-		if (!insideAProject(cwd)) return { ok: false, error: "该目录不在已打开的项目内" };
+		if (!insideAProject(cwd)) return denied();
 		return initRepo(cwd);
 	});
 
@@ -182,52 +181,34 @@ export function registerGitIpc({ insideAProject }: GitIpcDeps): void {
 	 * Staging, discarding and branch surgery all reach outside the renderer's sandbox and are
 	 * hard or impossible to undo — `discard` in particular deletes untracked files outright.
 	 */
-	for (const [channel, action] of [
-		["git:stage", stagePaths],
-		["git:unstage", unstagePaths],
-		["git:discard", discardPaths],
-	] as const) {
-		ipcMain.handle(channel, async (_event, cwd: string, paths: string[]) => {
-			if (!insideAProject(cwd)) return { ok: false, error: "该目录不在已打开的项目内" };
-			return action(cwd, paths);
-		});
-	}
+	ipcMain.handle("git:stage", guarded(stagePaths));
+	ipcMain.handle("git:unstage", guarded(unstagePaths));
+	ipcMain.handle("git:discard", guarded(discardPaths));
 
-	ipcMain.handle("git:commitStaged", async (_event, cwd: string, message: string) => {
-		if (!insideAProject(cwd)) return { ok: false, error: "该目录不在已打开的项目内" };
-		return commitStaged(cwd, message);
-	});
+	ipcMain.handle("git:commitStaged", guarded(commitStaged));
 
-	ipcMain.handle("git:generateCommitMessage", async (_event, cwd: string) => {
-		if (!insideAProject(cwd)) return { ok: false, error: "该目录不在已打开的项目内" };
-		return generateCommitMessage(cwd);
-	});
+	// Only the directory crosses: its options are the test seams and the settings, neither the renderer's to name.
+	ipcMain.handle("git:generateCommitMessage", guarded((cwd: string) => generateCommitMessage(cwd)));
 
-	ipcMain.handle("git:createBranch", async (_event, cwd: string, name: string, from?: string) => {
-		if (!insideAProject(cwd)) return { ok: false, error: "该目录不在已打开的项目内" };
-		return createBranch(cwd, name, from);
-	});
+	ipcMain.handle("git:createBranch", guarded(createBranch));
 
-	ipcMain.handle("git:deleteBranch", async (_event, cwd: string, name: string, force?: boolean) => {
-		if (!insideAProject(cwd)) return { ok: false, error: "该目录不在已打开的项目内" };
-		return deleteBranch(cwd, name, force);
-	});
+	ipcMain.handle("git:deleteBranch", guarded(deleteBranch));
 
 	/** The push / pull / fetch currently in flight, addressable by the token that started them. */
 	const remoteCalls = new RemoteCalls();
 
 	ipcMain.handle("git:push", async (_event, cwd: string, token?: string) => {
-		if (!insideAProject(cwd)) return { ok: false, error: "该目录不在已打开的项目内" };
+		if (!insideAProject(cwd)) return denied();
 		return remoteCalls.run(token, (signal) => pushBranch(cwd, { signal }));
 	});
 
 	ipcMain.handle("git:pull", async (_event, cwd: string, token?: string) => {
-		if (!insideAProject(cwd)) return { ok: false, error: "该目录不在已打开的项目内" };
+		if (!insideAProject(cwd)) return denied();
 		return remoteCalls.run(token, (signal) => pullBranch(cwd, { signal }));
 	});
 
 	ipcMain.handle("git:fetch", async (_event, cwd: string, token?: string, quiet?: boolean) => {
-		if (!insideAProject(cwd)) return { ok: false, error: "该目录不在已打开的项目内" };
+		if (!insideAProject(cwd)) return denied();
 		return remoteCalls.run(token, (signal) =>
 			fetchRemotes(cwd, { signal, timeoutMs: quiet ? QUIET_FETCH_TIMEOUT_MS : FETCH_TIMEOUT_MS }),
 		);
@@ -320,15 +301,9 @@ export function registerGitIpc({ insideAProject }: GitIpcDeps): void {
 		return getReleaseInfo(cwd);
 	});
 
-	ipcMain.handle("git:bumpVersion", async (_event, cwd: string, newVersion: string) => {
-		if (!insideAProject(cwd)) return { ok: false, error: "该目录不在已打开的项目内" };
-		return bumpVersionFiles(cwd, newVersion);
-	});
+	ipcMain.handle("git:bumpVersion", guarded(bumpVersionFiles));
 
-	ipcMain.handle("git:triggerDryRun", async (_event, cwd: string) => {
-		if (!insideAProject(cwd)) return { ok: false, error: "该目录不在已打开的项目内" };
-		return triggerReleaseDryRun(cwd);
-	});
+	ipcMain.handle("git:triggerDryRun", guarded(triggerReleaseDryRun));
 
 	ipcMain.handle("git:listWorkflowRuns", async (_event, cwd: string, limit?: number) => {
 		if (!insideAProject(cwd)) return [];
@@ -340,8 +315,5 @@ export function registerGitIpc({ insideAProject }: GitIpcDeps): void {
 		return getWorkflowRunStatus(cwd, runId);
 	});
 
-	ipcMain.handle("git:publishReleaseTag", async (_event, cwd: string, version: string) => {
-		if (!insideAProject(cwd)) return { ok: false, error: "该目录不在已打开的项目内" };
-		return publishReleaseTag(cwd, version);
-	});
+	ipcMain.handle("git:publishReleaseTag", guarded(publishReleaseTag));
 }

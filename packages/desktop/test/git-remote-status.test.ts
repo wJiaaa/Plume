@@ -21,7 +21,7 @@ import { after, test } from "node:test";
 
 import { gitStatus } from "../electron/git-status.ts";
 import { pushBranch } from "../electron/git-history.ts";
-import { gitBranch } from "../electron/git.ts";
+import { gitBranch } from "../electron/git-probe.ts";
 
 const execFileAsync = promisify(execFile);
 

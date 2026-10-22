@@ -1,13 +1,14 @@
 /**
- * Side chats and the work they hand over, behind the Electron IPC handlers.
+ * Side chats, behind the Electron IPC handlers.
  *
  * A side chat is a session of its own (see core `side-session.ts`); everything said in it goes
  * through the same `agent:*` calls as the main conversation. What is left here is the panel's way
- * of naming one — its session plus the panel's own id — and the queue of work it dispatched.
+ * of naming one — its session plus the panel's own id. Apart from `ipc/side-chat.ts` so a test can
+ * drive it without Electron.
  */
 
 import type { SessionMeta } from "@plume/core";
-import { deleteSessions, openSideSession, sessions, sideSessionsOf } from "./session-hub.ts";
+import { deleteSessions, openSideSession, sideSessionsOf } from "./session-hub.ts";
 
 const SIDE_ID = /^[a-z0-9]{1,32}$/;
 
@@ -31,20 +32,4 @@ export function sideChatOpen(sessionId: string, sideId: string): Promise<Session
 export async function sideChatClose(sessionId: string, sideId: string): Promise<void> {
 	checkSideId(sideId);
 	await deleteSessions((await sideSessionsOf([sessionId])).filter((meta) => meta.sideId === sideId).map((meta) => meta.id));
-}
-
-export function tasksList(sessionId: string) {
-	return sessions.get(sessionId)?.taskQueue ?? [];
-}
-
-export async function tasksCancel(sessionId: string, taskId: string): Promise<boolean> {
-	return (await sessions.get(sessionId)?.cancelTask(taskId)) ?? false;
-}
-
-export async function tasksDismiss(sessionId: string, taskId: string): Promise<boolean> {
-	return (await sessions.get(sessionId)?.dismissTask(taskId)) ?? false;
-}
-
-export async function tasksResume(sessionId: string, taskId: string): Promise<boolean> {
-	return (await sessions.get(sessionId)?.resumeTask(taskId)) ?? false;
 }

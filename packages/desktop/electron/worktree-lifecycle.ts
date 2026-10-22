@@ -12,6 +12,8 @@ import { existsSync } from "node:fs";
 import { relative, sep } from "node:path";
 import type { SessionMeta } from "@plume/core";
 import { git, run } from "./git-exec.ts";
+import { parseStatusZ } from "./git-parse.ts";
+import { worktreeRecords } from "./git-probe.ts";
 import type { WorktreeState } from "./worktree-types.ts";
 import { canonicalPath, samePath } from "./path-key.ts";
 
@@ -68,16 +70,7 @@ export async function countCommits(repo: string, range: string): Promise<number>
 /** Changed and untracked files. Ignored ones are not changes anyone made, and stay out of it. */
 export async function uncommittedFiles(dir: string): Promise<string[]> {
 	const text = await git(dir, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]).catch(() => "");
-	const files: string[] = [];
-	const entries = text.split("\0");
-	for (let i = 0; i < entries.length; i++) {
-		const entry = entries[i];
-		if (entry.length < 4) continue;
-		files.push(entry.slice(3));
-		// A rename or copy carries its old path as the entry after it.
-		if (entry[0] === "R" || entry[0] === "C") i++;
-	}
-	return files;
+	return parseStatusZ(text).entries.map((entry) => entry.path);
 }
 
 export async function isMerging(dir: string): Promise<boolean> {
@@ -113,8 +106,7 @@ export async function worktreeState(meta: Owned): Promise<WorktreeState | null> 
 /** Whether `root` is one of `repo`'s linked worktrees — asked of git, never inferred from the folder's name. */
 async function isWorktreeOf(repo: string, root: string): Promise<boolean> {
 	if (samePath(repo, root)) return false;
-	const listed = (await output(repo, ["worktree", "list", "--porcelain"])) ?? "";
-	return listed.split("\n").some((line) => line.startsWith("worktree ") && samePath(line.slice("worktree ".length), root));
+	return (await worktreeRecords(repo)).some((tree) => samePath(tree.path, root));
 }
 
 export interface Reclaimed {

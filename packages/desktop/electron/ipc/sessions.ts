@@ -100,14 +100,6 @@ export function registerSessionsIpc({
 	ipcMain.handle("sessions:create", async (_event, cwd: string, modelId: string, initial?: Parameters<PlumeApi["sessions"]["create"]>[2]) =>
 		createSession(cwd, modelId, initial, typeof initial?.project === "string" && initial.project ? initial.project : undefined));
 
-	/**
-	 * Read a transcript without starting anything.
-	 *
-	 * Opening a session used to build an `AgentSession` — loading skills, spawning MCP child
-	 * processes, warming the index — which costs well over a second and is pure waste when all
-	 * you did was click a row to read what it says. Reading the log takes a few milliseconds;
-	 * the agent is started later, by `ensureSession`, when there is actually something to run.
-	 */
 	/*
 	 * The trajectory, and forking from a message in it.
 	 *
@@ -133,6 +125,14 @@ export function registerSessionsIpc({
 			forkAfterMessage(store, sessionId, messageIndex, timestamp, title),
 	);
 
+	/**
+	 * Read a transcript without starting anything.
+	 *
+	 * Opening a session used to build an `AgentSession` — loading skills, spawning MCP child
+	 * processes, warming the index — which costs well over a second and is pure waste when all
+	 * you did was click a row to read what it says. Reading the log takes a few milliseconds;
+	 * the agent is started later, by `ensureSession`, when there is actually something to run.
+	 */
 	ipcMain.handle(
 		"sessions:transcript",
 		async (_event, sessionId: string) => {
@@ -157,14 +157,6 @@ export function registerSessionsIpc({
 				commandRuns: loaded.commandRuns,
 				hookRuns: loaded.hookRuns,
 			});
-		},
-	);
-
-	ipcMain.handle(
-		"sessions:open",
-		async (_event, sessionId: string) => {
-			const session = await ensureLiveSession(sessionId);
-			return session ? snapshot(session) : null;
 		},
 	);
 

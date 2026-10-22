@@ -8,7 +8,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { parseNumstat } from "../electron/git-history.ts";
+import { parseNumstat } from "../electron/git-parse.ts";
 import { withContents } from "../src/features/git/diff-merge.ts";
 import type { WorkspaceDiffFile } from "../electron/ipc-types.ts";
 
