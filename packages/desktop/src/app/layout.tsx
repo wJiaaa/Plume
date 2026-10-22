@@ -419,5 +419,3 @@ export function useFocusTrap(ref: React.RefObject<HTMLElement | null>, active: b
 		};
 	}, [ref, active]);
 }
-
-export { NavPane } from "./panes.tsx";
