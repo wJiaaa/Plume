@@ -23,6 +23,11 @@
     line-height: 1.75;
     letter-spacing: 0.025em;
     color: var(--color-ink);
+    /*
+     * 没有空格的长串（URL、base64、贴进来的 JSON）找不到断点，会顶出容器、被外层裁掉，裁掉的字就没了。
+     * 用 `break-word` 不用 `anywhere`：后者把表格单元格的最小宽度压到一个字，自动布局的表格列会被挤窄。
+     */
+    overflow-wrap: break-word;
   }
 
   .prose-dw > * + * {

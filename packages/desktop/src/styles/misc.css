@@ -651,6 +651,12 @@ textarea.ly-composer-text[data-highlighted="true"] {
   letter-spacing: 0;
 }
 
+/* 折起来的长消息：露出几行由 `BubbleText` 给，最后三行化开，告诉人底下还有。 */
+.ly-bubble-fold[data-folded] {
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 3lh), transparent);
+}
+
 .ly-user-bubble .ly-attachment-token {
   padding: 2px 6px;
   margin: 0 1px;

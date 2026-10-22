@@ -2381,6 +2381,8 @@ export const en = {
 	"running.waitingForAnswer": "Waiting for your answer",
 	"running.waitingForPlan": "Waiting for you to review the plan",
 	"userMessage.fromSideChat": "From the side chat",
+	"userMessage.showMore": "Show more",
+	"userMessage.showLess": "Show less",
 	"trajectory.readFailed": "Could not read it: ",
 	"nameEditor.name": "Name",
 	"diffView.truncated": "… the diff is too long and has been cut short",

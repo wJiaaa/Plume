@@ -2558,6 +2558,8 @@ export const zhCN = {
 	"running.waitingForAnswer": "等待你的回答",
 	"running.waitingForPlan": "等你审批计划",
 	"userMessage.fromSideChat": "来自侧边聊天",
+	"userMessage.showMore": "展开全文",
+	"userMessage.showLess": "收起",
 	"trajectory.readFailed": "读取失败：",
 	"nameEditor.name": "名字",
 	"diffView.truncated": "… 差异过长，已截断显示",

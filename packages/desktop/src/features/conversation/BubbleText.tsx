@@ -14,11 +14,21 @@
  *   把它挤到单独一行，比不支持 markdown 更糟。带附件的消息几乎都是短句，这一支够用。
  *
  * 标记画成什么由调用方给：点了之后做什么，两边并不一样。
+ *
+ * **太长的折起来。** 一段两万字的 JSON 贴进来，气泡能把整屏占满好几遍，回复被顶到很远的地方。
+ * 超过 `FOLD_AT` 行就只露出 `FOLD_TO` 行、底下化开，留一颗按钮展开。两个数不一样，是为了不出现
+ * 「折起来只藏了一两行」：那一下点开什么也没多看到。
  */
 
-import { useMemo } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { translate } from "../../i18n/translate.ts";
 import { placeAttachments } from "../../lib/attachment-placeholders.ts";
 import { Markdown } from "../markdown/index.ts";
+
+/** 超过这么多行才折。 */
+const FOLD_AT = 14;
+/** 折起来露出这么多行。 */
+const FOLD_TO = 10;
 
 export function BubbleText<File extends { name: string; label?: string }>({
 	text,
@@ -36,12 +46,60 @@ export function BubbleText<File extends { name: string; label?: string }>({
 }) {
 	const segments = useMemo(() => placeAttachments(text, files).segments, [text, files]);
 	const hasFiles = segments.some((segment) => segment.kind === "file");
+	const box = useRef<HTMLDivElement>(null);
+	const body = useRef<HTMLDivElement>(null);
+	const [foldable, setFoldable] = useState(false);
+	const [open, setOpen] = useState(false);
 
-	if (!hasFiles) return <div className={className}><Markdown text={text} /></div>;
+	/*
+	 * 量里面那层的自然高度，不量外面那层：外面那层折起来以后就被 `max-height` 压住了，量它永远
+	 * 「不超」，折一次就再也认不出自己该折。layout effect 里量，第一帧画出来就已经是折好的样子。
+	 * 宽度一变行数就变，所以盯着它。
+	 */
+	useLayoutEffect(() => {
+		const inner = body.current;
+		const outer = box.current;
+		if (!inner || !outer) return;
+		const measure = () => {
+			const line = Number.parseFloat(getComputedStyle(outer).lineHeight);
+			setFoldable(Number.isFinite(line) && line > 0 && inner.offsetHeight > line * FOLD_AT);
+		};
+		measure();
+		const observer = new ResizeObserver(measure);
+		observer.observe(inner);
+		return () => observer.disconnect();
+	}, [text]);
+
+	const folded = foldable && !open;
 
 	return (
-		<p className={`whitespace-pre-wrap break-words ${className}`}>
-			{segments.map((segment, at) => (segment.kind === "text" ? segment.text : renderFile(segment.file, at)))}
-		</p>
+		<div className={className}>
+			<div ref={box} className="ly-bubble-fold" data-folded={folded ? "" : undefined} style={folded ? { maxHeight: `${FOLD_TO}lh` } : undefined}>
+				<div ref={body}>
+					{hasFiles ? (
+						<p className="whitespace-pre-wrap break-words">
+							{segments.map((segment, at) => (segment.kind === "text" ? segment.text : renderFile(segment.file, at)))}
+						</p>
+					) : (
+						<Markdown text={text} />
+					)}
+				</div>
+			</div>
+			{foldable && (
+				<button
+					type="button"
+					aria-expanded={open}
+					data-ly-bubble-fold-toggle=""
+					className="mt-1.5 -ml-1.5 rounded-md px-1.5 text-caption font-medium text-ink-muted transition-colors hover:bg-card-hover hover:text-ink"
+					onClick={() => {
+						setOpen(!open);
+						// 展开后往下读到了底再收起，气泡一下子矮回十行，人就落在它下面很远的地方。把它拉回视野里。
+						if (open) requestAnimationFrame(() => box.current?.scrollIntoView({ block: "nearest" }));
+					}}
+				>
+					{open ? translate("userMessage.showLess") : translate("userMessage.showMore")}
+				</button>
+			)}
+		</div>
 	);
 }

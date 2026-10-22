@@ -9,13 +9,15 @@
  *
  * 二、**markdown 走不走，看有没有附件标记**。没有标记就整段交给 markdown（`# 需求1` 是标题，
  *    不是一行井号）；有标记就保持行内，否则块级的 markdown 会把一句话切成三行。
+ *
+ * 三、**太长的折起来，短的不动**。这里没有排版，行高和正文高度是按测试需要垫进去的。
  */
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createElement as h } from "react";
 import { UserMessage } from "../../src/features/conversation/UserMessage.tsx";
-import { mount } from "../helpers/mount.ts";
+import { click, mount } from "../helpers/mount.ts";
 
 test("气泡把 markdown 画出来，而不是照抄井号和星号", async () => {
 	const text = "# 需求1\n请检查**所有**已编辑文件";
@@ -83,4 +85,50 @@ test("老消息没有 displayText 时，仍然照原来的拼法画出来", asyn
 	try {
 		assert.ok((view.find(".ly-user-bubble").textContent ?? "").includes("一条老消息"));
 	} finally { await view.unmount(); }
+});
+
+/** 让这份 DOM 以为正文有多高、一行有多高——它自己不排版，两样都是 0。 */
+async function withLayout<T>(height: number, run: () => Promise<T>): Promise<T> {
+	const offset = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+	const computed = globalThis.getComputedStyle;
+	Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, get: () => height });
+	// 计算出来的样式是只读的，赋值会被吞掉，只能整个换掉。
+	globalThis.getComputedStyle = (() => ({ lineHeight: "24px" })) as unknown as typeof window.getComputedStyle;
+	try {
+		return await run();
+	} finally {
+		if (offset) Object.defineProperty(HTMLElement.prototype, "offsetHeight", offset);
+		globalThis.getComputedStyle = computed;
+	}
+}
+
+const sent = (text: string) => ({ role: "user" as const, content: [{ type: "text" as const, text }], timestamp: 0 });
+
+test("超过十四行的消息折起来，按钮展开、再收起", async () => {
+	await withLayout(24 * 40, async () => {
+		const view = await mount(h(UserMessage, { index: 0, message: sent("很长的一段") }));
+		try {
+			const fold = view.find(".ly-bubble-fold");
+			const toggle = view.find("[data-ly-bubble-fold-toggle]");
+			assert.ok(fold.hasAttribute("data-folded"), "第一帧就是折着的");
+			assert.equal(fold.style.maxHeight, "10lh");
+			assert.equal(toggle.getAttribute("aria-expanded"), "false");
+			await click(toggle);
+			assert.ok(!fold.hasAttribute("data-folded"), "展开后不再压高度");
+			assert.equal(fold.style.maxHeight, "");
+			assert.equal(toggle.getAttribute("aria-expanded"), "true");
+			await click(toggle);
+			assert.ok(fold.hasAttribute("data-folded"), "还能收回去");
+		} finally { await view.unmount(); }
+	});
+});
+
+test("只比折叠线多一两行的消息不折：点开也看不到多少东西", async () => {
+	await withLayout(24 * 12, async () => {
+		const view = await mount(h(UserMessage, { index: 0, message: sent("十二行") }));
+		try {
+			assert.ok(!view.find(".ly-bubble-fold").hasAttribute("data-folded"));
+			assert.equal(view.all("[data-ly-bubble-fold-toggle]").length, 0);
+		} finally { await view.unmount(); }
+	});
 });
