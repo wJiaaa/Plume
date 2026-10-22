@@ -256,13 +256,21 @@ export class SessionStore implements SessionStorage {
 		return filled;
 	}
 
-	/** Stream records, optionally only those newer than `sinceSeq`. */
-	async *read(sessionId: string, sinceSeq = 0, options?: { display?: boolean }): AsyncGenerator<SessionRecord> {
+	/**
+	 * Stream records, optionally only those newer than `sinceSeq`, optionally only some `kinds`.
+	 *
+	 * The kind filter runs in SQLite, before any body is parsed. A reader looking for one sort of
+	 * record otherwise parsed the whole log to find it — `readContext` went through 5MB of sub-agent
+	 * transcripts on opening a conversation to pick out a 60KB prompt.
+	 */
+	async *read(sessionId: string, sinceSeq = 0, options?: { display?: boolean; kinds?: readonly string[] }): AsyncGenerator<SessionRecord> {
 		this.settle(sessionId);
-		const page = this.db.prepare("SELECT seq, body FROM records WHERE session_id = ? AND seq > ? ORDER BY seq LIMIT ?");
+		const kinds = options?.kinds ?? [];
+		const filter = kinds.length > 0 ? ` AND kind IN (${kinds.map(() => "?").join(", ")})` : "";
+		const page = this.db.prepare(`SELECT seq, body FROM records WHERE session_id = ? AND seq > ?${filter} ORDER BY seq LIMIT ?`);
 		let after = sinceSeq;
 		while (true) {
-			const rows = page.all(sessionId, after, READ_PAGE) as { seq: number; body: string }[];
+			const rows = page.all(sessionId, after, ...kinds, READ_PAGE) as { seq: number; body: string }[];
 			for (const row of rows) {
 				after = row.seq;
 				yield JSON.parse(options?.display ? slimJsonlLine(row.body) : row.body) as SessionRecord;

@@ -66,6 +66,28 @@ test("incremental read returns every record after the given sequence", async (t)
 	assert.deepEqual(after, [2, 3, 4], "a client that has seen seq 1 must receive all three results");
 });
 
+test("a read limited to some kinds skips the rest before parsing, and still honours the starting point", async (t) => {
+	const root = await mkdtemp(join(tmpdir(), "ly-store-"));
+	t.after(() => rm(root, { recursive: true, force: true }));
+	const store = new SessionStore(root);
+
+	const meta = await store.create("/tmp/project", "model");
+	await store.append(meta, { type: "message", message: toolResult("a") });
+	await store.append(meta, { type: "event", event: { type: "title", title: "first" } });
+	await store.append(meta, { type: "message", message: toolResult("b") });
+	await store.append(meta, { type: "event", event: { type: "title", title: "second" } });
+
+	const titles: string[] = [];
+	for await (const record of store.read(meta.id, 0, { kinds: ["title"] })) {
+		if (record.type === "event" && record.event.type === "title") titles.push(record.event.title);
+	}
+	assert.deepEqual(titles, ["first", "second"], "only the events of the asked kind, in order");
+
+	const later: number[] = [];
+	for await (const record of store.read(meta.id, 3, { kinds: ["message", "title"] })) later.push(record.seq);
+	assert.deepEqual(later, [4, 5], "the kind filter narrows the read; it does not replace the starting point");
+});
+
 test("reopening a session continues numbering instead of restarting", async (t) => {
 	const root = await mkdtemp(join(tmpdir(), "ly-store-"));
 	t.after(() => rm(root, { recursive: true, force: true }));

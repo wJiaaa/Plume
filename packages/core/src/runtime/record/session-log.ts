@@ -284,7 +284,7 @@ export class SessionLog {
 		const contexts: { seq: number; event: RecordedContext }[] = [];
 		// 压缩边界的位置，和上下文一样按截断回退：被撤回的压缩不算数。
 		const boundaries: number[] = [];
-		for await (const record of this.store.read(this.meta.id)) {
+		for await (const record of this.store.read(this.meta.id, 0, { kinds: ["context", "compacted", "truncate"] })) {
 			if (record.type === "event" && record.event.type === "context") contexts.push({ seq: record.seq, event: record.event as RecordedContext });
 			if (record.type === "event" && record.event.type === "compacted" && record.event.kept !== undefined) boundaries.push(record.seq);
 			if (record.type === "truncate") {
@@ -357,7 +357,7 @@ export class SessionLog {
 		if (!this.restored) return [];
 		const seqs: number[] = [];
 		const views = new Map<number, { seq: number; message: Message }>();
-		for await (const record of this.store.read(this.meta.id)) {
+		for await (const record of this.store.read(this.meta.id, 0, { kinds: ["message", "views", "truncate"] })) {
 			if (record.type === "message") { if (record.message) seqs.push(record.seq); }
 			else if (record.type === "views") for (const view of record.views) views.set(view.at, { seq: record.seq, message: view.message });
 			else if (record.type === "truncate") {

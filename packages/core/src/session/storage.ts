@@ -52,7 +52,12 @@ export interface SessionStorage extends PartialSink, CallSink {
 	 */
 	append(meta: Pick<SessionMeta, "id">, payload: SessionRecordInput, options?: { copy?: boolean; stream?: string }): Promise<SessionMeta | null>;
 	get(sessionId: string): Promise<SessionMeta | null>;
-	read(sessionId: string, sinceSeq?: number, options?: { display?: boolean }): AsyncGenerator<SessionRecord>;
+	/**
+	 * `kinds` keeps only records of those kinds (`recordKind`: the record's type, or an event's type).
+	 * A filter, not a promise: a reader still checks what it gets, so a store that ignores it is
+	 * slower, not wrong.
+	 */
+	read(sessionId: string, sinceSeq?: number, options?: { display?: boolean; kinds?: readonly string[] }): AsyncGenerator<SessionRecord>;
 	messages(sessionId: string): Promise<Message[]>;
 	/** The records a session's sub-agents left, in order — see `runtime/sub-agent/sub-agent-restore.ts`. */
 	subAgentRecords(sessionId: string): Promise<SessionRecord[]>;
