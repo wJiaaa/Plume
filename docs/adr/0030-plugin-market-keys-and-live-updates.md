@@ -2,7 +2,7 @@
 
 - 状态：已采纳
 - 日期：2026-09-26
-- 相关：`packages/core/src/mcp/placeholders.ts`、`mcp/client.ts`（`resolveServer`、首次启动时限）、`plugins/loader.ts`（`sanitizeManifest`、`scanBundle`、`env` 说明）、`plugins/registry.ts`（技能集整包安装、`remember`、`collectionDirs`）、`plugins/fetch-bundle.ts`（对齐注册表的提交）、`plugins/install-record.ts`（子目录条目的更新判断）、`config/settings.ts`（MCP 钥匙进保险箱）、`skills/loader.ts`（`expandSkillPaths`）；desktop `electron/plugin-updates.ts`、`electron/plugin-index.ts`、`electron/ipc/plugins.ts`、`src/features/plugins/*`、`src/features/settings/{ExtensionsSettings,PluginsSettings,McpSettings,SkillsSettings}.tsx`；`packages/registry-shared/src/entry.ts`（`needs`、`keywords`）
+- 相关：`packages/core/src/mcp/placeholders.ts`、`mcp/client.ts`（`resolveServer`、首次启动时限）、`plugins/loader.ts`（`sanitizeManifest`、`scanBundle`、`env` 说明）、`plugins/registry.ts`（技能集整包安装、`remember`、`collectionDirs`）、`plugins/fetch-bundle.ts`（对齐注册表的提交）、`plugins/install-record.ts`（子目录条目的更新判断）、`config/settings.ts`（MCP 钥匙进保险箱）、`skills/loader.ts`（`expandSkillPaths`）；desktop `electron/plugins/plugin-updates.ts`、`electron/plugins/plugin-index.ts`、`electron/ipc/plugins.ts`、`src/features/plugins/*`、`src/features/settings/{ExtensionsSettings,PluginsSettings,McpSettings,SkillsSettings}.tsx`；`packages/registry-shared/src/entry.ts`（`needs`、`keywords`）
 
 ## 背景
 

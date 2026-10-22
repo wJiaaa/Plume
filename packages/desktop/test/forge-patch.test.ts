@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseUnifiedDiff } from "../electron/diff-parse.ts";
+import { parseUnifiedDiff } from "../electron/forge/diff-parse.ts";
 import { toPatchFiles } from "../electron/forge/gitee.ts";
 import { assembleDiff, countLines } from "../electron/forge/patch.ts";
 

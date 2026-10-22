@@ -6,10 +6,10 @@
  */
 
 import { app, ipcMain } from "electron";
-import { createRegistryEnv, readRegistryEnv } from "../terminal-env.ts";
-import { createTerminalRegistry, type TerminalDeps } from "../terminal-registry.ts";
+import { createRegistryEnv, readRegistryEnv } from "../terminal/terminal-env.ts";
+import { createTerminalRegistry, type TerminalDeps } from "../terminal/terminal-registry.ts";
 
-export type { LiveTerminal, TerminalDeps } from "../terminal-registry.ts";
+export type { LiveTerminal, TerminalDeps } from "../terminal/terminal-registry.ts";
 
 export function registerTerminalIpc(deps: TerminalDeps): void {
 	// Windows only: elsewhere a new shell rebuilds its environment from its own startup files.

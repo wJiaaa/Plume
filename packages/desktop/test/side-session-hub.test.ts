@@ -27,8 +27,8 @@ const hooks = registerHooks({
 		return nextResolve(specifier, context);
 	},
 });
-const hub = await import("../electron/session-hub.ts");
-const { sideChatClose, sideChatList, sideChatOpen } = await import("../electron/side-chat-service.ts");
+const hub = await import("../electron/session/session-hub.ts");
+const { sideChatClose, sideChatList, sideChatOpen } = await import("../electron/session/side-chat-service.ts");
 hooks.deregister();
 
 // Deleting a session sweeps the app's own directory; it must be a throwaway one.

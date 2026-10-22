@@ -10,9 +10,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test } from "node:test";
 import type { Settings } from "@plume/core";
-import { peerAddress, peerName, peerRef, resolvePeer } from "../electron/peer-address.ts";
-import { broaderThan, PEER_BUCKET, PeerPacer } from "../electron/peer-policy.ts";
-import { rootsOverlap, sessionRoots } from "../electron/peer-reach.ts";
+import { peerAddress, peerName, peerRef, resolvePeer } from "../electron/peer/peer-address.ts";
+import { broaderThan, PEER_BUCKET, PeerPacer } from "../electron/peer/peer-policy.ts";
+import { rootsOverlap, sessionRoots } from "../electron/peer/peer-reach.ts";
 import { pathKey } from "../electron/path-key.ts";
 import { asking, fakeSession, routerWith, stopAsking } from "./helpers/peer-fake.ts";
 

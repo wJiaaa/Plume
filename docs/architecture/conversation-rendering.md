@@ -114,7 +114,7 @@
 `preview({ path })` 展示磁盘上已有的 HTML：拷一份进来，不带 `themed`——它是按整页写的，套上对话主题会变样。
 例外是本会话 scratch 目录里的文件：只有 agent 往那里写，它是照工具说明写的（不留外边距、不铺底色），当整页放进带框卡片会贴着框边，所以照新页面带 `themed`。
 
-- **主题**：首帧前由地址片段 `#ly-inline&ly-theme=<json>` 带进去，注入脚本（`electron/preview-protocol.ts` 的
+- **主题**：首帧前由地址片段 `#ly-inline&ly-theme=<json>` 带进去，注入脚本（`electron/preview/preview-protocol.ts` 的
   `withPreviewBridge`）写进 `:root`，变量名与值都先清洗；之后的外观切换走 `postMessage`，页面不重载。变量表见
   `features/files/preview-theme.ts`，`--background` 取卡片背后实际画出来的颜色，逐像素对得上。
 - **链接**：iframe 内的点击和 `window.open` 转成消息交给宿主，只放行 http/https/mailto，且必须是用户刚在页面里
@@ -139,7 +139,7 @@
   只有「按这组设置修改」会说话：气泡里是「调整设计：圆角 18px → 24px」，模型收到 `<design-settings>`，只列改过的项。
   页面报来的控件和面板发回的值都先过 `readTweaks` / `tweakValue`。已知上限：模型按这组设置改，要重写整页 HTML 再发布，
   `preview` 还没有按 id 局部修改。
-- **自检**：工具交付前，主进程在离屏窗口（`electron/preview-inspect.ts`）里加载一遍。脚本抛了未捕获异常就不展示，
+- **自检**：工具交付前，主进程在离屏窗口（`electron/preview/preview-inspect.ts`）里加载一遍。脚本抛了未捕获异常就不展示，
   异常回给模型去修；其他控制台报错与超高照常展示，只在结果里告诉模型。检查本身失败不影响交付。
 - **先看再发**：`check: true` 只检查不展示，结果里带一张截图（默认 720px 宽，`width` 可指定 320–1600；当前主题；一张最多 2160px）和报错、高度。
   结果总会写明按多宽检查的：不写时模型不知道对话多宽，会自己猜一个宽度再多查几次。没截到底时结果给出下一段的
@@ -297,7 +297,7 @@ worktree 只改变执行目录，不改变已创建的会话 ID 和日志归属�
 传下去（`initial.worktree`），设置里的开关只是它的默认值；建好之后 `SessionMeta.worktree` 记下它出自哪个项目，
 侧栏、归档、项目菜单都按这个项目归组（`sessionHome`），从它开的新会话回到这个项目。见 ADR-0048。
 删除、归档会话时收走它干净的工作树目录（分支全在基分支里就一起删），取消归档或再用起来时在原路径检出回来；输入框上
-工作树会话的 chip 说领先落后，点开能合回基分支、从基分支同步（`electron/worktree-lifecycle.ts`、`worktree-merge.ts`）。
+工作树会话的 chip 说领先落后，点开能合回基分支、从基分支同步（`electron/git/worktree-lifecycle.ts`、`worktree-merge.ts`）。
 建不成工作树的原因记在 `SessionMeta.worktreeError` 上，输入框上一直有个提醒。见 ADR-0050。
 
 ## 页面保留

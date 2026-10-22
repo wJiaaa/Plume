@@ -215,7 +215,7 @@ export function applyAgentEvent(sessionId: string, event: AgentEvent, set: Set, 
        * 这条线此前只数主 Agent 自己的 `message_end`，于是一轮里派了四个子代理、它们烧掉五十多万
        * token 的时候，运行指示器上的数字还停在主 Agent 自己的五万八——差了一个数量级，而人正是
        * 靠那个数字判断这一轮花了多少。会话卡片和用量统计页早就把子代理算进去了（见
-       * `session/store.ts` 和 `electron/usage-scan.ts` 里各自的说明，那两处都是补过的），唯独
+       * `session/store.ts` 和 `electron/usage/usage-scan.ts` 里各自的说明，那两处都是补过的），唯独
        * 跑起来时看的这条漏着。
        *
        * 只数助手消息，口径和上面那条完全一样：一条助手消息等于一次请求，用量记在它身上；工具结果

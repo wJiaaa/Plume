@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { documentKind } from "../shared/document-kind.ts";
-import { readDatabase, readWorkbook } from "../electron/documents.ts";
+import { readDatabase, readWorkbook } from "../electron/files/documents.ts";
 
 let dir: string;
 let workbook: string;

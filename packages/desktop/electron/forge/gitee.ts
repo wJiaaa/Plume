@@ -16,7 +16,7 @@
  * notion of "pull requests I have already reviewed". Inventing one would mean guessing.
  */
 
-import { parseUnifiedDiff } from "../diff-parse.ts";
+import { parseUnifiedDiff } from "./diff-parse.ts";
 import { nativeText } from "../i18n.ts";
 import type {
 	PullRequestDetail,

@@ -83,11 +83,11 @@ const KIND: Record<string, MessageKey> = {
 	ask_user: "tools.askUser",
 	// 侧边聊天翻主对话用的那一个——它的工具组从前一律读作「使用工具 3 个」。
 	read_main_chat: "tools.readMainChat",
-	// The desktop's session-level tools (`electron/session-ops.ts`): the card says the rest, the row says what happened.
+	// The desktop's session-level tools (`electron/session/session-ops.ts`): the card says the rest, the row says what happened.
 	spawn_session: "tools.spawnSession",
 	archive_session: "tools.archiveSession",
 	/*
-	 * 内置浏览器那几个（`electron/browser-tools.ts`）。它们没有 `summarize`，core 给的摘要就是工具名本身，
+	 * 内置浏览器那几个（`electron/browser/browser-tools.ts`）。它们没有 `summarize`，core 给的摘要就是工具名本身，
 	 * 不在表里时一行读作「browser_act」。
 	 */
 	browser_open: "tools.browserOpen",
@@ -95,7 +95,7 @@ const KIND: Record<string, MessageKey> = {
 	browser_tabs: "tools.browserTabs",
 	browser_viewport: "tools.browserViewport",
 	browser_screenshot: "tools.browserScreenshot",
-	// 会话之间那四个（`electron/peer-tools.ts`），见 `PEER_TOOLS`。
+	// 会话之间那四个（`electron/peer/peer-tools.ts`），见 `PEER_TOOLS`。
 	list_sessions: "tools.listSessions",
 	ask_session: "tools.askSession",
 	notify_session: "tools.notifySession",

@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, beforeEach, mock, test } from "node:test";
 
-import { githubRepo, readmeFor } from "../electron/plugin-readme.ts";
+import { githubRepo, readmeFor } from "../electron/plugins/plugin-readme.ts";
 
 const PLATFORM = "https://market.test/v1/index";
 let home = "";

@@ -18,8 +18,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { after, before, test } from "node:test";
-import { collectWorkspaceDiff } from "../electron/git-diff.ts";
-import { diffRefs } from "../electron/git-history.ts";
+import { collectWorkspaceDiff } from "../electron/git/git-diff.ts";
+import { diffRefs } from "../electron/git/git-history.ts";
 
 const exec = promisify(execFile);
 

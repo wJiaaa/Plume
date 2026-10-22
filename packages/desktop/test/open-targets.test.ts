@@ -8,7 +8,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CANDIDATES, resolveTargetId, revealLabel } from "../electron/open-target-ids.ts";
+import { CANDIDATES, resolveTargetId, revealLabel } from "../electron/open-targets/open-target-ids.ts";
 
 test("nothing stored is revealing, which every platform can do", () => {
 	assert.equal(resolveTargetId(undefined), "reveal");

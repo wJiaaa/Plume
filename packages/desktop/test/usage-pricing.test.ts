@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { priceUsage, usagePricingKey } from "../electron/usage-pricing.ts";
+import { priceUsage, usagePricingKey } from "../electron/usage/usage-pricing.ts";
 import { DEFAULT_SETTINGS, type Settings } from "@plume/core";
 
 const usage = { input: 1_000_000, output: 1_000_000, cacheRead: 1_000_000, cacheWrite: 1_000_000 };

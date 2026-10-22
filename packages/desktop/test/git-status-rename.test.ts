@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { after, test } from "node:test";
 
-import { gitStatus, workspaceStat } from "../electron/git-status.ts";
+import { gitStatus, workspaceStat } from "../electron/git/git-status.ts";
 
 const execFileAsync = promisify(execFile);
 const roots: string[] = [];

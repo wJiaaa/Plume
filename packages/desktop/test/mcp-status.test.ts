@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { McpServerConfig, McpServerStatus } from "@plume/core";
-import { mcpStatusFor } from "../electron/mcp-probe.ts";
+import { mcpStatusFor } from "../electron/capabilities/mcp-probe.ts";
 
 const server: McpServerConfig = { id: "s", name: "S", transport: "http", url: "http://127.0.0.1:9/mcp", enabled: true };
 const status = (state: McpServerStatus["state"], extra: Partial<McpServerStatus> = {}): McpServerStatus => ({ id: "s", name: "S", transport: "http", state, ...extra });

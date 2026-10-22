@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, it, mock } from "node:test";
 import { emptyUsage, SessionStore, type AssistantMessage, type ToolResultMessage } from "@plume/core";
-import { scanActivity } from "../electron/usage-activity.ts";
+import { scanActivity } from "../electron/usage/usage-activity.ts";
 import { activityTotals, timeSegments, type ActivityTotals } from "../src/features/settings/usage-activity.ts";
 import { formatDuration } from "../src/features/settings/usage-format.ts";
 

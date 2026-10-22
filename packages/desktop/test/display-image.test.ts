@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { spawnSync } from "node:child_process";
 import type { Message, SessionStorage } from "@plume/core";
-import { findUserImagesAt, loadUserImagesAt, readUserImagesAt } from "../electron/display-image.ts";
+import { findUserImagesAt, loadUserImagesAt, readUserImagesAt } from "../electron/session/display-image.ts";
 
 const photo = (data: string, timestamp: number): Message => ({
 	role: "user",
@@ -43,7 +43,7 @@ test("loadUserImagesAt prefers the live session and does not read the log", asyn
 
 test("a handled image read failure does not escape as an unhandled rejection and can be retried", () => {
 	// A child isolates Node's unhandled-rejection policy from the test runner's own listener.
-	const moduleUrl = new URL("../electron/display-image.ts", import.meta.url).href;
+	const moduleUrl = new URL("../electron/session/display-image.ts", import.meta.url).href;
 	const script = `
 		import assert from "node:assert/strict";
 		import { loadUserImagesAt } from ${JSON.stringify(moduleUrl)};

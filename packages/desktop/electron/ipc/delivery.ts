@@ -1,7 +1,7 @@
 import { ipcMain, type IpcMainInvokeEvent } from "electron";
 import type { SessionStorage } from "@plume/core";
-import { grantArtifactRead } from "../readable-artifacts.ts";
-import { sessionDelivery, undoDeliveryFile } from "../turn-delivery.ts";
+import { grantArtifactRead } from "../session/readable-artifacts.ts";
+import { sessionDelivery, undoDeliveryFile } from "../session/turn-delivery.ts";
 import { isAppWindowContents } from "../window.ts";
 export function registerDeliveryIpc(store: () => SessionStorage): void {
 	const trusted = (event: IpcMainInvokeEvent, id: unknown, at: unknown) => {

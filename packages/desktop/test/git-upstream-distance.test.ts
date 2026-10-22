@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { upstreamDistance } from "../electron/git-status.ts";
+import { upstreamDistance } from "../electron/git/git-status.ts";
 import { cleanUpFixtures, commitIn, fixture, sh } from "./helpers/worktree-fixture.ts";
 
 after(cleanUpFixtures);

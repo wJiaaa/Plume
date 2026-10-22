@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { after, before, mock, test } from "node:test";
 
-import { documentImage, remoteImage } from "../electron/avatars.ts";
+import { documentImage, remoteImage } from "../electron/images/avatars.ts";
 
 /** Answers the test has not released yet, by URL. */
 const held = new Map<string, () => void>();

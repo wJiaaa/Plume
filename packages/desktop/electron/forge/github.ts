@@ -10,14 +10,14 @@
  * appended.
  */
 
-import { parseUnifiedDiff } from "../diff-parse.ts";
+import { parseUnifiedDiff } from "./diff-parse.ts";
 import type {
 	PullRequestDetail,
 	PullRequestSummary,
 	ReviewVerdict,
 	WorkspaceDiffFile,
 } from "@plume/contract";
-import { BUCKETS, dedupe, parseSearch, PER_BUCKET, SEARCH_QUERY, toSummary } from "../pr-summary.ts";
+import { BUCKETS, dedupe, parseSearch, PER_BUCKET, SEARCH_QUERY, toSummary } from "./pr-summary.ts";
 import { nativeText } from "../i18n.ts";
 import { ForgeError } from "./errors.ts";
 import { DETAIL_QUERY, type DetailNode, toDetail } from "./github-gql.ts";

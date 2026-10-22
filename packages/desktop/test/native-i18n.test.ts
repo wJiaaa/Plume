@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { NATIVE_CATALOGS, nativeText, nativeTranslator, resolveNativeLocale, setInterfaceLocaleSource, type NativeLocale } from "../electron/i18n.ts";
-import { trayMenu } from "../electron/tray-menu.ts";
+import { trayMenu } from "../electron/app/tray-menu.ts";
 
 /** The `{name}` slots a message fills in, so a translation cannot drop or rename one. */
 const slots = (text: string) => [...new Set([...text.matchAll(/\{([^}]+)\}/g)].map((match) => match[1]))].sort();

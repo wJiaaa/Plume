@@ -18,8 +18,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { after, before, test } from "node:test";
-import { readBlobs } from "../electron/git-blobs.ts";
-import { MAX_BLOB_BYTES } from "../electron/git-exec.ts";
+import { readBlobs } from "../electron/git/git-blobs.ts";
+import { MAX_BLOB_BYTES } from "../electron/git/git-exec.ts";
 
 const exec = promisify(execFile);
 

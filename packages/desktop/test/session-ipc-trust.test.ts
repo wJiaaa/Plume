@@ -21,7 +21,7 @@ export const stopSessionService = () => ({ ok: true });
 export const readSessionServiceOutput = async () => null;
 `)}`;
 const sources = new Set(["delivery", "running-services"].map(name => new URL(`../electron/ipc/${name}.ts`, import.meta.url).href));
-const replacements = new Set(["electron", "../window.ts", "../readable-artifacts.ts", "../turn-delivery.ts", "../session-services.ts"]);
+const replacements = new Set(["electron", "../window.ts", "../session/readable-artifacts.ts", "../session/turn-delivery.ts", "../session/session-services.ts"]);
 const hooks = registerHooks({
 	resolve(specifier, context, nextResolve) {
 		if (context.parentURL && sources.has(context.parentURL) && replacements.has(specifier)) return { url: fixtureUrl, shortCircuit: true };

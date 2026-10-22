@@ -1,4 +1,4 @@
-// macOS 截图快照的常驻取屏小程序。主进程在 `electron/screen-capture-helper.ts` 里拉起它。
+// macOS 截图快照的常驻取屏小程序。主进程在 `electron/screenshot/screen-capture-helper.ts` 里拉起它。
 //
 // 为什么不用 Electron 的 desktopCapturer：它走 ScreenCaptureKit 的内容过滤器
 // （SCContentFilter(display:excludingWindows:)），拍出来的整屏**没有窗口阴影**，连窗口那圈 1px

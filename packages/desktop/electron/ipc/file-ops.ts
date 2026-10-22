@@ -14,7 +14,7 @@
 import { ipcMain, shell } from "electron";
 import { cp, mkdir, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { isDescendant, uniqueName, validateName } from "../file-ops.ts";
+import { isDescendant, uniqueName, validateName } from "../files/file-ops.ts";
 import { nativeText } from "../i18n.ts";
 import type { FileOpResult } from "@plume/contract";
 

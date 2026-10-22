@@ -10,7 +10,7 @@ import { existsSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { bringBackWorktree, reclaimWorktree, restoreWorktree, worktreeRootOf, worktreeState } from "../electron/worktree-lifecycle.ts";
+import { bringBackWorktree, reclaimWorktree, restoreWorktree, worktreeRootOf, worktreeState } from "../electron/git/worktree-lifecycle.ts";
 import { cleanUpFixtures, commitIn, fixture, sh } from "./helpers/worktree-fixture.ts";
 
 after(cleanUpFixtures);

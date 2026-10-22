@@ -14,14 +14,14 @@ import { homedir } from "node:os";
 import { dirname, join, relative, sep } from "node:path";
 import type { RegistryEntry, Settings, Skill } from "@plume/core";
 import { collectSkills, commandEnv, disabledSkillMatcher, plumeHome, installEntry, loadPlugins, readInstalls, uninstallEntry } from "@plume/core";
-import { mcpStatusFor } from "../mcp-probe.ts";
-import { remoteImage } from "../avatars.ts";
-import { diskImageStore, type ImageStore } from "../image-cache.ts";
-import { readRegistry, withBundle } from "../plugin-index.ts";
-import { readmeFor, type ReadmeQuery } from "../plugin-readme.ts";
-import { startPluginUpdates } from "../plugin-updates.ts";
-import { dropShared } from "../registry-icons.ts";
-import { sessions } from "../session-hub.ts";
+import { mcpStatusFor } from "../capabilities/mcp-probe.ts";
+import { remoteImage } from "../images/avatars.ts";
+import { diskImageStore, type ImageStore } from "../images/image-cache.ts";
+import { readRegistry, withBundle } from "../plugins/plugin-index.ts";
+import { readmeFor, type ReadmeQuery } from "../plugins/plugin-readme.ts";
+import { startPluginUpdates } from "../plugins/plugin-updates.ts";
+import { dropShared } from "../plugins/registry-icons.ts";
+import { sessions } from "../session/session-hub.ts";
 import { releaseBundle, settingsAfterInstall, settingsAfterUninstall } from "./plugin-actions.ts";
 
 export interface PluginsIpcDeps {

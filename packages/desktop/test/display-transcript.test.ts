@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { DISPLAY_TEXT_CHARS, slimMessagesForDisplay, slimSnapshot } from "../electron/display-transcript.ts";
+import { DISPLAY_TEXT_CHARS, slimMessagesForDisplay, slimSnapshot } from "../electron/session/display-transcript.ts";
 import type { Message } from "@plume/core";
 
 test("oversized tool results are cut for display and small ones keep their identity", () => {

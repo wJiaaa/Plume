@@ -7,7 +7,7 @@ import { appendFile, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { readLogSlice } from "../electron/log-slice.ts";
+import { readLogSlice } from "../electron/session/log-slice.ts";
 
 async function log(content: string | Buffer) {
 	const dir = await mkdtemp(join(tmpdir(), "ly-log-slice-"));

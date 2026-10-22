@@ -12,7 +12,7 @@ import { after, test } from "node:test";
 import { DEFAULT_SETTINGS, type AgentSession, type ScheduledTask, type Settings } from "@plume/core";
 import { setInterfaceLocaleSource } from "../electron/i18n.ts";
 import type { SchedulerNotice } from "@plume/contract";
-import { Scheduler } from "../electron/scheduler.ts";
+import { Scheduler } from "../electron/session/scheduler.ts";
 
 // The notices are read in English; the main process reads the interface language from the settings.
 setInterfaceLocaleSource(() => "en");

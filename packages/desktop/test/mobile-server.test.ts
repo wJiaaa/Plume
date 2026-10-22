@@ -3,7 +3,7 @@ import { once } from "node:events";
 import { test } from "node:test";
 import { WebSocket } from "ws";
 import { RemoteClient } from "@plume/client-runtime";
-import { MobileServer } from "../electron/mobile-server.ts";
+import { MobileServer } from "../electron/mobile/mobile-server.ts";
 
 test("手机通道鉴权、RPC 白名单、实时事件和断线恢复", async (context) => {
 	const calls: string[] = [];

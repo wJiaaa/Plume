@@ -11,7 +11,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { parseNameHasOwner, probeStatusNotifierHost, trayVisible } from "../electron/tray-host.ts";
+import { parseNameHasOwner, probeStatusNotifierHost, trayVisible } from "../electron/app/tray-host.ts";
 
 test("dbus-send's reply and gdbus's are both understood", () => {
 	const dbusSend = "method return time=1726996722.1 sender=org.freedesktop.DBus -> destination=:1.99 serial=3 reply_serial=2\n   boolean true\n";

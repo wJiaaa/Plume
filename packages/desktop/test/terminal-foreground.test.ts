@@ -5,8 +5,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { foregroundOf, watchForeground } from "../electron/terminal-foreground.ts";
-import { createTerminalRegistry, type LiveTerminal } from "../electron/terminal-registry.ts";
+import { foregroundOf, watchForeground } from "../electron/terminal/terminal-foreground.ts";
+import { createTerminalRegistry, type LiveTerminal } from "../electron/terminal/terminal-registry.ts";
 
 test("the shell itself is not a running program, however it is spelled", () => {
 	assert.equal(foregroundOf({ process: "zsh" }, "/bin/zsh"), null);

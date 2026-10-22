@@ -17,10 +17,10 @@
 import { ipcMain } from "electron";
 import type { SessionStorage } from "@plume/core";
 import { settings } from "../app-settings.ts";
-import { deleteIdleSessions } from "../session-hub.ts";
+import { deleteIdleSessions } from "../session/session-hub.ts";
 import type { ClearRange, UsageScan } from "@plume/contract";
-import { clearSessions, storageUse } from "../session-cleanup.ts";
-import { scanUsage } from "../usage-scan.ts";
+import { clearSessions, storageUse } from "../session/session-cleanup.ts";
+import { scanUsage } from "../usage/usage-scan.ts";
 
 let inFlight: Promise<UsageScan> | null = null;
 

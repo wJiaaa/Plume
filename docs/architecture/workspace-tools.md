@@ -44,7 +44,7 @@ confirm 与离开提示默认取消、调用带 `dialog: "accept"` 才确认，�
 的主 frame；guest 必须确实归属于发送 attach 的窗口。主进程同时校验 URL、命令、缩放和尺寸。
 普通网页只允许 http/https，另支持 `ly-preview` 与用户新标签页的 `about:blank`。
 本地 HTML（`file://`、绝对路径，`browser_open` 另收工作区相对路径）不交给页面加载：主进程把这一个文件
-拷进预览目录，再按 `ly-preview` 打开（`electron/local-page.ts`）。不用起服务，会话在页面就在。同一个文件
+拷进预览目录，再按 `ly-preview` 打开（`electron/browser/local-page.ts`）。不用起服务，会话在页面就在。同一个文件
 只有一份副本、地址固定，改了以后再打开一次就是新内容；只拷这一个文件。Agent 传的路径与 `read` 走同一道
 读取判定。
 

@@ -9,11 +9,11 @@ import { access, mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { plumeHome } from "@plume/core";
 import { app, clipboard, ipcMain, nativeImage, shell } from "electron";
-import { documentImage } from "../avatars.ts";
-import { writeClipboardImage } from "../clipboard-image.ts";
-import { openExternalSafely } from "../window-security.ts";
+import { documentImage } from "../images/avatars.ts";
+import { writeClipboardImage } from "../screenshot/clipboard-image.ts";
+import { openExternalSafely } from "../app/window-security.ts";
 import type { OpenTarget } from "@plume/contract";
-import { openTargets, openWith } from "../open-targets.ts";
+import { openTargets, openWith } from "../open-targets/open-targets.ts";
 
 export function registerSystemIpc(): void {
 	ipcMain.handle("system:openPath", async (_event, path: string) => void shell.openPath(path));

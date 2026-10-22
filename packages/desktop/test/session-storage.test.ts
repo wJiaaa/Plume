@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { SessionStore } from "@plume/core";
-import { observeSessionStorage } from "../electron/session-storage.ts";
+import { observeSessionStorage } from "../electron/session/session-storage.ts";
 import type { SessionChange } from "@plume/contract";
-import { readTrajectoryChanges } from "../electron/trajectory-changes.ts";
+import { readTrajectoryChanges } from "../electron/session/trajectory-changes.ts";
 
 test("committed cold-session changes notify every persistence path without broadcasting tokens", async () => {
 	const root = await mkdtemp(join(tmpdir(), "plume-session-sync-"));

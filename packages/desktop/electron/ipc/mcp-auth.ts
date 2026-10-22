@@ -9,9 +9,9 @@
 import { forgetTokens, loginMcpServer, usesOAuth, type McpServerConfig } from "@plume/core";
 import { ipcMain } from "electron";
 import { settings } from "../app-settings.ts";
-import { forgetProbe } from "../mcp-probe.ts";
-import { sessions } from "../session-hub.ts";
-import { openExternalSafely } from "../window-security.ts";
+import { forgetProbe } from "../capabilities/mcp-probe.ts";
+import { sessions } from "../session/session-hub.ts";
+import { openExternalSafely } from "../app/window-security.ts";
 
 type Outcome = { ok: true } | { ok: false; error: string };
 

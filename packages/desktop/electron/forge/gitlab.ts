@@ -19,9 +19,9 @@ import type {
 	ReviewVerdict,
 	WorkspaceDiffFile,
 } from "@plume/contract";
-import { parseUnifiedDiff } from "../diff-parse.ts";
+import { parseUnifiedDiff } from "./diff-parse.ts";
 import { nativeText } from "../i18n.ts";
-import type { Relation } from "../pr-summary.ts";
+import type { Relation } from "./pr-summary.ts";
 import { assembleDiff } from "./patch.ts";
 import { DIFF_TIMEOUT_MS, json } from "./http.ts";
 import type { ForgeConnection, ForgeDriver, ForgeIdentity } from "./types.ts";

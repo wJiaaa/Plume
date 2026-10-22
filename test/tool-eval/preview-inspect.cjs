@@ -1,5 +1,5 @@
 /*
- * preview-eval 的检查窗口：照 electron/preview-inspect.ts 的做法，在离屏窗口里载入一页，
+ * preview-eval 的检查窗口：照 electron/preview/preview-inspect.ts 的做法，在离屏窗口里载入一页，
  * 回报未捕获异常、其他控制台报错、高度和整页截图（JSON 打到 stdout）。
  *
  *   electron test/tool-eval/preview-inspect.cjs <页面目录> <入口> <宽度> <要不要截图 0|1>
@@ -57,7 +57,7 @@ app.whenReady().then(async () => {
 	await Promise.race([contents.loadURL(pathToFileURL(copy).href).catch(() => {}), pause(6000)]);
 	await pause(700);
 	const height = await contents
-		// 产品的 MEASURE_HEIGHT（electron/preview-protocol.ts）：那个文件引了 electron 的值，这里没法直接 import。
+		// 产品的 MEASURE_HEIGHT（electron/preview/preview-protocol.ts）：那个文件引了 electron 的值，这里没法直接 import。
 		.executeJavaScript(`Math.ceil((${MEASURE_HEIGHT})()) + 2`, true)
 		.catch(() => undefined);
 	const result = { exceptions, errors, ...(typeof height === "number" ? { height, limit: LIMIT } : {}) };

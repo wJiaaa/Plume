@@ -61,6 +61,40 @@ src/
 
 前两条由 `pnpm arch` 与 oxlint 强制。
 
+## 主进程的域
+
+`electron/` 也按域分目录。域按依赖和职责划，不按文件名前缀：`session-peers.ts` 在 `peer/`，
+`diff-parse.ts` 只有 forge 用，就在 `forge/`。
+
+```
+electron/
+├── main.ts preload.ts window.ts sandbox-runner.ts   入口与装配
+├── i18n.ts app-settings.ts path-key.ts find-executable.ts   谁都能用的
+├── ipc/           每个域一份 IPC 注册，和 main.ts 一样是装配层
+├── app/           应用外壳：菜单、托盘、深链、常亮、系统通知、窗口安全与状态、随包资源在哪
+├── browser/       内置浏览器：工作区、给模型的工具、对话框、本地页面
+├── capabilities/  命令目录、MCP 探测、定义文件删除、skill 列出的可读文件
+├── files/         文件面板：路径边界、读、定位、消息附件的读取放行、表格类文档
+├── forge/         代码托管平台：账号、PR、评审、Release 用的请求
+├── git/           Git 与会话工作树
+├── images/        网络图片：头像与磁盘缓存
+├── mobile/        手机直连：服务、中转、RPC
+├── models/        模型服务商的连通测试
+├── open-targets/  「在…中打开」：编辑器、终端与它们的图标
+├── peer/          会话之间互相发消息
+├── plugins/       插件市场：索引、说明、更新、图标
+├── preview/       `ly-media`/`ly-preview` 协议、缩略图、分段读取、生成页自检
+├── screenshot/    截图、钉图、快捷键与 macOS 取屏小程序
+├── session/       会话：活着的会话表、建会话、转录、交付、摘要、定时任务、会话里跑着的服务
+├── terminal/      终端：pty、环境、前台进程
+├── update/        应用内更新：校验、安装
+└── usage/         用量页：扫描、价格、缓存
+```
+
+域与域之间只经对方的 `index.ts`，index 只列别的域真在用的（「边界」第 12 条）。`ipc/`、`main.ts`、
+`window.ts` 是装配层，直接引各域的文件，和渲染进程的壳一样。新文件放哪：只有一个域用，放那个域；
+几个域都用、又不属于其中哪一个，放根目录。
+
 ## core 的 runtime
 
 `packages/core/src/runtime/` 是驱动 agent 循环的那一层。它按职责分组，组与组之间从上往下引，
@@ -108,6 +142,9 @@ pre-push 里都是必过项：
    token 估算在 `tokens.ts`。类型也算——从 `runtime/` 拿一个类型，下一次就是拿一个值。
 11. **`runtime/` 内部只往下引。** 会话驱动在最上面，子代理与侧聊、记录、装配、叶子依次往下，
    见上一节「core 的 runtime」。
+12. **主进程的域之间只经对方的 `index.ts`。** 和渲染进程 `features/` 是同一条正门：index 是一个域对外的
+   承诺，没列进去的文件可以随意改名、挪动。`ipc/`、`main.ts`、`window.ts` 是装配层，不在此列；类型也算。
+   见「主进程的域」。
 
 循环依赖是 error，垫着一份已有的 21 条的基线（`.dependency-cruiser-known-violations.json`，
 连同第 8 条那两处有理由的破例共 23 条）：新加一条会让 `pnpm arch` 变红，已有那些照旧通过。
@@ -125,7 +162,7 @@ pre-push 里都是必过项：
 
 | 想做的 | 去 |
 | --- | --- |
-| 加一个 IPC | `packages/contract/src/methods.ts` 登记 channel，签名与载荷类型写进 `contract/src/` 里对应主题的文件（`api.ts` 把各组拼成 `PlumeApi`）→ `electron/ipc/<域>.ts` 注册 → `electron/preload.ts` 暴露；契约的测试会检查三处一致。手机默认调不到；要开放就加进 `contract/src/mobile.ts` 的 `MOBILE_METHODS` 并在 `electron/mobile-rpc.ts` 实现 |
+| 加一个 IPC | `packages/contract/src/methods.ts` 登记 channel，签名与载荷类型写进 `contract/src/` 里对应主题的文件（`api.ts` 把各组拼成 `PlumeApi`）→ `electron/ipc/<域>.ts` 注册 → `electron/preload.ts` 暴露；契约的测试会检查三处一致。手机默认调不到；要开放就加进 `contract/src/mobile.ts` 的 `MOBILE_METHODS` 并在 `electron/mobile/mobile-rpc.ts` 实现 |
 | 加一个内置工具 | `core/src/tools/`，登记进 `tools/groups.ts` 的分组；漏登记 `test/tool-registry.test.ts` 会红 |
 | 加一个右侧面板 | `src/app/panels.tsx` 的 `BUILTIN_PANELS` 加一条；类型在 `features/dock/panels/registry.ts` |
 | 维护模型价格、能力和中转别名 | `core/src/model-catalog.ts` 与 `scripts/update-model-catalog.mjs`；`pnpm catalog:update` 更新离线数据 |
@@ -136,6 +173,7 @@ pre-push 里都是必过项：
 | 改设计 token | `src/styles.css` 的 `@theme` 段 |
 | 加一个基础组件 | `src/ui/<组>/`，配一条 `test/ui/` 的测试 |
 | 加一个功能 | `src/features/<域>/`；跨域只经对方的 index |
+| 主进程那一半 | `electron/<域>/`；跨域只经对方的 index，IPC 在 `electron/ipc/<域>.ts` 注册 |
 | 调主进程 | `import { bridge } from "@/services"` |
 | 判断命令危不危险 | `core/src/tools/risk*.ts` |
 | 发版 | `pnpm release patch` |

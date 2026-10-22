@@ -40,10 +40,10 @@ const fixture: {
 	protocols: Map<string, (request: Request) => Promise<Response>>;
 } = await import(fixtureUrl);
 const { registerFilesIpc } = await import("../electron/ipc/files.ts");
-const { registerPreviewProtocols } = await import("../electron/preview-protocol.ts");
-const { attachmentFile, linkedPaths, noteTranscriptFiles } = await import("../electron/attachment-reads.ts");
-const { slimSnapshot } = await import("../electron/display-transcript.ts");
-const { promptOptions } = await import("../electron/prompt-input.ts");
+const { registerPreviewProtocols } = await import("../electron/preview/preview-protocol.ts");
+const { attachmentFile, linkedPaths, noteTranscriptFiles } = await import("../electron/files/attachment-reads.ts");
+const { slimSnapshot } = await import("../electron/session/display-transcript.ts");
+const { promptOptions } = await import("../electron/session/prompt-input.ts");
 hooks.deregister();
 
 const root = await mkdtemp(join(tmpdir(), "plume-attachment-reads-"));

@@ -20,7 +20,7 @@ const hooks = registerHooks({
 		return nextResolve(specifier, context);
 	},
 });
-const { withPreviewBridge } = await import("../electron/preview-protocol.ts");
+const { withPreviewBridge } = await import("../electron/preview/preview-protocol.ts");
 hooks.deregister();
 
 test("注入不改动页面自己的 head 标签，哪怕里面有 $ 序列", () => {

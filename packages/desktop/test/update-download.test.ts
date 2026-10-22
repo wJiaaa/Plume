@@ -25,7 +25,7 @@ import type { AddressInfo } from "node:net";
 
 import { describe, DownloadError, downloadDir, partialPath, resumePlan, staleDownloads, sweepDownloads, UpdateDownload, type DownloadPhase } from "../electron/ipc/update-download.ts";
 import { NATIVE_CATALOGS, nativeText, setInterfaceLocaleSource, type NativeLocale } from "../electron/i18n.ts";
-import { verify } from "../electron/update-checksum.ts";
+import { verify } from "../electron/update/update-checksum.ts";
 
 /** The payload every test downloads: big enough to arrive in several chunks, small enough to be quick. */
 const BODY = Buffer.from(Array.from({ length: 200_000 }, (_, i) => i % 251));

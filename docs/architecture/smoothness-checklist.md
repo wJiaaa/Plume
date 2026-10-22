@@ -53,7 +53,7 @@
 
 **判据**：一屏图片进入视口时，主进程最慢 IPC 往返 < 16ms。
 
-**现状**：✅ 已修。缩略图落盘缓存（`electron/media-thumbs.ts`）。
+**现状**：✅ 已修。缩略图落盘缓存（`electron/preview/media-thumbs.ts`）。
 
   同一张图、新地址：286ms / 主进程哑 91ms  →  8ms / 0ms
 

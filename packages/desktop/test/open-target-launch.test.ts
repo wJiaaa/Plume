@@ -11,7 +11,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { CANDIDATES, type Candidate, launchPlan } from "../electron/open-target-ids.ts";
+import { CANDIDATES, type Candidate, launchPlan } from "../electron/open-targets/open-target-ids.ts";
 
 const candidate = (platform: string, id: string): Candidate => {
 	const found = CANDIDATES[platform]?.find((entry) => entry.id === id);

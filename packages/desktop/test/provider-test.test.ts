@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { USER_AGENT, type ApiFormat, type ModelConfig, type ProviderConfig } from "@plume/core";
-import { fetchEndpointModels, testProvider } from "../electron/providers.ts";
+import { fetchEndpointModels, testProvider } from "../electron/models/providers.ts";
 
 const frame = (type: string, rest: Record<string, unknown> = {}) => `event: ${type}\ndata: ${JSON.stringify({ type, ...rest })}\n\n`;
 const chunk = (delta: Record<string, unknown>, finish: string | null = null) =>

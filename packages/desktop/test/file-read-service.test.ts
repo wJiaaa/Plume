@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { listReadableFiles, readReadableFile, resolveReadablePath } from "../electron/file-read-service.ts";
+import { listReadableFiles, readReadableFile, resolveReadablePath } from "../electron/files/file-read-service.ts";
 
 test("file reads stay read-only and share the desktop text rules", async () => {
 	const root = await mkdtemp(join(tmpdir(), "plume-file-read-"));

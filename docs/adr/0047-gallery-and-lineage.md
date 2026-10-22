@@ -6,7 +6,7 @@
   `tools/image.ts`（`sources`）、`session/store.ts`（`sessionsWithResultOf`）、`types/message.ts`（`ImageContent.from`）；
   desktop `electron/ipc/gallery.ts`、`src/features/gallery/`、`src/lib/lineage-tree.ts`、`src/lib/gallery-layout.ts`、
   `features/conversation/reveal.ts`、`features/composer/Composer.tsx`（`ComposerDraft.send`）、`features/sidebar/DestinationNav.tsx`（入口）、
-  `electron/prompt-input.ts`（`from` 的白名单）；测试 `core/test/image-lineage.test.ts`、`image-gallery.test.ts`、
+  `electron/session/prompt-input.ts`（`from` 的白名单）；测试 `core/test/image-lineage.test.ts`、`image-gallery.test.ts`、
   `desktop/test/lineage-tree.test.ts`、`gallery-layout.test.ts`、`test/ui/gallery.test.ts`；
   探针 `desktop/e2e/gallery-demo.ts`；指南 [生成图片 › 画廊](../guide/image-generation.md#画廊)
 

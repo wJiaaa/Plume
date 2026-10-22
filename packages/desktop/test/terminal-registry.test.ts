@@ -16,7 +16,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { NativeLocale } from "../electron/i18n.ts";
-import { createTerminalRegistry, type LiveTerminal } from "../electron/terminal-registry.ts";
+import { createTerminalRegistry, type LiveTerminal } from "../electron/terminal/terminal-registry.ts";
 
 interface FakePty {
 	pid: number;

@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseRemote, repoFromRemote } from "../electron/git-remote.ts";
+import { parseRemote, repoFromRemote } from "../electron/git/git-remote.ts";
 
 test("the two forms git hands out", () => {
 	assert.equal(repoFromRemote("git@github.com:kittors/plume.git"), "kittors/plume");

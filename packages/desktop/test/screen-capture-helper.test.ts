@@ -15,7 +15,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 
-import { HelperStream, helperSupported, screenCaptureHelperPath, type HelperMessage } from "../electron/screen-capture-helper.ts";
+import { HelperStream, helperSupported, screenCaptureHelperPath, type HelperMessage } from "../electron/screenshot/screen-capture-helper.ts";
 
 function frameBytes(id: number, width: number, height: number, fill: (i: number) => number): Buffer {
 	const pixels = Buffer.alloc(width * height * 4);

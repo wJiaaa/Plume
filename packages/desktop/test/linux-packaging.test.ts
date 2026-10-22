@@ -20,7 +20,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 
-import { appIconCandidates, dockIconCandidates } from "../electron/app-icon-path.ts";
+import { appIconCandidates, dockIconCandidates } from "../electron/app/app-icon-path.ts";
 
 const desktop = dirname(dirname(fileURLToPath(import.meta.url)));
 const pkg = JSON.parse(readFileSync(join(desktop, "package.json"), "utf8")) as { desktopName?: string };

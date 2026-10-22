@@ -102,7 +102,7 @@ provider 接口。provider 缓存由各适配器处理。
 `runtime/record/cache-diagnostics.ts` 的 `diagnoseCache` 对一条请求序列逐次算出本该命中而没命中的
 token 和多花的钱，用来验收上面这些前缀修复、并定位前缀在哪一次请求被打断。主会话与每个子代理
 各是一条序列，缓存前缀互不相干。`pnpm audit:sessions` 第 10 节在本机真实会话上汇总它；设置页
-「用量」的「缓存未命中」一节按页面上的区间和筛选汇总同样的结果：扫描器（`electron/usage-scan.ts`）
+「用量」的「缓存未命中」一节按页面上的区间和筛选汇总同样的结果：扫描器（`electron/usage/usage-scan.ts`）
 逐条推进 `diagnoseRequest`，结果同时记进按天和按小时的请求桶，每条序列的进度
 （`CacheDiagnosisState`）存进增量缓存，日志长了接着诊断。
 

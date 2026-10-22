@@ -1,0 +1,224 @@
+/**
+ * Is this provider reachable, and how quickly.
+ *
+ * A real request rather than a models listing: what the settings page is really asking is whether a
+ * conversation would work, and only a request shaped like a conversation's answers that.
+ */
+
+import type { ProviderTestResult } from "@plume/contract";
+import { USER_AGENT, generateImages, imageDimensions, isImageModel, sessionHeaders, streamAssistant, type AssistantMessage, type ModelConfig, type Settings, type StreamEvent, type ThinkingLevel } from "@plume/core";
+import { nativeText } from "../i18n.ts";
+
+type Provider = Settings["providers"][number];
+
+/** How long the first token may take before the test gives up. */
+const ANSWER_TIMEOUT_MS = 30_000;
+
+/**
+ * Where a provider lists its models: `/v1/models`, whether or not the base URL already ends in `/v1`.
+ */
+function modelsUrl(provider: Provider): string {
+	const base = provider.baseUrl.replace(/\/+$/, "");
+	return base.endsWith("/v1") ? `${base}/models` : `${base}/v1/models`;
+}
+
+/**
+ * Auth plus the session header the endpoint insists on, as the real requests send them. A listing
+ * has no session, so it gets a throwaway id — some endpoints refuse a request without one.
+ */
+function listingHeaders(provider: Provider): Record<string, string> {
+	return {
+		"user-agent": USER_AGENT,
+		...(provider.api === "anthropic-messages"
+			? { "x-api-key": provider.apiKey, "anthropic-version": "2023-06-01" }
+			: { authorization: `Bearer ${provider.apiKey}` }),
+		...sessionHeaders(provider.baseUrl, undefined),
+	};
+}
+
+/**
+ * Probe a provider: list its models when testing the provider as a whole (free, and many relays do
+ * not expose a listing, so a failure there is not fatal), then send one real request.
+ *
+ * `thinking` is the level a new conversation would use, so the request is the one a conversation
+ * would send — thinking parameters included, which is where Gemini behind Chat Completions used to fail.
+ */
+export async function testProvider(
+	provider: Provider,
+	targetModelId?: string,
+	thinking: ThinkingLevel = "off",
+): Promise<ProviderTestResult> {
+	const started = Date.now();
+
+	let models: string[] | undefined;
+	// Only fetch the full model catalogue if testing the provider as a whole (no specific model requested)
+	if (!targetModelId) {
+		try {
+			const listed = await fetch(modelsUrl(provider), {
+				headers: listingHeaders(provider),
+				signal: AbortSignal.timeout(15_000),
+			});
+			if (listed.ok) {
+				const body = (await listed.json()) as { data?: { id?: string }[] };
+				models = body.data?.map((m) => m.id ?? "").filter(Boolean).slice(0, 200);
+			}
+		} catch {
+			models = undefined;
+		}
+	}
+
+	// The provider as a whole is asked the way a conversation would ask it; a drawing is only for a model
+	// picked to test, since it is billed.
+	const model = targetModelId
+		? provider.models.find((m) => m.id === targetModelId || m.modelId === targetModelId)
+		: (provider.models.find((m) => !isImageModel(m)) ?? provider.models[0]);
+
+	if (!model) {
+		if (targetModelId) {
+			return { ok: false, latencyMs: Date.now() - started, message: nativeText("provider.modelNotFound") };
+		}
+		return models
+			? { ok: true, latencyMs: Date.now() - started, message: nativeText("provider.listed", { n: models.length }), models }
+			: { ok: false, latencyMs: Date.now() - started, message: nativeText("provider.needModel") };
+	}
+
+	if (isImageModel(model)) return drawOnce(provider, model);
+
+	const reply = await firstToken(provider, model, thinking);
+	return reply.ok
+		? { ok: true, latencyMs: reply.latencyMs, message: nativeText("provider.responded", { model: model.name || model.modelId }), models }
+		: { ok: false, latencyMs: reply.latencyMs, message: reply.message, models };
+}
+
+/** How long the test drawing may take; a picture is slower than a first token. */
+const DRAW_TIMEOUT_MS = 180_000;
+
+/**
+ * The same question for a model that draws: draw one small picture.
+ *
+ * A chat request is the wrong test here — the relays refuse an image model on chat outright — and the
+ * Images API has no free way to ask "would this work". So it is one real drawing at the model's
+ * defaults; the button says it is billed, and nothing is kept.
+ */
+async function drawOnce(provider: Provider, model: ModelConfig): Promise<ProviderTestResult> {
+	const started = Date.now();
+	try {
+		// 最低画质、只试一次：这是一次按张计费的测试，能不能画通看一次就够。
+		const result = await generateImages(
+			provider,
+			model,
+			{ prompt: "A single small red dot on a plain white background.", quality: "low" },
+			{ retryAttempts: 1, signal: AbortSignal.timeout(DRAW_TIMEOUT_MS) },
+		);
+		const bytes = Buffer.from(result.images[0]?.data ?? "", "base64");
+		const dims = imageDimensions(bytes);
+		const size = dims ? `${dims.width}×${dims.height}` : `${Math.max(1, Math.round(bytes.length / 1024))} KB`;
+		return { ok: true, latencyMs: Date.now() - started, message: nativeText("provider.drew", { model: model.name || model.modelId, size }) };
+	} catch (error) {
+		const failure = (error as { failure?: { summary?: string; detail?: string } }).failure;
+		const message = failure ? [failure.summary, failure.detail?.slice(0, 300)].filter(Boolean).join(" · ") : error instanceof Error ? error.message : String(error);
+		return { ok: false, latencyMs: Date.now() - started, message };
+	}
+}
+
+/** What counts as the endpoint having started to answer. Reasoning counts: it is a thinking model's first output. */
+const ANSWERED: ReadonlySet<StreamEvent["type"]> = new Set(["text_delta", "thinking_delta", "toolcall_start"]);
+
+/**
+ * Send one request the way a conversation would send it, and stop at the first token.
+ *
+ * Through the adapter rather than a hand-built body, because a hand-built body only proves that the
+ * hand-built body works. This used to post `/v1/responses` for every provider that was not Anthropic,
+ * so a Chat Completions endpoint failed its test while its conversations worked. The adapter is also the only thing that knows what an endpoint has
+ * already taught it (which tokens field, which parameters it refuses), so the test now fails exactly
+ * when a conversation would, and passes when one would.
+ *
+ * Stopping at the first token keeps the cost to a handful of tokens and makes the latency the number
+ * a person feels — how long until the reply starts. One attempt only: the retry policy is for a
+ * conversation that should survive a blip, and a test should report the blip.
+ */
+async function firstToken(
+	provider: Provider,
+	model: Provider["models"][number],
+	thinking: ThinkingLevel,
+): Promise<{ ok: true; latencyMs: number } | { ok: false; latencyMs: number; message: string }> {
+	const controller = new AbortController();
+	let timedOut = false;
+	const timer = setTimeout(() => {
+		timedOut = true;
+		controller.abort();
+	}, ANSWER_TIMEOUT_MS);
+	const started = Date.now();
+	let answeredAt: number | undefined;
+	let final: AssistantMessage | undefined;
+	try {
+		const stream = streamAssistant(
+			provider,
+			model,
+			{ systemPrompt: "", messages: [{ role: "user", content: [{ type: "text", text: "hi" }], timestamp: started }], tools: [] },
+			{ signal: controller.signal, thinking, retryAttempts: 1 },
+		);
+		// Drained to the end rather than abandoned, so the adapter unwinds through its own abort path.
+		for (;;) {
+			const next = await stream.next();
+			if (next.done) {
+				final = next.value;
+				break;
+			}
+			if (answeredAt === undefined && ANSWERED.has(next.value.type)) {
+				answeredAt = Date.now();
+				controller.abort();
+			}
+		}
+	} catch (error) {
+		return { ok: false, latencyMs: Date.now() - started, message: error instanceof Error ? error.message : String(error) };
+	} finally {
+		clearTimeout(timer);
+	}
+	if (answeredAt !== undefined) return { ok: true, latencyMs: answeredAt - started };
+	const latencyMs = Date.now() - started;
+	if (timedOut) return { ok: false, latencyMs, message: nativeText("provider.noAnswer", { seconds: ANSWER_TIMEOUT_MS / 1000 }) };
+	if (final && final.stopReason !== "error" && final.stopReason !== "aborted") return { ok: true, latencyMs };
+	return { ok: false, latencyMs, message: final?.errorMessage ?? final?.failure?.summary ?? nativeText("provider.noAnswer", { seconds: ANSWER_TIMEOUT_MS / 1000 }) };
+}
+
+/**
+ * Fetch available model list directly from the provider's /models endpoint.
+ */
+export async function fetchEndpointModels(
+	provider: Provider,
+): Promise<{ ok: boolean; models: string[]; error?: string }> {
+	try {
+		const res = await fetch(modelsUrl(provider), {
+			headers: listingHeaders(provider),
+			signal: AbortSignal.timeout(15_000),
+		});
+
+		if (!res.ok) {
+			const detail = (await res.text().catch(() => "")).slice(0, 200);
+			return { ok: false, models: [], error: `HTTP ${res.status}: ${detail || nativeText("provider.listFailed")}` };
+		}
+
+		const body = (await res.json()) as { data?: { id?: string }[] } | { models?: { id?: string; name?: string }[] } | string[];
+		let modelList: string[] = [];
+
+		if (Array.isArray(body)) {
+			modelList = body.filter((m): m is string => typeof m === "string");
+		} else if (body && "data" in body && Array.isArray(body.data)) {
+			modelList = body.data.map((m) => m.id ?? "").filter(Boolean);
+		} else if (body && "models" in body && Array.isArray(body.models)) {
+			modelList = body.models.map((m) => m.id ?? m.name ?? "").filter(Boolean);
+		}
+
+		// Sort models naturally
+		modelList.sort((a, b) => a.localeCompare(b));
+
+		return { ok: true, models: modelList };
+	} catch (error) {
+		return {
+			ok: false,
+			models: [],
+			error: error instanceof Error ? error.message : String(error),
+		};
+	}
+}

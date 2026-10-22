@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { COMMIT_LANGUAGE_PROSE, buildCommitPrompt, cleanCommitMessage } from "../electron/git-commit-message.ts";
+import { COMMIT_LANGUAGE_PROSE, buildCommitPrompt, cleanCommitMessage } from "../electron/git/git-commit-message.ts";
 import {
 	COMMIT_LANGUAGES,
 	DEFAULT_COMMIT_LANGUAGE,

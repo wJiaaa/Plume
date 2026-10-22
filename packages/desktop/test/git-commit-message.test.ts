@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { DEFAULT_SETTINGS, type AssistantMessage, type Settings, type StreamEvent } from "@plume/core";
-import { generateCommitMessage } from "../electron/git-commit-message.ts";
+import { generateCommitMessage } from "../electron/git/git-commit-message.ts";
 
 const usage = {
 	input: 0,

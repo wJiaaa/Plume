@@ -13,8 +13,8 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { lazyPty } from "../electron/pty-loader.ts";
-import { createTerminalRegistry, type LiveTerminal } from "../electron/terminal-registry.ts";
+import { lazyPty } from "../electron/terminal/pty-loader.ts";
+import { createTerminalRegistry, type LiveTerminal } from "../electron/terminal/terminal-registry.ts";
 
 const GLIBC = "/lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.34' not found (required by /opt/Plume/resources/app.asar.unpacked/node_modules/node-pty/build/Release/pty.node)";
 

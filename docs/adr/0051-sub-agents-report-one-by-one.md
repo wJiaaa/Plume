@@ -7,7 +7,7 @@
   `runtime/sub-agent/exit-cut.ts`、`runtime/sub-agent/sub-agent-restore.ts`（`cutByExit`）、
   `runtime/session.ts`（`idle`、`submit`、`revert`）、`runtime/session-deliveries.ts`（`outstanding`）、
   `runtime/turn-config.ts`（`spawnSubAgent`）、`tools/task.ts`；cli `src/run.ts`；desktop
-  `electron/notify.ts`、`electron/session-hub.ts`、`src/features/conversation/DeliveryRow.tsx`
+  `electron/app/notify.ts`、`electron/session/session-hub.ts`、`src/features/conversation/DeliveryRow.tsx`
 
 ## 背景
 

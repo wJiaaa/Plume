@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { advertisedEndpoints, descendants, parseLsof, parseSs, parseProcesses, parseWindowsListeners, serviceUrl } from "../electron/service-listeners.ts";
+import { advertisedEndpoints, descendants, parseLsof, parseSs, parseProcesses, parseWindowsListeners, serviceUrl } from "../electron/session/service-listeners.ts";
 import { browserUrl, parseBrowserCommand } from "../shared/browser.ts";
 test("POSIX listeners preserve IPv4/IPv6 and match only descendants of the owned process", () => {
 	const tree = parseProcesses(" 10 1\n20 10\n30 20\n40 1\n");

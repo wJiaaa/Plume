@@ -207,7 +207,7 @@ export function UserMessage({
    * 在右边的文件面板里打开一份发出去的文件——句子里那枚标记的左键，和它菜单里的「预览」，都是这一个。
    *
    * 项目外的也打得开：主进程认得转录里记下的附件路径，面板可以只读地读它们（见
-   * `electron/attachment-reads.ts`）。先问一句它还在不在：转录活得比文件久，挪走了的文件在面板里只是
+   * `electron/files/attachment-reads.ts`）。先问一句它还在不在：转录活得比文件久，挪走了的文件在面板里只是
    * 一句「无法读取」，而这里说得清是它不在原处了。
    *
    * 标签页叫它在磁盘上的名字，不叫句子里那枚标记的名字：面板按扩展名决定怎么画，`.md` 才渲染成文档。
@@ -221,7 +221,7 @@ export function UserMessage({
 
   /**
    * 这一份文件能不能在面板里预览，不论它在不在项目里——项目外附件的放行在桌面主进程里
-   * （`electron/attachment-reads.ts`）。
+   * （`electron/files/attachment-reads.ts`）。
    */
   const panelPreview = (file: { name: string; kind: FileKind; path?: string }) =>
     Boolean(file.path) && previewableInPanel(file.kind, file.name);
@@ -552,7 +552,7 @@ export function UserMessage({
                  * 面板。
                  *
                  * 文件这一半从前不给，理由是面板读不到项目外的东西，而附件绝大多数来自项目外。现在主进程
-                 * 认得消息里记下的附件路径（`electron/attachment-reads.ts`），面板只读地打得开它们——只要
+                 * 认得消息里记下的附件路径（`electron/files/attachment-reads.ts`），面板只读地打得开它们——只要
                  * 打开之后看得到的是它本身，见 `previewableInPanel`。
                  */
                 ...(markMenu.file.src

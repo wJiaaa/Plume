@@ -5,7 +5,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { bumpSemver, getRepoInfo } from "../electron/git-release.ts";
+import { bumpSemver, getRepoInfo } from "../electron/git/git-release.ts";
 
 const exec = promisify(execFile);
 

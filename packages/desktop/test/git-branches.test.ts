@@ -30,8 +30,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { after, before, test } from "node:test";
-import { listBranches, switchBranch } from "../electron/git.ts";
-import { createBranch, deleteBranch } from "../electron/git-history.ts";
+import { listBranches, switchBranch } from "../electron/git/git.ts";
+import { createBranch, deleteBranch } from "../electron/git/git-history.ts";
 
 const exec = promisify(execFile);
 

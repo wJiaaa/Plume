@@ -1,7 +1,7 @@
 import { ipcMain, shell } from "electron";
 import { AgentDefinitionStore, builtinTools, plumeHome, type AgentDefinitionSave } from "@plume/core";
 import { settings } from "../app-settings.ts";
-import { sessions } from "../session-hub.ts";
+import { sessions } from "../session/session-hub.ts";
 
 export function registerAgentDefinitionsIpc(): void {
 	const store = new AgentDefinitionStore(plumeHome());

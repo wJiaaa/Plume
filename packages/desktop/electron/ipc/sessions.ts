@@ -20,11 +20,11 @@ import {
 	type ThinkingLevel,
 	type UserContent,
 } from "@plume/core";
-import { grantArtifactRead } from "../readable-artifacts.ts";
-import { exportTrajectory, type TrajectoryExportFormat } from "../trajectory-export.ts";
-import { readTrajectoryChanges } from "../trajectory-changes.ts";
+import { grantArtifactRead } from "../session/readable-artifacts.ts";
+import { exportTrajectory, type TrajectoryExportFormat } from "../session/trajectory-export.ts";
+import { readTrajectoryChanges } from "../session/trajectory-changes.ts";
 import { ipcMain } from "electron";
-import { resolveSessionApproval } from "../approval-response.ts";
+import { resolveSessionApproval } from "../session/approval-response.ts";
 import type { AgentCapabilities, PlumeApi } from "@plume/contract";
 import {
 	editSessionMessage,
@@ -42,11 +42,11 @@ import {
 	snapshot,
 	touchSession,
 	worktreeFollowsArchive,
-} from "../session-hub.ts";
-import { slimSnapshot } from "../display-transcript.ts";
-import { readSummary, summarize } from "../session-summary.ts";
-import { steerDisplay } from "../prompt-input.ts";
-import { ownWorkspace } from "../scratch.ts";
+} from "../session/session-hub.ts";
+import { slimSnapshot } from "../session/display-transcript.ts";
+import { readSummary, summarize } from "../session/session-summary.ts";
+import { steerDisplay } from "../session/prompt-input.ts";
+import { ownWorkspace } from "../session/scratch.ts";
 
 export interface SessionsIpcDeps {
 	store(): SessionStorage;

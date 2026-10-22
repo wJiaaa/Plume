@@ -1,7 +1,7 @@
 /**
  * 一段话的会话摘要。
  *
- * 这里不决定什么时候生成：主进程在每轮结束、静下来一分钟后自己去要（`electron/session-summary.ts`
+ * 这里不决定什么时候生成：主进程在每轮结束、静下来一分钟后自己去要（`electron/session/session-summary.ts`
  * 的 `summarizeAfterTurn`），卡片只读存着的那份、听它推来的新一份。原先由这里掐表去要，点开一个
  * 早就停下的旧会话就立刻花一次。
  *

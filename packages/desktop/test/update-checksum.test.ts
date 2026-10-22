@@ -16,7 +16,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { parseChecksums, sha256, verify } from "../electron/update-checksum.ts";
+import { parseChecksums, sha256, verify } from "../electron/update/update-checksum.ts";
 import { setInterfaceLocaleSource } from "../electron/i18n.ts";
 
 const A = "a".repeat(64);

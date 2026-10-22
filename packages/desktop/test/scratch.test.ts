@@ -13,7 +13,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
-import { ensureSessionWorkspace, generalScratchDir, ownWorkspace, prChatSlug, prScratchDir } from "../electron/scratch.ts";
+import { ensureSessionWorkspace, generalScratchDir, ownWorkspace, prChatSlug, prScratchDir } from "../electron/session/scratch.ts";
 
 test("owner/name becomes one path component", () => {
 	const slug = prChatSlug("kittors/plume", 42);

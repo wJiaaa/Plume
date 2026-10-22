@@ -10,7 +10,7 @@ import { ipcMain, shell } from "electron";
 import { readFile } from "node:fs/promises";
 import { computeDiff, settingsPath } from "@plume/core";
 import { applySettings, settings } from "../app-settings.ts";
-import { definitionTrashTarget } from "../definition-trash.ts";
+import { definitionTrashTarget } from "../capabilities/definition-trash.ts";
 
 type Kind = "skill";
 

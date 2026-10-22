@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { debInstallCommand, detectLinuxInstall, stageAppImage, stagedAppImagePath, swapAppImage } from "../electron/linux-install.ts";
+import { debInstallCommand, detectLinuxInstall, stageAppImage, stagedAppImagePath, swapAppImage } from "../electron/update/linux-install.ts";
 
 const nobody = async () => false;
 

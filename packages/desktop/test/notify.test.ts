@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 import type { AgentEvent, UiLocale } from "@plume/core";
 import { resolveNativeLocale, setInterfaceLocaleSource, type NativeLocale } from "../electron/i18n.ts";
-import { configureNotify, notifyNeedAssistance, notifyAgentEvent, notifyTaskDone, type NotificationInstance, type WindowLike } from "../electron/notify.ts";
+import { configureNotify, notifyNeedAssistance, notifyAgentEvent, notifyTaskDone, type NotificationInstance, type WindowLike } from "../electron/app/notify.ts";
 
 function mockWindow(overrides: Partial<WindowLike> = {}): WindowLike {
 	return {

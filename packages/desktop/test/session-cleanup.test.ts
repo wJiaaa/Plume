@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 import type { SessionMeta, SessionStorage } from "@plume/core";
-import { clearSessions, storageUse, withinRange } from "../electron/session-cleanup.ts";
+import { clearSessions, storageUse, withinRange } from "../electron/session/session-cleanup.ts";
 
 let index: SessionMeta[] = [];
 let sizes: Record<string, number> = {};

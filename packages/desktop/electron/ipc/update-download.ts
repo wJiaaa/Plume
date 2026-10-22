@@ -25,7 +25,7 @@ import { mkdir, open, readdir, rm, stat } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { renameWithRetry } from "@plume/core";
 import { nativeText } from "../i18n.ts";
-import { parseChecksums, sha256, verify, type Verdict } from "../update-checksum.ts";
+import { parseChecksums, sha256, verify, type Verdict } from "../update/update-checksum.ts";
 import type { UpdatePhase } from "@plume/contract";
 
 /** The window calls it `UpdatePhase`; see there for why it is one type under two names. */

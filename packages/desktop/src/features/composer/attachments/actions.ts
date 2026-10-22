@@ -36,7 +36,7 @@ interface OpenTargetOption extends ActionTarget {
 	 *
 	 * 面板的门只认已打开的项目，附件却多半来自项目外——所以默认只有项目里的文件点一下是预览，其余的
 	 * 退成「在访达中显示」。发出去的消息不一样：它带的文件，主进程认得（见
-	 * `electron/attachment-reads.ts`），面板可以只读地打开。由调用方说，因为只有它知道这一份是已经
+	 * `electron/files/attachment-reads.ts`），面板可以只读地打开。由调用方说，因为只有它知道这一份是已经
 	 * 发出去的记录，还是输入框里的草稿。
 	 */
 	panelReadable?: boolean;

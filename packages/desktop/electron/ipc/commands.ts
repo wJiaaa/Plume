@@ -11,11 +11,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { plumeHome, type McpPromptEntry, type UserContent } from "@plume/core";
 import { nativeText } from "../i18n.ts";
-import { registerReferenceFiles } from "../reference-files.ts";
+import { registerReferenceFiles } from "../capabilities/reference-files.ts";
 import { settings } from "../app-settings.ts";
-import { listCommands, type CommandsList } from "../commands-service.ts";
-import { probeMcp, withMcpServer } from "../mcp-probe.ts";
-import { ensureLiveSession, sessions } from "../session-hub.ts";
+import { listCommands, type CommandsList } from "../capabilities/commands-service.ts";
+import { probeMcp, withMcpServer } from "../capabilities/mcp-probe.ts";
+import { ensureLiveSession, sessions } from "../session/session-hub.ts";
 
 /** Where a newly created command goes, per scope. Only ours — nothing writes into `.claude`. */
 function directoryFor(scope: "workspace" | "user", cwd: string): string {

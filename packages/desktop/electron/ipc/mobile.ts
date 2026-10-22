@@ -1,5 +1,5 @@
 import { ipcMain } from "electron";
-import { mobileAccessStatus, rotateMobileToken, setMobileRelay, startMobileAccess, stopMobileAccess } from "../mobile-access.ts";
+import { mobileAccessStatus, rotateMobileToken, setMobileRelay, startMobileAccess, stopMobileAccess } from "../mobile/mobile-access.ts";
 
 export function registerMobileIpc(): void {
 	ipcMain.handle("mobile:status", () => mobileAccessStatus());

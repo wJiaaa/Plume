@@ -34,7 +34,7 @@ import { Button } from "../../ui/primitives/Button.tsx";
  * The shell is not owned here. It lives in the main process, and this connects to whichever one this
  * pane has selected — each terminal is its own tab of the dock, see `scope.ts`. So this component
  * mounting is not a terminal starting, and it unmounting is not one ending — see
- * `electron/terminal-registry.ts`.
+ * `electron/terminal/terminal-registry.ts`.
  *
  * Nor is it owned by the project. Everything in here used to be keyed by the current directory, so
  * changing projects tore the terminal down and built another, and leaving every project left the

@@ -1,12 +1,12 @@
 /**
  * 要求交回的建议会话：第一轮结束才交、只交一次，人停下的不交，出错的标成没跑完。规则在
- * `electron/session-report-back.ts`。
+ * `electron/session/session-report-back.ts`。
  */
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { AgentEvent, SessionMeta } from "@plume/core";
-import { reportBackAfterFirstTurn, type SessionReport } from "../electron/session-report-back.ts";
+import { reportBackAfterFirstTurn, type SessionReport } from "../electron/session/session-report-back.ts";
 
 const end = (reason: Extract<AgentEvent, { type: "agent_end" }>["reason"]): AgentEvent => ({ type: "agent_end", reason });
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));

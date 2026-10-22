@@ -2,11 +2,11 @@
 
 - 状态：已采纳
 - 日期：2026-10-14（移植自上游 kittors/Lyra main 的 ADR-0039，v0.9.27 之后）；2026-10-15 修订第 8 条，加第 9、10 条
-- 相关：desktop `electron/session-ops.ts`（两件工具与 `archiveAfterTurn`）、`shared/session-suggestion.ts`、
-  `electron/session-hub.ts`（注入与观察）、`electron/prompt-input.ts`、`electron/create-session.ts`、
+- 相关：desktop `electron/session/session-ops.ts`（两件工具与 `archiveAfterTurn`）、`shared/session-suggestion.ts`、
+  `electron/session/session-hub.ts`（注入与观察）、`electron/session/prompt-input.ts`、`electron/session/create-session.ts`、
   `src/store/turn-slice.ts`（`startSession`）、`src/store/session-suggestions.ts`、
   `src/features/environment/SuggestionsSection.tsx`、`src/features/conversation/SessionSuggestionCard.tsx`、
-  `electron/session-report-back.ts`、`src/features/conversation/DeliveryRow.tsx`、`src/lib/sidebar-grouping.ts`
+  `electron/session/session-report-back.ts`、`src/features/conversation/DeliveryRow.tsx`、`src/lib/sidebar-grouping.ts`
   （`nestSpawned`）、`src/features/sidebar/SessionRows.tsx`；core `session/types.ts`（`SessionMeta.spawnedFrom`）、
   `runtime/session-deliveries.ts`；测试 `desktop/test/session-ops.test.ts`、`desktop/test/session-report-back.test.ts`、
   `desktop/test/ui/session-suggestions.test.ts`、`core/test/session-report-delivery.test.ts`；指南 [内置能力 › 会话级操作](../guide/capabilities.md#会话级操作)；
@@ -19,7 +19,7 @@
 
 ## 决定
 
-1. **桌面端宿主工具，和会话间消息放在一起。** 两件工具写在 `electron/session-ops.ts`，由 `session-hub.ts` 经
+1. **桌面端宿主工具，和会话间消息放在一起。** 两件工具写在 `electron/session/session-ops.ts`，由 `session-hub.ts` 经
    `extraTools` 注入，和 `peer-tools.ts`（ADR-0040）同一条路；命令行不传，天然没有。上游把工厂放在 core，这里
    照本仓库已有的做法放在主进程：工具描述、宿主回调都只有桌面端用得上。
 

@@ -7,12 +7,12 @@
  */
 
 import { ipcMain } from "electron";
-import { avatarsFor } from "../avatars.ts";
-import { findLocalCheckout } from "../git-remote.ts";
-import { generalScratchDir, type PrBrief, prScratchDir, scratchRoots, writePrBrief } from "../scratch.ts";
-import { listBranches, switchBranch } from "../git.ts";
-import { collectWorkspaceDiff, readDiffBlob, type DiffBlob } from "../git-diff.ts";
-import { discardPaths, gitStatus, stagePaths, unstagePaths, upstreamDistance, workspaceStat } from "../git-status.ts";
+import { avatarsFor } from "../images/avatars.ts";
+import { findLocalCheckout } from "../git/git-remote.ts";
+import { generalScratchDir, type PrBrief, prScratchDir, scratchRoots, writePrBrief } from "../session/scratch.ts";
+import { listBranches, switchBranch } from "../git/git.ts";
+import { collectWorkspaceDiff, readDiffBlob, type DiffBlob } from "../git/git-diff.ts";
+import { discardPaths, gitStatus, stagePaths, unstagePaths, upstreamDistance, workspaceStat } from "../git/git-status.ts";
 import {
 	commitDiff,
 	commitDiffSummary,
@@ -26,9 +26,9 @@ import {
 	pushBranch,
 	FETCH_TIMEOUT_MS,
 	QUIET_FETCH_TIMEOUT_MS,
-} from "../git-history.ts";
-import { initRepo, listRepos, listWorktrees } from "../git-repos.ts";
-import { removeWorktree } from "../git-worktrees.ts";
+} from "../git/git-history.ts";
+import { initRepo, listRepos, listWorktrees } from "../git/git-repos.ts";
+import { removeWorktree } from "../git/git-worktrees.ts";
 import {
 	bumpVersionFiles,
 	getReleaseInfo,
@@ -36,8 +36,8 @@ import {
 	listWorkflowRuns,
 	publishReleaseTag,
 	triggerReleaseDryRun,
-} from "../git-release.ts";
-import { generateCommitMessage } from "../git-commit-message.ts";
+} from "../git/git-release.ts";
+import { generateCommitMessage } from "../git/git-commit-message.ts";
 import {
 	accounts,
 	commentOnPullRequest,
@@ -53,7 +53,7 @@ import {
 
 import type { ForgeKind, ReviewVerdict } from "@plume/contract";
 import { FORGE_KINDS } from "../forge/types.ts";
-import { RemoteCalls } from "../remote-calls.ts";
+import { RemoteCalls } from "../git/remote-calls.ts";
 import { nativeText } from "../i18n.ts";
 
 export interface GitIpcDeps {

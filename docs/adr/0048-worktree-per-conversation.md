@@ -3,8 +3,8 @@
 - 状态：已采纳
 - 日期：2026-10-14（移植自上游 kittors/Lyra main 的 ADR-0038，v0.9.27 之后）
 - 相关：core `session/types.ts`（`SessionMeta.worktree`）、`config/settings.ts`（`worktrees`）；desktop
-  `electron/create-session.ts`、`electron/prompt-input.ts`（`initialPrompt`）、`electron/git-worktrees.ts`
-  （`autoCreateSessionWorktree`）、`electron/session-hub.ts`、`electron/i18n.ts`（`worktree.notCreated`）、
+  `electron/session/create-session.ts`、`electron/session/prompt-input.ts`（`initialPrompt`）、`electron/git/git-worktrees.ts`
+  （`autoCreateSessionWorktree`）、`electron/session/session-hub.ts`、`electron/i18n.ts`（`worktree.notCreated`）、
   `src/ui/inputs/WorktreeToggle.tsx`、`src/features/conversation/SessionStatus.tsx`、`src/lib/session-home.ts`、
   `src/store/session-workspace.ts`、`src/lib/sidebar-grouping.ts`；测试 `test/git-worktrees.test.ts`、
   `test/create-session.test.ts`、`test/sidebar-grouping.test.ts`、`test/ui/worktree-toggle.test.ts`、

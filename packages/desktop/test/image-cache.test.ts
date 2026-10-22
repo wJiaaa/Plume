@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { diskImageStore } from "../electron/image-cache.ts";
+import { diskImageStore } from "../electron/images/image-cache.ts";
 
 const PICTURE = "data:image/webp;base64,UklGRg==";
 

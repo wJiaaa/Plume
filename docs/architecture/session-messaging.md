@@ -11,16 +11,16 @@
 - **目录要重叠。** 每个会话的目录 = cwd + 所在项目的全部源目录 + （cwd 是链出去的 git worktree
   时）主工作树。两个会话的目录里有一对相同、或一个包含另一个，就互相看得见。比较前一律过
   `pathKey`（软链、`/var` 与 `/private/var`、Windows 大小写），包含判断用 core 的 `withinOrIs`。
-  代码在 `electron/peer-reach.ts`。
+  代码在 `electron/peer/peer-reach.ts`。
 - **对方权限比自己宽，不能发。** `ask` < `auto` < `full`，取两边叠加了项目层之后的
   `settingsInEffect.permissionMode`。防的是一个要审批的会话被拒之后，请一个不审批的会话代劳。反过来
-  可以：宽的请窄的做事，窄的那边每一步照样走自己的审批。代码在 `electron/peer-policy.ts` 的
+  可以：宽的请窄的做事，窄的那边每一步照样走自己的审批。代码在 `electron/peer/peer-policy.ts` 的
   `broaderThan`。
 
 ## 地址
 
 `名字 [ref]`：名字是会话标题（没有就用目录名），ref 是 id 的前六位。名字会变、会重名，ref 不变，
-所以解析时 ref 优先；重名又没带 ref 时不猜，把候选列出来。代码在 `electron/peer-address.ts`。
+所以解析时 ref 优先；重名又没带 ref 时不猜，把候选列出来。代码在 `electron/peer/peer-address.ts`。
 
 ## 模型手里的工具
 
@@ -35,17 +35,17 @@
 | `wait_for_session({ to, timeout_seconds? })` | 接着等被打断的那几次问；没有这样的信，就等它手上这一次 |
 
 四件都标了 `sessionOnly`，子代理拿不到。由 `session-hub.ts` 通过 `extraTools` 注入每个会话，状态全
-在路由器里（`electron/session-peers.ts`）。工具说明和每一种退回的报错写在 `electron/peer-tools.ts`，
+在路由器里（`electron/peer/session-peers.ts`）。工具说明和每一种退回的报错写在 `electron/peer/peer-tools.ts`，
 报错都说清下一步怎么做。
 
 ## 一条消息怎么走
 
 ```
-ask_session / notify_session ─▶ 路由器（electron/session-peers.ts）
+ask_session / notify_session ─▶ 路由器（electron/peer/session-peers.ts）
           ├─ 解析地址、查目录重叠
           ├─ 问：对方（直接或转手）正等着自己，退回
           ├─ 对方权限比自己宽：退回
-          ├─ 限速 / 去重 / 链长（electron/peer-policy.ts）
+          ├─ 限速 / 去重 / 链长（electron/peer/peer-policy.ts）
           └─ AgentSession.receive
                ├─ 请求 ─▶ SessionDeliveries 攒 400ms，按发件会话分成几条，不和后台结果并在一起
                │           ├─ 闲着：第一条开一轮，其余排在后面各开一轮
@@ -55,7 +55,7 @@ ask_session / notify_session ─▶ 路由器（electron/session-peers.ts）
                            ├─ 在跑：下一步之前读到（和人插话同一处，drainSteering）
                            └─ 闲着：下一次开轮时最先读到（context 钩子）
 
-ask_session 发完就地等 / wait_for_session 接着等（electron/peer-runs.ts 记着每封请求进了哪一次）
+ask_session 发完就地等 / wait_for_session 接着等（electron/peer/peer-runs.ts 记着每封请求进了哪一次）
           ├─ 那一次运行结束：带回它最后那段话、怎么收的场
           ├─ 对方在等它的人回答：当场返回，同一件只报一次
           ├─ 请求还没进对话就被停下：说请求丢了

@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, before, test } from "node:test";
-import { collectWorkspaceDiff, previewType, readDiffBlob } from "../electron/git-diff.ts";
+import { collectWorkspaceDiff, previewType, readDiffBlob } from "../electron/git/git-diff.ts";
 
 const trayDir = join(dirname(fileURLToPath(import.meta.url)), "..", "build", "tray");
 const png = (name: string) => readFileSync(join(trayDir, name));

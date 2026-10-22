@@ -1,12 +1,12 @@
 /**
  * 「在新会话里执行」：批准的计划带着交接标记出来，就开一个会话、只开一次；第一条消息是标题、概要、
- * 计划文件和两条规矩；没开出来要告诉人。规则在 `electron/plan-handoff.ts`。
+ * 计划文件和两条规矩；没开出来要告诉人。规则在 `electron/session/plan-handoff.ts`。
  */
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { AgentEvent, ApprovedPlan, SessionMeta } from "@plume/core";
-import { handoffPrompt, handOffApprovedPlans } from "../electron/plan-handoff.ts";
+import { handoffPrompt, handOffApprovedPlans } from "../electron/session/plan-handoff.ts";
 
 const PLAN: ApprovedPlan = { plan: "# 敏感日志分文件\n\n## 概要\n五个模块的敏感日志写到单独的文件。\n\n## 改动\n- …", file: "/scratch/s-main/plans/plan-1.md", handoff: true, approvedAt: 1 };
 const PARENT = { id: "67df5000-119b-4508-b75a-757060836edf", title: "敏感日志分文件输出优化", cwd: "/work/eim" } as SessionMeta;

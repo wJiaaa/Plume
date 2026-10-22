@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { RemoteCalls } from "../electron/remote-calls.ts";
+import { RemoteCalls } from "../electron/git/remote-calls.ts";
 
 const ok = { ok: true as const };
 

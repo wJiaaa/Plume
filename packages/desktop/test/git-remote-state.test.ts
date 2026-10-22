@@ -19,7 +19,7 @@ import {
 	defaultRemote,
 	hasNoCommits,
 	remoteOfUpstream,
-} from "../electron/git-remote-state.ts";
+} from "../electron/git/git-remote-state.ts";
 
 const base = {
 	header: "main...origin/main",

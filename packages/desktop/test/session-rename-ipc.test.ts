@@ -23,7 +23,7 @@ export const editSessionMessage = unused, revertSessionMessage = unused, deleteS
 const source = new URL("../electron/ipc/sessions.ts", import.meta.url).href;
 const hooks = registerHooks({
 	resolve(specifier, context, nextResolve) {
-		if (context.parentURL === source && (specifier === "electron" || specifier === "../session-hub.ts")) return { url: fixtureUrl, shortCircuit: true };
+		if (context.parentURL === source && (specifier === "electron" || specifier === "../session/session-hub.ts")) return { url: fixtureUrl, shortCircuit: true };
 		return nextResolve(specifier, context);
 	},
 });

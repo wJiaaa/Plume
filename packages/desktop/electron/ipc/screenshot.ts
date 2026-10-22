@@ -4,7 +4,7 @@
 
 import { app, dialog, ipcMain } from "electron";
 import type { ScreenshotSettings, Settings } from "@plume/core";
-import { captureLog } from "../screenshot-debug.ts";
+import { captureLog } from "../screenshot/screenshot-debug.ts";
 import {
 	closeScreenshotOverlay,
 	downloadScreenshot,
@@ -13,8 +13,8 @@ import {
 	overlayPassedThrough,
 	revealScreenshotOverlay,
 	startScreenshotSession,
-} from "../screenshot.ts";
-import { beginPinnedDrag, closePinnedShot, dragPinnedShot, pinScreenshot, pinnedImageFor, pinnedShotCount, revealPinnedShot } from "../screenshot-pin.ts";
+} from "../screenshot/screenshot.ts";
+import { beginPinnedDrag, closePinnedShot, dragPinnedShot, pinScreenshot, pinnedImageFor, pinnedShotCount, revealPinnedShot } from "../screenshot/screenshot-pin.ts";
 import { nativeTranslator } from "../i18n.ts";
 
 export interface ScreenshotIpcDeps {

@@ -22,7 +22,7 @@
 - **状态**：`connecting` / `connected` / `reconnecting`（带第几次）/ `failed` / `needs-login`。
   `onChange` 推给会话；会话对非「需要登录」的失败在对话里发一条 `mcp-failed` 通知，同一个错误只发一次。
   设置页先报会话手上那条连接的状态（几个会话不一致时报有麻烦的那份），没有会话连着才临时探测
-  （`electron/mcp-probe.ts` 的 `mcpStatusFor`）：断线重连只发生在会话的连接上，探测看不见。
+  （`electron/capabilities/mcp-probe.ts` 的 `mcpStatusFor`）：断线重连只发生在会话的连接上，探测看不见。
 
 ## 工具（`names.ts`、`tool.ts`、`result.ts`）
 
@@ -112,7 +112,7 @@ MCP 工具多了以后不进工具表，模型经 `mcp_search` / `mcp_call` 找�
 - 列表按 `nextCursor` 翻页（最多 50 页）。SDK 自带的 `listChanged.autoRefresh` 只取第一页，所以
   关掉它，收到 `notifications/prompts/list_changed` 时自己重列。
 - 参数绑定（`commands/mcp-prompt.ts`）在渲染进程里就做：缺必填参数不发，草稿留着。展开在主进程：
-  有会话借会话的连接，新对话临时连那一台（`electron/mcp-probe.ts`）。`/` 菜单的 prompt 走单独的
+  有会话借会话的连接，新对话临时连那一台（`electron/capabilities/mcp-probe.ts`）。`/` 菜单的 prompt 走单独的
   `commands.prompts`，不并进 `commands.list`——设置页和 `@` 提及也读后者，不该为此启动服务器。
 
 ## 填表（elicitation）

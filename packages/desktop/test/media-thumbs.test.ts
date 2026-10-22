@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cachedThumb, parkedThumb, pruneThumbs, thumbPath } from "../electron/media-thumbs.ts";
+import { cachedThumb, parkedThumb, pruneThumbs, thumbPath } from "../electron/preview/media-thumbs.ts";
 
 const PNG = new Uint8Array([137, 80, 78, 71, 1, 2, 3]);
 

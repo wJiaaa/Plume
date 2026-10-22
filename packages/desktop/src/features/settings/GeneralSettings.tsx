@@ -23,7 +23,7 @@ export function GeneralSettings() {
   // Synchronous, from the preload: the IPC answer used to arrive a frame after "darwin" was drawn.
   const platform = bridge.platform ?? "darwin";
   /*
-   * What this machine can actually open a file with — see `electron/open-targets.ts`.
+   * What this machine can actually open a file with — see `electron/open-targets/open-targets.ts`.
    *
    * This used to be a fixed list of macOS application names, so on Windows it offered Finder,
    * Ghostty and Xcode and none of them did anything; on a Mac without VS Code installed it

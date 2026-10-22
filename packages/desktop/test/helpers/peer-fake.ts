@@ -3,7 +3,7 @@
  */
 
 import { DEFAULT_SETTINGS, type AgentEvent, type AgentSession, type PeerLetter, type PermissionMode, type Settings } from "@plume/core";
-import { createPeerRouter, type PeerRouter } from "../../electron/session-peers.ts";
+import { createPeerRouter, type PeerRouter } from "../../electron/peer/session-peers.ts";
 
 export type FakeSession = ReturnType<typeof fakeSession>;
 

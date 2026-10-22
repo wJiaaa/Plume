@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { checkStateOf, dedupe, parseSearch, type SearchNode, toSummary } from "../electron/pr-summary.ts";
+import { checkStateOf, dedupe, parseSearch, type SearchNode, toSummary } from "../electron/forge/pr-summary.ts";
 import { pr } from "./pr-fixtures.ts";
 
 function node(over: Partial<SearchNode> = {}): SearchNode {

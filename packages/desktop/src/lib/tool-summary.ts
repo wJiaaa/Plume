@@ -66,7 +66,7 @@ export function summarizeToolCall(name: string, args: Record<string, unknown>): 
 			const prompt = str("prompt")?.trim().split("\n")[0];
 			return prompt ? `Generate image ${prompt.slice(0, 80)}` : "Generate image";
 		}
-		// The main process's own words for the two session-level tools (`electron/session-ops.ts`), which `describeActivity` reads.
+		// The main process's own words for the two session-level tools (`electron/session/session-ops.ts`), which `describeActivity` reads.
 		case "spawn_session":
 			return `Suggest session ${(str("title") ?? "").trim()}`.trim();
 		case "archive_session":

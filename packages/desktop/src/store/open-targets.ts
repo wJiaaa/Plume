@@ -3,7 +3,7 @@
  *
  * The list itself is the main process's answer — which applications are installed, what this
  * platform calls its file manager, what each one's icon looks like — because none of that is
- * knowable from a page. See `electron/open-targets.ts`.
+ * knowable from a page. See `electron/open-targets/open-targets.ts`.
  *
  * Fetched once for the whole window rather than per component. Several different places offer to
  * open a file (the editor's toolbar, the file tree's menu, the tree's own action, the setting

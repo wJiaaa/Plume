@@ -11,7 +11,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
-import { bundledDocs } from "../electron/plume-docs.ts";
+import { bundledDocs } from "../electron/app/plume-docs.ts";
 
 const desktop = dirname(dirname(fileURLToPath(import.meta.url)));
 const config = parse(readFileSync(join(desktop, "electron-builder.yml"), "utf8")) as { extraResources: { from: string; to: string; filter?: string[] }[] };

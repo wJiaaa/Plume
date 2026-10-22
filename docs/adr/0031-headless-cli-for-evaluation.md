@@ -2,7 +2,7 @@
 
 - 状态：已采纳
 - 日期：2026-09-28
-- 相关：`packages/cli/src/{main,run}.ts`；`packages/core/src/kernel/host.ts`（`bootHostKernel`）、`search/defaults.ts`（`registerDefaultSearchProviders`）、`commands/catalogue.ts`（`listCommands`）、`commands/invoke.ts`（`resolveInvocation`）；desktop `electron/main.ts`、`electron/commands-service.ts`、`src/features/composer/outgoing.ts`
+- 相关：`packages/cli/src/{main,run}.ts`；`packages/core/src/kernel/host.ts`（`bootHostKernel`）、`search/defaults.ts`（`registerDefaultSearchProviders`）、`commands/catalogue.ts`（`listCommands`）、`commands/invoke.ts`（`resolveInvocation`）；desktop `electron/main.ts`、`electron/capabilities/commands-service.ts`、`src/features/composer/outgoing.ts`
 
 ## 背景
 

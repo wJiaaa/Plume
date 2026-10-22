@@ -3,8 +3,8 @@ import { once } from "node:events";
 import { test } from "node:test";
 import { WebSocket } from "ws";
 import { RemoteClient, relayRoom } from "@plume/client-runtime";
-import { MobileServer } from "../electron/mobile-server.ts";
-import { connectRelay, type RelayState } from "../electron/mobile-relay.ts";
+import { MobileServer } from "../electron/mobile/mobile-server.ts";
+import { connectRelay, type RelayState } from "../electron/mobile/mobile-relay.ts";
 import { lyraRelay } from "../e2e/lyra-relay-fixture.ts";
 
 async function until(check: () => boolean, label: string): Promise<void> {

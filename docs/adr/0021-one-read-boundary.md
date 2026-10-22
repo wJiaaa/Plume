@@ -100,7 +100,7 @@ server。问一次、批准后记住整个项目，边界才是真的（人在�
 桌面、下载目录。于是消息里一份项目外的 `.md`，模型读得，人点「预览」只得到「无法读取」。
 
 现在面板也认它们，规则照抄 core 的 `collectAllowedPaths`：只认用户消息里记下的绝对路径，精确到
-那一个文件，只读——写那扇门不认。见 `electron/attachment-reads.ts`。
+那一个文件，只读——写那扇门不认。见 `electron/files/attachment-reads.ts`。
 
 - **路径只从主进程经手的记录里来**：转录交给窗口时（`slimSnapshot`），和本机新消息过
   `prompt-input.ts` 那道门时。远端递来的 `path` 在门上就被丢了；窗口报一个路径换不来通行，

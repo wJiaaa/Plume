@@ -44,14 +44,14 @@ extraResources:
     to: build/tray
     filter:
       - "*.png"
-  # The `plume://` docs, which core reads by path (`electron/plume-docs.ts`). core itself is bundled
+  # The `plume://` docs, which core reads by path (`electron/app/plume-docs.ts`). core itself is bundled
   # into `out/main`, so the markdown beside its sources would otherwise never reach the package.
   - from: ../core/src/resources/plume-docs
     to: plume-docs
     filter:
       - "*.md"
 
-# ripgrep, which core's `grep` tool runs and the main process points it at (`electron/ripgrep.ts`).
+# ripgrep, which core's `grep` tool runs and the main process points it at (`electron/app/ripgrep.ts`).
 # Without one the tool falls back to a JavaScript scan tens of times slower, and a GUI launch's
 # `PATH` never has the user's `rg` on it — so every installed copy was on the fallback. The hook
 # downloads the copy for the platform and architecture being packaged into `vendor/ripgrep/`,
@@ -89,7 +89,7 @@ mac:
     - "!**/node_modules/node-pty/prebuilds/!(darwin-${arch})/**"
   category: public.app-category.developer-tools
   # The URL scheme another app uses to open one conversation: `plume://open-session?id=…`
-  # (`electron/deep-link.ts`). This is what writes `CFBundleURLTypes` into Info.plist, and without
+  # (`electron/app/deep-link.ts`). This is what writes `CFBundleURLTypes` into Info.plist, and without
   # it macOS never delivers the URL — the handler in `main.ts` is then code nothing can reach.
   #
   # Under `mac` rather than at the top level: `open-url` is a macOS event, and declaring the
@@ -117,7 +117,7 @@ mac:
     - from: vendor/ripgrep/darwin-${arch}
       to: ripgrep
       filter: ["rg", "COPYING", "LICENSE-MIT", "UNLICENSE"]
-    # The screenshot helper (`electron/screen-capture-helper.ts`). One universal binary serves
+    # The screenshot helper (`electron/screenshot/screen-capture-helper.ts`). One universal binary serves
     # both architectures, so this takes the same file for arm64 and x64.
     - from: vendor/screen-capture
       to: screen-capture

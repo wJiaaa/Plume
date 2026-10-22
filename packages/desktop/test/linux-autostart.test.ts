@@ -22,7 +22,7 @@ import {
 	autostartFile,
 	readAutostart,
 	writeAutostart,
-} from "../electron/linux-autostart.ts";
+} from "../electron/app/linux-autostart.ts";
 
 test("the file lives under XDG_CONFIG_HOME when it is absolute, ~/.config otherwise", () => {
 	assert.equal(autostartFile({ XDG_CONFIG_HOME: "/cfg" }, "/home/me"), join("/cfg", "autostart", DESKTOP_FILE));

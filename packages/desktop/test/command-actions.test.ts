@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { DEFAULT_SETTINGS } from "@plume/core";
-import { listCommands } from "../electron/commands-service.ts";
+import { listCommands } from "../electron/capabilities/commands-service.ts";
 import { commandEntries } from "../src/features/composer/command-catalog.ts";
 
 test("设置页和 / 菜单列出同样的内置命令", async () => {

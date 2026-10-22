@@ -12,7 +12,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { pickDisplaySource, type DisplayShape, type ScreenSource } from "../electron/screenshot-displays.ts";
+import { pickDisplaySource, type DisplayShape, type ScreenSource } from "../electron/screenshot/screenshot-displays.ts";
 
 /** 一块 16:10 的笔记本内屏，2× 缩放。 */
 const laptop: DisplayShape = { id: 1, bounds: { width: 1470, height: 956 }, scaleFactor: 2 };

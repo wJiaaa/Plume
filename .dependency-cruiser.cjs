@@ -305,6 +305,22 @@ module.exports = {
 		},
 
 		{
+			name: "main-domains-through-the-front-door",
+			comment:
+				"主进程的同一条正门规则：`electron/<域>/` 之间只经对方的 `index.ts`。从前一百三十多个文件平铺在 " +
+				"`electron/` 根下，靠文件名前缀分组，任何文件都能点名任何文件，「内部文件」这件事不存在。" +
+				"`ipc/` 不算域：它是每个域的 IPC 注册，和 `main.ts`、`window.ts` 一样是装配层，照旧直接引各域的" +
+				"文件——渲染进程的壳 `app/` 也是这样。根目录剩下的是入口与谁都能用的（`i18n.ts`、`app-settings.ts`、" +
+				"`path-key.ts`、`find-executable.ts`），不在这条规则里。类型也算：一个类型就是下一个值的开头。",
+			severity: "error",
+			from: { path: "^packages/desktop/electron/([^/]+)/", pathNot: "^packages/desktop/electron/ipc/" },
+			to: {
+				path: "^packages/desktop/electron/([^/]+)/",
+				pathNot: "^packages/desktop/electron/($1|ipc)/|/index\\.ts$",
+			},
+		},
+
+		{
 			name: "no-orphans",
 			comment: "A module nobody imports is either dead or was meant to be wired up and was not.",
 			severity: "warn",

@@ -16,7 +16,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { dropShared } from "../electron/registry-icons.ts";
+import { dropShared } from "../electron/plugins/registry-icons.ts";
 
 /** Stands in for a fetched image; only its identity as bytes matters to the rule. */
 const face = "data:image/jpeg;base64,AAAA";

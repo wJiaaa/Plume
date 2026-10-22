@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, before, test } from "node:test";
 import { DEFAULT_SETTINGS } from "@plume/core";
-import { definitionTrashTarget } from "../electron/definition-trash.ts";
+import { definitionTrashTarget } from "../electron/capabilities/definition-trash.ts";
 
 let root: string;
 let project: string;

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { resolveSaveDirectory } from "../electron/screenshot-path.ts";
+import { resolveSaveDirectory } from "../electron/screenshot/screenshot-path.ts";
 import { homedir } from "node:os";
 import { join } from "node:path";
 

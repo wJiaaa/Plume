@@ -18,7 +18,7 @@ import { registerMcpAuthIpc } from "./mcp-auth.ts";
 import { registerPluginsIpc } from "./plugins.ts";
 import { registerSystemIpc } from "./system.ts";
 import { registerChatBackgroundIpc } from "./chat-background.ts";
-import { sessions } from "../session-hub.ts";
+import { sessions } from "../session/session-hub.ts";
 
 export interface ServicesIpcDeps {
 	testProvider(

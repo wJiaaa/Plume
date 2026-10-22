@@ -11,7 +11,7 @@
  * different line.
  */
 
-import { parseUnifiedDiff } from "../diff-parse.ts";
+import { parseUnifiedDiff } from "./diff-parse.ts";
 import { nativeText } from "../i18n.ts";
 import type {
 	PullRequestDetail,
@@ -19,7 +19,7 @@ import type {
 	ReviewVerdict,
 	WorkspaceDiffFile,
 } from "@plume/contract";
-import type { Relation } from "../pr-summary.ts";
+import type { Relation } from "./pr-summary.ts";
 import { DIFF_TIMEOUT_MS, json, text } from "./http.ts";
 import { ForgeError } from "./errors.ts";
 import { splitRepo } from "./accounts.ts";

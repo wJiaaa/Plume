@@ -16,7 +16,7 @@ import {
 	splitExtension,
 	uniqueName,
 	validateName,
-} from "../electron/file-ops.ts";
+} from "../electron/files/file-ops.ts";
 import { setInterfaceLocaleSource } from "../electron/i18n.ts";
 
 /*

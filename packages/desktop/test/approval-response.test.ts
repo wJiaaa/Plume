@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ApprovalRequest } from "@plume/core";
 import { ApprovalGate } from "../../core/src/runtime/policy/approvals.ts";
-import { resolveSessionApproval } from "../electron/approval-response.ts";
+import { resolveSessionApproval } from "../electron/session/approval-response.ts";
 
 function fixture(request: ApprovalRequest = { kind: "bash", subject: "deploy", title: "Deploy", detail: "deploy" }) {
 	const saved: string[] = [];

@@ -2,13 +2,13 @@
  * 环境卡片的摘要什么时候在后台生成：一轮结束、静下来一阵后要一次，下一轮开始就撤掉。
  *
  * 原先由卡片开着时去要，点开旧会话就立刻花一次；现在只跟「刚干完一段活」走，见
- * `electron/session-summary.ts` 的 `summarizeAfterTurn`。
+ * `electron/session/session-summary.ts` 的 `summarizeAfterTurn`。
  */
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
-import { summarizeAfterTurn } from "../electron/session-summary.ts";
+import { summarizeAfterTurn } from "../electron/session/session-summary.ts";
 
 const IDLE = 40;
 

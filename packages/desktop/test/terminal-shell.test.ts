@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { createTerminalRegistry, pickShell, shellArgs, type LiveTerminal } from "../electron/terminal-registry.ts";
+import { createTerminalRegistry, pickShell, shellArgs, type LiveTerminal } from "../electron/terminal/terminal-registry.ts";
 
 const PWSH = "C:\\Program Files\\PowerShell\\7\\pwsh.exe";
 const POWERSHELL = "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe";

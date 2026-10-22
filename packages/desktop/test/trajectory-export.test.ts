@@ -4,7 +4,7 @@ import { mkdtemp, realpath, readFile, rm, writeFile, mkdir } from "node:fs/promi
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { SessionStore } from "@plume/core";
-import { exportTrajectory } from "../electron/trajectory-export.ts";
+import { exportTrajectory } from "../electron/session/trajectory-export.ts";
 
 test("exports the full authoritative record, refuses unknown sessions and does not trust an output path", async () => {
 	const root = await mkdtemp(join(tmpdir(), "plume-export-"));

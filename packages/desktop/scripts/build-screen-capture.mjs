@@ -2,7 +2,7 @@
  * 把 `native/screen-capture.swift` 编成 arm64 + x86_64 通用二进制，放进 `vendor/screen-capture/`。
  *
  * 安装包从那里带走它（`electron-builder.yml` 的 mac `extraResources`），开发时主进程直接用那里的
- * 一份（`electron/screen-capture-helper.ts`）。为什么要有这个小程序，见 ADR-0052。
+ * 一份（`electron/screenshot/screen-capture-helper.ts`）。为什么要有这个小程序，见 ADR-0052。
  *
  * 一份通用二进制而不是按架构各编一份：编译只有几秒，arm64 与 x64 两个安装包拿同一个文件，
  * `check-native-arch.mjs` 认 `universal`，不会出现「两个包都拿了本机那份」那种错。

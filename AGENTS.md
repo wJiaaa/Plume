@@ -326,7 +326,7 @@ tag 说明和 GitHub Release 正文都由 `scripts/changelog-section.mjs` 从这
 | `packages/core/src/tools/` | 内置工具。`risk*.ts` 判定哪些命令需要人来点头 |
 | `packages/core/src/kernel/` | 宿主装配：会话存储与宿主的 skill 注册表。core 里谁也不 import 它 |
 | `packages/cli/` | 非交互命令行，评测用：一个任务进、回答出，见 ADR-0031 |
-| `packages/desktop/electron/` | 主进程：IPC、窗口、Git |
+| `packages/desktop/electron/` | 主进程，按域分目录、跨域只经对方的 index；`ipc/` 注册 IPC，根目录是入口与通用文件 |
 | `packages/desktop/src/` | 渲染进程。9 个目录，见 ARCHITECTURE.md |
 | `packages/desktop/src/features/` | 26 个功能域，跨域只经对方的 index |
 | `packages/desktop/src/ui/` | 基础组件，不读 store 不调 service |

@@ -4,7 +4,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { promptContent } from "../electron/prompt-input.ts";
+import { promptContent } from "../electron/session/prompt-input.ts";
 
 test("标注副本的来源只保留成 session-media 的文件名", () => {
 	const name = `${"a".repeat(40)}.jpg`;

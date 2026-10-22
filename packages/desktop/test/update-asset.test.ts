@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { pickAsset, type ReleaseAsset } from "../electron/update-asset.ts";
+import { pickAsset, type ReleaseAsset } from "../electron/update/update-asset.ts";
 
 /** As returned by the GitHub API for https://github.com/kittors/Lyra/releases/tag/v0.6.1 */
 const RELEASE: ReleaseAsset[] = [

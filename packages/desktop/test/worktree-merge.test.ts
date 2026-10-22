@@ -11,8 +11,8 @@ import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { reclaimWorktree, worktreeState } from "../electron/worktree-lifecycle.ts";
-import { abortSync, mergeIntoBase, syncFromBase } from "../electron/worktree-merge.ts";
+import { reclaimWorktree, worktreeState } from "../electron/git/worktree-lifecycle.ts";
+import { abortSync, mergeIntoBase, syncFromBase } from "../electron/git/worktree-merge.ts";
 import { cleanUpFixtures, commitIn, fixture, sh } from "./helpers/worktree-fixture.ts";
 
 after(cleanUpFixtures);

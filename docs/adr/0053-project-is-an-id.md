@@ -5,8 +5,8 @@
 - 相关：core `config/project-roots.ts`、`config/project-folders.ts`、`session/types.ts`（`SessionMeta.project`）、
   `session/store.ts`（`create`、`move`）、`trajectory/fork.ts`、`config/settings.ts`（`ScheduledTask.project`）；
   desktop `src/lib/project-identity.ts`、`src/lib/sidebar-grouping.ts`、`src/store/workspace-slice.ts`、
-  `src/store/project-folders.ts`、`src/features/settings/ProjectScope.tsx`、`electron/session-hub.ts`、
-  `electron/peer-reach.ts`、`electron/scheduler.ts`；部分取代 ADR-0048 第二条
+  `src/store/project-folders.ts`、`src/features/settings/ProjectScope.tsx`、`electron/session/session-hub.ts`、
+  `electron/peer/peer-reach.ts`、`electron/session/scheduler.ts`；部分取代 ADR-0048 第二条
 
 ## 背景
 

@@ -10,7 +10,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
-import { locateInProject } from "../electron/file-locate.ts";
+import { locateInProject } from "../electron/files/file-locate.ts";
 
 let repo: string;
 

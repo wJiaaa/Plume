@@ -6,8 +6,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { createRegistryEnv, shellEnv, withRegistryEnv } from "../electron/terminal-env.ts";
-import { createTerminalRegistry, type LiveTerminal } from "../electron/terminal-registry.ts";
+import { createRegistryEnv, shellEnv, withRegistryEnv } from "../electron/terminal/terminal-env.ts";
+import { createTerminalRegistry, type LiveTerminal } from "../electron/terminal/terminal-registry.ts";
 
 test("a Dock launch with no locale gets a UTF-8 LC_CTYPE, and nothing else about the locale changes", () => {
 	const env = shellEnv("darwin", { PATH: "/usr/bin" });

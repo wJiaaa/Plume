@@ -11,7 +11,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { normalizeShortcut, registerShortcut, shortcutFailureKey } from "../electron/accelerator.ts";
+import { normalizeShortcut, registerShortcut, shortcutFailureKey } from "../electron/screenshot/accelerator.ts";
 
 test("Cmd and Command become CommandOrControl, and Option becomes Alt", () => {
 	assert.equal(normalizeShortcut("Cmd+Shift+S"), "CommandOrControl+Shift+S");

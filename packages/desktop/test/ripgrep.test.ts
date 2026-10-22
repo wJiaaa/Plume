@@ -11,7 +11,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
-import { bundledRipgrep } from "../electron/ripgrep.ts";
+import { bundledRipgrep } from "../electron/app/ripgrep.ts";
 
 const desktop = dirname(dirname(fileURLToPath(import.meta.url)));
 type Resources = { from: string; to: string; filter?: string[] }[];

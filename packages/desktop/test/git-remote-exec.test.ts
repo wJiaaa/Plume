@@ -21,8 +21,8 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { after, before, test } from "node:test";
 
-import { runRemote } from "../electron/git-exec.ts";
-import { explainGitFailure } from "../electron/git-errors.ts";
+import { runRemote } from "../electron/git/git-exec.ts";
+import { explainGitFailure } from "../electron/git/git-errors.ts";
 
 const execFileAsync = promisify(execFile);
 

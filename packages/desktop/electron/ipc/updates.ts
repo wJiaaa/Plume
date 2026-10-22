@@ -24,11 +24,11 @@ import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { installedAppBundle, scheduleSwap } from "./install-update.ts";
 import { downloadDir, sweepDownloads, UpdateDownload, type DownloadPhase } from "./update-download.ts";
-import { pickAsset, pickChecksums, type ReleaseAsset } from "../update-asset.ts";
+import { pickAsset, pickChecksums, type ReleaseAsset } from "../update/update-asset.ts";
 import { findExecutable } from "../find-executable.ts";
 import { nativeText } from "../i18n.ts";
-import { debInstallCommand, detectLinuxInstall, stageAppImage, stagedAppImagePath, swapAppImage, type LinuxInstall } from "../linux-install.ts";
-import { finishUpdate, type PendingUpdate } from "../update-finish.ts";
+import { debInstallCommand, detectLinuxInstall, stageAppImage, stagedAppImagePath, swapAppImage, type LinuxInstall } from "../update/linux-install.ts";
+import { finishUpdate, type PendingUpdate } from "../update/update-finish.ts";
 
 const execFileAsync = promisify(execFile);
 

@@ -29,6 +29,14 @@ import { gitlab } from "./gitlab.ts";
 import type { ForgeConnection, ForgeDriver } from "./types.ts";
 import { accountById, listAccounts, removeAccount, saveAccount, tokenFor, updateAccount } from "./vault.ts";
 
+/*
+ * Besides the list below, what another domain may use: publishing a release (`git/git-release.ts`)
+ * talks to the host through the same request helper. Domains reach forge through this file only;
+ * see `main-domains-through-the-front-door` in `.dependency-cruiser.cjs`.
+ */
+export { json } from "./http.ts";
+export type { ForgeConnection } from "./types.ts";
+
 const DRIVERS: Record<ForgeKind, ForgeDriver> = { github, gitlab, gitee, gitea };
 
 export type ListResult = {

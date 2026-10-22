@@ -22,7 +22,7 @@ Plume 共用一份渲染界面，窗口按钮继续由 Electron 的原生 Window
 符号按深色主题画成浅灰，保证仍能看清关窗按钮。遮罩整层 `no-drag`，盖在顶部 header 上的那一截
 也能点到。
 
-窗口状态见 `electron/window-state.ts`：最大化时保存普通尺寸并另记 `maximized`，Windows/Linux
+窗口状态见 `electron/app/window-state.ts`：最大化时保存普通尺寸并另记 `maximized`，Windows/Linux
 重开时恢复最大化（macOS 的缩放不是模式，不恢复）。125% 下窗口创建出来会比请求的大几个像素，
 用户没有动过窗口时保存请求的尺寸，避免每次重启都长大。
 

@@ -11,7 +11,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { cmdInvocation, needsCmdShell } from "../electron/windows-command.ts";
+import { cmdInvocation, needsCmdShell } from "../electron/open-targets/windows-command.ts";
 
 test("only batch files need cmd.exe", () => {
 	assert.equal(needsCmdShell("C:\\Users\\me\\AppData\\Local\\Programs\\Microsoft VS Code\\bin\\code.cmd"), true);

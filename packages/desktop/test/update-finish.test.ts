@@ -11,7 +11,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { finishUpdate, type FinishEffects } from "../electron/update-finish.ts";
+import { finishUpdate, type FinishEffects } from "../electron/update/update-finish.ts";
 
 function effects(overrides: Partial<FinishEffects> = {}) {
 	const calls: string[] = [];

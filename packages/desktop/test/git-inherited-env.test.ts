@@ -38,13 +38,13 @@ async function repo(origin: string, body: string): Promise<string> {
 
 let wanted = "";
 let elsewhere = "";
-let modules: { findLocalCheckout: typeof import("../electron/git-remote.ts").findLocalCheckout; readBlobs: typeof import("../electron/git-blobs.ts").readBlobs };
+let modules: { findLocalCheckout: typeof import("../electron/git/git-remote.ts").findLocalCheckout; readBlobs: typeof import("../electron/git/git-blobs.ts").readBlobs };
 
 before(async () => {
 	wanted = await repo("owner/wanted", "wanted\n");
 	elsewhere = await repo("owner/elsewhere", "elsewhere\n");
 	process.env.GIT_DIR = join(elsewhere, ".git");
-	const [{ findLocalCheckout }, { readBlobs }] = await Promise.all([import("../electron/git-remote.ts"), import("../electron/git-blobs.ts")]);
+	const [{ findLocalCheckout }, { readBlobs }] = await Promise.all([import("../electron/git/git-remote.ts"), import("../electron/git/git-blobs.ts")]);
 	modules = { findLocalCheckout, readBlobs };
 });
 

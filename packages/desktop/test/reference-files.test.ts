@@ -3,7 +3,7 @@ import { mkdtemp, writeFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { referenceFile, registerReferenceFiles } from "../electron/reference-files.ts";
+import { referenceFile, registerReferenceFiles } from "../electron/capabilities/reference-files.ts";
 
 test("listing a skill permits only that file, never adjacent settings or the whole home", async () => {
 	const root = await mkdtemp(join(tmpdir(), "ly-ref-"));

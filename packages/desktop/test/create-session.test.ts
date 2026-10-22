@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { DEFAULT_SETTINGS, SessionStore, AgentSession, type AgentEvent } from "@plume/core";
-import { createStoredSession } from "../electron/create-session.ts";
-import { initialPrompt, promptContent, promptOptions } from "../electron/prompt-input.ts";
+import { createStoredSession } from "../electron/session/create-session.ts";
+import { initialPrompt, promptContent, promptOptions } from "../electron/session/prompt-input.ts";
 import { sessionThinking } from "../src/lib/thinking.ts";
 
 test("opening submissions have durable distinct identities before any runtime is initialized", async () => {

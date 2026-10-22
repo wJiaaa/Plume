@@ -20,7 +20,7 @@ import {
 	isOurPage,
 	isPermissionGranted,
 	isWebviewSourceAllowed,
-} from "../electron/security-policy.ts";
+} from "../electron/app/security-policy.ts";
 
 test("外链：放行 http、https、mailto", () => {
 	for (const url of ["https://example.com/x", "http://192.168.1.9:8080", "mailto:a@b.c", "HTTPS://EXAMPLE.COM"]) {

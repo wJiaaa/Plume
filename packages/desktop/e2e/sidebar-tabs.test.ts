@@ -88,7 +88,7 @@ async function seed(home: string): Promise<void> {
 			n++;
 		}
 	}
-	// 一节「聊天」排在项目后面：`workspaces/` 下的会话不属于任何项目（`electron/scratch.ts`）。
+	// 一节「聊天」排在项目后面：`workspaces/` 下的会话不属于任何项目（`electron/session/scratch.ts`）。
 	for (let i = 0; i < CHATS; i++) {
 		const updatedAt = now - 100 * DAY - i * 60_000;
 		metas.push({

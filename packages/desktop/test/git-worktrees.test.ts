@@ -16,8 +16,8 @@ import {
 	createWorktree,
 	removeWorktree,
 	resolveWorktreesRoot,
-} from "../electron/git-worktrees.ts";
-import { listWorktrees } from "../electron/git-repos.ts";
+} from "../electron/git/git-worktrees.ts";
+import { listWorktrees } from "../electron/git/git-repos.ts";
 import { canonicalPath } from "../electron/path-key.ts";
 import { DEFAULT_SETTINGS } from "@plume/core";
 

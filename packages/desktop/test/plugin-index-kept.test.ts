@@ -33,8 +33,8 @@ after(async () => {
 });
 
 /** A fresh copy of the module: what a new launch starts with — nothing in memory, the disk as it was left. */
-async function launch(n: number): Promise<typeof import("../electron/plugin-index.ts")> {
-	return import(`../electron/plugin-index.ts?launch=${n}`);
+async function launch(n: number): Promise<typeof import("../electron/plugins/plugin-index.ts")> {
+	return import(`../electron/plugins/plugin-index.ts?launch=${n}`);
 }
 
 const URL = "https://market.test/v1/index";

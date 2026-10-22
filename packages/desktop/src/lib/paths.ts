@@ -128,7 +128,7 @@ export function tildeHome(path: string): string {
  * The last dot, not the first: `archive.tar.gz` is a `.gz`. A leading dot is not a separator —
  * `.env` is entirely a name — which is what a rename box has to pre-select correctly.
  *
- * Deliberately a copy of the one in `electron/file-ops.ts`. Sharing it would mean the renderer
+ * Deliberately a copy of the one in `electron/files/file-ops.ts`. Sharing it would mean the renderer
  * importing a module that imports `node:path`; five lines is the cheaper of the two prices, and
  * both sides are tested against the same cases.
  */

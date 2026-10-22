@@ -71,7 +71,7 @@ export interface SystemApi {
 	openExternal(url: string): Promise<void>;
 	/** The system default browser's name, or "" where the platform cannot tell. */
 	defaultBrowser(): Promise<string>;
-	/** `target` is an id from `openTargets`; see `electron/open-targets.ts`. */
+	/** `target` is an id from `openTargets`; see `electron/open-targets/open-targets.ts`. */
 	openIn(target: string, path: string): Promise<void>;
 	/**
 	 * What 「用什么打开」 can mean on this machine: showing the file where it lives, plus the

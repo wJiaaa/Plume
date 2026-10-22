@@ -7,9 +7,9 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import type { Tool } from "@plume/core";
-import { PeerRuns } from "../electron/peer-runs.ts";
-import { createPeerTools } from "../electron/peer-tools.ts";
-import { REPLY_LIMIT, type AskOutcome, type WaitOutcome } from "../electron/session-peers.ts";
+import { PeerRuns } from "../electron/peer/peer-runs.ts";
+import { createPeerTools } from "../electron/peer/peer-tools.ts";
+import { REPLY_LIMIT, type AskOutcome, type WaitOutcome } from "../electron/peer/session-peers.ts";
 import { asking, fakeSession, flush, routerWith, stopAsking } from "./helpers/peer-fake.ts";
 
 afterEach(stopAsking);

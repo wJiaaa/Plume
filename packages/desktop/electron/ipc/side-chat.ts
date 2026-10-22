@@ -1,8 +1,8 @@
 /** Side chats, and the queue of work a session dispatched. */
 
 import { ipcMain } from "electron";
-import { sessions } from "../session-hub.ts";
-import { sideChatClose, sideChatList, sideChatOpen } from "../side-chat-service.ts";
+import { sessions } from "../session/session-hub.ts";
+import { sideChatClose, sideChatList, sideChatOpen } from "../session/side-chat-service.ts";
 
 export function registerSideChatIpc(): void {
 	ipcMain.handle("sidechat:list", (_event, sessionId: string) => sideChatList(sessionId));

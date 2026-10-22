@@ -2,7 +2,7 @@
 
 - 状态：已采纳
 - 日期：2026-09-30
-- 相关：`packages/core/src/session/{db,store,storage,apply-record,replay-records,spend,partial}.ts`；`packages/core/src/runtime/session-log.ts`（`PartialWriter` 接在 `message_start` / `message_update` 上）；desktop `electron/usage-scan.ts`、`electron/session-cleanup.ts`；`scripts/session-dump.ts`
+- 相关：`packages/core/src/session/{db,store,storage,apply-record,replay-records,spend,partial}.ts`；`packages/core/src/runtime/session-log.ts`（`PartialWriter` 接在 `message_start` / `message_update` 上）；desktop `electron/usage/usage-scan.ts`、`electron/session/session-cleanup.ts`；`scripts/session-dump.ts`
 
 ## 背景
 

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, test } from "node:test";
 import { recordFileChange } from "../../core/src/tools/file-changes.ts";
-import { collectDelivery, deliveryMessages } from "../electron/delivery-record.ts";
+import { collectDelivery, deliveryMessages } from "../electron/session/delivery-record.ts";
 import type { Message, ToolContext } from "@plume/core";
 let home: string, ctx: ToolContext, prior: string | undefined;
 beforeEach(async()=>{home=await mkdtemp(join(tmpdir(),"plume-delivery-test-"));prior=process.env.PLUME_HOME;process.env.PLUME_HOME=home;const cwd=join(home,"project");await mkdir(cwd);ctx={cwd,sessionId:"qa",state:new Map(),scratchDir:join(home,"scratch")};});

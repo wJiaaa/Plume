@@ -22,7 +22,7 @@ const hooks = registerHooks({
 		return nextResolve(specifier, context);
 	},
 });
-const { withPreviewBridge } = await import("../electron/preview-protocol.ts");
+const { withPreviewBridge } = await import("../electron/preview/preview-protocol.ts");
 hooks.deregister();
 
 const PAGE = `<!doctype html><html><head><title>t</title></head><body><p>hi</p></body></html>`;

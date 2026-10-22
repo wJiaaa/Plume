@@ -1,7 +1,7 @@
 import { ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from "electron";
 import { parseBrowserCommand } from "../../shared/browser.ts";
-import { BrowserTabClosed, browserCommand, browserState, configureBrowser, attachBrowser } from "../browser-workspace.ts";
-import { cancelBrowserInspect, inspectBrowser } from "../browser-inspect.ts";
+import { BrowserTabClosed, browserCommand, browserState, configureBrowser, attachBrowser } from "../browser/browser-workspace.ts";
+import { cancelBrowserInspect, inspectBrowser } from "../browser/browser-inspect.ts";
 import { isAppWindowContents } from "../window.ts";
 
 export function registerBrowserIpc(window: () => BrowserWindow | null, settings: () => { defaultZoom?: number }): void {

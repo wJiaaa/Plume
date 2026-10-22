@@ -2,8 +2,8 @@
 
 - 状态：已采纳
 - 日期：2026-10-16
-- 相关：desktop `native/screen-capture.swift`、`electron/screen-capture-helper.ts`、
-  `electron/screenshot.ts`（`captureFullDisplaySnapshot`、`warmCapturePipeline`）、
+- 相关：desktop `native/screen-capture.swift`、`electron/screenshot/screen-capture-helper.ts`、
+  `electron/screenshot/screenshot.ts`（`captureFullDisplaySnapshot`、`warmCapturePipeline`）、
   `scripts/build-screen-capture.mjs`、`scripts/before-pack.mjs`、`scripts/check-native-arch.mjs`、
   `electron-builder.yml`
 

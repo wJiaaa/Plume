@@ -118,7 +118,7 @@ export interface FilesApi {
 	 *
 	 * Null when the path is outside every open project or is not a file. The reader's own
 	 * failures come back inside the value, as `error` — a corrupt workbook is something to show,
-	 * not something to throw. See `electron/documents.ts`.
+	 * not something to throw. See `electron/files/documents.ts`.
 	 */
 	document(path: string): Promise<DocumentData | null>;
 	/**

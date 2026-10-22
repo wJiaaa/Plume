@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseUnifiedDiff } from "../electron/diff-parse.ts";
+import { parseUnifiedDiff } from "../electron/forge/diff-parse.ts";
 
 test("an ordinary edit keeps both sides' line numbers", () => {
 	const [file] = parseUnifiedDiff(`diff --git a/src/app.ts b/src/app.ts

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { promptBlocks } from "../electron/mobile-prompt.ts";
+import { promptBlocks } from "../electron/mobile/mobile-prompt.ts";
 
 const jpeg = { data: "aGVsbG8=", mimeType: "image/jpeg" };
 

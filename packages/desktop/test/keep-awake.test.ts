@@ -12,7 +12,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createKeepAwake, type SleepBlocker } from "../electron/keep-awake.ts";
+import { createKeepAwake, type SleepBlocker } from "../electron/app/keep-awake.ts";
 
 /** 一个记账的假 blocker：发了几个、停了几个、现在还剩几个活的。 */
 function fake(): SleepBlocker & { started: number[]; stopped: number[]; live(): number[] } {

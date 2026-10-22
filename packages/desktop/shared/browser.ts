@@ -15,7 +15,7 @@ export function browserUrl(raw: string): string {
  *
  * Never handed to a page as it is — `browserUrl` still refuses `file:`, because a guest that can
  * load `file:///` can read the disk. The main process turns it into a copy under the previews
- * directory first (`electron/local-page.ts`), which is what lets a page an agent wrote open here
+ * directory first (`electron/browser/local-page.ts`), which is what lets a page an agent wrote open here
  * without a server, and keep opening after one would have stopped.
  */
 export function browserLocalPage(raw: string): boolean {

@@ -13,7 +13,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { applicationMenuTemplate } from "../electron/app-menu.ts";
+import { applicationMenuTemplate } from "../electron/app/app-menu.ts";
 
 type Item = { role?: string; type?: string; label?: string; submenu?: Item[] };
 

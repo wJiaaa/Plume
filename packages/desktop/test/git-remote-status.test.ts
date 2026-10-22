@@ -19,9 +19,9 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { after, test } from "node:test";
 
-import { gitStatus } from "../electron/git-status.ts";
-import { pushBranch } from "../electron/git-history.ts";
-import { gitBranch } from "../electron/git-probe.ts";
+import { gitStatus } from "../electron/git/git-status.ts";
+import { pushBranch } from "../electron/git/git-history.ts";
+import { gitBranch } from "../electron/git/git-probe.ts";
 
 const execFileAsync = promisify(execFile);
 

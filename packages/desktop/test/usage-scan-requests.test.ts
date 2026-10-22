@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import { SessionStore, type AssistantMessage, type SessionMeta } from "@plume/core";
-import { scanUsage } from "../electron/usage-scan.ts";
+import { scanUsage } from "../electron/usage/usage-scan.ts";
 
 let home = "";
 let store: SessionStore;

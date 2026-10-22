@@ -7,7 +7,7 @@
 
 import { ipcMain } from "electron";
 import { approveSkill, pendingSkills, rejectSkill } from "@plume/core";
-import { sessions } from "../session-hub.ts";
+import { sessions } from "../session/session-hub.ts";
 
 export function registerSkillsIpc(): void {
 	ipcMain.handle("skills:pending", async (_event, cwd: string) => (cwd ? pendingSkills(cwd) : []));

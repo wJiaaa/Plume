@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { reopenMaximized, stateToSave } from "../electron/window-state.ts";
+import { reopenMaximized, stateToSave } from "../electron/app/window-state.ts";
 
 const box = (x: number, y: number, width: number, height: number) => ({ x, y, width, height });
 const still = { maximized: false, fullScreen: false, minimized: false };

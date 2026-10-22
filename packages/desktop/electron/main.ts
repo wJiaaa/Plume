@@ -26,33 +26,33 @@ import {
 	configureHub,
 	getOrCreateSession,
 	sessions,
-} from "./session-hub.ts";
-import { resolveInside } from "./file-ops.ts";
+} from "./session/session-hub.ts";
+import { resolveInside } from "./files/file-ops.ts";
 import { canonicalPath } from "./path-key.ts";
-import { resolveReadablePath } from "./file-read-service.ts";
-import { loadUserImagesAt } from "./display-image.ts";
-import { captureLog } from "./screenshot-debug.ts";
-import { pruneThumbs } from "./media-thumbs.ts";
+import { resolveReadablePath } from "./files/file-read-service.ts";
+import { loadUserImagesAt } from "./session/display-image.ts";
+import { captureLog } from "./screenshot/screenshot-debug.ts";
+import { pruneThumbs } from "./preview/media-thumbs.ts";
 import { registerFilesIpc } from "./ipc/files.ts";
 import { registerFileOpsIpc } from "./ipc/file-ops.ts";
-import { scratchRoots } from "./scratch.ts";
-import { resolveWorktreesRoot } from "./git-worktrees.ts";
+import { scratchRoots } from "./session/scratch.ts";
+import { resolveWorktreesRoot } from "./git/git-worktrees.ts";
 import { applySettings, getSettings, loadAppSettings, onSettingsChanged, settings } from "./app-settings.ts";
 import { loadCachedModelCatalog, MODEL_CATALOG_SYNC_INTERVAL_MS, syncModelCatalog } from "@plume/core/model-catalog-sync";
-import { createKeepAwake, installKeepAwake } from "./keep-awake.ts";
+import { createKeepAwake, installKeepAwake } from "./app/keep-awake.ts";
 import { registerServicesIpc } from "./ipc/services.ts";
 import { registerDeliveryIpc } from "./ipc/delivery.ts";
 import { registerRunningServicesIpc } from "./ipc/running-services.ts";
 import { registerBrowserIpc } from "./ipc/browser.ts";
-import { browserSkill } from "./browser-skill.ts";
+import { browserSkill } from "./browser/browser-skill.ts";
 import { registerWorkspaceIpc } from "./ipc/workspace.ts";
-import { workspaceInfo } from "./workspace-info.ts";
-import { observeSessionStorage } from "./session-storage.ts";
-import { broadcastSessionChange } from "./session-hub.ts";
-import { fetchEndpointModels, testProvider } from "./providers.ts";
+import { workspaceInfo } from "./git/workspace-info.ts";
+import { observeSessionStorage } from "./session/session-storage.ts";
+import { broadcastSessionChange } from "./session/session-hub.ts";
+import { fetchEndpointModels, testProvider } from "./models/providers.ts";
 import { registerSessionsIpc } from "./ipc/sessions.ts";
 import { registerMobileIpc } from "./ipc/mobile.ts";
-import { closeMobileAccess, configureMobileAccess, mobileBroadcast } from "./mobile-access.ts";
+import { closeMobileAccess, configureMobileAccess, mobileBroadcast } from "./mobile/mobile-access.ts";
 import {
 	appIconPath,
 	followThemeWithDockIcon,
@@ -67,9 +67,9 @@ import {
 	useTrayPresence,
 } from "./window.ts";
 import { registerWindowsIpc } from "./ipc/windows.ts";
-import { INSPECT_PARTITION, MEDIA_SCHEME, PREVIEW_SCHEME, registerPreviewProtocols } from "./preview-protocol.ts";
-import { inspectPreview, registerPreviewThemeIpc } from "./preview-inspect.ts";
-import { guardWebviews, installPermissionHandlers } from "./window-security.ts";
+import { INSPECT_PARTITION, MEDIA_SCHEME, PREVIEW_SCHEME, registerPreviewProtocols } from "./preview/preview-protocol.ts";
+import { inspectPreview, registerPreviewThemeIpc } from "./preview/preview-inspect.ts";
+import { guardWebviews, installPermissionHandlers } from "./app/window-security.ts";
 import { registerGitIpc } from "./ipc/git.ts";
 import { registerUsageIpc } from "./ipc/usage.ts";
 import { registerGalleryIpc } from "./ipc/gallery.ts";
@@ -83,20 +83,20 @@ import { registerProjectMemoryIpc } from "./ipc/project-memory.ts";
 import { registerSideChatIpc } from "./ipc/side-chat.ts";
 import { registerUpdateIpc } from "./ipc/updates.ts";
 import { registerTerminalIpc, type LiveTerminal } from "./ipc/terminal.ts";
-import { Scheduler } from "./scheduler.ts";
+import { Scheduler } from "./session/scheduler.ts";
 import type { TrayCommand } from "@plume/contract";
-import { createTray, destroyTray, hasTray, refreshMenu } from "./tray.ts";
+import { createTray, destroyTray, hasTray, refreshMenu } from "./app/tray.ts";
 import { registerScreenshotIpc } from "./ipc/screenshot.ts";
-import { destroyScreenshotOverlay, dismissStrayOverlay, isScreenshotOverlay, registerScreenshotShortcut, unregisterScreenshotShortcut, warmScreenshotOverlay } from "./screenshot.ts";
-import { destroyPinnedShots, isPinnedShot } from "./screenshot-pin.ts";
-import { configureNotify } from "./notify.ts";
-import { sessionFromUrl } from "./deep-link.ts";
-import { applicationMenuTemplate } from "./app-menu.ts";
-import { shortcutFailureKey } from "./accelerator.ts";
-import { useBundledDocs } from "./plume-docs.ts";
-import { useBundledRipgrep } from "./ripgrep.ts";
+import { destroyScreenshotOverlay, dismissStrayOverlay, isScreenshotOverlay, registerScreenshotShortcut, unregisterScreenshotShortcut, warmScreenshotOverlay } from "./screenshot/screenshot.ts";
+import { destroyPinnedShots, isPinnedShot } from "./screenshot/screenshot-pin.ts";
+import { configureNotify } from "./app/notify.ts";
+import { sessionFromUrl } from "./app/deep-link.ts";
+import { applicationMenuTemplate } from "./app/app-menu.ts";
+import { shortcutFailureKey } from "./screenshot/accelerator.ts";
+import { useBundledDocs } from "./app/plume-docs.ts";
+import { useBundledRipgrep } from "./app/ripgrep.ts";
 import { nativeTranslator, resolveNativeLocale, setInterfaceLocaleSource } from "./i18n.ts";
-import { lazyPty } from "./pty-loader.ts";
+import { lazyPty } from "./terminal/pty-loader.ts";
 
 /*
  * Model requests go through Node's built-in fetch, whose undici defaults cut a response body after

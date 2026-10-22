@@ -1,5 +1,5 @@
 import { ipcMain, type IpcMainInvokeEvent } from "electron";
-import { listSessionServices, readSessionServiceOutput, stopSessionService } from "../session-services.ts";
+import { listSessionServices, readSessionServiceOutput, stopSessionService } from "../session/session-services.ts";
 import { isAppWindowContents } from "../window.ts";
 export function registerRunningServicesIpc(): void {
 	const trusted = (event: IpcMainInvokeEvent, sessionId: unknown) => {

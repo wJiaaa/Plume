@@ -12,7 +12,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { hidesOverlayForSnapshot, warmupPlan } from "../electron/screenshot-platform.ts";
+import { hidesOverlayForSnapshot, warmupPlan } from "../electron/screenshot/screenshot-platform.ts";
 
 test("Linux never warms the capture pipeline — on Wayland that is the portal dialog at launch", () => {
 	assert.equal(warmupPlan("linux", true).capture, false);

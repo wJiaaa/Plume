@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { mkdtemp, writeFile, rm, symlink, unlink, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { grantArtifactRead, readableArtifact } from "../electron/readable-artifacts.ts";
+import { grantArtifactRead, readableArtifact } from "../electron/session/readable-artifacts.ts";
 test("file access grants only the exact contextual artifact, never its directory or an arbitrary file", async () => {
 	const root=await mkdtemp(join(tmpdir(),"plume-artifact-access-"));
 	try {

@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { RECENT_LIMIT, trayMenu, trayTitle, type TrayItem } from "../electron/tray-menu.ts";
+import { RECENT_LIMIT, trayMenu, trayTitle, type TrayItem } from "../electron/app/tray-menu.ts";
 
 const state = (over: Partial<Parameters<typeof trayMenu>[0]> = {}) =>
 	trayMenu({ windowVisible: false, recent: [], launchAtLogin: false, ...over });

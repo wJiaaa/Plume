@@ -4,10 +4,10 @@
 - 日期：2026-10-14
 - 来源：移植上游 kittors/Lyra 的 `790c1639`、`2396c47b`、`afcd1ae6`（上游 ADR-0040）；上游同批的 `3c065249`
   （改版前建在仓库旁边的工作树会话启动时归位）没有移植，见「没做的」
-- 相关：desktop `electron/worktree-lifecycle.ts`（`worktreeState`、`reclaimWorktree`、`restoreWorktree`、
-  `bringBackWorktree`）、`electron/worktree-merge.ts`（`mergeIntoBase`、`syncFromBase`、`abortSync`）、
-  `electron/worktree-types.ts`、`electron/ipc/worktree.ts`、`electron/session-hub.ts`（`deleteSessions`、
-  `worktreeFollowsArchive`、启动时检出回来）、`electron/git-worktrees.ts`（`cleanOldWorktrees`）；core
+- 相关：desktop `electron/git/worktree-lifecycle.ts`（`worktreeState`、`reclaimWorktree`、`restoreWorktree`、
+  `bringBackWorktree`）、`electron/git/worktree-merge.ts`（`mergeIntoBase`、`syncFromBase`、`abortSync`）、
+  `electron/worktree-types.ts`、`electron/ipc/worktree.ts`、`electron/session/session-hub.ts`（`deleteSessions`、
+  `worktreeFollowsArchive`、启动时检出回来）、`electron/git/git-worktrees.ts`（`cleanOldWorktrees`）；core
   `session/types.ts`（`worktree.base`、`worktreeError`）、`session/apply-record.ts`（`move` 清掉 `worktree`）；
   渲染进程 `src/features/modals/WorktreeMenu.tsx`、`useWorktreeState.ts`、`delete-session.tsx`、
   `src/features/composer/Composer.tsx`、`src/store/session-workspace.ts`；测试 `test/worktree-lifecycle.test.ts`、

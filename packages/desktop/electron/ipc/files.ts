@@ -1,4 +1,4 @@
-import { referenceFile } from "../reference-files.ts";
+import { referenceFile } from "../capabilities/reference-files.ts";
 /**
  * Reading and writing files on the renderer's behalf.
  *
@@ -10,19 +10,19 @@ import { referenceFile } from "../reference-files.ts";
  * what is opened are the same string — see `resolveReadablePath`.
  */
 
-import { readableArtifact } from "../readable-artifacts.ts";
+import { readableArtifact } from "../session/readable-artifacts.ts";
 import { dialog, ipcMain, net } from "electron";
-import { MEDIA_SCHEME } from "../preview-protocol.ts";
+import { MEDIA_SCHEME } from "../preview/preview-protocol.ts";
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { getWindow } from "../window.ts";
 import { documentKind } from "../../shared/document-kind.ts";
 import type { DocumentData, FileContents, FileEntry } from "@plume/contract";
-import { readDatabase, readWorkbook } from "../documents.ts";
+import { readDatabase, readWorkbook } from "../files/documents.ts";
 import { extractDocumentText, type ExtractedText } from "@plume/core";
-import { listReadableFiles, readReadableFile, resolveReadablePath } from "../file-read-service.ts";
-import { attachmentFile } from "../attachment-reads.ts";
-import { locateInProject } from "../file-locate.ts";
+import { listReadableFiles, readReadableFile, resolveReadablePath } from "../files/file-read-service.ts";
+import { attachmentFile } from "../files/attachment-reads.ts";
+import { locateInProject } from "../files/file-locate.ts";
 
 export interface FilesIpcDeps {
 	projectRoots(): readonly string[];
