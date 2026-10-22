@@ -12,6 +12,7 @@ import type { CompactionFault, CompactionObserver } from "../../types/compaction
 import type { AssistantMessage, LlmContext, Message, ModelConfig, ProviderConfig } from "../../types.ts";
 import { FIRST_SUMMARY, focusNote, hasSummary, SUMMARY_SYSTEM, UPDATE_SUMMARY } from "./compaction-prompts.ts";
 import { SUMMARY_INPUT, summaryReplyTokens } from "./compaction-budget.ts";
+import { replyText } from "../one-shot.ts";
 
 export async function summarize(
 	messages: Message[],
@@ -95,11 +96,7 @@ export async function summarize(
 		if (manual) throw new Error(message.errorMessage || "摘要生成失败，请检查模型连接后重试。");
 		return decline(faultOf(message.failure ?? classifyFailure({ from: "stream", message: message.errorMessage })));
 	}
-	const text = message.content
-		.filter((c) => c.type === "text")
-		.map((c) => c.text)
-		.join("\n")
-		.trim();
+	const text = replyText(message, "\n").trim();
 	if (manual && !text) throw new Error("模型返回的摘要为空，原上下文保持不变。");
 	return text || decline({ kind: "empty" });
 }

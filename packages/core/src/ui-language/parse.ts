@@ -31,9 +31,9 @@ export interface UiElement {
 	open: boolean;
 }
 
-export type TextPart = string | { source: string; expression: Expression | null; error?: string };
+type TextPart = string | { source: string; expression: Expression | null; error?: string };
 
-export interface UiText {
+interface UiText {
 	kind: "text";
 	parts: TextPart[];
 }

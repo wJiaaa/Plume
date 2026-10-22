@@ -40,7 +40,3 @@ export function changedSince(record: ReadRecord, current: FileStamp): boolean {
 export function readRecord(ctx: ToolContext, path: string): ReadRecord | undefined {
 	return readState(ctx).get(path);
 }
-
-export function hasRead(ctx: ToolContext, path: string): boolean {
-	return readState(ctx).has(path);
-}

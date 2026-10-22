@@ -18,7 +18,7 @@
 
 import { SearchError, type SearchProvider, type SearchRequest, type SearchResult, type SearchSource } from "./index.ts";
 
-export const INSTANT_PROVIDER_ID = "ddg-instant";
+const INSTANT_PROVIDER_ID = "ddg-instant";
 
 const ENDPOINT = "https://api.duckduckgo.com/";
 

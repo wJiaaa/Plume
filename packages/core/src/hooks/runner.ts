@@ -91,7 +91,7 @@ function preview(value: string): string | undefined {
 	return trimmed.length <= PREVIEW_MAX ? trimmed : `${trimmed.slice(0, PREVIEW_MAX)}...`;
 }
 
-export function hookCommandDisplay(entry: HookEntry): string {
+function hookCommandDisplay(entry: HookEntry): string {
 	const { definition } = entry;
 	const text = definition.type === "process"
 		? [definition.command, ...(definition.args ?? [])].map((part) => (/^[A-Za-z0-9_./:@%+=,-]+$/u.test(part) ? part : JSON.stringify(part))).join(" ")

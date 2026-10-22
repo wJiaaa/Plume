@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFile, realpath, stat } from "node:fs/promises";
-import { basename, isAbsolute, relative } from "node:path";
+import { basename } from "node:path";
+import { within } from "../platform.ts";
 import { errorResult } from "./result.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { authorizeRead } from "./read-access.ts";
@@ -130,7 +131,9 @@ export const previewTool: Tool<PreviewArgs> = {
 			const page = await readLocalPageFor(ctx, args.path);
 			if ("error" in page) return errorResult(page.error);
 			local = page.content;
-			ownDraft = ctx.scratchDir !== undefined && (await within(ctx.scratchDir, page.absolute));
+			// Compared as real paths: outside the workspace the read check hands back a real path, and a
+			// scratch directory under `/var/…` is `/private/var/…` by then on macOS.
+			ownDraft = ctx.scratchDir !== undefined && within(await realpath(ctx.scratchDir).catch(() => ctx.scratchDir!), page.absolute);
 		}
 		const files = local !== undefined ? [{ path: "index.html", content: local }] : args.files?.length ? args.files : args.html ? [{ path: "index.html", content: args.html }] : [];
 		if (files.length === 0) return errorResult("需要 `html`、`files` 或 `path` 其中之一。");
@@ -214,15 +217,6 @@ export async function readLocalPageFor(ctx: ToolContext, path: string): Promise<
 	} catch (error) {
 		return { error: error instanceof Error ? error.message : String(error) };
 	}
-}
-
-/**
- * Whether `absolute` is inside `root`. Compared as real paths: outside the workspace the read check hands
- * back a real path, and a scratch directory under `/var/…` is `/private/var/…` by then on macOS.
- */
-async function within(root: string, absolute: string): Promise<boolean> {
-	const rel = relative(await realpath(root).catch(() => root), absolute);
-	return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
 }
 
 function shown(record: Page, inspection: PreviewInspection | null): ToolResult {

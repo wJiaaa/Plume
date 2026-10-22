@@ -10,13 +10,9 @@ import { LOOP } from "../services.ts";
  * the model as messages, the turn ends when the model stops requesting tools, and a stall is
  * nudged rather than abandoned.
  */
-class StandardLoop implements AgentLoop {
-	run = runAgent;
-}
-
 export const loopPlugin: Plugin = {
 	name: "loop",
 	apply(ctx: Context) {
-		return ctx.provide<AgentLoop>(LOOP, new StandardLoop());
+		return ctx.provide<AgentLoop>(LOOP, { run: runAgent });
 	},
 };

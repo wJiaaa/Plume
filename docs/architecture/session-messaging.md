@@ -10,7 +10,7 @@
   没起来的历史会话看不见，也不会被叫醒。侧聊、子代理、CLI 都不参与。
 - **目录要重叠。** 每个会话的目录 = cwd + 所在项目的全部源目录 + （cwd 是链出去的 git worktree
   时）主工作树。两个会话的目录里有一对相同、或一个包含另一个，就互相看得见。比较前一律过
-  `pathKey`（软链、`/var` 与 `/private/var`、Windows 大小写），包含判断用 core 的 `pathWithin`。
+  `pathKey`（软链、`/var` 与 `/private/var`、Windows 大小写），包含判断用 core 的 `withinOrIs`。
   代码在 `electron/peer-reach.ts`。
 - **对方权限比自己宽，不能发。** `ask` < `auto` < `full`，取两边叠加了项目层之后的
   `settingsInEffect.permissionMode`。防的是一个要审批的会话被拒之后，请一个不审批的会话代劳。反过来

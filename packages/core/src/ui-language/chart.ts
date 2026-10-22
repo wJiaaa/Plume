@@ -13,7 +13,7 @@
 import { text } from "./expression.ts";
 
 /** More than a chart can show apart; the rest is a table's job. */
-export const MAX_CHART_POINTS = 500;
+const MAX_CHART_POINTS = 500;
 
 export type ChartRow = Record<string, unknown>;
 

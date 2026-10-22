@@ -17,6 +17,7 @@
 
 import { realpath, stat } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
+import { relativeInside } from "../platform.ts";
 import { openRepo, withRepoView } from "./host-git.ts";
 
 /**
@@ -39,8 +40,8 @@ export async function gitListedFiles(root: string): Promise<string[] | null> {
 	if (!real) return null;
 	const repo = await openRepo(real);
 	if (!repo) return null;
-	const inside = relative(repo.root, real);
-	if (inside.startsWith("..")) return null;
+	const inside = relativeInside(repo.root, real);
+	if (inside === null) return null;
 	const pathspec = inside ? inside.split(sep).join("/") : ".";
 	let listed: string;
 	let deleted: Set<string>;

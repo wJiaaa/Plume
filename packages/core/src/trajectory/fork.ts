@@ -13,7 +13,8 @@ import type { SessionStorage } from "../session/storage.ts";
 
 import type { SessionMeta } from "../session/store.ts";
 import type { Message } from "../types.ts";
-import { historyUpTo, type BoundaryAt, type DividerAt } from "./replay.ts";
+import type { CompactionMark } from "../session/replay-records.ts";
+import { historyUpTo, type BoundaryAt } from "./replay.ts";
 
 export interface ForkResult {
 	meta: SessionMeta;
@@ -129,7 +130,7 @@ async function appendBoundary(store: SessionStorage, meta: SessionMeta, boundary
 	return (await store.append(meta, { type: "event", event: { type: "compacted", before, after, summary, kept: markAt - keptFrom } }, { copy: true })) ?? meta;
 }
 
-async function appendDivider(store: SessionStorage, meta: SessionMeta, divider: DividerAt): Promise<SessionMeta> {
+async function appendDivider(store: SessionStorage, meta: SessionMeta, divider: CompactionMark): Promise<SessionMeta> {
 	const { summary, before, after } = divider;
 	return (await store.append(meta, { type: "event", event: { type: "compacted", before, after, summary } }, { copy: true })) ?? meta;
 }

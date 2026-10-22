@@ -1,7 +1,7 @@
 /**
  * `.agent/` 与 `.agents/`——验收清单第 5 条（计划 15 §3.6）。
  *
- * 三种能力、两个目录名、项目侧向上遍历、个人技能。每一条都对应一种「静默失效」：只认一个
+ * 两种能力、两个目录名、项目侧向上遍历、个人技能。每一条都对应一种「静默失效」：只认一个
  * 目录名，另一半的人失效；不往上走，monorepo 子包看不见根；个人技能不读，每个工具各装一遍。
  */
 
@@ -12,7 +12,6 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { createRegistry } from "../src/capability/index.ts";
 import type { ContextFile } from "../src/capability/types.ts";
-import type { SlashCommand } from "../src/commands/loader.ts";
 import type { Skill } from "../src/skills/loader.ts";
 
 let root: string;
@@ -24,11 +23,9 @@ before(async () => {
 	const repo = join(root, "repo");
 	await mkdir(join(repo, ".git"), { recursive: true });
 
-	// 根用 .agents（复数），三样都放
+	// 根用 .agents（复数），两样都放
 	await mkdir(join(repo, ".agents", "skills", "deploy"), { recursive: true });
-	await mkdir(join(repo, ".agents", "commands"), { recursive: true });
 	await writeFile(join(repo, ".agents", "skills", "deploy", "SKILL.md"), '---\nname: deploy\ndescription: "部署流程"\n---\n\n步骤。\n');
-	await writeFile(join(repo, ".agents", "commands", "ship.md"), "---\ndescription: 发布\n---\n发布 $ARGUMENTS\n");
 	await writeFile(join(repo, ".agents", "AGENTS.md"), "根的 .agents/AGENTS.md。\n");
 
 	// 子包用 .agent（单数）
@@ -47,14 +44,12 @@ after(async () => {
 const registry = () => createRegistry({ home: join(home, ".plume"), userHome: home });
 const cwd = () => join(root, "repo", "packages", "api");
 
-test("三种能力都从 .agents/ 里读出来", async () => {
+test("技能和指令文件都从 .agents/ 里读出来", async () => {
 	const r = registry();
 	const skills = await r.load<Skill>("skill", { cwd: cwd() });
-	const commands = await r.load<SlashCommand>("command", { cwd: cwd() });
 	const files = await r.load<ContextFile>("context-file", { cwd: cwd() });
 
 	assert.ok(skills.items.some((x) => x.name === "deploy"), `技能：${skills.items.map((x) => x.name).join("、")}`);
-	assert.ok(commands.items.some((x) => x.name === "ship"), `命令：${commands.items.map((x) => x.name).join("、")}`);
 	assert.ok(files.items.some((x) => x.path.endsWith(join(".agents", "AGENTS.md"))), `指令文件：${files.items.map((x) => x.name).join("、")}`);
 });
 
@@ -79,11 +74,6 @@ test("项目侧带着 depth，子包 0 根 2", async () => {
 test("个人的 ~/.agents/skills 默认就读", async () => {
 	const skills = await registry().load<Skill>("skill", { cwd: cwd() });
 	assert.ok(skills.items.some((x) => x.name === "mine"));
-});
-
-test("命令的来源标成 agents，设置页能区分", async () => {
-	const commands = await registry().load<SlashCommand>("command", { cwd: cwd() });
-	assert.equal(commands.items.find((x) => x.name === "ship")?.origin, "agents");
 });
 
 test(".agents/AGENTS.md 跟同层裸 AGENTS.md 撞上时，裸的赢、这份被遮蔽", async () => {

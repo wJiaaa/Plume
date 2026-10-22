@@ -17,7 +17,6 @@ import {
 	filterTrajectory,
 	forkSession,
 	matchRanges,
-	messagesUpTo,
 	readTrajectory,
 } from "../src/trajectory/index.ts";
 import type { AssistantMessage, Message, ModelConfig, ProviderConfig } from "../src/types.ts";
@@ -169,14 +168,14 @@ test("forking copies the history up to a point and leaves the original alone", a
 		assert.ok(fork);
 		assert.equal(fork.messages, 2, "the question and the reply, not the tool result after them");
 
-		const forked = await messagesUpTo(h.store, fork.meta.id, Number.POSITIVE_INFINITY);
+		const forked = (await h.store.load(fork.meta.id))!.messages;
 		assert.deepEqual(
 			forked.map((message) => message.role),
 			["user", "assistant"],
 		);
 
 		// The original still has everything.
-		const original = await messagesUpTo(h.store, h.meta.id, Number.POSITIVE_INFINITY);
+		const original = (await h.store.load(h.meta.id))!.messages;
 		assert.equal(original.length, 3);
 	} finally {
 		await h.cleanup();

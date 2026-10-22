@@ -4,6 +4,7 @@ import type { McpServerConfig } from "../mcp/types.ts";
 import { normalizeServer } from "../plugins/loader.ts";
 import { plumeHome } from "../session/store.ts";
 import { withoutBom } from "../utils/bom.ts";
+import { isRecord } from "../utils/record.ts";
 
 /** 不存在就是没分发过；读坏了要留诊断，但不能拖垮用户原有配置。 */
 async function readLibraryFile(name: string): Promise<string | null> {
@@ -52,10 +53,6 @@ export async function withMagpieMcp<T extends { mcpServers: McpServerConfig[] }>
 		console.warn("[magpie] magpie/mcp.json 不是有效的 MCP 配置，已保留 Plume 自己的服务器");
 	}
 	return { ...settings, mcpServers: [...own, ...servers] };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function validServer(config: Record<string, unknown>): boolean {

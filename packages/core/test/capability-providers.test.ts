@@ -39,7 +39,6 @@ before(async () => {
 
 	// Our own directories.
 	await put("project/.plume/skills/deploy/SKILL.md", "---\nname: deploy\ndescription: 我们的部署技能\n---\n正文");
-	await put("project/.plume/commands/review.md", "---\ndescription: 我们的审查\n---\n审查改动");
 	await put("project/.plume/agents/general.md", "---\nname: general\ndescription: 覆盖内置的 general\n---\n我是自定义的。");
 	await put("project/.plume/agents/boss.md", "---\nname: boss\ndescription: 编排者\nspawns: \"*\"\nmax-turns: 25\n---\n派活。");
 	await put(
@@ -47,9 +46,7 @@ before(async () => {
 		"---\nname: lead\ndescription: 组长\nspawns: [scout, reviewer]\nschema-mode: strict\nmaxTurns: 0\noutput:\n  type: object\n  properties:\n    where:\n      type: string\n---\n带队。",
 	);
 
-	// Claude Code's, one of which collides with ours.
-	await put("project/.claude/commands/review.md", "---\ndescription: Claude 的审查\n---\n别的内容");
-	await put("project/.claude/commands/security.md", "---\ndescription: 安全审查\n---\n查注入");
+	// Claude Code's.
 	await put("project/.claude/skills/pdf/SKILL.md", "---\nname: pdf\ndescription: 读 PDF\n---\n正文");
 });
 
@@ -136,23 +133,6 @@ test("the other built-in agents are untouched", async () => {
 	assert.ok(result.items.some((a) => a.provenance.provider === "builtin"), "the ones nobody overrode are still ours");
 });
 
-test("our command wins a name collision with Claude Code's, and the loser names the winner", async () => {
-	const result = await registry().load<{ name: string; description: string }>("command", { cwd: project });
-
-	const review = result.items.filter((c) => c.name === "review");
-	assert.equal(review.length, 1);
-	assert.equal(review[0].description, "我们的审查");
-
-	const loser = result.all.find((c) => c.name === "review" && c.provenance.provider === "claude");
-	assert.ok(loser, "Claude Code's copy is listed");
-	assert.equal(loser.shadowedBy?.provider, "native");
-
-	assert.ok(
-		result.items.some((c) => c.name === "security"),
-		"and the one with no collision is simply available",
-	);
-});
-
 test("skills come from both directories", async () => {
 	const result = await registry().load<Skill>("skill", { cwd: project });
 	const names = result.items.map((s) => s.name).sort();
@@ -181,21 +161,6 @@ test("a plugin's skill is labelled with that plugin and where it is installed", 
 	assert.equal(loser?.shadowedBy?.providerLabel, "插件「PDF 工具」");
 });
 
-test("only: native reduces the result to our own directories", async () => {
-	const result = await registry().load<{ name: string }>("command", { cwd: project, only: new Set(["native"]) });
-	assert.ok(result.items.length > 0);
-	assert.ok(
-		result.items.every((r) => r.provenance.provider === "native"),
-		"nothing else contributed",
-	);
-});
-
-test("disabling a provider removes its contribution and promotes what it was hiding", async () => {
-	const result = await registry().load<{ name: string }>("command", { cwd: project, disabledProviders: new Set(["native"]) });
-	const review = result.items.find((r) => r.name === "review");
-	assert.equal(review?.provenance.provider, "claude", "with ours switched off, Claude Code's version of that name serves");
-});
-
 test("no working directory still yields the user-level and built-in layers", async () => {
 	const result = await registry().load<AgentDefinition>("agent", { cwd: null });
 	assert.ok(
@@ -205,17 +170,17 @@ test("no working directory still yields the user-level and built-in layers", asy
 	assert.ok(result.items.some((r) => r.provenance.provider === "builtin"));
 });
 
-test("contributors and watched directories describe what actually happened", async () => {
-	const result = await registry().load<{ name: string }>("command", { cwd: project });
-	assert.ok(result.contributors.includes("native"));
-	assert.ok(result.contributors.includes("claude"));
+test("watched directories describe what was read", async () => {
+	const result = await registry().load<Skill>("skill", { cwd: project });
 	assert.ok(
-		result.watched.some((dir) => dir.includes(join(".plume", "commands"))),
+		result.watched.some((dir) => dir.includes(join(".plume", "skills"))),
 		"the directories that produced items are the ones worth watching",
 	);
 });
 
 test("a cold load of the mixed fixture stays under 150ms", async () => {
-	const result = await registry().load<{ name: string }>("command", { cwd: project });
-	assert.ok(result.elapsedMs < 150, `cold load took ${result.elapsedMs}ms; the slowest were ${JSON.stringify(result.timings)}`);
+	const started = Date.now();
+	await registry().load<Skill>("skill", { cwd: project });
+	const elapsed = Date.now() - started;
+	assert.ok(elapsed < 150, `cold load took ${elapsed}ms; PLUME_TRACE=capability names the slowest provider`);
 });

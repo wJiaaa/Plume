@@ -105,24 +105,6 @@ const MAX_SERVER_WAIT_MS = 5 * 60_000;
 /** The ceiling of our own curve, for servers that say nothing: 2s, 5s, 12.5s, 31s, then a minute. */
 const CURVE_MAX_MS = 60_000;
 
-/**
- * How long the server itself said to wait, in milliseconds, or null if it did not say.
- *
- * Two places to look, because servers disagree about where to put it. `Retry-After` is the
- * standard one and comes as either seconds or an HTTP date. The body is the other, and ignoring it
- * is what made this useless against the relay in front of us: it answers a 503 with
- * `{"error":{"code":"model_unavailable","reset_seconds":54,"reset_time":"53s"}}` and no header at
- * all, so every wait fell back to the curve below and the whole retry budget was spent in a couple
- * of seconds against an outage it had been told would last just under a minute.
- *
- * Only well-known keys, and only numbers that look like a wait. Scanning for any number in the
- * body would eventually find a model name with digits in it and sleep for that long.
- */
-export function serverDelay(header: string | null, body?: string): number | null {
-	// 同一件事 `failure.ts` 里也做了一份（它还认 `retry_after_ms`），两份各守一张键名表迟早漂开。
-	return serverDelayMs(header, body) ?? null;
-}
-
 /** `x-should-retry: false`，见 `headerDelay` 里那段。 */
 const saysDoNotRetry = (response: Response): boolean => /^(?:false|0)$/i.test(response.headers.get("x-should-retry")?.trim() ?? "");
 
@@ -142,8 +124,8 @@ function headerDelay(response: Response, body?: string): number | null {
 	if (saysDoNotRetry(response)) return null;
 	const ms = Number(response.headers.get("retry-after-ms"));
 	if (Number.isFinite(ms) && ms > 0) return ms;
-	const said = serverDelay(response.headers.get("retry-after"), body);
-	if (said !== null) return said;
+	const said = serverDelayMs(response.headers.get("retry-after"), body);
+	if (said !== undefined) return said;
 	let reset: number | null = null;
 	for (const kind of ["requests", "tokens"]) {
 		if (response.headers.get(`x-ratelimit-remaining-${kind}`)?.trim() !== "0") continue;
@@ -179,7 +161,7 @@ function withServerDelay(policyMs: number, serverMs: number | null | undefined):
  * a server that had just said it was busy.
  */
 export function retryDelay(attempt: number, response?: Response, body?: string): number {
-	const said = response ? headerDelay(response, body) : serverDelay(null, body);
+	const said = response ? headerDelay(response, body) : (serverDelayMs(null, body) ?? null);
 	if (said !== null) return Math.min(said, MAX_SERVER_WAIT_MS);
 	// 2s, 5s, 12.5s, 31s, 60s — with jitter, so a fleet of clients does not return in lockstep.
 	// The ceiling is applied *after* the jitter: capping first lets the ±25% push the result

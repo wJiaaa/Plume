@@ -6,6 +6,7 @@
  */
 
 import type { ModelPricingTier, ThinkingLevel } from "./types/provider.ts";
+import { isRecord } from "./utils/record.ts";
 
 /** 唯一的目录来源：pi 的公开模型目录。 */
 export const MODEL_CATALOG_URL = "https://pi.dev/api/models";
@@ -45,10 +46,6 @@ export interface ModelCatalogDocument {
 		updatedAt: string;
 	};
 	providers: CatalogProvider[];
-}
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 const positive = (value: unknown) => Number.isInteger(value) && (value as number) > 0;

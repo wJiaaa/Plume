@@ -134,7 +134,7 @@ test("runtime statistics reuse filtered requests and recorded sources through re
 		await session.log.commit({ role: "user", content: [{ type: "text", text: "inspect output" }], timestamp: 1 });
 		await session.log.commit({ ...reply(), content: [{ type: "toolCall", id: "large", name: "bash", arguments: { command: "fixture" } }], stopReason: "toolUse" });
 		await session.log.commit({ role: "toolResult", toolName: "bash", toolCallId: "large", content: [{ type: "text", text: "x".repeat(80_000) }], isError: false, timestamp: 2 });
-		useTurnPipeline([async (turn, next) => next({ ...turn, tools: [], systemPrompt: turn.systemPrompt + "\nPLUGIN_MARKER" })]);
+		useTurnPipeline(async (turn, next) => next({ ...turn, tools: [], systemPrompt: turn.systemPrompt + "\nPLUGIN_MARKER" }));
 		await session.prompt([{ type: "text", text: "hello" }]);
 		assert.match(sent.systemPrompt, /CUSTOM_IDENTITY/);
 		assert.match(sent.systemPrompt, /RULES_BEFORE/);

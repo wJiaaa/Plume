@@ -23,7 +23,6 @@ function meta(path: string): SourceMeta {
 export const builtinProvider: CapabilityProvider = {
 	id: ID,
 	label: LABEL,
-	describe: "Plume 自带的子代理",
 	priority: 1,
 	supplies: ["agent"],
 

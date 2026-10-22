@@ -25,6 +25,7 @@ import type { CompactionFault, CompactionLineage, CompactionObserver } from "../
 import type { AssistantMessage, LlmContext, Message, ModelConfig, ProviderConfig, RequestPrefix, StreamEvent } from "../../types.ts";
 import { forkInstruction, hasSummary } from "./compaction-prompts.ts";
 import { summaryReplyTokens } from "./compaction-budget.ts";
+import { replyText } from "../one-shot.ts";
 
 /**
  * 离上一次请求开始多久以内算缓存还热，没有厂商规则时的默认值。
@@ -142,10 +143,6 @@ export async function forkSummary(
 	}
 	// 说了不要调工具还是调了：这次回复不是摘要，丢掉。
 	if (message.content.some((part) => part.type === "toolCall")) return { summary: null, prefix, fault: { kind: "unknown" } };
-	const text = message.content
-		.filter((part) => part.type === "text")
-		.map((part) => part.text)
-		.join("\n")
-		.trim();
+	const text = replyText(message, "\n").trim();
 	return text ? { summary: text, prefix } : { summary: null, prefix, fault: { kind: "empty" } };
 }

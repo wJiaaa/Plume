@@ -1,6 +1,7 @@
 import type { Dirent } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
+import { PATTERN_KEYS, ROOT_KEYS, textArg } from "./args.ts";
 import { errorResult } from "./result.ts";
 import type { Tool, ToolResult } from "../types.ts";
 import { displayPath } from "./paths.ts";
@@ -40,24 +41,13 @@ export const globTool: Tool<GlobArgs> = {
 		additionalProperties: true,
 	},
 	summarize: (args) => {
-		const raw = args as unknown as Record<string, unknown>;
-		const term = String(raw.pattern ?? raw.query ?? raw.search ?? extractPattern(raw.description) ?? "");
+		const term = textArg(args, PATTERN_KEYS);
 		return term ? `Find ${term}` : "Find";
 	},
 
 	async execute(args, ctx): Promise<ToolResult> {
-		const raw = args as unknown as Record<string, unknown>;
-		const pattern = typeof raw.pattern === "string" && raw.pattern
-			? raw.pattern
-			: typeof raw.query === "string" && raw.query
-				? raw.query
-				: typeof raw.search === "string" && raw.search
-					? raw.search
-					: typeof raw.description === "string"
-						? extractPattern(raw.description)
-						: "";
-
-		const path = typeof raw.path === "string" ? raw.path : typeof raw.dir === "string" ? raw.dir : typeof raw.cwd === "string" ? raw.cwd : undefined;
+		const pattern = textArg(args, PATTERN_KEYS);
+		const path = textArg(args, ROOT_KEYS);
 
 		let root = ctx.cwd;
 		if (path) {
@@ -65,7 +55,7 @@ export const globTool: Tool<GlobArgs> = {
 			if (!authorized.ok) return errorResult(authorized.message);
 			root = authorized.absolute;
 		}
-		if (!pattern) return errorResult("`pattern` is required. Please specify the glob pattern to search for in the `pattern` parameter, e.g. {\"pattern\": \"**/*.ts\"}.");
+		if (!pattern) return errorResult("`pattern` is required (`description` is only shown to the user, never searched). Please specify the glob pattern to search for in the `pattern` parameter, e.g. {\"pattern\": \"**/*.ts\"}.");
 
 		const regex = globToRegExp(pattern);
 		const limit = Math.min(args.limit ?? MAX_RESULTS, MAX_RESULTS);
@@ -237,26 +227,4 @@ function charClass(body: string): string {
 
 function escapeRegex(text: string): string {
 	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/** Extract a glob pattern when the model embeds it in a description string. */
-function extractPattern(desc: unknown): string {
-	if (typeof desc !== "string" || !desc.trim()) return "";
-	const labeled = extractLabeledValue(desc, ["pattern", "glob", "query", "search"]);
-	if (labeled) return labeled;
-	const quoted = desc.match(/[`'"]([^`'"]*[*?{}][^`'"]*)[`'"]/);
-	if (quoted?.[1]) return quoted[1].trim();
-	const wildcard = desc.match(/\S*[*?{}][^\s)]*/);
-	if (wildcard?.[0]) return wildcard[0].trim();
-	/* Fallback: if the model passed the pattern directly as description */
-	return desc.trim();
-}
-
-function extractLabeledValue(desc: string, labels: string[]): string {
-	const names = labels.join("|");
-	const quoted = desc.match(new RegExp(`(?:${names})[:=]\\s*[\`'"]([^\\\`'"]+)[\`'"]`, "i"));
-	if (quoted?.[1]) return quoted[1].trim();
-	const bare = desc.match(new RegExp(`(?:${names})[:=]\\s*(\\S+)`, "i"));
-	if (bare?.[1]) return bare[1].replace(/[)\].,;]+$/, "").trim();
-	return "";
 }

@@ -3,6 +3,7 @@ import { createInterface } from "node:readline";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import type { Readable } from "node:stream";
+import { PATTERN_KEYS, ROOT_KEYS, textArg } from "./args.ts";
 import { errorResult } from "./result.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { globToRegExp } from "./glob.ts";
@@ -84,28 +85,18 @@ export const grepTool: Tool<GrepArgs> = {
 		additionalProperties: true,
 	},
 	summarize: (args) => {
-		const raw = args as unknown as Record<string, unknown>;
-		const term = String(raw.pattern ?? raw.query ?? raw.search ?? extractGrepPattern(raw.description) ?? "");
+		const term = textArg(args, PATTERN_KEYS);
 		return term ? `Search "${term}"` : "Search";
 	},
 
 	async execute(args, ctx): Promise<ToolResult> {
-		const raw = args as unknown as Record<string, unknown>;
-		const pattern = typeof raw.pattern === "string" && raw.pattern
-			? raw.pattern
-			: typeof raw.query === "string" && raw.query
-				? raw.query
-				: typeof raw.search === "string" && raw.search
-					? raw.search
-					: typeof raw.description === "string"
-						? extractGrepPattern(raw.description)
-						: "";
+		const pattern = textArg(args, PATTERN_KEYS);
 
-		if (!pattern) return errorResult("`pattern` is required. Please specify the regex/pattern to search for in the `pattern` parameter, e.g. {\"pattern\": \"your_regex\"}.");
+		if (!pattern) return errorResult("`pattern` is required (`description` is only shown to the user, never searched). Please specify the regex/pattern to search for in the `pattern` parameter, e.g. {\"pattern\": \"your_regex\"}.");
 		const normalizedArgs: GrepArgs = {
 			...args,
 			pattern,
-			path: typeof raw.path === "string" ? raw.path : typeof raw.dir === "string" ? raw.dir : typeof raw.cwd === "string" ? raw.cwd : undefined,
+			path: textArg(args, ROOT_KEYS),
 		};
 
 		let root = ctx.cwd;
@@ -450,25 +441,4 @@ function formatMatches(lines: string[], args: GrepArgs, limit: number, literal =
 		content: [{ type: "text", text: header + shown.join("\n") + footer + trailer }],
 		details: { kind: "grep", pattern: args.pattern, count, matches: shown, literal, ...(stopped ? { stopped: true } : {}) },
 	};
-}
-
-/** Extract a grep regex pattern when the model embeds it in a description string. */
-function extractGrepPattern(desc: unknown): string {
-	if (typeof desc !== "string" || !desc.trim()) return "";
-	const labeled = extractLabeledValue(desc, ["pattern", "regex", "query", "search"]);
-	if (labeled) return labeled;
-	const quoted = desc.match(/[`'"]([^`'"]+)['`"]/);
-	if (quoted?.[1]) return quoted[1].trim();
-	/* Fallback: if the model passed the raw pattern directly as description */
-	return desc.trim();
-}
-
-/** Quoted first so `pattern: "foo|bar baz"` keeps spaces and alternation. */
-function extractLabeledValue(desc: string, labels: string[]): string {
-	const names = labels.join("|");
-	const quoted = desc.match(new RegExp(`(?:${names})[:=]\\s*[\`'"]([^\\\`'"]+)[\`'"]`, "i"));
-	if (quoted?.[1]) return quoted[1].trim();
-	const bare = desc.match(new RegExp(`(?:${names})[:=]\\s*(\\S+)`, "i"));
-	if (bare?.[1]) return bare[1].replace(/[)\].,;]+$/, "").trim();
-	return "";
 }

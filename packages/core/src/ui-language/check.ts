@@ -15,7 +15,7 @@ import { parseBlock, type PropValue, type UiElement, type UiNode } from "./parse
 const MAX_PROBLEMS = 8;
 
 /** Quoted text may hold `{expression}` too: `send="Plan for {city}"`. Split into its pieces. */
-export function templateParts(value: string): (string | Expression)[] | null {
+function templateParts(value: string): (string | Expression)[] | null {
 	if (!value.includes("{")) return null;
 	const parts: (string | Expression)[] = [];
 	let at = 0;

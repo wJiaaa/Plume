@@ -16,24 +16,13 @@
  *
  * The list is closed on purpose. A capability is a promise that something will be found, merged
  * and shadowed a particular way, and an open string type turns a typo into a capability that is
- * silently never supplied by anyone.
+ * silently never supplied by anyone. It holds only what something actually loads: a kind nobody
+ * asks for is a merge rule nobody exercises. Slash commands are not here — `commands/catalogue.ts`
+ * reads them through `commandSources`.
  */
-export type CapabilityId =
-	| "skill"
-	| "command"
-	| "agent"
-	| "context-file"
-	| "mcp"
-	| "extension"
-	| "prompt"
-	| "tool"
-	| "hook"
-	| "theme"
-	| "settings"
-	| "snippet"
-	| "resource";
+export type CapabilityId = "skill" | "agent" | "context-file";
 
-export type ProviderId = string;
+type ProviderId = string;
 
 /** Where an item came from. Carried on every item so that "why is this here" has an answer. */
 /**
@@ -78,30 +67,16 @@ export type Sourced<T> = T & { readonly provenance: SourceMeta };
  */
 export interface Capability<T = unknown> {
 	id: CapabilityId;
-	/**
-	 * The deduplication key. `undefined` means this item never collides with anything — it is
-	 * always kept, and never keeps anything else out.
-	 */
-	key(item: T): string | undefined;
-	/**
-	 * Different keys, same thing. Used where a rename should not produce a duplicate: the same MCP
-	 * server declared under two names is one server, and connecting to it twice is a bug the user
-	 * experiences as a duplicated tool list.
-	 */
-	equivalent?(a: T, b: T): boolean;
-	/** A string here means the item is invalid: it is dropped and the string becomes a diagnostic. */
-	validate?(item: T): string | undefined;
-	/** A stable id for turning a single item off, e.g. `skill:pdf`. */
-	itemId?(item: T): string | undefined;
+	/** The deduplication key: two items with the same key are one name, and only one of them runs. */
+	key(item: T): string;
 }
 
 /**
  * Everything a provider is allowed to know.
  *
  * Deliberately not the settings object. A provider that reads settings cannot be tested without
- * constructing one, and the decisions that live in settings — which providers are on, which items
- * are off — belong to the registry, which applies them uniformly instead of trusting a dozen
- * providers to each remember.
+ * constructing one, and the decisions that live in settings — which file wins a name — belong to
+ * the registry, which applies them uniformly instead of trusting every provider to remember.
  */
 export interface DiscoveryContext {
 	cwd: string | null;
@@ -110,15 +85,6 @@ export interface DiscoveryContext {
 	/** The operating system's home directory, where other tools keep their user-level config. */
 	userHome: string;
 	repoRoot: string | null;
-	/**
-	 * Whether this provider may read its user-level directory this time.
-	 *
-	 * Project-level directories are always read: a `.claude/commands` checked into a repository is
-	 * something the team wrote for this code. User-level ones are not, because your private Claude
-	 * commands following you into someone else's repository is a surprise nobody asked for.
-	 */
-	userSourceEnabled: boolean;
-	signal?: AbortSignal;
 }
 
 export interface ProviderResult<T = unknown> {
@@ -139,48 +105,29 @@ export interface ProviderResult<T = unknown> {
  */
 export interface CapabilityProvider<T = unknown> {
 	id: ProviderId;
-	/** Shown in the settings UI. */
+	/** Shown on the settings page as the winner of a shadowed item, and in load-failure diagnostics. */
 	label: string;
-	/** One line saying which directories it reads. */
-	describe: string;
 	/** Higher loads first. 100 native · 90 plugins · 50–80 other tools · 10–40 shared conventions · 1 built-in. */
 	priority: number;
 	supplies: CapabilityId[];
-	/** True for other tools' configuration, whose user-level directories are opt-in. */
-	foreign?: boolean;
 	load(kind: CapabilityId, ctx: DiscoveryContext): Promise<ProviderResult<T>>;
 }
 
-export interface LoadOptions<T = unknown> {
+export interface LoadOptions {
 	cwd: string | null;
-	/** Only these providers. Naming a provider also enables its user-level directory. */
-	only?: ReadonlySet<ProviderId>;
-	/** Providers the user switched off. */
-	disabledProviders?: ReadonlySet<ProviderId>;
-	/** Foreign providers whose user-level directories the user opted into. */
-	enabledUserSources?: ReadonlySet<ProviderId>;
-	/** Item ids the user switched off. Dropped items do NOT hold their key. */
-	disabledItems?: ReadonlySet<string>;
 	/**
 	 * Which file should win a name, as `kind:name` → path. Written by 「改用那个」 on the settings
-	 * page, where the loser of a same-name conflict is one click from becoming the winner.
+	 * page, where the loser of a same-name conflict is one click from becoming the winner — this is
+	 * `settings.capabilityPreferences` as stored.
 	 *
 	 * By path, because that is the only thing that tells two files of one name apart — provider
 	 * and scope both repeat. A preference naming a path that is not among the candidates does
 	 * nothing, so preferring `~/.claude/skills/pdf` changes nothing in a project with no `pdf`.
-	 */
-	preferred?: ReadonlyMap<string, string>;
-	/**
-	 * Items to drop that DO hold their key, so nothing of the same name takes their place.
 	 *
-	 * The distinction matters and is the reason both exist. Turning off a project skill called
-	 * `deploy` should not silently promote your personal `deploy` — you switched off that name,
-	 * not that file. Excluding one for an unrelated reason (it is already loaded elsewhere) should.
+	 * Every load that feeds a user-visible list must pass it: one that forgets quietly falls back
+	 * to default precedence while the settings page says 「已改用」.
 	 */
-	suppress?: (item: Sourced<T>) => boolean;
-	/** Items to drop that do NOT hold their key. */
-	exclude?: (item: Sourced<T>) => boolean;
-	signal?: AbortSignal;
+	preferred?: Readonly<Record<string, string>>;
 }
 
 export interface CapabilityResult<T = unknown> {
@@ -189,20 +136,6 @@ export interface CapabilityResult<T = unknown> {
 	/** Everything found, including what lost. The settings page needs the losers. */
 	all: (Sourced<T> & { shadowedBy?: SourceMeta })[];
 	diagnostics: Diagnostic[];
-	/** Providers that actually contributed something. */
-	contributors: ProviderId[];
 	/** Directories worth watching for changes. */
 	watched: string[];
-	elapsedMs: number;
-	/** Per-provider timings, for `PLUME_TRACE=capability`. */
-	timings: { provider: ProviderId; ms: number; count: number }[];
-}
-
-export interface ProviderInfo {
-	id: ProviderId;
-	label: string;
-	describe: string;
-	priority: number;
-	supplies: CapabilityId[];
-	foreign: boolean;
 }

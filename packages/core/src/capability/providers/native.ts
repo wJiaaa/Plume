@@ -1,7 +1,7 @@
 /**
  * Plume's own directories, and the loaders that already read them.
  *
- * This provider wraps rather than replaces. The skill, command and agent loaders are tested, in
+ * This provider wraps rather than replaces. The skill and agent loaders are tested, in
  * use, and each carries a season of corrections that are not visible in their shape. Rewriting
  * them to fit a new interface would put all of that at risk to gain nothing a caller can see.
  *
@@ -10,7 +10,6 @@
  */
 
 import { join } from "node:path";
-import { loadCommands, commandSources } from "../../commands/loader.ts";
 import { isUnparsable, loadSkills, parseFrontmatter, type Skill } from "../../skills/loader.ts";
 import type { AgentDefinition } from "../../tools/task.ts";
 import type { JsonSchema } from "../../types.ts";
@@ -46,13 +45,11 @@ function upgrade(diagnostics: { path: string; message: string; severity?: string
 export const nativeProvider: CapabilityProvider = {
 	id: ID,
 	label: LABEL,
-	describe: "读取项目里的 .plume/ 与 ~/.plume/",
 	priority: 100,
-	supplies: ["skill", "command", "agent", "context-file"],
+	supplies: ["skill", "agent", "context-file"],
 
 	async load(kind: CapabilityId, ctx: DiscoveryContext): Promise<ProviderResult> {
 		if (kind === "skill") return loadNativeSkills(ctx);
-		if (kind === "command") return loadNativeCommands(ctx);
 		if (kind === "agent") return loadNativeAgents(ctx);
 		if (kind === "context-file") return loadNativeContextFiles(ctx);
 		return { items: [] };
@@ -84,21 +81,6 @@ async function loadNativeSkills(ctx: DiscoveryContext): Promise<ProviderResult<S
 		diagnostics.push(...upgrade(loaded.diagnostics));
 	}
 	return { items, diagnostics, watched: dirs.map((d) => d.dir) };
-}
-
-async function loadNativeCommands(ctx: DiscoveryContext): Promise<ProviderResult> {
-	/*
-	 * Only our own directories here. `.claude/commands` is the `claude` provider's business, and
-	 * reading it from two places would make the same file collide with itself — which the registry
-	 * would faithfully report as a conflict between Plume and Plume.
-	 */
-	const sources = commandSources(ctx.cwd, ctx.home).filter((s) => s.origin === "plume");
-	const { commands, diagnostics } = await loadCommands(sources);
-	return {
-		items: attach(commands, (c) => c.path, (c) => scopeOf(c.scope)),
-		diagnostics: upgrade(diagnostics),
-		watched: sources.map((s) => s.dir),
-	};
 }
 
 /**

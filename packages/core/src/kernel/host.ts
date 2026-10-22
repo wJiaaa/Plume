@@ -117,7 +117,7 @@ async function boot(settings: Settings, warn: (message: string) => void): Promis
 	useSkillRegistry(skills);
 	useScheduler(context.require<TaskScheduler>(SCHEDULER));
 	useAgentLoop(context.require<AgentLoop>(LOOP));
-	useTurnPipeline(context.require<TurnPipeline>(SESSION).all());
+	useTurnPipeline(context.require<TurnPipeline>(SESSION).middleware);
 	let disposed = false;
 	return {
 		context,

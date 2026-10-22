@@ -13,8 +13,6 @@ import type { RiskCode, RiskParams } from "../tools/risk-reasons.ts";
 import type { Message, UserContent } from "./message.ts";
 import type { ProviderConfig } from "./provider.ts";
 
-export type { RiskCode, RiskParams };
-
 export interface SubAgentAnswer {
 	text: string;
 	output?: Record<string, unknown>;

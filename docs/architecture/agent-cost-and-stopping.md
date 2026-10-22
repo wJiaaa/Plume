@@ -512,8 +512,8 @@ A1 省 50.6% 的携带量，换算成钱约 25%。
 
 **顺带暴露的两件事**（都没有单独立条目，但值得知道）：
 
-1. 模型把 pattern 写进了 `description` 字段，`pattern` 字段根本没填。grep.ts 有个
-   `extractGrepPattern()` 专门从 description 里往外抠——**这个兜底存在本身就说明模型经常填错**。
+1. 模型把 pattern 写进了 `description` 字段，`pattern` 字段根本没填。grep.ts 当时有个
+   `extractGrepPattern()` 专门从 description 里往外抠（后来删了，见 A2 的「顺带」）。
 2. 291 轮里只有 3 条真实用户发言，其余是 Plume 注入的「（自动继续）上一条回复是空的」3 次、
    「（自动提示）你已经用同样的参数调用 grep/read 多次」2 次。**自动纠正确实在工作**，
    但完全空回复只有 4 轮（1.4%），所以它不是这次的主要成本。
@@ -633,9 +633,12 @@ A1 省 50.6% 的携带量，换算成钱约 25%。
       会让模型以为结果就这些。
       **验**：重跑 audit，grep 的「平均每次」应从 2,951 token 明显下降；第 2 节单条最贵榜上不应
       再出现 ~495K 的 grep。
-      **顺带**：模型常把 pattern 填进 `description` 字段（活案例里就是），`extractGrepPattern()`
-      是为此存在的兜底。这个兜底应该保留，但值得在结果里说一句「你的 pattern 是从 description
-      里抠出来的」，否则模型不知道自己填错了。
+      **顺带**：模型曾把 pattern 填进 `description` 字段（活案例里就是），当时有个
+      `extractGrepPattern()` 从 description 里往外抠。后来 schema 把 `description` 写明为「给人看的
+      一句话，不是 pattern」，这个兜底就从补救变成了误伤：没给 pattern 时，一句「查找配置文件」被
+      当成正则去搜，安静地返回零匹配，模型照样不知道自己填错了。现在已删除，缺 pattern 直接报错并
+      说明 description 不会被搜索（`tools/glob.ts`、`tools/grep.ts`）。删前在本机 921 次 grep/glob
+      调用里数过，没有一次缺 pattern。
 
       **【回滚方案】**：
       若单行截断导致模型读取代码片段时丢失必要字段（例如 JSON 被截断导致语法解析失败）：

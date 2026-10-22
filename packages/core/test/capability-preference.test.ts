@@ -32,7 +32,6 @@ function fake(id: string, priority: number, names: string[]): CapabilityProvider
 	return {
 		id,
 		label: id,
-		describe: id,
 		priority,
 		supplies: ["skill"],
 		async load(_kind: CapabilityId, _ctx: DiscoveryContext) {
@@ -49,7 +48,7 @@ test("a preferred path wins the name, and everyone else points at it", async () 
 	reg.register(fake("mid", 50, ["deploy"]));
 	reg.register(fake("high", 100, ["deploy"]));
 
-	const result = await reg.load<Named>("skill", { cwd: "/p", preferred: new Map([["skill:deploy", "/low/deploy.md"]]) });
+	const result = await reg.load<Named>("skill", { cwd: "/p", preferred: { "skill:deploy": "/low/deploy.md" } });
 
 	assert.equal(result.items.length, 1, "still one winner");
 	assert.equal(result.items[0].provenance.provider, "low", "the one the user named");
@@ -66,7 +65,7 @@ test("a preference for a path that is not there does nothing", async () => {
 	reg.register(fake("low", 10, ["deploy"]));
 	reg.register(fake("high", 100, ["deploy"]));
 
-	const result = await reg.load<Named>("skill", { cwd: "/p", preferred: new Map([["skill:deploy", "/elsewhere/deploy.md"]]) });
+	const result = await reg.load<Named>("skill", { cwd: "/p", preferred: { "skill:deploy": "/elsewhere/deploy.md" } });
 	assert.equal(result.items[0].provenance.provider, "high", "default order holds");
 });
 
@@ -75,7 +74,7 @@ test("a preference is scoped by kind: preferring a command does not touch a skil
 	reg.register(fake("low", 10, ["deploy"]));
 	reg.register(fake("high", 100, ["deploy"]));
 
-	const result = await reg.load<Named>("skill", { cwd: "/p", preferred: new Map([["command:deploy", "/low/deploy.md"]]) });
+	const result = await reg.load<Named>("skill", { cwd: "/p", preferred: { "agent:deploy": "/low/deploy.md" } });
 	assert.equal(result.items[0].provenance.provider, "high");
 });
 

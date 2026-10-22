@@ -26,6 +26,7 @@
  */
 
 import { unzipSync, strFromU8 } from "fflate";
+import { decodeEntities } from "../utils/entities.ts";
 
 export interface ExtractedText {
 	text: string;
@@ -68,19 +69,9 @@ function textFromOoxml(xml: string): string {
 			out.push("\n");
 			continue;
 		}
-		out.push(unescapeXml(match[1]));
+		out.push(decodeEntities(match[1]));
 	}
 	return out.join("");
-}
-
-function unescapeXml(raw: string): string {
-	return raw
-		.replace(/&lt;/g, "<")
-		.replace(/&gt;/g, ">")
-		.replace(/&quot;/g, '"')
-		.replace(/&apos;/g, "'")
-		.replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
-		.replace(/&amp;/g, "&");
 }
 
 /** Collapse the runs of blank lines that paragraph boundaries leave behind. */

@@ -1,25 +1,14 @@
 /**
- * Walking the event stream forwards.
+ * "What had happened by sequence N" — the question underneath forking from a point in the middle.
  *
- * "What had happened by sequence N" is the question underneath resuming, forking and replaying, so
- * it is answered once, here. Resuming asks for the end of the stream; forking asks for a point in
- * the middle; replaying asks for every point in turn.
- *
- * Truncation is applied as it is met rather than pre-scanned, because that is what it means: a
- * record that voids the tail behind it, in the order it was written.
+ * Answered by the same replay `SessionStore.load` uses (`replayRecords`), over the records up to
+ * that point. It used to be a second copy of the truncation and boundary rules, and two copies
+ * would mean a fork and its source disagreeing about the same point.
  */
 
+import { replayRecords, type CompactionMark } from "../session/replay-records.ts";
 import type { SessionRecord, SessionStore } from "../session/store.ts";
 import type { Message } from "../types.ts";
-
-/** The messages a session held at a given point. Pass `Infinity` for "all of it". */
-export async function messagesUpTo(
-	store: Pick<SessionStore, "read">,
-	sessionId: string,
-	seq: number,
-): Promise<Message[]> {
-	return (await historyUpTo(store, sessionId, seq)).messages;
-}
 
 /** 到某一点为止仍然生效的压缩边界，以及写下它时对话走到了第几条（界面在那里画分隔线）。 */
 export interface BoundaryAt {
@@ -30,69 +19,34 @@ export interface BoundaryAt {
 	after: number;
 }
 
-/** 不是生效边界的那些压缩：界面在第 `at` 条前画分隔线，模型视图不从那里开始。 */
-export interface DividerAt {
-	at: number;
-	summary?: string;
-	before: number;
-	after: number;
-}
-
 /**
  * 到某一点为止的消息，连同那一刻模型视图的起点。
  *
  * 光有消息不够：日志保留全部原文，模型看到的是「摘要 + 边界之后」，二者只差这个边界。分叉只抄
  * 消息时，新会话把压缩掉的历史整段展开重发，而保留尾部那几条回复的 usage 量的还是压缩后的小请求，
- * 计量就拿这个小数去报一个大得多的上下文。边界的判定照搬 `SessionStore.load`：只认带 `kept` 的
- * `compacted`，截断越过 `keptFrom` 才作废——两处不一致，分叉出来的会话和原会话在同一点就不是同一份视图。
+ * 计量就拿这个小数去报一个大得多的上下文。
+ *
+ * 其余的压缩（`dividers`）也要带走，否则分叉里那几条分隔线就没了；被取代的旧边界只作分隔线，
+ * 不带 `kept`——带着的话，原会话靠截断作废的边界会在分叉里复活。
  */
 export async function historyUpTo(
 	store: Pick<SessionStore, "read">,
 	sessionId: string,
 	seq: number,
-): Promise<{ messages: Message[]; boundary: BoundaryAt | null; dividers: DividerAt[] }> {
-	const kept: { seq: number; message: Message }[] = [];
-	let boundary: BoundaryAt | null = null;
-	/*
-	 * 其余的压缩也要带走，否则分叉里那几条分隔线就没了。截断照 `load` 的规矩丢掉越过新结尾的；
-	 * 被取代的旧边界降成分隔线，不带 `kept`——带着的话，原会话靠截断作废的边界会在分叉里复活。
-	 */
-	let dividers: DividerAt[] = [];
+): Promise<{ messages: Message[]; boundary: BoundaryAt | null; dividers: CompactionMark[] }> {
+	const records: SessionRecord[] = [];
 	for await (const record of store.read(sessionId)) {
 		if (record.seq > seq) break;
-		if (record.type === "truncate") {
-			const cutoff = record.afterSeq;
-			while (kept.length > 0 && kept[kept.length - 1].seq > cutoff) kept.pop();
-			dividers = dividers.filter((divider) => divider.at <= kept.length);
-			if (boundary && boundary.keptFrom > kept.length) boundary = null;
-			else if (boundary) boundary.markAt = Math.min(boundary.markAt, kept.length);
-			continue;
-		}
-		// A message record with no message in it is a hole `load` skips; copied, it would throw.
-		if (record.type === "message" && record.message) kept.push({ seq: record.seq, message: record.message });
-		else if (record.type === "event" && record.event.type === "compacted") {
-			const { summary, kept: count, before, after } = record.event;
-			if (count === undefined) {
-				dividers.push({ at: kept.length, summary, before, after });
-				continue;
-			}
-			if (boundary) dividers.push({ at: boundary.markAt, summary: boundary.summary, before: boundary.before, after: boundary.after });
-			boundary = { summary: summary ?? "", keptFrom: Math.max(0, kept.length - count), markAt: kept.length, before, after };
-		}
+		records.push(record);
 	}
-	return { messages: kept.map((entry) => entry.message), boundary, dividers };
-}
-
-/**
- * Every record in order, as steps.
- *
- * A generator rather than an array: a replay is watched one step at a time, and a long session's
- * records are the one thing in this app that genuinely does not fit comfortably in memory.
- */
-export async function* replaySession(
-	store: Pick<SessionStore, "read">,
-	sessionId: string,
-	sinceSeq = 0,
-): AsyncGenerator<SessionRecord> {
-	for await (const record of store.read(sessionId, sinceSeq)) yield record;
+	const { entries, compactions, compaction, boundaryMark } = replayRecords(records);
+	const boundary =
+		compaction && boundaryMark
+			? { summary: compaction.summary, keptFrom: compaction.keptFrom, markAt: boundaryMark.at, before: boundaryMark.before, after: boundaryMark.after }
+			: null;
+	return {
+		messages: entries.map((entry) => entry.message),
+		boundary,
+		dividers: compactions.filter((mark) => mark !== boundaryMark),
+	};
 }

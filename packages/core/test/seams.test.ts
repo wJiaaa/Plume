@@ -52,18 +52,19 @@ test("skills: a plugin's skills reach the session", () => {
 });
 
 test("session: middleware amends the turn, outermost first", async () => {
+	const ctx = await createContext();
+	const pipeline = ctx.require<TurnPipeline>(SESSION);
 	const order: string[] = [];
-	useTurnPipeline([
-		async (turn, next) => {
-			order.push("outer");
-			const out = await next({ ...turn, systemPrompt: `${turn.systemPrompt}\n[outer]` });
-			return { ...out, systemPrompt: `${out.systemPrompt}\n[outer done]` };
-		},
-		async (turn, next) => {
-			order.push("inner");
-			return next({ ...turn, systemPrompt: `${turn.systemPrompt}\n[inner]` });
-		},
-	]);
+	pipeline.use(async (turn, next) => {
+		order.push("outer");
+		const out = await next({ ...turn, systemPrompt: `${turn.systemPrompt}\n[outer]` });
+		return { ...out, systemPrompt: `${out.systemPrompt}\n[outer done]` };
+	});
+	pipeline.use(async (turn, next) => {
+		order.push("inner");
+		return next({ ...turn, systemPrompt: `${turn.systemPrompt}\n[inner]` });
+	});
+	useTurnPipeline(pipeline.middleware);
 
 	try {
 		const turn = await prepareTurn({ systemPrompt: "base", messages: [], tools: [], cwd: "/tmp" });
@@ -71,6 +72,7 @@ test("session: middleware amends the turn, outermost first", async () => {
 		assert.equal(turn.systemPrompt, "base\n[outer]\n[inner]\n[outer done]");
 	} finally {
 		useTurnPipeline(null);
+		await ctx.dispose();
 	}
 
 	const untouched = await prepareTurn({ systemPrompt: "base", messages: [], tools: [], cwd: "/tmp" });
@@ -136,23 +138,11 @@ test("storage: the runtime accepts any store with the right shape", async () => 
 test("the default context provides every capability", async () => {
 	const ctx = await createContext();
 	try {
-		assert.deepEqual(ctx.pending(), [], "nothing left waiting");
 		assert.ok(ctx.require<SessionStorage>(STORAGE));
 		assert.ok(ctx.require<TaskScheduler>(SCHEDULER));
 		assert.ok(ctx.require<AgentLoopService>(LOOP));
 		assert.ok(ctx.require<SkillRegistry>(SKILLS));
-
-		/*
-		 * The pipeline hands back one step whatever is registered.
-		 *
-		 * It dispatches to the bus rather than being a snapshot of the listeners, because the host
-		 * binds it once at boot and plugins register afterwards — see the test below.
-		 */
-		const pipeline = ctx.require<TurnPipeline>(SESSION);
-		assert.equal(pipeline.all().length, 1);
-		const remove = pipeline.use(async (turn, next) => next(turn));
-		assert.equal(pipeline.all().length, 1);
-		remove();
+		assert.ok(ctx.require<TurnPipeline>(SESSION));
 	} finally {
 		await ctx.dispose();
 	}
@@ -194,7 +184,7 @@ test("a turn-pipeline step registered after boot still runs", async () => {
 	try {
 		const pipeline = ctx.require<TurnPipeline>(SESSION);
 		// The host binds once, at boot, before any plugin has registered anything.
-		useTurnPipeline(pipeline.all());
+		useTurnPipeline(pipeline.middleware);
 
 		const before = await prepareTurn({ systemPrompt: "base", messages: [], tools: [], cwd: "/tmp" });
 		assert.equal(before.systemPrompt, "base", "nothing registered, nothing changed");

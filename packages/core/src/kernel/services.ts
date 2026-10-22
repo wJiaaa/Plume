@@ -29,7 +29,6 @@ export interface LlmRegistry {
 	/** Register an adapter for one API shape. Returns the disposer that removes it. */
 	register(api: string, provider: Provider): () => void;
 	get(api: string): Provider | undefined;
-	list(): string[];
 }
 
 /** `ctx.tools` — what the agent can do. */
@@ -44,7 +43,6 @@ export interface ToolRegistry {
 	 */
 	register(tools: Tool[]): () => void;
 	all(): Tool[];
-	byName(name: string): Tool | undefined;
 }
 
 /** `ctx.approval` — whether an action proceeds unattended. */
@@ -147,7 +145,11 @@ export const SESSION = "session";
 export interface TurnPipeline {
 	/** Add a step. Returns the disposer that removes it. */
 	use(step: TurnMiddleware): () => void;
-	all(): TurnMiddleware[];
+	/**
+	 * Every step, as the one middleware the host binds at boot (`useTurnPipeline`). It dispatches
+	 * live, so a step added after boot still runs.
+	 */
+	middleware: TurnMiddleware;
 }
 
 /** `ctx.scheduler` — which piece of queued work runs next. */
@@ -258,11 +260,6 @@ export const STORAGE = "storage";
  * things being decided — the tense says whether a listener can still change the outcome.
  */
 export const EVENTS = {
-	/** A capability arrived or left. */
-	serviceAdded: "service/added",
-	serviceRemoved: "service/removed",
-	/** A plugin finished applying. */
-	pluginStarted: "plugin/started",
 	/** Around-middleware over a single tool call: listeners may inspect, wrap or replace it. */
 	toolCall: "tools/call",
 	/** A turn is about to be sent; listeners may amend the context that goes with it. */

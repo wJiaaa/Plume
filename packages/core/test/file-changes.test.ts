@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, afterEach, test } from "node:test";
 import { execFileSync } from "node:child_process";
-import { recordFileChange, readFileChange, undoFileChanges, undoFileChangeBatches } from "../src/tools/file-changes.ts";
+import { recordFileChange, readFileChange, undoFileChangeBatches } from "../src/tools/file-changes.ts";
 import { beforeCommand, afterCommand } from "../src/tools/command-changes.ts";
 import { computeDiff } from "../src/tools/diff.ts";
 import type { ToolContext } from "../src/types.ts";
@@ -23,21 +23,21 @@ test("chained edits undo only this turn, preserving the user's initial dirty con
 	const a = await recordFileChange(ctx, path, initial, "user work\nfirst\n"); assert.ok(a);
 	const b = await recordFileChange(ctx, path, "user work\nfirst\n", "user work\nsecond\n"); assert.ok(b);
 	await writeFile(path, "user work\nsecond\n");
-	await undoFileChanges(cwd, await Promise.all([a,b].map((id) => readFileChange(ctx.sessionId, id))));
+	await undoFileChangeBatches(cwd, [await Promise.all([a,b].map((id) => readFileChange(ctx.sessionId, id)))]);
 	assert.equal(await readFile(path, "utf8"), initial);
 });
 test("undo refuses later edits, discontinuous histories and records from another session", async () => {
 	const path = join(cwd, "file.ts"), id = await recordFileChange(ctx, path, "before", "after"); assert.ok(id);
 	const change = await readFileChange(ctx.sessionId, id); await writeFile(path, "new user work");
-	await assert.rejects(undoFileChanges(cwd, [change]), /后续修改/);
+	await assert.rejects(undoFileChangeBatches(cwd, [[change]]), /后续修改/);
 	assert.equal(await readFile(path, "utf8"), "new user work");
 	await assert.rejects(readFileChange("other-session", id));
 	await assert.rejects(readFileChange(ctx.sessionId, "../../settings.json"), /无效/);
-	await assert.rejects(undoFileChanges(cwd, [change, {...change, before: "unrelated"}]), /其他修改/);
+	await assert.rejects(undoFileChangeBatches(cwd, [[change, {...change, before: "unrelated"}]]), /其他修改/);
 });
 test("new files are removed only while still equal to the recorded result", async () => {
 	const path = join(cwd, "new.ts"), id = await recordFileChange(ctx, path, null, "created"); assert.ok(id);
-	await writeFile(path, "created"); await undoFileChanges(cwd, [await readFileChange(ctx.sessionId, id)]);
+	await writeFile(path, "created"); await undoFileChangeBatches(cwd, [[await readFileChange(ctx.sessionId, id)]]);
 	await assert.rejects(readFile(path), {code:"ENOENT"});
 });
 test("command snapshots compare against the working file, including staged additions", async () => {
@@ -50,7 +50,7 @@ test("command snapshots compare against the working file, including staged addit
 	await writeFile(join(cwd,"staged.ts"), "one\nupdated\n");
 	const ids = await afterCommand(ctx, snapshot); assert.equal(ids.length, 1);
 	const change = await readFileChange(ctx.sessionId, ids[0]); assert.equal(change.before, "one\ntwo\n"); assert.equal(change.after, "one\nupdated\n");
-	await assert.rejects(undoFileChanges(cwd, [change]), /命令/);
+	await assert.rejects(undoFileChangeBatches(cwd, [[change]]), /命令/);
 	assert.equal(await readFile(join(cwd,"existing.ts"), "utf8"), "user dirty\n");
 });
 
@@ -163,7 +163,7 @@ test("an interrupted staged write leaves every original intact and removes tempo
 		if (String(args[0]).includes(".plume-undo-")) { await original(args[0], "part"); throw new Error("simulated ENOSPC"); }
 		return original(...args);
 	});
-	await assert.rejects(undoFileChanges(cwd, [await readFileChange(ctx.sessionId, id)]), /ENOSPC/);
+	await assert.rejects(undoFileChangeBatches(cwd, [[await readFileChange(ctx.sessionId, id)]]), /ENOSPC/);
 	assert.equal(await readFile(path, "utf8"), "after");
 	assert.deepEqual(await fs.readdir(cwd), ["partial.ts"]);
 });
@@ -172,7 +172,7 @@ test("concurrent batch and single-file undo cannot undo each other's committed r
 	const path = join(cwd, "concurrent.ts");
 	const id = await recordFileChange(ctx, path, "before", "after"); assert.ok(id); await writeFile(path, "after");
 	const changes = [await readFileChange(ctx.sessionId, id)];
-	const results = await Promise.allSettled([undoFileChanges(cwd, changes), undoFileChangeBatches(cwd, [changes])]);
+	const results = await Promise.allSettled([undoFileChangeBatches(cwd, [changes]), undoFileChangeBatches(cwd, [changes])]);
 	assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
 	assert.equal(await readFile(path, "utf8"), "before");
 });
@@ -188,8 +188,8 @@ test("nested projects share the same undo transaction lock", async (t) => {
 		if (String(args[0]).includes(".plume-undo-")) { started.resolve(); await gate.promise; }
 		return original(...args);
 	});
-	const first = undoFileChanges(cwd, changes); await started.promise;
-	const second = undoFileChanges(nested, changes);
+	const first = undoFileChangeBatches(cwd, [changes]); await started.promise;
+	const second = undoFileChangeBatches(nested, [changes]);
 	// The competing transaction must reject before the first one commits.
 	const result = second.then(() => "committed", (error: Error) => error.message);
 	gate.resolve(); await first;
@@ -200,7 +200,7 @@ test("undo and rollback preserve file modes despite the process umask", { skip: 
 	const a = join(cwd, "a.sh"), b = join(cwd, "b.ts");
 	await writeFile(a, "after"); await fs.chmod(a, 0o764);
 	const id = await recordFileChange(ctx, a, "before", "after"); assert.ok(id);
-	await undoFileChanges(cwd, [await readFileChange(ctx.sessionId, id)]);
+	await undoFileChangeBatches(cwd, [[await readFileChange(ctx.sessionId, id)]]);
 	assert.equal((await fs.stat(a)).mode & 0o777, 0o764);
 	await writeFile(a, "created"); await fs.chmod(a, 0o764); await writeFile(b, "after");
 	const aId = await recordFileChange(ctx, a, null, "created"), bId = await recordFileChange(ctx, b, "before", "after"); assert.ok(aId && bId);
@@ -221,7 +221,7 @@ test("on Windows an undo refused for a moment is retried rather than failed", as
 	const change = await readFileChange(ctx.sessionId, id);
 	asWindows(t);
 	const { refused } = refuseRenames(t, "scanned.ts", "EPERM", 2);
-	await undoFileChanges(cwd, [change]);
+	await undoFileChangeBatches(cwd, [[change]]);
 	assert.equal(refused(), 2, "the premise: the first two renames were refused");
 	assert.equal(await readFile(path, "utf8"), "before");
 });

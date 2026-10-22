@@ -14,9 +14,10 @@
  * nobody has chosen — see `keyless` in `search/index.ts`.
  */
 
+import { decodeEntities } from "../utils/entities.ts";
 import { SearchError, type SearchProvider, type SearchRequest, type SearchResult, type SearchSource } from "./index.ts";
 
-export const DUCKDUCKGO_PROVIDER_ID = "duckduckgo";
+const DUCKDUCKGO_PROVIDER_ID = "duckduckgo";
 
 const ENDPOINT = "https://html.duckduckgo.com/html/";
 /** A browser-shaped UA. The endpoint serves a different, script-dependent page to anything else. */
@@ -141,14 +142,5 @@ function safeDecode(value: string): string | undefined {
 }
 
 function stripTags(html: string): string {
-	return html
-		.replace(/<[^>]+>/g, "")
-		.replace(/&nbsp;/g, " ")
-		.replace(/&amp;/g, "&")
-		.replace(/&lt;/g, "<")
-		.replace(/&gt;/g, ">")
-		.replace(/&quot;/g, '"')
-		.replace(/&#x27;|&#39;/g, "'")
-		.replace(/\s+/g, " ")
-		.trim();
+	return decodeEntities(html.replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim();
 }

@@ -13,8 +13,8 @@
  */
 
 import { readFile } from "node:fs/promises";
-import { isAbsolute, relative } from "node:path";
 import { failureOf } from "../ai/failure.ts";
+import { relativeInside } from "../platform.ts";
 import { resolveImageModel } from "../config/image-models.ts";
 import { imageDimensions, sniffImageType } from "../images/dimensions.ts";
 import { generateImages } from "../images/generate.ts";
@@ -56,8 +56,8 @@ const MAX_INPUTS = 8;
 
 /** 之前画的图在应用自己的目录里，不在工作区，读它不用问人。 */
 function ownMedia(path: string): string | null {
-	const rel = relative(sessionMediaHome(), path);
-	if (!rel || rel.startsWith("..") || isAbsolute(rel)) return null;
+	const rel = relativeInside(sessionMediaHome(), path);
+	if (!rel) return null;
 	return safeMediaName(rel) || null;
 }
 

@@ -217,7 +217,7 @@ function extraCostOf(message: AssistantMessage, missed: number): number | undefi
 	return Math.max(0, ((paid - asRead) * missed) / paidTokens);
 }
 
-export interface CacheCauseTotals {
+interface CacheCauseTotals {
 	requests: number;
 	missed: number;
 	extraCost: number;

@@ -15,7 +15,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { basename, isAbsolute, join, relative, win32 } from "node:path";
+import nodePath, { basename, isAbsolute, join, resolve, win32 } from "node:path";
 
 export interface CommandShell {
 	/** The executable to spawn. */
@@ -334,7 +334,7 @@ export function resetSystemShell(): void {
 export const home = (): string => homedir();
 
 /**
- * Is `target` inside `root` — the directory itself not counting as inside itself.
+ * The way down from `root` to `target`, or null when `target` is not under it. `""` is `root` itself.
  *
  * Asked of `path`, never spelled out. The natural way to write this is
  * `` target.startsWith(`${root}/`) ``, and it is correct on Unix and quietly false on Windows for
@@ -343,15 +343,32 @@ export const home = (): string => homedir();
  * is how it survived: on Windows every MCP bundle was misfiled and every scratch directory looked
  * foreign, and nothing said so.
  *
+ * Escaping is `..` alone or `..` and a separator, never the bare prefix: `..cache` is a folder under
+ * the root whose name happens to begin with two dots. An absolute step is another drive.
+ *
  * Relative paths are never inside anything: the question only means something between two places
  * that are both pinned down.
+ *
+ * `flavour` is there so the Windows rule can be tested on any host; callers leave it alone.
  */
-export function within(root: string, target: string): boolean {
-	if (!isAbsolute(root) || !isAbsolute(target)) return false;
-	const step = relative(root, target);
-	return step !== "" && !step.startsWith("..") && !isAbsolute(step);
+export function relativeInside(root: string, target: string, flavour: PathFlavour = nodePath): string | null {
+	if (!flavour.isAbsolute(root) || !flavour.isAbsolute(target)) return null;
+	const step = flavour.relative(root, target);
+	if (step === ".." || step.startsWith(`..${flavour.sep}`) || flavour.isAbsolute(step)) return null;
+	return step;
 }
 
+type PathFlavour = Pick<typeof nodePath, "isAbsolute" | "relative" | "sep">;
+
+/** Is `target` inside `root` — the directory itself not counting as inside itself. */
+export const within = (root: string, target: string): boolean => Boolean(relativeInside(root, target));
+
 /** `within`, but the root counts as inside itself — for "may write here" rather than "is under". */
-export const withinOrIs = (root: string, target: string): boolean =>
-	root === target || within(root, target);
+export const withinOrIs = (root: string, target: string): boolean => relativeInside(root, target) !== null;
+
+/** `child` resolved under `root`, or null if it is absolute or climbs out — for names read from a manifest or a URL. */
+export function resolveInside(root: string, child: string): string | null {
+	if (isAbsolute(child)) return null;
+	const resolved = resolve(root, child);
+	return withinOrIs(resolve(root), resolved) ? resolved : null;
+}

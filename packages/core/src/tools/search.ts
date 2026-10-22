@@ -14,9 +14,12 @@
  * results are wrapped rather than pasted in as prose.
  */
 
+import { textArg } from "./args.ts";
 import { errorResult } from "./result.ts";
 import { search, SearchError } from "../search/index.ts";
 import type { Tool, ToolResult } from "../types.ts";
+
+const QUERY_KEYS = ["query", "pattern", "search"];
 
 interface SearchArgs {
 	query: string;
@@ -46,20 +49,12 @@ export const webSearchTool: Tool<SearchArgs> = {
 		additionalProperties: true,
 	},
 	summarize: (args) => {
-		const raw = args as unknown as Record<string, unknown>;
-		const term = String(raw.query ?? raw.pattern ?? raw.search ?? "");
+		const term = textArg(args, QUERY_KEYS);
 		return term ? `Search ${term}` : "Search the web";
 	},
 
 	async execute(args, ctx): Promise<ToolResult> {
-		const raw = args as unknown as Record<string, unknown>;
-		const query = typeof raw.query === "string" && raw.query
-			? raw.query
-			: typeof raw.pattern === "string" && raw.pattern
-				? raw.pattern
-				: typeof raw.search === "string" && raw.search
-					? raw.search
-					: "";
+		const query = textArg(args, QUERY_KEYS);
 
 		if (!query || query.trim().length === 0) {
 			return errorResult("`query` is required.");

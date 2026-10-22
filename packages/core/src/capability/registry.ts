@@ -8,30 +8,12 @@
  *   directories, and one of them will eventually be a broken symlink or a file the user cannot
  *   read. The failure becomes a diagnostic and the rest of the load proceeds.
  *
- *   Dropping an item and suppressing one are different operations. Both remove it from the
- *   result; only one lets a lower-priority item of the same name take its place. Conflating them
- *   is how switching off a project skill silently promotes your personal one.
- *
  *   Losers are kept. A settings page that can only show what won cannot answer the question people
  *   actually ask, which is why the thing they wrote is not running.
  */
 
 import { capabilityOf } from "./kinds.ts";
-import type {
-	Capability,
-	CapabilityId,
-	CapabilityProvider,
-	CapabilityResult,
-	Diagnostic,
-	DiscoveryContext,
-	LoadOptions,
-	ProviderId,
-	ProviderInfo,
-	SourceMeta,
-	Sourced,
-} from "./types.ts";
-
-export type Disposer = () => void;
+import type { CapabilityId, CapabilityProvider, CapabilityResult, Diagnostic, DiscoveryContext, LoadOptions, SourceMeta, Sourced } from "./types.ts";
 
 export interface RegistryDeps {
 	/** Plume's configuration root. */
@@ -40,14 +22,6 @@ export interface RegistryDeps {
 	userHome: string;
 	/** Resolve the repository root for a working directory, if there is one. */
 	repoRoot?(cwd: string): Promise<string | null> | string | null;
-	/**
-	 * Override how a kind is keyed and validated.
-	 *
-	 * The shipped table is the answer for the shipped kinds. This exists so that a test can put a
-	 * validator on a kind that has none — otherwise the rejection path is unreachable from outside
-	 * and would be pinned only by tests that assert nothing.
-	 */
-	capabilities?: Partial<Record<CapabilityId, Capability<never>>>;
 }
 
 const TRACE = process.env.PLUME_TRACE === "capability";
@@ -60,7 +34,7 @@ export class CapabilityRegistry {
 		this.deps = deps;
 	}
 
-	register(provider: CapabilityProvider): Disposer {
+	register(provider: CapabilityProvider): void {
 		if (this.providers.some((p) => p.id === provider.id)) {
 			throw new Error(`Capability provider "${provider.id}" is already registered.`);
 		}
@@ -72,39 +46,18 @@ export class CapabilityRegistry {
 		 * order, and that is the documented way `PLUME.md` beats `AGENTS.md`.
 		 */
 		this.providers.sort((a, b) => b.priority - a.priority);
-		return () => {
-			const at = this.providers.indexOf(provider);
-			if (at >= 0) this.providers.splice(at, 1);
-		};
 	}
 
-	providersFor(kind?: CapabilityId): ProviderInfo[] {
-		return this.providers
-			.filter((p) => !kind || p.supplies.includes(kind))
-			.map((p) => ({
-				id: p.id,
-				label: p.label,
-				describe: p.describe,
-				priority: p.priority,
-				supplies: p.supplies,
-				foreign: p.foreign === true,
-			}));
-	}
-
-	async load<T>(kind: CapabilityId, options: LoadOptions<T>): Promise<CapabilityResult<T>> {
+	async load<T>(kind: CapabilityId, options: LoadOptions): Promise<CapabilityResult<T>> {
 		const started = Date.now();
-		const capability = this.deps.capabilities?.[kind] ?? capabilityOf(kind);
+		const capability = capabilityOf(kind);
 		const diagnostics: Diagnostic[] = [];
-		const timings: CapabilityResult<T>["timings"] = [];
+		const timings: { provider: string; ms: number; count: number }[] = [];
 		const watched = new Set<string>();
 
-		const selected = this.providers.filter((provider) => {
-			if (!provider.supplies.includes(kind)) return false;
-			if (options.only) return options.only.has(provider.id);
-			return !options.disabledProviders?.has(provider.id);
-		});
-
+		const selected = this.providers.filter((provider) => provider.supplies.includes(kind));
 		const repoRoot = options.cwd ? ((await this.deps.repoRoot?.(options.cwd)) ?? null) : null;
+		const ctx: DiscoveryContext = { cwd: options.cwd, home: this.deps.home, userHome: this.deps.userHome, repoRoot };
 
 		/*
 		 * Providers run in parallel and are awaited together, so one slow directory walk does not
@@ -115,20 +68,6 @@ export class CapabilityRegistry {
 		const results = await Promise.all(
 			selected.map(async (provider) => {
 				const at = Date.now();
-				const ctx: DiscoveryContext = {
-					cwd: options.cwd,
-					home: this.deps.home,
-					userHome: this.deps.userHome,
-					repoRoot,
-					/*
-					 * Naming a provider explicitly turns its user-level directory on. The reason to
-					 * ask for `cursor` by name is to look at Cursor's configuration, and the opt-out
-					 * exists to stop it applying by surprise, not to stop it being asked for.
-					 */
-					userSourceEnabled:
-						provider.foreign !== true || options.only?.has(provider.id) === true || options.enabledUserSources?.has(provider.id) === true,
-					signal: options.signal,
-				};
 				try {
 					const result = await provider.load(kind, ctx);
 					timings.push({ provider: provider.id, ms: Date.now() - at, count: result.items.length });
@@ -155,11 +94,8 @@ export class CapabilityRegistry {
 
 		const items: Sourced<T>[] = [];
 		const all: CapabilityResult<T>["all"] = [];
-		const contributors = new Set<ProviderId>();
 		/** key → the source that won it, so a loser can point at the winner. */
 		const owners = new Map<string, SourceMeta>();
-		/** Items that hold their key without appearing, for `equivalent` comparisons. */
-		const held: Sourced<T>[] = [];
 
 		for (const { provider, items: found } of results) {
 			for (const item of found) {
@@ -171,72 +107,31 @@ export class CapabilityRegistry {
 					});
 					continue;
 				}
-				contributors.add(provider.id);
-
-				const itemId = capability.itemId?.(item as never);
-				/*
-				 * `disabledItems` and `exclude` drop the item without holding its key, so a
-				 * lower-priority item of the same name moves up. `suppress` holds the key.
-				 */
-				if (itemId && options.disabledItems?.has(itemId)) continue;
-				if (options.exclude?.(item)) continue;
 
 				const key = capability.key(item as never);
-				const suppressed = options.suppress?.(item) === true;
-
-				if (key !== undefined) {
-					const owner = owners.get(key);
-					const asked = options.preferred?.get(`${kind}:${key}`) === item.provenance.path;
-					if (owner && !asked) {
-						all.push({ ...item, shadowedBy: owner });
-						continue;
-					}
-					if (owner && asked) {
-						/*
-						 * The user named this file. Providers arrive in priority order, so the holder
-						 * is already filed as the winner: take it back out, file it as beaten by this
-						 * one, and repoint every loser that was told the old holder had won.
-						 */
-						const demote = (list: Sourced<T>[]) => {
-							const at = list.findIndex((existing) => capability.key(existing as never) === key);
-							if (at === -1) return;
-							const [beaten] = list.splice(at, 1);
-							const shown = all.indexOf(beaten);
-							if (shown !== -1) all.splice(shown, 1);
-							all.push({ ...beaten, shadowedBy: item.provenance });
-						};
-						demote(items);
-						demote(held);
-						for (const entry of all) {
-							if (entry.shadowedBy && capability.key(entry as never) === key) entry.shadowedBy = item.provenance;
-						}
-					}
-					const twin = [...items, ...held].find((existing) => capability.equivalent?.(existing as never, item as never));
-					if (twin) {
-						all.push({ ...item, shadowedBy: twin.provenance });
-						continue;
-					}
-					owners.set(key, item.provenance);
-				}
-
-				if (suppressed) {
-					held.push(item);
-					all.push(item);
+				const owner = owners.get(key);
+				const asked = options.preferred?.[`${kind}:${key}`] === item.provenance.path;
+				if (owner && !asked) {
+					all.push({ ...item, shadowedBy: owner });
 					continue;
 				}
-
-				const invalid = capability.validate?.(item as never);
-				if (invalid) {
+				if (owner && asked) {
 					/*
-					 * A rejected item still holds its key. It was found, it has that name, and
-					 * letting a lower-priority one take its place would answer "why is my broken
-					 * skill not running" with a different skill running instead.
+					 * The user named this file. Providers arrive in priority order, so the holder
+					 * is already filed as the winner: take it back out, file it as beaten by this
+					 * one, and repoint every loser that was told the old holder had won.
 					 */
-					diagnostics.push({ path: item.provenance.path, message: invalid, severity: "error" });
-					all.push(item);
-					continue;
+					const at = items.findIndex((existing) => capability.key(existing as never) === key);
+					if (at !== -1) {
+						const [beaten] = items.splice(at, 1);
+						all.splice(all.indexOf(beaten), 1);
+						all.push({ ...beaten, shadowedBy: item.provenance });
+					}
+					for (const entry of all) {
+						if (entry.shadowedBy && capability.key(entry as never) === key) entry.shadowedBy = item.provenance;
+					}
 				}
-
+				owners.set(key, item.provenance);
 				items.push(item);
 				all.push(item);
 			}
@@ -247,14 +142,6 @@ export class CapabilityRegistry {
 			console.error(`[capability] ${kind}: ${Date.now() - started}ms  ${slow.map((t) => `${t.provider}=${t.ms}ms/${t.count}`).join(" ")}`);
 		}
 
-		return {
-			items,
-			all,
-			diagnostics,
-			contributors: [...contributors],
-			watched: [...watched],
-			elapsedMs: Date.now() - started,
-			timings,
-		};
+		return { items, all, diagnostics, watched: [...watched] };
 	}
 }

@@ -11,7 +11,8 @@
 
 import { readFile } from "node:fs/promises";
 import type { Plugin } from "../plugins/loader.ts";
-import { resolveInside, stillInside } from "./router.ts";
+import { resolveInside } from "../platform.ts";
+import { stillInside } from "./router.ts";
 import { ResourceError, type Completion, type ParsedUrl, type Resource, type ResourceContext, type ResourceHandler } from "./types.ts";
 
 /** 会话转录的来源，放在 state 里——跟 `agent://` 拿子代理注册表是同一个路子。 */

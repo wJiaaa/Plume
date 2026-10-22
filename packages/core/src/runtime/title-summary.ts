@@ -12,8 +12,8 @@ import type { RetryPolicySource } from "../config/retry-policy.ts";
 
 import type { streamAssistant } from "../ai/index.ts";
 import { resolveReasoningEffort } from "../ai/thinking-options.ts";
-import { addAbortListener } from "node:events";
 import type { ModelConfig, ProviderConfig, Usage } from "../types.ts";
+import { readReply, replyText } from "./one-shot.ts";
 
 /** Short prompts below or equal to this character count do not need summarisation. */
 export const TITLE_SUMMARY_THRESHOLD = 12;
@@ -108,31 +108,12 @@ export async function summarizeTitle(options: SummarizeTitleOptions): Promise<{ 
 		},
 	);
 
-	let final: Awaited<ReturnType<typeof stream.next>>;
-	let reportedUsage: Usage | undefined;
-	let listener: ReturnType<typeof addAbortListener> | undefined;
-	const aborted = new Promise<never>((_resolve, reject) => {
-		if (options.signal) listener = addAbortListener(options.signal, () => reject(options.signal?.reason));
-	});
-	try {
-		do {
-			final = await Promise.race([stream.next(), aborted]);
-			if (!final.done && (final.value.type === "done" || final.value.type === "error")) reportedUsage = final.value.message.usage;
-		} while (!final.done);
-	} catch {
-		return reportedUsage ? { title: null, usage: reportedUsage } : null;
-	} finally {
-		listener?.[Symbol.dispose]();
-	}
-
-	const reply = final.value;
+	const read = await readReply(stream, options.signal);
+	if ("error" in read) return read.usage ? { title: null, usage: read.usage } : null;
+	const { reply } = read;
 	if (options.signal?.aborted || reply.stopReason === "error" || reply.stopReason === "aborted") return { title: null, usage: reply.usage };
 
-	const collected = reply.content
-		.filter((block): block is { type: "text"; text: string } => block.type === "text")
-		.map((block) => block.text)
-		.join("");
-
+	const collected = replyText(reply);
 	const cleaned = cleanTitleSummary(collected);
 	return { title: cleaned || null, usage: reply.usage };
 }

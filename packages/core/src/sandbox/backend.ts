@@ -34,8 +34,6 @@ import {
 import { SANDBOX_RUNNER_FLAG } from "./runner-flag.ts";
 import { tempWriteSid, workspaceWriteSid } from "./windows/identity.ts";
 
-export { SANDBOX_RUNNER_FLAG } from "./runner-flag.ts";
-
 /** Where the platform's confinement comes from, or `none` when it has none we can use. */
 export type Runner = "seatbelt" | "bwrap" | "landlock" | "windows-acl" | "none";
 

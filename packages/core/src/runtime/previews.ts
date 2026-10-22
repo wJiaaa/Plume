@@ -105,24 +105,6 @@ export async function readPreview(home: string, sessionId: string, id: string): 
 	}
 }
 
-/** Everything a conversation produced, newest first. */
-export async function listPreviews(home: string, sessionId: string): Promise<PreviewRecord[]> {
-	const root = sessionDir(previewsHome(home), sessionId);
-	const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
-	const records: PreviewRecord[] = [];
-	for (const entry of entries) {
-		if (!entry.isDirectory()) continue;
-		const record = await readPreview(home, sessionId, entry.name);
-		if (record) records.push(record);
-	}
-	return records.sort((a, b) => b.createdAt - a.createdAt);
-}
-
-/** Removed with the conversation, since that is the only thing they belonged to. */
-export async function removePreviews(home: string, sessionId: string): Promise<void> {
-	await rm(sessionDir(previewsHome(home), sessionId), { recursive: true, force: true }).catch(() => {});
-}
-
 /**
  * The other half of what a conversation leaves behind.
  *
@@ -144,39 +126,25 @@ export async function removeSessionArtifacts(home: string, sessionId: string): P
 	await Promise.all(dirs.map((dir) => rm(dir, { recursive: true, force: true }).catch(() => {})));
 }
 
-/** As `prunePreviews`, over every kind of artifact. Returns how many directories were removed. */
+/**
+ * Drop what conversations that no longer exist left behind, and anything older than the cutoff.
+ * Returns how many directories were removed.
+ *
+ * Without this the directories only ever grow: every demo, sketch and half-finished game from
+ * every conversation, kept forever because nothing ever said otherwise.
+ */
 export async function pruneSessionArtifacts(
 	home: string,
 	liveSessionIds: Set<string>,
-	maxAgeMs?: number,
-	now?: number,
+	maxAgeMs = 30 * 24 * 60 * 60 * 1000,
+	now = Date.now(),
 ): Promise<number> {
 	let removed = await pruneUnder(join(home, "changes"), new Set([...liveSessionIds].map((id) => createHash("sha256").update(id).digest("hex"))), maxAgeMs, now);
 	for (const where of SESSION_DIRS) removed += await pruneUnder(where(home), liveSessionIds, maxAgeMs, now);
 	return removed;
 }
 
-/**
- * Drop previews from conversations that no longer exist, and anything older than the cutoff.
- *
- * Without this the directory only ever grows: every demo, sketch and half-finished game from
- * every conversation, kept forever because nothing ever said otherwise.
- */
-export async function prunePreviews(
-	home: string,
-	liveSessionIds: Set<string>,
-	maxAgeMs = 30 * 24 * 60 * 60 * 1000,
-	now = Date.now(),
-): Promise<number> {
-	return pruneUnder(previewsHome(home), liveSessionIds, maxAgeMs, now);
-}
-
-async function pruneUnder(
-	root: string,
-	liveSessionIds: Set<string>,
-	maxAgeMs = 30 * 24 * 60 * 60 * 1000,
-	now = Date.now(),
-): Promise<number> {
+async function pruneUnder(root: string, liveSessionIds: Set<string>, maxAgeMs: number, now: number): Promise<number> {
 	const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
 	let removed = 0;
 

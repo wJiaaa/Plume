@@ -107,11 +107,6 @@ export function registerSearchProvider(provider: SearchProvider): () => void {
 	};
 }
 
-/** Every registered provider, for settings to list. */
-export function searchProviders(): SearchProvider[] {
-	return [...providers.values()];
-}
-
 /** Forget all of them. Tests only. */
 export function resetSearchProviders(): void {
 	providers.clear();

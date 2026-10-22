@@ -72,7 +72,7 @@ test("a Claude Code skill's warning is still a warning after the claude provider
 			"---\nname: commit\ndescription: Stage and commit the current changes with a conventional message\nallowed-tools: Bash(git add *) Bash(git commit *)\n---\n\n正文。\n",
 		);
 
-		const { items, diagnostics = [] } = await claudeProvider.load("skill", { cwd, home: cwd, userHome: cwd, repoRoot: null, userSourceEnabled: false });
+		const { items, diagnostics = [] } = await claudeProvider.load("skill", { cwd, home: cwd, userHome: cwd, repoRoot: null });
 		assert.equal(items.length, 2, "both loaded");
 		assert.ok(diagnostics.some((d) => d.path.includes("terse")), `the short description is reported: ${JSON.stringify(diagnostics)}`);
 		assert.ok(diagnostics.some((d) => d.path.includes("commit")), `the scoped Bash is reported: ${JSON.stringify(diagnostics)}`);

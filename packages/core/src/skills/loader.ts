@@ -226,17 +226,3 @@ export function expandSkillPaths(skill: Skill): string {
 		.replaceAll("${CLAUDE_SKILL_DIR}", skill.dir)
 		.replaceAll("${CLAUDE_PLUGIN_ROOT}", skill.pluginRoot ?? skill.dir);
 }
-
-/** The compact catalogue injected into the system prompt. */
-export function formatSkillCatalogue(skills: Skill[]): string {
-	const visible = skills.filter((s) => !s.disableModelInvocation);
-	if (visible.length === 0) return "";
-	const lines = visible.map((s) => `- ${s.name}: ${s.description}`);
-	return [
-		"## Skills",
-		"",
-		"These skills are available. When a task matches one, call the `skill` tool with its name **before** starting your own approach — the skill's instructions replace your default plan for that task.",
-		"",
-		...lines,
-	].join("\n");
-}

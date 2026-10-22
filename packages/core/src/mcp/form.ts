@@ -9,7 +9,7 @@
  * 主进程里收答案，两边必须是同一个判断——窗口说填好了、闸门却拒收，比两边都不检查更糟。
  */
 
-export type FormFieldType = "string" | "number" | "integer" | "boolean";
+type FormFieldType = "string" | "number" | "integer" | "boolean";
 
 export interface FormField {
 	name: string;
@@ -28,7 +28,7 @@ export interface FormField {
 	default?: string | number | boolean;
 }
 
-export type FormValue = string | number | boolean;
+type FormValue = string | number | boolean;
 export type FormValues = Record<string, FormValue>;
 /** 一格为什么不能交：窗口按它说人话，闸门按它拒收。 */
 export type FormProblem = "required" | "type" | "option" | "format" | "minLength" | "maxLength" | "minimum" | "maximum";

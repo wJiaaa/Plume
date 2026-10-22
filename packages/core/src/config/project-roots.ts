@@ -11,16 +11,11 @@
  * keep in step. It is read once per turn.
  */
 
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { resolve } from "node:path";
 
+import { withinOrIs } from "../platform.ts";
 import { projectFolders } from "./project-folders.ts";
 import type { ProjectEntry } from "./settings.ts";
-
-/** The same containment rule `read-access.ts` uses: strict about the separator, so `p-old` ⊄ `p`. */
-export function within(root: string, path: string): boolean {
-	const rel = relative(resolve(root), resolve(path));
-	return rel === "" || !(rel.startsWith(`..${sep}`) || rel === ".." || isAbsolute(rel));
-}
 
 /**
  * The source folders of the project a session records (`SessionMeta.project`), or nothing.
@@ -41,5 +36,5 @@ export function projectRootsFor(
 	project: string | undefined,
 ): string[] {
 	const own = project ? projects?.find((entry) => entry.id === project) : undefined;
-	return own && projectFolders(own).some((folder) => within(folder, cwd)) ? projectFolders(own) : [];
+	return own && projectFolders(own).some((folder) => withinOrIs(resolve(folder), resolve(cwd))) ? projectFolders(own) : [];
 }

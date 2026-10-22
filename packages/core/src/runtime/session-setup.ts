@@ -55,7 +55,7 @@ export async function collectSkills(
 	plugins: Plugin[],
 	settings?: Pick<Settings, "capabilityPreferences">,
 ): Promise<{ skills: Skill[]; diagnostics: SkillDiagnostic[]; shadowed: ShadowedSkill[] }> {
-	const result = await sessionRegistry(plugins).load<Skill>("skill", { cwd, preferred: preferredSources(settings) });
+	const result = await sessionRegistry(plugins).load<Skill>("skill", { cwd, preferred: settings?.capabilityPreferences });
 	/*
 	 * The losers, for the settings page.
 	 *
@@ -115,18 +115,10 @@ export async function withoutDisabledSkills<T extends { path: string }>(skills: 
 
 /** Menu candidates use the runtime registry, including project overrides and configured precedence. */
 export async function collectAgents(cwd: string, settings?: Pick<Settings, "capabilityPreferences">): Promise<AgentDefinition[]> {
-	const result = await sessionRegistry([]).load<AgentDefinition>("agent", { cwd, preferred: preferredSources(settings) });
+	const result = await sessionRegistry([]).load<AgentDefinition>("agent", { cwd, preferred: settings?.capabilityPreferences });
 	return result.items;
 }
 
-/**
- * 「改用那个」写下的偏好：`kind:name` → 该赢的那个文件。
- *
- * 每个读能力的入口都要传——少传一处，那处就安静地按默认优先级来，而设置页上明明写着「已改用」。
- */
-function preferredSources(settings: Pick<Settings, "capabilityPreferences"> | undefined): ReadonlyMap<string, string> {
-	return new Map(Object.entries(settings?.capabilityPreferences ?? {}));
-}
 
 /** A skill that was found and lost, with what beat it. */
 export interface ShadowedSkill {
@@ -184,7 +176,7 @@ export async function loadCapabilities(
 
 	const registry = sessionRegistry(plugins);
 
-	const skillResult = await registry.load<Skill>("skill", { cwd, preferred: preferredSources(settings) });
+	const skillResult = await registry.load<Skill>("skill", { cwd, preferred: settings?.capabilityPreferences });
 	const skills = await withoutDisabledSkills(skillResult.items, settings);
 	const skillDiagnostics = skillResult.diagnostics.map((d) => ({ path: d.path, message: d.message }));
 
@@ -196,7 +188,7 @@ export async function loadCapabilities(
 	 * loaded, appeared in listings, and did nothing. Built-ins now arrive from a provider with a
 	 * priority of 1 and lose by name like anything else.
 	 */
-	const agentResult = await registry.load<AgentDefinition>("agent", { cwd, preferred: preferredSources(settings) });
+	const agentResult = await registry.load<AgentDefinition>("agent", { cwd, preferred: settings?.capabilityPreferences });
 	const agents = agentResult.items;
 
 	/*

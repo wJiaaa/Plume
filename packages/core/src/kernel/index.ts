@@ -10,10 +10,8 @@ import { skillsPlugin } from "./plugins/skills.ts";
 import { storagePlugin } from "./plugins/storage.ts";
 import { toolsPlugin } from "./plugins/tools.ts";
 
-export { Context, type Disposer, type Plugin } from "./context.ts";
-export { EventBus, type Dispatch, type Middleware, type Observer, type Responder } from "./events.ts";
+export { Context } from "./context.ts";
 export {
-	APPROVAL,
 	COMPACTION,
 	EVENTS,
 	LLM,
@@ -24,9 +22,6 @@ export {
 	SKILLS,
 	STORAGE,
 	TOOLS,
-	type ApprovalPolicy,
-	type ApprovalVerdict,
-	type CompactionRequest,
 	type CompactionStrategy,
 	type LlmRegistry,
 	type Sandbox,
@@ -36,19 +31,6 @@ export {
 	type TurnPipeline,
 	type ToolRegistry,
 } from "./services.ts";
-export { approvalPlugin } from "./plugins/approval.ts";
-export { compactionPlugin } from "./plugins/compaction.ts";
-export { llmPlugin } from "./plugins/llm.ts";
-export { loopPlugin } from "./plugins/loop.ts";
-export { sandboxPlugin } from "./plugins/sandbox.ts";
-export { schedulerPlugin } from "./plugins/scheduler.ts";
-export { sessionPlugin } from "./plugins/session.ts";
-export { skillsPlugin } from "./plugins/skills.ts";
-export { storagePlugin } from "./plugins/storage.ts";
-export { toolsPlugin } from "./plugins/tools.ts";
-// The groups live with the tools rather than with the plugin that registers them: `tools/index.ts`
-// reads the same four when no context is bound, and two lists is what let five tools go missing.
-export { AGENT_TOOLS, FILE_TOOLS, SHELL_TOOLS, WEB_TOOLS, builtinToolGroups } from "../tools/groups.ts";
 
 /**
  * The set that makes an ordinary Plume.
@@ -62,8 +44,8 @@ export const DEFAULT_PLUGINS = [llmPlugin, toolsPlugin, approvalPlugin, sandboxP
 /**
  * Build a context with a given set of plugins.
  *
- * Order in the array does not matter: a plugin that names its dependencies waits for them, so a
- * configuration is a set of choices rather than a boot sequence.
+ * Applied in array order; the built-in set goes first so every seam exists before anything that
+ * might use it.
  */
 export async function createContext(plugins = DEFAULT_PLUGINS): Promise<Context> {
 	const ctx = new Context();

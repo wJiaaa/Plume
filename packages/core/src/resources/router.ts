@@ -7,7 +7,8 @@
  * someone else's text. A router per session cannot have it.
  */
 
-import { basename, dirname, isAbsolute, join, relative, resolve as resolvePath } from "node:path";
+import { basename, dirname, join, resolve as resolvePath } from "node:path";
+import { withinOrIs } from "../platform.ts";
 import { readlink, realpath } from "node:fs/promises";
 import { ResourceError, type ParsedUrl, type Resource, type ResourceContext, type ResourceHandler } from "./types.ts";
 
@@ -64,11 +65,6 @@ export class ResourceRouter {
 		return parsed !== null && this.handlers.has(parsed.scheme);
 	}
 
-	/** Whether this is an address at all, known scheme or not. */
-	looksLikeUrl(input: string): boolean {
-		return parseResourceUrl(input) !== null;
-	}
-
 	schemes(): { scheme: string; describe: string; writable: boolean }[] {
 		return [...this.handlers.values()]
 			.map((h) => ({ scheme: h.scheme, describe: h.describe, writable: typeof h.write === "function" }))
@@ -111,12 +107,6 @@ export class ResourceRouter {
 		await handler.write(url, content, ctx);
 	}
 
-	async list(scheme: string, ctx: ResourceContext) {
-		const handler = this.handlers.get(scheme);
-		if (!handler?.list) return [];
-		return handler.list(ctx);
-	}
-
 	private route(input: string): { url: ParsedUrl; handler: ResourceHandler } {
 		const url = parseResourceUrl(input);
 		if (!url) throw new ResourceError(`“${input}”不是一个地址。`);
@@ -137,22 +127,6 @@ function sliceResource(resource: Resource, range: { from: number; to?: number })
 }
 
 /**
- * Resolve `child` under `root`, or null if it escapes.
- *
- * Uses `path.relative` rather than comparing string prefixes. `plugins/loader.ts` carries the note
- * from the time this was written the other way: joining `` `${root}/` `` and testing `startsWith`
- * misjudged every path on Windows, where the separator in the constructed prefix and the one in
- * the real path disagree.
- */
-export function resolveInside(root: string, child: string): string | null {
-	if (isAbsolute(child)) return null;
-	const resolved = resolvePath(root, child);
-	const step = relative(resolvePath(root), resolved);
-	if (step !== "" && (step.startsWith("..") || isAbsolute(step))) return null;
-	return resolved;
-}
-
-/**
  * The same check again after following symlinks.
  *
  * `resolveInside` is defeated by a symlink inside the root that points out of it: the textual path
@@ -162,8 +136,7 @@ export function resolveInside(root: string, child: string): string | null {
 export async function stillInside(root: string, resolved: string): Promise<boolean> {
 	// 根也按同一个办法取：临时目录第一次写之前还不存在，而 macOS 的 tmpdir 本身就在软链后面。
 	const [realRoot, realChild] = await Promise.all([realLocation(root), realLocation(resolved)]);
-	const step = relative(realRoot, realChild);
-	return step === "" || (!step.startsWith("..") && !isAbsolute(step));
+	return withinOrIs(realRoot, realChild);
 }
 
 /**

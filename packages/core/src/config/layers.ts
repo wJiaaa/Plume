@@ -21,6 +21,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { withoutBom } from "../utils/bom.ts";
+import { isRecord } from "../utils/record.ts";
 
 /**
  * Keys a project file may not set, whatever it says.
@@ -38,10 +39,6 @@ export const PROJECT_FORBIDDEN = ["providers", "apiKey", "credentials", "githubT
 
 type Plain = Record<string, unknown>;
 
-function isPlainObject(value: unknown): value is Plain {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 /**
  * Merge one layer over another: objects deepen, everything else replaces.
  *
@@ -55,7 +52,7 @@ export function mergeLayer(base: Plain, over: Plain): Plain {
 	const out: Plain = { ...base };
 	for (const [key, value] of Object.entries(over)) {
 		if (value === undefined) continue;
-		out[key] = isPlainObject(value) && isPlainObject(base[key]) ? mergeLayer(base[key], value) : value;
+		out[key] = isRecord(value) && isRecord(base[key]) ? mergeLayer(base[key], value) : value;
 	}
 	return out;
 }
@@ -84,7 +81,7 @@ export function layerOverrides(global: Plain, project: Plain, prefix = ""): Laye
 		if (value === undefined) continue;
 		const path = prefix ? `${prefix}.${key}` : key;
 		const was = global[key];
-		if (isPlainObject(value) && isPlainObject(was)) {
+		if (isRecord(value) && isRecord(was)) {
 			out.push(...layerOverrides(was, value, path));
 			continue;
 		}
@@ -130,7 +127,7 @@ export async function readConfigFile(path: string): Promise<{ config: Plain; err
 	try {
 		// A byte-order mark — Notepad's "UTF-8 with BOM" — made this whole file a JSON syntax error; see `withoutBom`.
 		const parsed = JSON.parse(withoutBom(raw)) as unknown;
-		if (!isPlainObject(parsed)) return { config: {}, error: `${path} 的内容不是一个对象。`, problem: { kind: "not-object", path } };
+		if (!isRecord(parsed)) return { config: {}, error: `${path} 的内容不是一个对象。`, problem: { kind: "not-object", path } };
 		return { config: parsed };
 	} catch (error) {
 		/*

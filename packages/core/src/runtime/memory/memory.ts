@@ -55,7 +55,7 @@ export function invalidateMemorySnapshots(): void {
 	memorySnapshots.clear();
 }
 
-export async function saveMemory(store: MemoryStore): Promise<void> {
+async function saveMemory(store: MemoryStore): Promise<void> {
 	const p = memoryPath();
 	await mkdir(dirname(p), { recursive: true });
 	const data = JSON.stringify({ entries: store.entries }, null, 2);

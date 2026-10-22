@@ -121,7 +121,12 @@ test("服务器说的等待时间，头和正文两处都认", () => {
 	assert.equal(serverDelayMs(null, JSON.stringify({ error: { reset_seconds: 54 } })), 54_000);
 	assert.equal(serverDelayMs(null, JSON.stringify({ reset_time: "53s" })), 53_000);
 	assert.equal(serverDelayMs(null, JSON.stringify({ retry_after_ms: 1500 })), 1500);
+	assert.equal(serverDelayMs(null, JSON.stringify({ retry_after: 7 })), 7000);
+	assert.equal(serverDelayMs(null, JSON.stringify({ retry_after_seconds: 7 })), 7000);
 	assert.equal(serverDelayMs(null, JSON.stringify({ model: "gpt-4o-2024" })), undefined, "模型名里的数字不是等待时间");
+	assert.equal(serverDelayMs(null, JSON.stringify({ error: { code: 503 } })), undefined, "状态码也不是");
+	assert.equal(serverDelayMs(null, "not json at all"), undefined);
+	assert.equal(serverDelayMs(null, undefined), undefined);
 });
 
 test("限流原话、Gemini 的 retryDelay 里写着的等待时间也认", () => {

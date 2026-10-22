@@ -11,11 +11,12 @@ import { mkdir, readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { activeModelCatalog, installModelCatalog } from "./model-catalog.ts";
-import { compactPiCatalog, isRecord, MODEL_CATALOG_URL, parseModelCatalog, type ModelCatalogDocument } from "./model-catalog-format.ts";
+import { compactPiCatalog, MODEL_CATALOG_URL, parseModelCatalog, type ModelCatalogDocument } from "./model-catalog-format.ts";
 
 export { MODEL_CATALOG_URL } from "./model-catalog-format.ts";
 import { plumeHome } from "./session/store.ts";
 import { writeFileAtomic } from "./utils/atomic-write.ts";
+import { isRecord } from "./utils/record.ts";
 
 /** 自动同步的间隔。目录变化以天计，一小时一次足够及时；没变时只是一个 304。 */
 export const MODEL_CATALOG_SYNC_INTERVAL_MS = 60 * 60 * 1000;

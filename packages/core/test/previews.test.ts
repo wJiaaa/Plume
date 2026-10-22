@@ -3,17 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from "node:fs/p
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import {
-	listPreviews,
-	previewsHome,
-	prunePreviews,
-	pruneSessionArtifacts,
-	readPreview,
-	removePreviews,
-	removeSessionArtifacts,
-	scratchHome,
-	writePreview,
-} from "../src/runtime/previews.ts";
+import { previewsHome, pruneSessionArtifacts, readPreview, removeSessionArtifacts, scratchHome, writePreview } from "../src/runtime/previews.ts";
 
 async function sandbox(t: { after: (fn: () => unknown) => void }): Promise<string> {
 	const home = await mkdtemp(join(tmpdir(), "ly-previews-"));
@@ -90,52 +80,34 @@ test("a write with nothing writable fails rather than leaving an empty preview",
 	);
 });
 
-test("previews are read back with their metadata and listed newest first", async (t) => {
+test("a preview is read back with its metadata", async (t) => {
 	const home = await sandbox(t);
-	const first = await writePreview(home, { id: "a", sessionId: "s", title: "先", files: [page("a")] });
-	// createdAt comes from the clock, so force the ordering rather than racing it.
-	await writeFile(join(first.dir, ".preview.json"), JSON.stringify({ ...first, createdAt: 1 }), "utf8");
-	await writePreview(home, { id: "b", sessionId: "s", title: "后", files: [page("b")] });
+	await writePreview(home, { id: "a", sessionId: "s", title: "先", files: [page("a")] });
 
-	const read = await readPreview(home, "s", "a");
-	assert.equal(read?.title, "先");
-	assert.deepEqual((await listPreviews(home, "s")).map((p) => p.id), ["b", "a"]);
+	assert.equal((await readPreview(home, "s", "a"))?.title, "先");
 	assert.equal(await readPreview(home, "s", "missing"), null);
-	assert.deepEqual(await listPreviews(home, "no-such-session"), []);
-});
-
-test("deleting a conversation takes its previews and leaves other conversations alone", async (t) => {
-	const home = await sandbox(t);
-	await writePreview(home, { id: "p", sessionId: "doomed", title: "t", files: [page("x")] });
-	const keeper = await writePreview(home, { id: "p", sessionId: "kept", title: "t", files: [page("x")] });
-
-	await removePreviews(home, "doomed");
-	assert.deepEqual(await listPreviews(home, "doomed"), []);
-	assert.equal((await listPreviews(home, "kept")).length, 1);
-	assert.ok(await stat(keeper.dir));
-	// Removing a session that never had previews is a no-op, not a throw.
-	await removePreviews(home, "never-existed");
+	assert.equal(await readPreview(home, "no-such-session", "a"), null);
 });
 
 test("pruning drops previews of dead sessions and of live ones past the age limit", async (t) => {
 	const home = await sandbox(t);
-	await writePreview(home, { id: "p", sessionId: "live", title: "t", files: [page("x")] });
-	await writePreview(home, { id: "p", sessionId: "dead", title: "t", files: [page("x")] });
+	const live = await writePreview(home, { id: "p", sessionId: "live", title: "t", files: [page("x")] });
+	const dead = await writePreview(home, { id: "p", sessionId: "dead", title: "t", files: [page("x")] });
 	const stale = await writePreview(home, { id: "p", sessionId: "stale", title: "t", files: [page("x")] });
 
 	const old = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
 	await utimes(join(previewsHome(home), "stale"), old, old);
 
-	const removed = await prunePreviews(home, new Set(["live", "stale"]));
+	const removed = await pruneSessionArtifacts(home, new Set(["live", "stale"]));
 	assert.equal(removed, 2, "the dead session and the stale one");
-	assert.equal((await listPreviews(home, "live")).length, 1);
-	assert.deepEqual(await listPreviews(home, "dead"), []);
+	assert.ok(await stat(live.dir));
+	await assert.rejects(stat(dead.dir));
 	await assert.rejects(stat(stale.dir));
 });
 
-test("pruning an empty or missing previews directory is harmless", async (t) => {
+test("pruning an empty or missing artifacts directory is harmless", async (t) => {
 	const home = await sandbox(t);
-	assert.equal(await prunePreviews(home, new Set(["anything"])), 0);
+	assert.equal(await pruneSessionArtifacts(home, new Set(["anything"])), 0);
 });
 
 /** The model is told to write throwaway files here; nothing else creates it. */
@@ -146,16 +118,20 @@ async function scratch(home: string, sessionId: string, name = "notes.txt"): Pro
 	return dir;
 }
 
-test("deleting a conversation takes its scratch files as well as its previews", async (t) => {
+test("deleting a conversation takes its previews and scratch files, and leaves other conversations alone", async (t) => {
 	const home = await sandbox(t);
-	await writePreview(home, { id: "p", sessionId: "doomed", title: "t", files: [page("x")] });
+	const preview = await writePreview(home, { id: "p", sessionId: "doomed", title: "t", files: [page("x")] });
+	const keeper = await writePreview(home, { id: "p", sessionId: "kept", title: "t", files: [page("x")] });
 	const doomed = await scratch(home, "doomed");
 	const kept = await scratch(home, "kept");
 
 	await removeSessionArtifacts(home, "doomed");
 	await assert.rejects(stat(doomed), "the scratch directory must go with the conversation");
-	assert.deepEqual(await listPreviews(home, "doomed"), []);
+	await assert.rejects(stat(preview.dir), "and so must its previews");
 	assert.ok(await stat(kept), "another conversation's scratch files are untouched");
+	assert.ok(await stat(keeper.dir), "and so are its previews");
+	// Removing a session that never wrote anything is a no-op, not a throw.
+	await removeSessionArtifacts(home, "never-existed");
 });
 
 test("pruning covers scratch directories, not just previews", async (t) => {
@@ -178,7 +154,6 @@ test("a session id that would climb out of its directory deletes nothing", async
 	const kept = await scratch(home, "kept");
 	for (const id of ["..", ".", "", "../outside.txt", "kept/..", "a\\..\\.."]) {
 		await assert.rejects(removeSessionArtifacts(join(home, "app"), id), /Invalid session id/);
-		await assert.rejects(removePreviews(join(home, "app"), id), /Invalid session id/);
 	}
 	await assert.rejects(removeSessionArtifacts(home, ".."), /Invalid session id/);
 	assert.equal(await readFile(outside, "utf8"), "the user's file");

@@ -20,7 +20,7 @@ export { CapabilityRegistry } from "./registry.ts";
 export * from "./types.ts";
 
 /** Every provider that ships, highest priority first. */
-export const BUILTIN_PROVIDERS: CapabilityProvider[] = [
+const BUILTIN_PROVIDERS: CapabilityProvider[] = [
 	nativeProvider,
 	claudeProvider,
 	managedProvider as CapabilityProvider,

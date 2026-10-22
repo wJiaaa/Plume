@@ -22,7 +22,6 @@ export function pluginProvider(bundles: Pick<Plugin, "id" | "manifest" | "source
 	return {
 		id: ID,
 		label: LABEL,
-		describe: "插件包与代码里注册的技能",
 		priority: 90,
 		supplies: ["skill"],
 

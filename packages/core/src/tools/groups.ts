@@ -35,7 +35,7 @@ import { webFetchTool } from "./web.ts";
 import { writeTool } from "./write.ts";
 
 /** Reading and changing files, and asking what a symbol is. */
-export const FILE_TOOLS = [
+const FILE_TOOLS = [
 	readTool,
 	writeTool,
 	editTool,
@@ -47,10 +47,10 @@ export const FILE_TOOLS = [
 ] as unknown as Tool[];
 
 /** Running commands, and reading what a backgrounded one has printed since. */
-export const SHELL_TOOLS = [bashTool, bashOutputTool] as unknown as Tool[];
+const SHELL_TOOLS = [bashTool, bashOutputTool] as unknown as Tool[];
 
 /** The agent's own working memory: its plan, its delegates, what it has been told. */
-export const AGENT_TOOLS = [
+const AGENT_TOOLS = [
 	todoTool,
 	taskTool,
 	skillTool,
@@ -60,7 +60,7 @@ export const AGENT_TOOLS = [
 ] as unknown as Tool[];
 
 /** Reaching outside the machine, and showing the result. */
-export const WEB_TOOLS = [webFetchTool, webSearchTool, previewTool, imageTool] as unknown as Tool[];
+const WEB_TOOLS = [webFetchTool, webSearchTool, previewTool, imageTool] as unknown as Tool[];
 
 /** Every built-in, in the order they are advertised to the model. */
 export function builtinToolGroups(): Tool[][] {

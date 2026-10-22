@@ -25,6 +25,7 @@ import type { Message, ModelConfig, ProviderConfig, Usage } from "../../types.ts
 import type { SessionStorage } from "../../session/storage.ts";
 import type { streamAssistant } from "../../ai/index.ts";
 import { proposeSkill, type SkillCandidate } from "../managed-skills.ts";
+import { readReply, replyText } from "../one-shot.ts";
 import { projectMemoryDir, redactSecrets } from "./project-memory.ts";
 import { loadProjectInstructions } from "../../prompt/system.ts";
 
@@ -281,26 +282,16 @@ export async function extractMemory(options: ExtractOptions): Promise<Extraction
 		 * the memory is not updated this time, which is invisible and correct; raising it would put
 		 * an error in front of someone who did not ask for anything.
 		 */
-		let final: Awaited<ReturnType<typeof stream.next>>;
-		try {
-			do {
-				final = await stream.next();
-			} while (!final.done);
-		} catch {
-			return { memory: "", sessions: options.candidates.length, skipped: "抽取时模型没能返回" };
-		}
-		const reply = final.value;
+		const read = await readReply(stream);
+		if ("error" in read) return { memory: "", sessions: options.candidates.length, skipped: "抽取时模型没能返回" };
+		const { reply } = read;
 		// Billed whatever the reply turns out to be — an interrupted or empty answer was still paid for.
 		await options.spent?.(reply.usage);
 		if (reply.stopReason === "error" || reply.stopReason === "aborted") {
 			return { memory: "", sessions: options.candidates.length, skipped: "抽取被中断" };
 		}
 
-		const text = reply.content
-			.filter((block): block is { type: "text"; text: string } => block.type === "text")
-			.map((block) => block.text)
-			.join("\n")
-			.trim();
+		const text = replyText(reply, "\n").trim();
 
 		/*
 		 * "（没有）" is a real answer and must not be written as if it were a lesson. A model told to
@@ -367,18 +358,12 @@ async function proposeFromSessions(options: ExtractOptions): Promise<string | nu
 		{ signal: options.signal, thinking: "off" },
 	);
 
-	let final: Awaited<ReturnType<typeof stream.next>>;
-	do {
-		final = await stream.next();
-	} while (!final.done);
-
-	const reply = final.value;
+	const read = await readReply(stream);
+	if ("error" in read) return null;
+	const { reply } = read;
 	if (reply.stopReason === "error" || reply.stopReason === "aborted") return null;
 
-	const text = reply.content
-		.filter((block): block is { type: "text"; text: string } => block.type === "text")
-		.map((block) => block.text)
-		.join("\n");
+	const text = replyText(reply, "\n");
 
 	const proposal = parseSkillProposal(text, sourceIds);
 	if (!proposal) return null;

@@ -27,10 +27,6 @@ class Registry implements ToolRegistry {
 		for (const set of this.sets) for (const tool of set) byName.set(tool.name, tool);
 		return [...byName.values()];
 	}
-
-	byName(name: string): Tool | undefined {
-		return this.all().find((tool) => tool.name === name);
-	}
 }
 
 export const toolsPlugin: Plugin = {

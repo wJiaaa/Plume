@@ -83,7 +83,7 @@ test("the tools the desktop used to be missing are in the registry", async () =>
 	try {
 		const registry = ctx.require<ToolRegistry>(TOOLS);
 		for (const name of ["recall", "learn", "lsp", "web_search"]) {
-			assert.ok(registry.byName(name), `${name} is not registered`);
+			assert.ok(registry.all().some((tool) => tool.name === name), `${name} is not registered`);
 		}
 	} finally {
 		await ctx.dispose();

@@ -15,6 +15,15 @@ import type { Boundary, SessionRecord } from "./types.ts";
 /** The record kinds `replayRecords` reads. Everything else — prompts, requests, tool starts — is skipped unread. */
 export const REPLAY_KINDS = ["message", "usage", "subagent_message", "compacted", "command_status", "hook_run", "truncate"] as const;
 
+/** One compaction still in the transcript: where it sits, and what its divider says. */
+export interface CompactionMark {
+	/** The number of messages before it. */
+	at: number;
+	summary?: string;
+	before: number;
+	after: number;
+}
+
 export interface Replayed {
 	/** Kept with their sequence numbers so a truncate record can drop the right tail. */
 	entries: { seq: number; message: Message }[];
@@ -23,7 +32,7 @@ export interface Replayed {
 	 * than derived, because the messages themselves do not show it: the log keeps every original
 	 * either way. The window draws a divider at each.
 	 */
-	compactions: number[];
+	compactions: CompactionMark[];
 	commandRuns: CommandRun[];
 	hookRuns: HookRun[];
 	/**
@@ -31,6 +40,12 @@ export interface Replayed {
 	 * each compaction summarises the one before it.
 	 */
 	compaction: Boundary | null;
+	/**
+	 * Where `compaction` was written, which is where a fork writes it back (`trajectory/fork.ts`).
+	 * A rewind into the tail it kept takes its divider off `compactions` but not the boundary, so
+	 * this is held apart and pulled back to the new end instead.
+	 */
+	boundaryMark: CompactionMark | null;
 	/** Everything the surviving transcript spent, sub-agents and side calls included. */
 	usage: Usage;
 	/** See `SessionMeta.turns`, `replyUsage`, `steps` and `subagentUsage`. */
@@ -43,11 +58,12 @@ export interface Replayed {
 export function replayRecords(records: Iterable<SessionRecord>): Replayed {
 	let entries: { seq: number; message: Message }[] = [];
 	let auxiliaryUsage = emptyUsage();
-	const compactions: number[] = [];
+	const compactions: CompactionMark[] = [];
 	const commandRuns = new Map<string, { seq: number; run: CommandRun }>();
 	const hookRuns = new Map<string, { seq: number; run: HookRun }>();
 	let subagentEntries: { seq: number; usage: Usage }[] = [];
 	let compaction: Boundary | null = null;
+	let boundaryMark = null as CompactionMark | null;
 
 	for (const record of records) {
 		if (record.type === "event" && record.event.type === "command_status") {
@@ -56,14 +72,16 @@ export function replayRecords(records: Iterable<SessionRecord>): Replayed {
 		} else if (record.type === "event" && record.event.type === "hook_run") {
 			hookRuns.set(record.event.run.id, { seq: record.seq, run: record.event.run });
 		} else if (record.type === "event" && record.event.type === "compacted") {
-			compactions.push(entries.length);
+			const { summary, kept, before, after } = record.event;
+			const mark: CompactionMark = { at: entries.length, summary, before, after };
+			compactions.push(mark);
 			/*
 			 * `kept` is absent on pruning passes that moved no boundary: no boundary to restore, so
 			 * the session opens on its full history and compacts again if it has to.
 			 */
-			const { summary, kept } = record.event;
 			if (kept !== undefined) {
 				compaction = { at: record.ts, summary: summary ?? "", keptFrom: Math.max(0, entries.length - kept) };
+				boundaryMark = mark;
 				// The boundary is the commit record; the UI completion event may not have reached disk.
 				const entry = record.event.commandId ? commandRuns.get(record.event.commandId) : undefined;
 				if (entry?.run.status === "running") {
@@ -83,9 +101,12 @@ export function replayRecords(records: Iterable<SessionRecord>): Replayed {
 			subagentEntries = subagentEntries.filter((e) => e.seq <= record.afterSeq);
 			for (const [id, entry] of commandRuns) if (entry.seq > record.afterSeq) commandRuns.delete(id);
 			for (const [id, entry] of hookRuns) if (entry.seq > record.afterSeq) hookRuns.delete(id);
-			while (compactions.length && compactions[compactions.length - 1] > entries.length) compactions.pop();
+			while (compactions.length && compactions[compactions.length - 1].at > entries.length) compactions.pop();
 			// A rewind past the boundary retires it: the tail it was paired with is gone.
-			if (compaction && compaction.keptFrom > entries.length) compaction = null;
+			if (compaction && compaction.keptFrom > entries.length) {
+				compaction = null;
+				boundaryMark = null;
+			} else if (boundaryMark && boundaryMark.at > entries.length) boundaryMark = { ...boundaryMark, at: entries.length };
 		}
 	}
 
@@ -106,6 +127,7 @@ export function replayRecords(records: Iterable<SessionRecord>): Replayed {
 		entries,
 		compactions,
 		compaction,
+		boundaryMark,
 		commandRuns: [...commandRuns.values()].map(({ run }) => (run.status === "running" ? interruptedCompaction(run) : run)),
 		hookRuns: [...hookRuns.values()].map(({ run }) => run),
 		usage,

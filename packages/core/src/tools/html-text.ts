@@ -14,6 +14,8 @@
  * that renders badly is worth more than an error.
  */
 
+import { decodeEntities } from "../utils/entities.ts";
+
 /**
  * How deep nesting is tracked before it stops mattering.
  *
@@ -115,21 +117,6 @@ function* tokenize(html: string): Generator<Token> {
 			? { kind: "close", name }
 			: { kind: "open", name, attrs: space === -1 ? "" : body.slice(space) };
 	}
-}
-
-/** Decode the entities that actually turn up, plus numeric ones. */
-export function decodeEntities(text: string): string {
-	const named: Record<string, string> = {
-		amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", ndash: "–", mdash: "—",
-		hellip: "…", laquo: "«", raquo: "»", ldquo: "“", rdquo: "”", lsquo: "‘", rsquo: "’", middot: "·",
-	};
-	return text.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (whole, code: string) => {
-		if (code[0] === "#") {
-			const value = code[1]?.toLowerCase() === "x" ? Number.parseInt(code.slice(2), 16) : Number.parseInt(code.slice(1), 10);
-			return Number.isFinite(value) && value > 0 && value <= 0x10ffff ? String.fromCodePoint(value) : whole;
-		}
-		return named[code.toLowerCase()] ?? whole;
-	});
 }
 
 /** One entry on the list stack: what kind, and how many items have been emitted. */

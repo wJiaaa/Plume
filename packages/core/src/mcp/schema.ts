@@ -6,7 +6,7 @@
  * 只对某一家成立的裁剪留在各自的适配器里（Anthropic 的 `normalizeToolSchema`）；这里只放对谁都安全的。
  */
 
-import { isPlainObject } from "../ai/tool-schema.ts";
+import { isRecord } from "../utils/record.ts";
 import type { JsonSchema } from "../types.ts";
 
 /** 值是一个或一组子 schema 的关键字。 */
@@ -16,7 +16,7 @@ const SUBSCHEMA_MAPS = ["properties", "patternProperties", "$defs", "definitions
 
 /** 缺省或不是 object 的 schema 换成空的 object schema：服务商都要求顶层是 object。 */
 export function normalizeInputSchema(schema: unknown): JsonSchema {
-	if (isPlainObject(schema) && schema.type === "object") return fillArrayItems(schema, new WeakMap()) as JsonSchema;
+	if (isRecord(schema) && schema.type === "object") return fillArrayItems(schema, new WeakMap()) as JsonSchema;
 	return { type: "object", properties: {}, additionalProperties: true };
 }
 
@@ -33,7 +33,7 @@ export function normalizeInputSchema(schema: unknown): JsonSchema {
  * 返回副本而不是就地改：解析出来的 `tools/list` 结果归 SDK 所有。
  */
 function fillArrayItems(schema: unknown, seen: WeakMap<object, unknown>): unknown {
-	if (!isPlainObject(schema)) return schema;
+	if (!isRecord(schema)) return schema;
 	const already = seen.get(schema);
 	if (already !== undefined) return already;
 	const result: Record<string, unknown> = { ...schema };
@@ -43,7 +43,7 @@ function fillArrayItems(schema: unknown, seen: WeakMap<object, unknown>): unknow
 	for (const key of SUBSCHEMAS) if (result[key] !== undefined) result[key] = visit(result[key]);
 	for (const key of SUBSCHEMA_MAPS) {
 		const children = result[key];
-		if (isPlainObject(children)) result[key] = Object.fromEntries(Object.entries(children).map(([name, child]) => [name, fillArrayItems(child, seen)]));
+		if (isRecord(children)) result[key] = Object.fromEntries(Object.entries(children).map(([name, child]) => [name, fillArrayItems(child, seen)]));
 	}
 
 	const type = result.type;

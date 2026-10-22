@@ -183,6 +183,27 @@ test("a boundary a rewind retired stays retired in the fork, even with an older 
 	}
 });
 
+test("a rewind into the kept tail keeps the boundary, and the fork writes it back at the new end", async () => {
+	const c = await conversation();
+	try {
+		await c.say(user("q1", 10), reply("a1", 11), user("q2", 20), reply("a2", 21));
+		await c.compacted({ before: 50_000, after: 9_000, summary: "提要", kept: 2 });
+		await c.say(user("q3", 30), reply("a3", 31));
+		// 撤回 to before a2: the boundary's kept tail starts at q2, which survives; its divider sat after a2, which does not.
+		await c.truncateFrom(3);
+		const source = await c.load(c.meta);
+		assert.equal(source!.compaction?.keptFrom, 2);
+
+		const fork = await forkSession(c.store, c.meta.id, c.meta.seq);
+		const forked = await c.load(fork!.meta);
+		assert.deepEqual(texts(forked!.messages), ["q1", "a1", "q2"]);
+		assert.equal(forked!.compaction?.summary, "提要", "the fork's model view starts at the same summary");
+		assert.equal(forked!.compaction?.keptFrom, 2, "and keeps the same tail");
+	} finally {
+		await c.cleanup();
+	}
+});
+
 test("a fork keeps where the model changed, so one provider's handles are not replayed to another", async () => {
 	const c = await conversation();
 	try {

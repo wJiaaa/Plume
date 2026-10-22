@@ -18,7 +18,7 @@ import type { SessionRecordInput } from "./types.ts";
  * The fields of a reply that `diagnoseRequest`, pricing and the usage page's request view read.
  * Never the content.
  */
-export type SpendCall = Pick<AssistantMessage, "usage" | "provider" | "model" | "timestamp"> &
+type SpendCall = Pick<AssistantMessage, "usage" | "provider" | "model" | "timestamp"> &
 	Partial<Pick<AssistantMessage, "lastAttemptUsage" | "prefix" | "durationMs" | "sseDurationMs">>;
 
 export interface SpendEntry {

@@ -31,15 +31,17 @@
  */
 
 import { readdir, readFile, stat } from "node:fs/promises";
-import { basename, isAbsolute, join, relative as relativePath, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import type { McpServerConfig } from "../mcp/client.ts";
 import { placeholdersOf, type McpNeed } from "../mcp/placeholders.ts";
 import { loadSkills, type Skill } from "../skills/loader.ts";
 import { withoutBom } from "../utils/bom.ts";
+import { isRecord } from "../utils/record.ts";
+import { resolveInside } from "../platform.ts";
 import { readBundleIcon } from "./bundle-icon.ts";
 import { readInstalls, type InstallRecord } from "./installs.ts";
 
-export interface PluginInterface {
+interface PluginInterface {
 	displayName?: string;
 	shortDescription?: string;
 	longDescription?: string;
@@ -403,10 +405,6 @@ async function readManifest(pluginDir: string): Promise<ManifestResult | null> {
 	return inferManifest(pluginDir);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 /**
  * A manifest, keeping each field only when it has the type we read it as.
  *
@@ -665,30 +663,4 @@ export function normalizeServer(
 	}
 
 	return null;
-}
-
-/**
- * Resolve a manifest-supplied relative path, refusing anything that escapes the plugin.
- *
- * Containment is asked of `path`, not spelled out with a separator. Comparing against
- * `` `${root}/` `` is right on POSIX and silently wrong on Windows, where the separator is a
- * backslash — so every containment check answered "escaped", every `.mcp.json` was refused, and
- * every MCP bundle was misfiled as a plugin. The failure is only visible on Windows, which is
- * exactly the kind of thing a `/` in a path check hides.
- */
-function resolveInside(pluginDir: string, relative: string): string | null {
-	if (isAbsolute(relative)) return null;
-	const resolved = resolve(pluginDir, relative);
-	const root = resolve(pluginDir);
-	const step = relativePath(root, resolved);
-	return step === "" || (!step.startsWith("..") && !isAbsolute(step)) ? resolved : null;
-}
-
-/** One-line summary for the plugin list. */
-export function pluginSummary(plugin: Plugin): string {
-	return (
-		plugin.manifest.interface?.shortDescription ??
-		plugin.manifest.description ??
-		`${plugin.skills.length} 个技能`
-	);
 }

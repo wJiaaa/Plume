@@ -44,37 +44,20 @@ test("symbolTool accepts query and symbol aliases", async (t) => {
 	assert.equal(res.isError, undefined);
 });
 
-test("globTool falls back to extracting pattern from description when pattern is missing", async () => {
-	const res = await globTool.execute({ description: "Find security config files (pattern: **/*Security*.java)", path: testDir } as any, { cwd: testDir, sessionId: "s", state: new Map() });
-	assert.equal(res.isError, undefined);
+test("globTool and grepTool never search their description: a missing pattern is an error the model can act on", async () => {
+	// The description is the plain-words line shown to the user. Searching it found nothing and said so silently.
+	const glob = await globTool.execute({ description: "Find all *.ts files in directory", path: testDir } as any, { cwd: testDir, sessionId: "s", state: new Map() });
+	assert.equal(glob.isError, true);
+	assert.match(glob.content[0].text, /`pattern` is required/);
+	const grep = await grepTool.execute({ description: "grepTool|globTool|readTool", path: testDir } as any, { cwd: testDir, sessionId: "s", state: new Map() });
+	assert.equal(grep.isError, true);
+	assert.match(grep.content[0].text, /`pattern` is required/);
+	assert.equal(grepTool.summarize?.({ description: "find the config" } as any), "Search");
 });
 
-test("globTool extracts quoted pattern or wildcard from description", async () => {
-	const res = await globTool.execute({ description: "Find all *.ts files in directory", path: testDir } as any, { cwd: testDir, sessionId: "s", state: new Map() });
-	assert.equal(res.isError, undefined);
-	assert.match(res.content[0].text, /tool-aliases\.test\.ts/);
-});
-
-test("grepTool falls back to extracting pattern from description when pattern is missing", async () => {
-	const res = await grepTool.execute({ description: "Search for (pattern: grepTool)", path: testDir } as any, { cwd: testDir, sessionId: "s", state: new Map() });
-	assert.equal(res.isError, undefined);
-	assert.match(res.content[0].text, /grepTool/);
-});
-
-test("grepTool extracts quoted pattern from description", async () => {
-	const res = await grepTool.execute({ description: "Search \"grepTool\" in files", path: testDir } as any, { cwd: testDir, sessionId: "s", state: new Map() });
-	assert.equal(res.isError, undefined);
-	assert.match(res.content[0].text, /grepTool/);
-});
-
-test("globTool falls back to raw description when no pattern labels or wildcards exist", async () => {
-	const res = await globTool.execute({ description: "tool-aliases.test.ts", path: testDir } as any, { cwd: testDir, sessionId: "s", state: new Map() });
-	assert.equal(res.isError, undefined);
-	assert.match(res.content[0].text, /tool-aliases\.test\.ts/);
-});
-
-test("grepTool falls back to raw regex description directly", async () => {
-	const res = await grepTool.execute({ description: "grepTool|globTool|readTool", path: testDir } as any, { cwd: testDir, sessionId: "s", state: new Map() });
+test("summarize and execute read the same alias: an empty pattern falls through to query", async () => {
+	assert.equal(grepTool.summarize?.({ pattern: "", query: "grepTool" } as any), 'Search "grepTool"');
+	const res = await grepTool.execute({ pattern: "", query: "grepTool", path: testDir } as any, { cwd: testDir, sessionId: "s", state: new Map() });
 	assert.equal(res.isError, undefined);
 	assert.match(res.content[0].text, /grepTool/);
 });
@@ -84,12 +67,6 @@ test("grep schema does not require pattern so query-only calls are not rejected 
 	assert.equal(required.includes("pattern"), false);
 	const globRequired = (globTool.parameters as { required?: string[] }).required ?? [];
 	assert.equal(globRequired.includes("pattern"), false);
-});
-
-test("grepTool extracts alternation and spaces from a labeled description", async () => {
-	const res = await grepTool.execute({ description: 'pattern: "grepTool|globTool"' } as any, { cwd: testDir, sessionId: "s", state: new Map() });
-	assert.equal(res.isError, undefined);
-	assert.match(res.content[0].text, /grepTool/);
 });
 
 test("grepTool provides self-healing error message when pattern and description are missing", async () => {

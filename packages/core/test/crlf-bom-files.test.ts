@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
 import { editTool } from "../src/tools/edit.ts";
-import { readFileChange, undoFileChanges } from "../src/tools/file-changes.ts";
+import { readFileChange, undoFileChangeBatches } from "../src/tools/file-changes.ts";
 import { readTool } from "../src/tools/read.ts";
 import { writeTool } from "../src/tools/write.ts";
 import type { ToolContext, ToolResult } from "../src/types.ts";
@@ -151,6 +151,6 @@ test("撤销按字节还原：CRLF + BOM 文件改完再撤销，一个字节不
 	const res = await editTool.execute({ path: file, old_string: "bravo", new_string: "BRAVO" }, ctx);
 	const id = (res.details as { changeId?: string }).changeId;
 	assert.ok(id, "有 scratchDir 时要记下这次改动");
-	await undoFileChanges(ctx.cwd, [await readFileChange(ctx.sessionId, id)]);
+	await undoFileChangeBatches(ctx.cwd, [[await readFileChange(ctx.sessionId, id)]]);
 	assert.equal(await readFile(file, "utf8"), original);
 });

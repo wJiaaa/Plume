@@ -27,7 +27,7 @@ import type { McpOrigin, McpServerConfig } from "./types.ts";
  * so the placeholder rules (`placeholders.ts`) can read them without importing the client that
  * imports those rules.
  */
-export type { McpHttpServer, McpOrigin, McpServerConfig, McpStdioServer } from "./types.ts";
+export type { McpServerConfig, McpStdioServer } from "./types.ts";
 export { qualifiedToolName } from "./names.ts";
 
 export interface McpServerStatus {

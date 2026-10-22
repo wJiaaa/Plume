@@ -3,12 +3,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { scratchHome } from "../runtime/previews.ts";
 import { plumeHome } from "../session/store.ts";
-import { home } from "../platform.ts";
-
-function contains(root: string, absolute: string): boolean {
-	const rel = relative(resolve(root), absolute);
-	return rel === "" || !(rel.startsWith(`..${sep}`) || rel === ".." || isAbsolute(rel));
-}
+import { home, withinOrIs } from "../platform.ts";
 
 /**
  * Resolve a path the model wants to **write**, refusing only Plume's own data directory.
@@ -40,7 +35,7 @@ export function resolveWorkspacePath(cwd: string, input: string): string {
 
 /** Anywhere but the app's home — unless it is the workspace itself or the scratch subtree. */
 function writable(roots: string[], appHome: string, absolute: string): boolean {
-	return !contains(appHome, absolute) || [...roots, scratchHome(appHome)].some((root) => contains(root, absolute));
+	return !withinOrIs(appHome, absolute) || [...roots, scratchHome(appHome)].some((root) => withinOrIs(root, absolute));
 }
 
 /** `~/x` as an absolute path, and anything already absolute resolved against the session's cwd. */
@@ -94,8 +89,8 @@ export async function resolveFilePath(
 	 * approval card names the path as written, so it would read "Edit notes.md" over a change to
 	 * whatever the link points at. Writing the target by its own name asks with that name instead.
 	 */
-	const near = [cwd, scratchHome(appHome)].some((place) => contains(place, absolute));
-	if (near && ![root, scratchHome(realHome)].some((place) => contains(place, target))) {
+	const near = [cwd, scratchHome(appHome)].some((place) => withinOrIs(place, absolute));
+	if (near && ![root, scratchHome(realHome)].some((place) => withinOrIs(place, target))) {
 		throw new Error(`${input} is a link to ${target}, outside the workspace. Write ${target} by that path instead, so the approval names what changes.`);
 	}
 	return target;

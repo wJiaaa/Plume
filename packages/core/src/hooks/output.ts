@@ -5,6 +5,7 @@
  * 几条之间取最严（deny > ask > allow），Stop 上的 block 是「别停，接着干」。
  */
 
+import { isRecord } from "../utils/record.ts";
 import type { HookEventName } from "./config.ts";
 
 type HookPermissionDecision = "allow" | "ask" | "deny";
@@ -47,10 +48,6 @@ export interface HookRunResult {
 export class HookOutputError extends Error {}
 
 const TOP_LEVEL = new Set(["continue", "stopReason", "decision", "reason", "systemMessage", "suppressOutput", "additionalContext", "additional_context", "hookSpecificOutput"]);
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function optional(value: Record<string, unknown>, key: string, type: "string" | "boolean"): void {
 	if (value[key] !== undefined && typeof value[key] !== type) throw new HookOutputError(`${key} must be a ${type}`);

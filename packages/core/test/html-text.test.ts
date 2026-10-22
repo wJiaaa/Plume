@@ -8,7 +8,8 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { decodeEntities, htmlToText } from "../src/tools/html-text.ts";
+import { htmlToText } from "../src/tools/html-text.ts";
+import { decodeEntities } from "../src/utils/entities.ts";
 
 test("a table keeps its rows and columns", () => {
 	const text = htmlToText(`
@@ -130,6 +131,10 @@ test("numeric entities are decoded in both bases", () => {
 
 test("an entity that is not one is left alone rather than mangled", () => {
 	assert.equal(decodeEntities("&notareal; &#xZZZZ;"), "&notareal; &#xZZZZ;");
+});
+
+test("an escaped entity is decoded once, not twice", () => {
+	assert.equal(decodeEntities("&amp;lt;b&amp;gt;"), "&lt;b&gt;");
 });
 
 test("a full page comes out as something worth reading", () => {

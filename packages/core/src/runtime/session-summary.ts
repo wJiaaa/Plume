@@ -12,10 +12,10 @@
  * 什么时候生成、存在哪，是调用方的事（桌面端主进程，见 `electron/session-summary.ts`）。
  */
 
-import { addAbortListener } from "node:events";
 import type { RetryPolicySource } from "../config/retry-policy.ts";
 import type { streamAssistant } from "../ai/index.ts";
 import type { Message, ModelConfig, ProviderConfig, Usage } from "../types.ts";
+import { readReply, replyText } from "./one-shot.ts";
 
 /** 第一次给多少条；之后每次最多补多少条。 */
 const FIRST_MESSAGES = 6;
@@ -153,26 +153,11 @@ export async function summarizeSession(options: SummarizeSessionOptions): Promis
 		{ thinking: "off", retryPolicy: options.retryPolicy, signal: options.signal, maxTokens: Math.min(400, options.model.maxOutputTokens) },
 	);
 
-	let final: Awaited<ReturnType<typeof stream.next>>;
-	let usage: Usage | null = null;
-	let listener: ReturnType<typeof addAbortListener> | undefined;
-	const aborted = new Promise<never>((_resolve, reject) => {
-		if (options.signal) listener = addAbortListener(options.signal, () => reject(options.signal?.reason));
-	});
-	try {
-		do {
-			final = await Promise.race([stream.next(), aborted]);
-			if (!final.done && (final.value.type === "done" || final.value.type === "error")) usage = final.value.message.usage;
-		} while (!final.done);
-	} catch (error) {
-		return { summary: null, usage, error: error instanceof Error ? error.message : String(error) };
-	} finally {
-		listener?.[Symbol.dispose]();
-	}
-
-	const reply = final.value;
+	const read = await readReply(stream, options.signal);
+	if ("error" in read) return { summary: null, usage: read.usage ?? null, error: read.error instanceof Error ? read.error.message : String(read.error) };
+	const { reply } = read;
 	if (reply.stopReason === "error" || reply.stopReason === "aborted") return { summary: null, usage: reply.usage, error: reply.errorMessage ?? reply.stopReason };
-	const text = cleanSessionSummary(reply.content.filter((block): block is { type: "text"; text: string } => block.type === "text").map((block) => block.text).join(""));
+	const text = cleanSessionSummary(replyText(reply));
 	// 回了空话：上一份还在就留着它，只是往后挪「覆盖到哪」，免得同一段材料一直被重新送去。
 	if (!text) return { summary: options.previous ? { text: options.previous.text, upto: material.upto } : null, usage: reply.usage };
 	return { summary: { text, upto: material.upto }, usage: reply.usage };

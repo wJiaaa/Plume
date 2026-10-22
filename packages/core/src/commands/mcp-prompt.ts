@@ -9,7 +9,7 @@ import type { Invocation } from "./expand.ts";
 import { splitArguments } from "./expand.ts";
 
 /** 一个 prompt 声明的参数。字段照协议的 `PromptArgument`。 */
-export interface McpPromptArgument {
+interface McpPromptArgument {
 	name: string;
 	description?: string;
 	required?: boolean;

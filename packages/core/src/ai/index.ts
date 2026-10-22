@@ -40,13 +40,7 @@ export function useLlmRegistry(next: { get(api: string): Provider | undefined } 
 	registry = next;
 }
 
-export const API_FORMATS: { value: ApiFormat; label: string; hint: string }[] = [
-	{ value: "openai-responses", label: "Responses (/responses)", hint: "OpenAI Responses API" },
-	{ value: "openai-chat-completions", label: "Chat Completions (/chat/completions)", hint: "OpenAI Chat Completions API" },
-	{ value: "anthropic-messages", label: "Messages (/messages)", hint: "Anthropic Messages API" },
-];
-
-export function getProvider(api: ApiFormat): Provider {
+function getProvider(api: ApiFormat): Provider {
 	const provider = registry?.get(api) ?? BUILT_IN[api];
 	if (!provider) throw new Error(`Unsupported API format: ${api}`);
 	return provider;
@@ -61,18 +55,3 @@ export function streamAssistant(
 ): AsyncGenerator<StreamEvent, AssistantMessage> {
 	return getProvider(providerConfig.api).stream(providerConfig, model, context, options);
 }
-
-export { anthropicMessagesProvider } from "./anthropic-messages.ts";
-export { toAnthropicMessages } from "./anthropic-messages-request.ts";
-export { openaiResponsesProvider } from "./openai-responses.ts";
-export { toResponsesInput } from "./openai-responses-request.ts";
-export { openaiChatCompletionsProvider } from "./openai-chat-completions.ts";
-export { sanitizeChatCompletionsHistory, toChatCompletionsMessages, toChatCompletionsTools } from "./openai-chat-completions-request.ts";
-export {
-	resolveModelThinkingOptions,
-	resolveReasoningEffort,
-	resolveThinkingOption,
-	thinkingOptionsFor,
-	DEFAULT_THINKING_OPTIONS,
-	THINKING_LEVELS,
-} from "./thinking-options.ts";

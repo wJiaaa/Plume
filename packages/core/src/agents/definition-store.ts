@@ -1,15 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
 import { link, lstat, mkdir, readFile, realpath, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { createRegistry } from "../capability/index.ts";
 import type { AgentDefinition } from "../agents-builtin.ts";
 import type { Settings } from "../config/settings.ts";
 import { renderAgentDocument, validateAgentDraft, type AgentDefinitionRecord, type AgentDefinitionSave } from "./definition-document.ts";
 import { renameWithRetry } from "../utils/atomic-write.ts";
+import { withinOrIs } from "../platform.ts";
 
 const hash = (raw: string) => createHash("sha256").update(raw).digest("hex");
-const inside = (root: string, path: string) => { const part = relative(root, path); return !isAbsolute(part) && part !== ".." && !part.startsWith(`..${sep}`); };
 const missing = (error: unknown) => error instanceof Error && "code" in error && error.code === "ENOENT";
 
 /** One desktop writer serializes definition mutations; revisions protect external editor changes. */
@@ -25,29 +25,33 @@ export class AgentDefinitionStore {
 	private async guard(path: string, scope: "user" | "project", cwd: string | null): Promise<void> {
 		const root = resolve(scope === "user" ? this.home : cwd ?? "");
 		const directory = this.directory(scope, cwd);
-		if (!inside(directory, path) || dirname(path) !== directory) throw new Error("智能体路径越界");
+		if (!withinOrIs(directory, path) || dirname(path) !== directory) throw new Error("智能体路径越界");
 		// Check every existing ancestor before mkdir, so a symlink cannot create files outside the root.
 		for (const item of scope === "user" ? [root, directory, path] : [root, join(root, ".plume"), directory, path]) {
 			try { if ((await lstat(item)).isSymbolicLink()) throw new Error("智能体目录不允许符号链接"); }
 			catch (error) { if (!missing(error)) throw error; }
 		}
 		await mkdir(directory, { recursive: true });
-		if (!inside(await realpath(root), await realpath(directory))) throw new Error("智能体目录越界");
+		if (!withinOrIs(await realpath(root), await realpath(directory))) throw new Error("智能体目录越界");
 	}
 	async list(cwd: string | null, settings?: Pick<Settings, "capabilityPreferences">): Promise<AgentDefinitionRecord[]> {
+		return (await this.located(cwd, settings)).map(({ record }) => record);
+	}
+	/** Each record with the file it came from. The path stays here: the id is its hash, and the renderer gets only the id. */
+	private async located(cwd: string | null, settings?: Pick<Settings, "capabilityPreferences">): Promise<{ record: AgentDefinitionRecord; path: string }[]> {
 		const registry = createRegistry({ home: this.home, userHome: homedir() });
-		const preferred = new Map(Object.entries(settings?.capabilityPreferences ?? {}));
-		const result = await registry.load<AgentDefinition>("agent", { cwd, preferred });
+		const result = await registry.load<AgentDefinition>("agent", { cwd, preferred: settings?.capabilityPreferences });
 		return Promise.all(result.items.map(async item => {
 			const source = item.provenance;
 			const scope = source.scope === "project" ? "project" : source.scope === "builtin" ? "builtin" : "user";
 			const raw = scope === "builtin" ? "" : await readFile(source.path, "utf8");
 			const shadowed = result.all.filter(other => other.name === item.name && other.provenance.path !== source.path);
-			return { id: hash(source.path), scope, raw, revision: hash(raw || JSON.stringify(item)),
+			const record: AgentDefinitionRecord = { id: hash(source.path), scope, raw, revision: hash(raw || JSON.stringify(item)),
 				definition: { ...item, source: scope === "project" ? "workspace" : scope },
 				editable: scope === "builtin" || source.provider === "native" && dirname(source.path) === this.directory(scope, cwd),
 				customized: shadowed.some(other => other.provenance.scope === "builtin"),
 			};
+			return { record, path: source.path };
 		}));
 	}
 	async read(cwd: string | null, id: string, settings?: Pick<Settings, "capabilityPreferences">): Promise<AgentDefinitionRecord> {
@@ -63,7 +67,8 @@ export class AgentDefinitionStore {
 	save(cwd: string | null, input: AgentDefinitionSave, tools: readonly string[], settings?: Pick<Settings, "capabilityPreferences">): Promise<void> {
 		return this.serialize(async () => {
 			if (!input || typeof input !== "object") throw new Error("智能体请求无效");
-			const records = await this.list(cwd, settings);
+			const located = await this.located(cwd, settings);
+			const records = located.map(({ record }) => record);
 			const current = input.id ? records.find(item => item.id === input.id) : undefined;
 			const template = input.copyFrom ? records.find(item => item.id === input.copyFrom) : current;
 			if (input.copyFrom && !template) throw new Error("原智能体已改变，请重新加载");
@@ -74,10 +79,8 @@ export class AgentDefinitionStore {
 			const scope = current?.scope === "builtin" ? "user" : current?.scope ?? input.scope;
 			if (current && current.scope !== "builtin" && input.scope !== current.scope) throw new Error("请通过复制改变生效范围");
 			const directory = this.directory(scope, cwd);
-			// Resolve the registered source again; names are not necessarily existing filenames.
-			const registry = createRegistry({ home: this.home, userHome: homedir() });
-			const sources = await registry.load<AgentDefinition>("agent", { cwd, preferred: new Map(Object.entries(settings?.capabilityPreferences ?? {})) });
-			const original = current && current.scope !== "builtin" ? sources.items.find(item => hash(item.provenance.path) === current.id)?.provenance.path : undefined;
+			// The file the definition came from, not `<name>.md`: names are not necessarily existing filenames.
+			const original = current && current.scope !== "builtin" ? located.find(({ record }) => record === current)?.path : undefined;
 			const path = original ?? join(directory, `${input.draft.name}.md`);
 			await this.guard(path, scope, cwd);
 			const raw = renderAgentDocument(input.draft, template?.raw || undefined, template?.scope === "builtin" ? template.definition : undefined);
@@ -100,11 +103,10 @@ export class AgentDefinitionStore {
 	 */
 	remove(cwd: string | null, id: string, revision: string, discard: (path: string) => Promise<void>, settings?: Pick<Settings, "capabilityPreferences">): Promise<void> {
 		return this.serialize(async () => {
-			const record = await this.read(cwd, id, settings);
+			const found = (await this.located(cwd, settings)).find(({ record }) => record.id === id);
+			if (!found) throw new Error("智能体已改变，请重新加载");
+			const { record, path } = found;
 			if (!record.editable || record.scope === "builtin" || revision !== record.revision) throw new Error("定义已改变或不可删除，请重新加载");
-			const result = await createRegistry({ home: this.home, userHome: homedir() }).load<AgentDefinition>("agent", { cwd, preferred: new Map(Object.entries(settings?.capabilityPreferences ?? {})) });
-			const path = result.items.find(item => hash(item.provenance.path) === id)?.provenance.path;
-			if (!path) throw new Error("智能体不存在");
 			await this.guard(path, record.scope, cwd);
 			if (hash(await readFile(path, "utf8")) !== revision) throw new Error("定义已被修改，请重新加载");
 			await discard(path);

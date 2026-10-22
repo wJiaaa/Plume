@@ -22,7 +22,7 @@ export type { McpNeed } from "./types.ts";
 const PLACEHOLDER = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
 
 /** 一段文本里的空位名，按出现顺序、不重复。 */
-export function placeholdersIn(text: string): string[] {
+function placeholdersIn(text: string): string[] {
 	const found: string[] = [];
 	for (const match of text.matchAll(PLACEHOLDER)) {
 		if (!found.includes(match[1]!)) found.push(match[1]!);
@@ -82,7 +82,7 @@ export function needsOf(server: McpServerConfig): McpNeed[] {
  * 人填过的值住在这台服务的 `env` 里（HTTP 服务也借用这个字段，它在那里不是进程环境，只是取值
  * 的地方）。还是模板本身的、空的，都不算填过。
  */
-export function valueFor(server: McpServerConfig, name: string, environment: Record<string, string | undefined>): string | undefined {
+function valueFor(server: McpServerConfig, name: string, environment: Record<string, string | undefined>): string | undefined {
 	const own = server.env?.[name];
 	if (own !== undefined && own !== "" && !isPlaceholder(own)) return own;
 	const inherited = environment[name];

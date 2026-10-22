@@ -15,7 +15,6 @@ import { plumeHome } from "../session/store.ts";
 import { concurrencyNote } from "../runtime/sub-agent/dispatch-guard.ts";
 import { deferredCatalog, MCP_CALL, MCP_SEARCH, type CatalogEntry } from "../tools/mcp-search.ts";
 import { parseGuidelines } from "./overrides.ts";
-import { renderTemplate } from "./template.ts";
 import type { Skill } from "../skills/loader.ts";
 import type { AgentDefinition } from "../tools/task.ts";
 import { IMAGE_GUIDELINES } from "../tools/image.ts";
@@ -110,18 +109,17 @@ export interface SystemPromptInput {
 	 *
 	 * The first thing this project's prompts become files for, and the one worth doing first: it is
 	 * the block people most often want to change, and until now the only way was `appendSystemPrompt`
-	 * — which adds a second, contradicting voice rather than replacing the first.
-	 *
-	 * Rendered as a template, so it can say things like `{{#has tools "bash"}}`.
+	 * — which adds a second, contradicting voice rather than replacing the first. Used verbatim,
+	 * like the guidelines file.
 	 */
 	identityOverride?: string;
 	/**
 	 * 子代理的身份：它定义里的那段话，原样放在最前面，取代 Plume 的身份段。侧边聊天也走这里
 	 * （`runtime/side-chat/side-session.ts` 的 `SIDE_CHAT_PROFILE`），理由相同。
 	 *
-	 * 不走 `identityOverride`：那是项目文件，按模板渲染；子代理定义可能来自用户写的 markdown，
-	 * 里面的 `{{` 只是正文。以前子代理没有这一项，于是开头读到的是「You are Plume」，自己的角色
-	 * 追加在整段提示词的末尾——同一段提示词里两个身份，先到的那个占上风。
+	 * 单独一项而不借 `identityOverride`：那一项读自项目文件，两者都在时子代理自己的定义要赢。
+	 * 以前子代理没有这一项，于是开头读到的是「You are Plume」，自己的角色追加在整段提示词的末尾
+	 * ——同一段提示词里两个身份，先到的那个占上风。
 	 */
 	identity?: string;
 	/**
@@ -257,11 +255,7 @@ export async function buildPromptContext(input: SystemPromptInput): Promise<Prom
 	 * Replaced rather than appended: two identity statements in one prompt is a model being told
 	 * who it is twice, and the second one does not cancel the first.
 	 */
-	const identity = input.identity?.trim()
-		? input.identity.trim()
-		: input.identityOverride?.trim()
-			? renderTemplate(input.identityOverride, { tools: input.tools.map((tool) => tool.name), cwd, model: input.modelName })
-			: IDENTITY;
+	const identity = input.identity?.trim() || input.identityOverride?.trim() || IDENTITY;
 
 	const prompt = new PromptBuilder();
 	prompt.add("identity", identity);

@@ -25,27 +25,18 @@ export type TurnMiddleware = (
 	next: (turn: TurnContext) => Promise<TurnContext>,
 ) => Promise<TurnContext>;
 
-let pipeline: TurnMiddleware[] = [];
+let pipeline: TurnMiddleware | null = null;
 
-export function useTurnPipeline(middleware: TurnMiddleware[] | null): void {
-	pipeline = middleware ?? [];
+export function useTurnPipeline(middleware: TurnMiddleware | null): void {
+	pipeline = middleware;
 }
 
 /**
  * Run the turn through whatever is registered.
  *
- * With nothing registered this returns its argument, which is the case that has to stay free: most
- * turns pass through untouched and paying for an empty chain on every one of them would be a tax
- * on the common path.
+ * With nothing bound this returns its argument. The host binds the kernel's pipeline, which composes
+ * its steps on the event bus — see `kernel/plugins/session.ts`.
  */
 export async function prepareTurn(turn: TurnContext): Promise<TurnContext> {
-	if (pipeline.length === 0) return turn;
-
-	let next = async (final: TurnContext) => final;
-	for (let i = pipeline.length - 1; i >= 0; i--) {
-		const middleware = pipeline[i];
-		const downstream = next;
-		next = (current: TurnContext) => middleware(current, downstream);
-	}
-	return next(turn);
+	return pipeline ? pipeline(turn, async (final) => final) : turn;
 }

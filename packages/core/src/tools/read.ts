@@ -1,5 +1,6 @@
 import type { Stats } from "node:fs";
 import { readFile, realpath, stat } from "node:fs/promises";
+import { textArg } from "./args.ts";
 import { errorResult } from "./result.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 import { charWindow, formatCharWindow, longLineFooter, MAX_LINE_CHARS } from "./long-line.ts";
@@ -9,12 +10,12 @@ import { authorizeRead, toAbsolute } from "./read-access.ts";
 import { markRead } from "./read-state.ts";
 import { sameNamed } from "./project-files.ts";
 import { scratchFile } from "./scratch-file.ts";
-export { hasRead, markRead } from "./read-state.ts";
 import { decodeText } from "./text-layout.ts";
 import { EXTRACTABLE, extractDocumentText } from "../files/document-text.ts";
 import { FRESH_RESULT_MAX_CHARS } from "../agent/prune.ts";
 
 const DEFAULT_LIMIT = 2000;
+const PATH_KEYS = ["path", "file", "filePath"];
 /** 正文的字数上限：留出头部路径、页脚和长行提示的余量，整条结果落在剪枝不碰新结果的范围内。 */
 const OUTPUT_BUDGET = FRESH_RESULT_MAX_CHARS - 2000;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -63,20 +64,13 @@ export const readTool: Tool<ReadArgs> = {
 		additionalProperties: true,
 	},
 	summarize: (args) => {
-		const raw = args as unknown as Record<string, unknown>;
-		const path = String(raw.path ?? raw.file ?? raw.filePath ?? "");
+		const path = textArg(args, PATH_KEYS);
 		return path ? `Read ${path}` : "Read file";
 	},
 
 	async execute(args, ctx): Promise<ToolResult> {
 		const raw = args as unknown as Record<string, unknown>;
-		const path = typeof raw.path === "string" && raw.path
-			? raw.path
-			: typeof raw.file === "string" && raw.file
-				? raw.file
-				: typeof raw.filePath === "string" && raw.filePath
-					? raw.filePath
-					: "";
+		const path = textArg(args, PATH_KEYS);
 
 		if (!path) return errorResult("`path` is required.");
 		const charOffset = Math.max(1, numberArg(raw.char_offset ?? raw.charOffset) ?? 1);

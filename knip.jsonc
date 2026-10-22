@@ -10,7 +10,11 @@
   // the real-window probes import a great deal that nothing else does.
   "workspaces": {
     "packages/core": {
-      "entry": ["src/**/index.ts", "test/**/*.test.ts"],
+      // The `exports` in package.json are the entries. Listing every `src/**/index.ts` here made each
+      // barrel an entry too, and without `includeEntryExports` an entry's exports are never
+      // reported — 331 names nothing outside core imported sat in those barrels unseen.
+      "entry": ["test/**/*.test.ts"],
+      "includeEntryExports": true,
       "project": ["src/**/*.ts"]
     },
     "packages/cli": {

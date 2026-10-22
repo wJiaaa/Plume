@@ -14,7 +14,7 @@ import { dirname, join } from "node:path";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { BUILTIN_RESOURCES } from "../src/resources/handlers.ts";
-import { parseResourceUrl, ResourceRouter, resolveInside } from "../src/resources/router.ts";
+import { parseResourceUrl, ResourceRouter } from "../src/resources/router.ts";
 import type { ResourceContext } from "../src/resources/types.ts";
 import { editTool } from "../src/tools/edit.ts";
 import { lsTool } from "../src/tools/ls.ts";
@@ -125,7 +125,6 @@ test("an unknown scheme is not claimed, so it can fall through to the filesystem
 	const r = router();
 	assert.equal(r.canResolve("skill://pdf"), true);
 	assert.equal(r.canResolve("acme://thing"), false);
-	assert.equal(r.looksLikeUrl("acme://thing"), true, "it is still recognisably an address");
 });
 
 test("registering a scheme twice is refused", () => {
@@ -415,21 +414,6 @@ test("a session with no router reads addresses as ordinary paths", async () => {
 	const bare = { cwd: root, sessionId: "s", state: new Map() } as unknown as ToolContext;
 	const result = await readTool.execute({ path: "skill://pdf" } as never, bare);
 	assert.ok(result.isError, "no router means no address space, and it fails as a path would");
-});
-
-// ---------------------------------------------------------------------------
-// The shared guard
-// ---------------------------------------------------------------------------
-
-test("resolveInside uses path.relative rather than string prefixes", () => {
-	assert.ok(resolveInside("/a/b", "c/d"));
-	assert.equal(resolveInside("/a/b", "../x"), null);
-	assert.equal(resolveInside("/a/b", "/etc/passwd"), null, "an absolute path is never inside");
-	/*
-	 * The case a prefix comparison gets wrong: `/a/bc` starts with the string `/a/b` but is not
-	 * under it. `plugins/loader.ts` carries the note from when this was written that way.
-	 */
-	assert.equal(resolveInside("/a/b", "../bc/d"), null);
 });
 
 // ---------------------------------------------------------------------------

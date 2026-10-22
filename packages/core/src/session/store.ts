@@ -345,7 +345,7 @@ export class SessionStore implements SessionStorage {
 		meta.replyUsage = replayed.replyUsage;
 		meta.steps = replayed.steps;
 		meta.subagentUsage = replayed.subagentUsage;
-		return { meta, messages, entries, compactions: replayed.compactions, compaction: replayed.compaction, commandRuns: replayed.commandRuns, hookRuns: replayed.hookRuns };
+		return { meta, messages, entries, compactions: replayed.compactions.map((mark) => mark.at), compaction: replayed.compaction, commandRuns: replayed.commandRuns, hookRuns: replayed.hookRuns };
 	}
 
 	/**

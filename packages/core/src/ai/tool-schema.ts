@@ -3,6 +3,8 @@
  * encoder 里；这里只放对所有端点都语义等价的那种。
  */
 
+import { isRecord } from "../utils/record.ts";
+
 /**
  * 指向 `$defs` 以外的本地 `$ref`（`#/properties/a`、`#/definitions/X`），目标复制进 `$defs`、引用改指过去。
  *
@@ -22,13 +24,13 @@
  * 声明了需要的模型做、遇到解析不到的引用直接报错；这里两样都不跟，理由见上。
  */
 export function hoistLocalRefs<T>(schema: T): T {
-	if (!isPlainObject(schema)) return schema;
+	if (!isRecord(schema)) return schema;
 	const refs = new Set<string>();
 	collectRefs(schema, refs, new WeakSet());
 	for (const ref of refs) if (resolvePointer(schema, ref) === undefined) refs.delete(ref);
 	if (refs.size === 0) return schema;
 
-	const existing = isPlainObject(schema.$defs) ? schema.$defs : {};
+	const existing = isRecord(schema.$defs) ? schema.$defs : {};
 	const taken = new Set(Object.keys(existing));
 	const keyByRef = new Map<string, string>();
 	for (const ref of refs) {
@@ -43,22 +45,20 @@ export function hoistLocalRefs<T>(schema: T): T {
 
 	const memo = new WeakMap<object, unknown>();
 	const root = rewriteRefs(schema, keyByRef, memo) as Record<string, unknown>;
-	const defs: Record<string, unknown> = { ...(isPlainObject(root.$defs) ? root.$defs : {}) };
+	const defs: Record<string, unknown> = { ...(isRecord(root.$defs) ? root.$defs : {}) };
 	for (const [ref, key] of keyByRef) defs[key] = rewriteRefs(resolvePointer(schema, ref), keyByRef, memo);
 	for (const [ref, key] of keyByRef) {
 		const path = ref.slice(2).split("/").map((segment) => decodeSegment(segment) as string);
 		const name = path.pop() as string;
 		const parent = resolvePointer(root, path.length > 0 ? `#/${path.map(encodeSegment).join("/")}` : "#");
 		// 走不到说明父节点已经在前一轮被删或换掉，它那一份已经在 `$defs` 里。
-		if (path.length === 1 && path[0] === "definitions" && isPlainObject(parent)) delete parent[name];
+		if (path.length === 1 && path[0] === "definitions" && isRecord(parent)) delete parent[name];
 		else if (Array.isArray(parent)) parent[Number(name)] = { $ref: `#/$defs/${key}` };
-		else if (isPlainObject(parent)) parent[name] = { $ref: `#/$defs/${key}` };
+		else if (isRecord(parent)) parent[name] = { $ref: `#/$defs/${key}` };
 	}
-	if (isPlainObject(root.definitions) && Object.keys(root.definitions).length === 0) delete root.definitions;
+	if (isRecord(root.definitions) && Object.keys(root.definitions).length === 0) delete root.definitions;
 	return { ...root, $defs: defs } as T;
 }
-
-export const isPlainObject = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 
 /** 要搬的引用：本地（`#/` 开头）、不在 `$defs` 下。`seen` 防的是代码里拼出来的共享或环状对象。 */
 function collectRefs(value: unknown, refs: Set<string>, seen: WeakSet<object>): void {
@@ -93,7 +93,7 @@ function resolvePointer(root: unknown, ref: string): unknown {
 		if (Array.isArray(at)) {
 			if (!/^\d+$/.test(segment)) return undefined;
 			at = at[Number(segment)];
-		} else if (isPlainObject(at) && Object.hasOwn(at, segment)) at = at[segment];
+		} else if (isRecord(at) && Object.hasOwn(at, segment)) at = at[segment];
 		else return undefined;
 	}
 	return at;

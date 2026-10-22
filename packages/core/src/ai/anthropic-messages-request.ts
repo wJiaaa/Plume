@@ -10,7 +10,8 @@
 
 import type { AssistantMessage, Message, ToolResultMessage, ToolSpec, UserContent } from "../types.ts";
 import { toolNameForReplay } from "./tool-names.ts";
-import { hoistLocalRefs, isPlainObject } from "./tool-schema.ts";
+import { hoistLocalRefs } from "./tool-schema.ts";
+import { isRecord } from "../utils/record.ts";
 
 /**
  * One block of content, in the wire shape.
@@ -497,7 +498,7 @@ function effectiveType(schema: Record<string, unknown>): string | undefined {
 		if (declared.includes("string")) return "string";
 		return undefined;
 	}
-	if (isPlainObject(schema.properties)) return "object";
+	if (isRecord(schema.properties)) return "object";
 	if (schema.items !== undefined || Array.isArray(schema.prefixItems)) return "array";
 	return undefined;
 }
@@ -516,7 +517,7 @@ export function normalizeToolSchema(schema: unknown): unknown {
 }
 
 function normalizeSchemaNode(schema: unknown, seen: WeakMap<object, unknown>): unknown {
-	if (!isPlainObject(schema)) return schema;
+	if (!isRecord(schema)) return schema;
 	const already = seen.get(schema);
 	if (already !== undefined) return already;
 
@@ -540,14 +541,14 @@ function normalizeSchemaNode(schema: unknown, seen: WeakMap<object, unknown>): u
 		delete result.minItems;
 	}
 
-	if (isPlainObject(result.properties)) {
+	if (isRecord(result.properties)) {
 		const properties: Record<string, unknown> = {};
 		for (const [name, child] of Object.entries(result.properties)) properties[name] = normalizeSchemaNode(child, seen);
 		result.properties = properties;
 	}
-	if (isPlainObject(result.additionalProperties)) result.additionalProperties = normalizeSchemaNode(result.additionalProperties, seen);
+	if (isRecord(result.additionalProperties)) result.additionalProperties = normalizeSchemaNode(result.additionalProperties, seen);
 	if (Array.isArray(result.items)) result.items = result.items.map((item) => normalizeSchemaNode(item, seen));
-	else if (isPlainObject(result.items)) result.items = normalizeSchemaNode(result.items, seen);
+	else if (isRecord(result.items)) result.items = normalizeSchemaNode(result.items, seen);
 	if (Array.isArray(result.prefixItems)) result.prefixItems = result.prefixItems.map((item) => normalizeSchemaNode(item, seen));
 	for (const key of COMBINATORS) {
 		const variants = result[key];
@@ -555,7 +556,7 @@ function normalizeSchemaNode(schema: unknown, seen: WeakMap<object, unknown>): u
 	}
 	for (const key of ["$defs", "definitions"] as const) {
 		const definitions = result[key];
-		if (!isPlainObject(definitions)) continue;
+		if (!isRecord(definitions)) continue;
 		const next: Record<string, unknown> = {};
 		for (const [name, child] of Object.entries(definitions)) next[name] = normalizeSchemaNode(child, seen);
 		result[key] = next;

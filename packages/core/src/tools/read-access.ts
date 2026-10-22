@@ -31,11 +31,11 @@
 
 import { existsSync, statSync } from "node:fs";
 import { realpath } from "node:fs/promises";
-import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, join, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { scratchHome } from "../runtime/previews.ts";
 import { plumeHome } from "../session/store.ts";
-import { commandDialects, commandShell, dialectsOf, home } from "../platform.ts";
+import { commandDialects, commandShell, dialectsOf, home, withinOrIs } from "../platform.ts";
 import type { ToolContext } from "../types/tool.ts";
 import { displayPath, toAbsolute } from "./paths.ts";
 import { DECLINED } from "./result.ts";
@@ -114,16 +114,11 @@ const SYSTEM_ROOTS = [
 	"C:\\Program Files (x86)",
 ];
 
-function contains(root: string, absolute: string): boolean {
-	const rel = relative(resolve(root), absolute);
-	return rel === "" || !(rel.startsWith(`..${sep}`) || rel === ".." || isAbsolute(rel));
-}
-
 /** The same skill rule `paths.ts` applies, kept in step with it deliberately. */
 function isInstalledSkillFile(absolute: string, homeDir: string): boolean {
-	if (contains(join(homeDir, "skills"), absolute)) return true;
+	if (withinOrIs(join(homeDir, "skills"), absolute)) return true;
 	const plugins = join(homeDir, "plugins");
-	if (!contains(plugins, absolute)) return false;
+	if (!withinOrIs(plugins, absolute)) return false;
 	return relative(plugins, absolute).split(sep).indexOf("skills") >= 1;
 }
 
@@ -150,16 +145,16 @@ export function assessRead(absolute: string, cwd: string, options: ReadAccessOpt
 
 	if (SECRET_PATH.test(absolute)) return { decision: "ask", reason: "读取本机密钥文件", scope: "file" };
 
-	if (contains(cwd, absolute)) return { decision: "allow" };
+	if (withinOrIs(cwd, absolute)) return { decision: "allow" };
 	// After the credential rule, like the cwd above it: naming a folder in a project says "this is
 	// mine to work on", which is not the same as "read the keys I keep in it".
-	for (const root of options.projectRoots ?? []) if (contains(root, absolute)) return { decision: "allow" };
-	if (contains(scratchHome(homeDir), absolute)) return { decision: "allow" };
+	for (const root of options.projectRoots ?? []) if (withinOrIs(root, absolute)) return { decision: "allow" };
+	if (withinOrIs(scratchHome(homeDir), absolute)) return { decision: "allow" };
 	if (options.allowSkillReads && isInstalledSkillFile(absolute, homeDir)) return { decision: "allow" };
 
 	const temp = tmpdir();
-	if (contains(temp, absolute)) return { decision: "allow" };
-	for (const root of SYSTEM_ROOTS) if (contains(root, absolute)) return { decision: "allow" };
+	if (withinOrIs(temp, absolute)) return { decision: "allow" };
+	for (const root of SYSTEM_ROOTS) if (withinOrIs(root, absolute)) return { decision: "allow" };
 
 	return { decision: "ask", reason: "读取当前项目之外的位置", scope: "tree" };
 }
@@ -326,10 +321,10 @@ async function resolveForReading(cwd: string, absolute: string): Promise<string>
 	} catch {
 		return absolute;
 	}
-	if (contains(cwd, real)) return real;
+	if (withinOrIs(cwd, real)) return real;
 	// `read` 传进来的已是真实路径，所以这一步不以「解析前后不同」为前提。
 	const realCwd = await realpath(cwd).catch(() => cwd);
-	return contains(realCwd, real) ? resolve(cwd, relative(realCwd, real)) : real;
+	return withinOrIs(realCwd, real) ? resolve(cwd, relative(realCwd, real)) : real;
 }
 
 /** 用户拖进来的就是用户给的，哪怕它是一个链接——判定照字面，见 `assessRead` 开头。 */

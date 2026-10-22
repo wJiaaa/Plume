@@ -25,10 +25,6 @@ class Registry implements LlmRegistry {
 	get(api: string): Provider | undefined {
 		return this.adapters.get(api);
 	}
-
-	list(): string[] {
-		return [...this.adapters.keys()];
-	}
 }
 
 /** The APIs the app speaks out of the box. */

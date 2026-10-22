@@ -280,7 +280,7 @@ export interface ScreenshotSettings {
 	openEditor?: boolean;
 }
 
-export const DEFAULT_SCREENSHOT_SETTINGS: ScreenshotSettings = {
+const DEFAULT_SCREENSHOT_SETTINGS: ScreenshotSettings = {
 	enabled: true,
 	shortcut: "Alt+A",
 	saveLocation: "",
@@ -969,10 +969,10 @@ async function writeSettings(settings: Settings): Promise<void> {
 }
 
 /*
- * 找模型的那两个函数住在 `models.ts`，从这里再导出。
+ * 找模型的函数住在 `models.ts`，从这里再导出。
  *
- * 它们是纯的，而这个文件顶上就是 `node:fs` 和 `node:os`。渲染器要用它们，从这里导入会把整条
+ * 它是纯的，而这个文件顶上就是 `node:fs` 和 `node:os`。渲染器要用它，从这里导入会把整条
  * 依赖链拉进浏览器包——窗口一片空白，报的是 `node:os.homedir` 不能在客户端访问。搬过去之后
  * 这里仍然导出同一个名字，所以原来的调用点一个字都不用改。
  */
-export { availableModels, resolveModel } from "./models.ts";
+export { resolveModel } from "./models.ts";

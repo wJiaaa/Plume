@@ -17,7 +17,7 @@ import { conversationPictures } from "./recent.ts";
 import { IMAGE_TOOL_NAME, type ImageGenerateDetails } from "./types.ts";
 
 /** What the person said that led to a picture: the newest message they typed before the call. */
-export interface Ask {
+interface Ask {
 	text: string;
 	at: number;
 	/** The record it is in, for finding it in the conversation. */

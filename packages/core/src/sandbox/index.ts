@@ -23,27 +23,6 @@ export function getSandbox(): Sandbox {
 	return bound ?? BUILT_IN;
 }
 
-export { LocalSandbox } from "./local.ts";
 export { primeCommandPath } from "./login-path.ts";
 export { sandboxModeFor } from "./mode-for.ts";
-export {
-	confine,
-	looksDenied,
-	selectRunner,
-	resetProbeCache,
-	SandboxUnavailableError,
-	SANDBOX_RUNNER_FLAG,
-	useSandboxRunner,
-} from "./backend.ts";
-export { workspaceWriteSid, tempWriteSid, quoteArg, buildCommandLine } from "./windows/identity.ts";
-export type { Confinement, Runner } from "./backend.ts";
-export {
-	bwrapArgs,
-	canonicalPath,
-	seatbeltArgs,
-	writableRoots,
-	type ConfinedSandboxMode,
-	type SandboxEnforcement,
-	type SandboxMode,
-	type SandboxPolicy,
-} from "./policy.ts";
+export { looksDenied, selectRunner, useSandboxRunner } from "./backend.ts";

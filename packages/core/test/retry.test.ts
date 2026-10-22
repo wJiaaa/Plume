@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { fetchWithRetry, isRetryableError, isRetryableStatus, retryDelay, serverDelay, toolCallId } from "../src/ai/retry.ts";
+import { fetchWithRetry, isRetryableError, isRetryableStatus, retryDelay, toolCallId } from "../src/ai/retry.ts";
 import { FailureError } from "../src/ai/failure.ts";
 
 const socketError = () => Object.assign(new Error("fetch failed"), { cause: { code: "UND_ERR_SOCKET" } });
@@ -201,26 +201,14 @@ test("the wait is found in the body when there is no header", () => {
 			reset_time: "53s",
 		},
 	});
-	assert.equal(serverDelay(null, relay), 54_000, "reset_seconds, in milliseconds");
-	assert.equal(retryDelay(1, undefined, relay), 54_000, "and it is what the delay becomes");
-
-	// The written form, for the servers that send only that.
-	assert.equal(serverDelay(null, JSON.stringify({ reset_time: "12s" })), 12_000);
-	// Other spellings of the same fact.
-	assert.equal(serverDelay(null, JSON.stringify({ retry_after: 7 })), 7000);
-	assert.equal(serverDelay(null, JSON.stringify({ retry_after_seconds: 7 })), 7000);
+	assert.equal(retryDelay(1, undefined, relay), 54_000, "reset_seconds is what the delay becomes");
+	// The spellings themselves are `serverDelayMs`'s, tested in failure-classify.
 });
 
 test("a header still beats the body, and a body without the field changes nothing", () => {
 	const body = JSON.stringify({ error: { code: "model_unavailable", reset_seconds: 54 } });
 	const response = new Response("", { status: 503, headers: { "retry-after": "3" } });
 	assert.equal(retryDelay(1, response, body), 3000, "the header is the standard place to say it");
-
-	// Numbers that are not a wait must not be mistaken for one.
-	assert.equal(serverDelay(null, JSON.stringify({ model: "gemini-3.7-flash-high" })), null);
-	assert.equal(serverDelay(null, JSON.stringify({ error: { code: 503 } })), null);
-	assert.equal(serverDelay(null, "not json at all"), null);
-	assert.equal(serverDelay(null, undefined), null);
 });
 
 test("the curve starts where a person would expect a retry to, not in a tight loop", () => {

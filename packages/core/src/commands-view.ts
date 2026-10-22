@@ -10,7 +10,7 @@
  * `SlashCommand` comes along as a type only, which erases at compile time and pulls nothing in.
  */
 
-export { expandCommand, parseInvocation, parseSkillMention, rankCommands, resolveCommand, skillNameOf, splitArguments, type Invocation } from "./commands/expand.ts";
-export { resolveInvocation, skillCommandName, type ResolvedInvocation, type SkillCommandTarget } from "./commands/invoke.ts";
+export { parseInvocation, parseSkillMention, rankCommands, resolveCommand, type Invocation } from "./commands/expand.ts";
+export { resolveInvocation, skillCommandName } from "./commands/invoke.ts";
 export type { SlashCommand } from "./commands/loader.ts";
-export { bindPromptArguments, findPrompt, promptArgumentHint, type BoundPromptArguments, type McpPromptArgument, type McpPromptEntry } from "./commands/mcp-prompt.ts";
+export { bindPromptArguments, findPrompt, promptArgumentHint, type McpPromptEntry } from "./commands/mcp-prompt.ts";

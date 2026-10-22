@@ -12,7 +12,8 @@ import { expandSkillPaths, type Skill } from "../skills/loader.ts";
 import { SKILLS_KEY } from "../skills/tool.ts";
 import { artifactResource, mcpResource, pluginResource, sessionResource } from "./more-handlers.ts";
 import { plumeResource } from "./plume-docs.ts";
-import { resolveInside, stillInside } from "./router.ts";
+import { resolveInside } from "../platform.ts";
+import { stillInside } from "./router.ts";
 import { ResourceError, type Completion, type ParsedUrl, type Resource, type ResourceContext, type ResourceHandler } from "./types.ts";
 
 /**

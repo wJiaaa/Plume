@@ -11,9 +11,6 @@
  * to act on: the second one is a reason to check.
  */
 
-// oxlint-disable-next-line no-unused-vars -- 这一层的协议形状，和旁边用着的那几个是一组；少一个就说不清这个后端能被问什么
-type CodeIntelOperation = "references" | "definition" | "diagnostics" | "rename";
-
 /** A place in a file. Lines and columns are 1-based, matching what `read` shows. */
 export interface CodeLocation {
 	path: string;

@@ -41,7 +41,6 @@ export const IDLE_MS = 10 * 60 * 1000;
 export class CodeIntelManager {
 	private readonly backends: CodeIntelBackend[];
 	private readonly starting = new Map<string, Promise<void>>();
-	private root: string | null = null;
 	private readonly idleMs: number;
 	private idleTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -99,7 +98,6 @@ export class CodeIntelManager {
 		const key = `${backend.name}:${root}`;
 		let pending = this.starting.get(key);
 		if (!pending) {
-			this.root = root;
 			pending = backend.start(root).catch(() => {});
 			this.starting.set(key, pending);
 		}
@@ -137,7 +135,6 @@ export class CodeIntelManager {
 		this.idleTimer = null;
 		await Promise.all(this.backends.map((backend) => backend.dispose().catch(() => {})));
 		this.starting.clear();
-		this.root = null;
 	}
 }
 

@@ -18,12 +18,12 @@ import type { PromptSection } from "../prompt/context.ts";
 
 export type ContextSegmentKey = "messages" | "systemTools" | "mcpTools" | "skills" | "systemPrompt" | "memory" | "projectMemory";
 
-export interface ContextSegment {
+interface ContextSegment {
 	key: ContextSegmentKey;
 	tokens: number;
 }
 
-export interface MemoryFileItem {
+interface MemoryFileItem {
 	path: string;
 	tokens: number;
 }

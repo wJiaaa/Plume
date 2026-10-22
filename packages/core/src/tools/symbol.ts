@@ -1,8 +1,10 @@
+import { textArg } from "./args.ts";
 import { errorResult } from "./result.ts";
 import { buildIndex, INDEX_VERSION, loadIndex, saveIndex, searchIndex, type SymbolIndex } from "../index/symbols.ts";
 import type { Tool, ToolContext, ToolResult } from "../types.ts";
 
 const INDEX_KEY = "symbolIndex";
+const NAME_KEYS = ["name", "query", "symbol", "pattern"];
 /**
  * How long an index on disk is trusted by a new session.
  *
@@ -54,22 +56,12 @@ export const symbolTool: Tool<SymbolArgs> = {
 		additionalProperties: true,
 	},
 	summarize: (args) => {
-		const raw = args as unknown as Record<string, unknown>;
-		const name = String(raw.name ?? raw.query ?? raw.symbol ?? raw.pattern ?? "");
+		const name = textArg(args, NAME_KEYS);
 		return name ? `Find definition of ${name}` : "Find definition";
 	},
 
 	async execute(args, ctx): Promise<ToolResult> {
-		const raw = args as unknown as Record<string, unknown>;
-		const name = typeof raw.name === "string" && raw.name
-			? raw.name
-			: typeof raw.query === "string" && raw.query
-				? raw.query
-				: typeof raw.symbol === "string" && raw.symbol
-					? raw.symbol
-					: typeof raw.pattern === "string" && raw.pattern
-						? raw.pattern
-						: "";
+		const name = textArg(args, NAME_KEYS) ?? "";
 
 		if (!name.trim()) return errorResult("`name` is required.");
 

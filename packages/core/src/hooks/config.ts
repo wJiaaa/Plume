@@ -11,8 +11,9 @@ import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { projectConfigPath, readConfigFile } from "../config/layers.ts";
 import { writeFileAtomic } from "../utils/atomic-write.ts";
+import { isRecord } from "../utils/record.ts";
 
-export const HOOK_EVENTS = [
+const HOOK_EVENTS = [
 	"SessionStart",
 	"UserPromptSubmit",
 	"PreToolUse",
@@ -97,10 +98,6 @@ export interface HookDraft {
 const KNOWN_KEYS = new Set(["type", "command", "args", "async", "shell", "statusMessage", "timeout", "timeoutMs", "enabled"]);
 
 export const EMPTY_HOOKS_CONFIG: HooksConfig = { events: {} };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function positive(value: unknown): number | undefined {
 	return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
