@@ -9,7 +9,7 @@ import type { DeliveredReport } from "@plume/core";
 import { toolCategory } from "../../lib/tool-kinds.ts";
 import { runKey, type Call, type Run } from "./grouping.ts";
 import { samePage } from "./preview-pages.ts";
-import { opensTurn, sameStats } from "./turns.ts";
+import { opensTurn, sameStats, settled } from "./turns.ts";
 
 /**
  * 一轮：开口的那句话之后，到下一句之前的全部。
@@ -143,7 +143,7 @@ export function withoutThinking<R extends Run>(list: R[]): R[] {
 	const out: R[] = [];
 	for (const run of list) {
 		if (run.kind !== "message" || !thinkingOnly(run)) out.push(run);
-		else if (!run.lead && run.message.role === "assistant" && run.message.stopReason !== "pending" && run.message.stopReason !== "toolUse") out.push({ ...run, from: run.upTo });
+		else if (!run.lead && run.message.role === "assistant" && settled(run.message.stopReason)) out.push({ ...run, from: run.upTo });
 	}
 	return out;
 }

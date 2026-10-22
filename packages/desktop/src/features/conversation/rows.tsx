@@ -25,20 +25,8 @@ import { UserMessage } from "./UserMessage.tsx";
 import { useScopedFromMeta, useScopedSessionId } from "../../app/session-scope.tsx";
 import { useI18n } from "../../i18n/index.ts";
 import { useApp } from "../../store/index.ts";
-import { isNudge } from "./grouping.ts";
 import { sameStats, type TurnStats } from "./turns.ts";
 import { LiveToolCard, segments, ToolRun as ToolRunGroup } from "./runs.tsx";
-
-/**
- * Whether this message is where the reply stopped, rather than a pause inside it.
- *
- * `pending` is still arriving; `toolUse` is a handover to a tool with more to come after it.
- * Everything else — a plain stop, a length cap, an error, an abort — is an ending.
- */
-function settled(stopReason: AssistantMessage["stopReason"]): boolean {
-  return stopReason !== "pending" && stopReason !== "toolUse";
-}
-
 
 /**
  * A row only changes when its own message does.
@@ -53,7 +41,6 @@ export const MessageRow = memo(function MessageRow({
   index,
   upTo,
   from,
-  lead,
   continued,
   pauses,
   trailer,
@@ -79,14 +66,9 @@ export const MessageRow = memo(function MessageRow({
    */
   from?: number;
   /**
-   * This row is only the reasoning that opens the reply, not the reply.
-   *
-   * The same message gets two rows when it thinks and then speaks, and everything that belongs to
-   * the reply as a whole — the failure, the delivery card, the timestamp and copy button — belongs
-   * to the second one. Without this they were drawn under both, so a turn came back stamped twice.
+   * 不是这一轮的收尾：不是 `Run.closes` 那一行，或者这一轮还在跑。只开头推理的那一行（`Run.lead`）
+   * 永远不是收尾，分组时就排除了，所以这里不用再看。
    */
-  lead?: boolean;
-  /** The runtime told it to keep going, so this is a pause rather than a finish. */
   continued?: boolean;
   /** 一轮中间说完了的一句，见 `Run.pauses`：有时间和复制，没有交付卡片。 */
   pauses?: boolean;
@@ -98,18 +80,6 @@ export const MessageRow = memo(function MessageRow({
   showTime?: boolean;
 }) {
   if (message.role === "user") {
-    /*
-     * The runtime talking to the model, not the user talking.
-     *
-     * Recognised by what it says, not only by its flag. The flag was added later, so every nudge
-     * already written to a log lacks it — and those are exactly the ones sitting in people's
-     * transcripts wearing their own bubble, timestamp and edit button, looking like something
-     * they typed and never did. Reading the text catches both.
-     *
-     * Most runtime messages say nothing a reader needs and stay hidden; a nudge is why another
-     * turn started, so it gets a line of its own — a note about the conversation rather than a
-     * message in it.
-     */
     /*
      * Invisible, including the fact that it happened.
      *
@@ -126,7 +96,7 @@ export const MessageRow = memo(function MessageRow({
     // 另一个会话发来的消息：一行，不是人说的话。见 `PeerLetterRow`。和送达合在一条里时两样都画。
     // 一条里的几行（来信、子智能体、后台命令）之间和转录里的行一样隔 10px，不然挤成一串。
     if (message.peer || message.delivery) return <div className="flex flex-col gap-2.5">{message.peer && <PeerLetterRow letters={message.peer} />}{message.delivery && <DeliveryRow delivery={message.delivery} />}</div>;
-    if (message.synthetic || isNudge(message)) return null;
+    if (message.synthetic) return null;
     return <>{showTime && <ConversationTime timestamp={message.timestamp} />}<UserMessage message={message} index={index} /></>;
   }
 
@@ -134,7 +104,7 @@ export const MessageRow = memo(function MessageRow({
   if (message.role === "toolResult") return null;
 
   return (
-    <AssistantRow message={message} index={index} upTo={upTo} from={from} lead={lead} continued={continued} pauses={pauses} trailer={trailer} turnStats={turnStats} viewKey={viewKey} />
+    <AssistantRow message={message} index={index} upTo={upTo} from={from} continued={continued} pauses={pauses} trailer={trailer} turnStats={turnStats} viewKey={viewKey} />
   );
 }, sameRow);
 
@@ -178,7 +148,6 @@ function AssistantRow({
   index,
   upTo,
   from = 0,
-  lead,
   continued,
   pauses,
   trailer,
@@ -189,7 +158,6 @@ function AssistantRow({
   index: number;
   upTo: number;
   from?: number;
-  lead?: boolean;
   continued?: boolean;
   pauses?: boolean;
   trailer?: boolean;
@@ -286,14 +254,15 @@ function AssistantRow({
        * calls a tool, reads the result, says the next thing. Those middle messages end with
        * `toolUse` — they are the sentence before the work, not the end of the answer — and each
        * one was getting its own timestamp and copy button, so a single reply came back stamped
-       * four times. The row belongs to the message that finished the turn.
+       * four times. The row belongs to the message that finished the turn — which one that is,
+       * `grouping.ts` decides (`Run.closes`); here it arrives as `continued`.
        */}
-      {!lead && settled(message.stopReason) && !continued && <TurnDeliveryCard timestamp={message.timestamp} />}
+      {!continued && <TurnDeliveryCard timestamp={message.timestamp} />}
       {/*
        * 一轮中间说完的一句（`pauses`）也是说完了的一段：跑着的时候它也已经定了，不等这一轮收尾。
        * 它的数只说它自己——整轮的统计（`turnStats`）这时还在往上涨，归收尾那一句。
        */}
-      {!lead && settled(message.stopReason) && (!continued || pauses) && text.trim() && (
+      {(!continued || pauses) && text.trim() && (
         <MessageActions
           // 页脚单独成行时，悬停这一轮的哪一行都显出来：它说的是整轮，不是正下方那几个调用。
           className={watched && continued ? "-mt-1.5 ly-actions-in" : trailer ? "-mt-1.5 group-hover/turn:opacity-100" : "-mt-1.5"}
@@ -307,7 +276,7 @@ function AssistantRow({
         >
           <HookRunsAction from={stats?.startIndex ?? index} to={index + 1} />
           {/*
-            * 这一排只挂在 `settled` 的回复底下，停在 `toolUse` 的那几句走不到这里，分叉出去的会话
+            * 这一排只挂在落定的回复底下（见 `grouping.ts` 的 `consider`），停在 `toolUse` 的那几句走不到这里，分叉出去的会话
             * 不会以一个还没有结果的工具调用结尾。侧边聊天不给，理由和问题那边一样，见 `UserMessage`。
             */}
           {sessionId && !aside && <ForkAction index={index} message={message} sessionId={sessionId} />}

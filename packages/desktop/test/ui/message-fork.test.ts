@@ -12,6 +12,7 @@ import type { Message, SessionMeta, UserMessage as UserMessageType } from "@plum
 import { SessionScope } from "../../src/app/session-scope.tsx";
 import { UserMessage } from "../../src/features/conversation/UserMessage.tsx";
 import { MessageRow } from "../../src/features/conversation/rows.tsx";
+import { runs } from "../../src/features/conversation/grouping.ts";
 import { I18nProvider } from "../../src/i18n/index.ts";
 import { useApp, type AppState } from "../../src/store/index.ts";
 import type { Cache } from "../../src/store/derive.ts";
@@ -92,8 +93,8 @@ function onScreen(id: string, index: number): Promise<Mounted> {
 	return mount(h(I18nProvider, { locale: "zh-CN", children: h(SessionScope.Provider, { value: id }, h(UserMessage, { message, index })) }));
 }
 
-function replyOnScreen(id: string, message: Message, index: number): Promise<Mounted> {
-	return mount(h(I18nProvider, { locale: "zh-CN", children: h(SessionScope.Provider, { value: id }, h(MessageRow, { message, index, upTo: message.content.length })) }));
+function replyOnScreen(id: string, message: Message, index: number, continued?: boolean): Promise<Mounted> {
+	return mount(h(I18nProvider, { locale: "zh-CN", children: h(SessionScope.Provider, { value: id }, h(MessageRow, { message, index, upTo: message.content.length, continued })) }));
 }
 
 async function settled(done: () => boolean) {
@@ -159,7 +160,11 @@ test("a reply that ended forks into a conversation that holds it, with nothing p
 
 test("a reply that handed over to a tool offers no fork — the turn is not over there", async () => {
 	const handover: Message = { ...(said("b")[3] as Extract<Message, { role: "assistant" }>), stopReason: "toolUse" };
-	view = await replyOnScreen("b", handover, 3);
+	// 停没停在这里由分组判（`Run.closes`），照 `Conversation` 的样子从那里取。
+	const transcript = said("b").map((message, at) => (at === 3 ? handover : message));
+	const row = runs(transcript).find((run) => run.kind === "message" && run.index === 3);
+	assert.ok(row?.kind === "message");
+	view = await replyOnScreen("b", handover, 3, !row.closes);
 	assert.ok(view.text().includes("第二个回答"), "the reply is drawn");
 	assert.equal(view.all("[data-message-fork]").length, 0);
 });

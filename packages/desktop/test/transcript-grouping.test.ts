@@ -22,7 +22,7 @@ function user(text: string, timestamp = 1): Message {
 }
 
 function nudge(timestamp = 1): Message {
-	return { role: "user", content: [{ type: "text", text: "（自动继续）继续" }], timestamp };
+	return { role: "user", content: [{ type: "text", text: "（自动继续）继续" }], timestamp, synthetic: true };
 }
 
 function assistant(content: AssistantContent[], stopReason: StopReason): AssistantMessage {

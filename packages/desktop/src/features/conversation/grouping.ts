@@ -10,7 +10,6 @@
  * So the rule here never asks whether a message has finished. It reads what has arrived, and
  * what has arrived only ever grows.
  */
-import { isNudge } from "../../lib/spoken.ts";
 import { routedBlock } from "../../lib/tool-summary.ts";
 import type { AssistantContent, AssistantMessage, CommandRun, Message } from "@plume/core";
 import { todosFrom } from "../../store/derive.ts";
@@ -20,7 +19,7 @@ import type { Hiccup } from "../../lib/hiccup.ts";
 import { intact } from "../../lib/transcript.ts";
 import { previewPages, samePage, type PageState } from "./preview-pages.ts";
 import { SPAWN_SESSION_TOOL } from "../../../shared/session-suggestion.ts";
-import { newClock, opensTurn, resumesTurn, saw, snapshot, type TurnStats } from "./turns.ts";
+import { newClock, opensTurn, resumesTurn, saw, settled, snapshot, type TurnStats } from "./turns.ts";
 
 type ToolCallBlock = Extract<AssistantContent, { type: "toolCall" }>;
 
@@ -66,6 +65,9 @@ export type Run =
 	 *
 	 * `closes` 标在一轮里最后一条落定的回复上：时间、耗时、复制那一行只属于它，见 `runs` 里的 `closer`。
 	 *
+	 * `newest` 标在转录最后一轮的 `closes` 上。会话还在跑时它只是「到目前为止」的最后一句：清单追问
+	 * 之后模型可能接着干活、再说一段，页脚要等跑完才知道该落在谁身上，调用方据此先不画。
+	 *
 	 * `pauses` 标在一轮中间说完了的一句上：它说完时一条子代理的结果正好到了、被插进这一轮（`steered`），
 	 * 这一轮于是没在它这里收尾。对读的人它和收尾那句一样是说完了的一段，所以也有时间和复制，只是没有
 	 * 整轮的统计和交付卡片。
@@ -74,7 +76,7 @@ export type Run =
 	 * （被停下的回复末尾那几个没执行的调用），页脚留在话底下，那几行就落到了「这一轮已经结束」的下面。
 	 * 它和那句话是同一条消息、同一段（`from`..`upTo`），只画页脚和交付卡片，不画正文。
 	 */
-	| { kind: "message"; message: Message; index: number; upTo: number; from?: number; lead?: boolean; turnStats?: TurnStats; closes?: true; pauses?: true; trailer?: true; key?: string }
+	| { kind: "message"; message: Message; index: number; upTo: number; from?: number; lead?: boolean; turnStats?: TurnStats; closes?: true; newest?: true; pauses?: true; trailer?: true; key?: string }
 	/**
 	 * A stretch of tool work, and whether it is the stretch being worked on right now.
 	 *
@@ -91,9 +93,6 @@ export type Run =
 
 /** 一条回复是谁答的。同一个模型名挂在两家服务商底下是两个模型，所以两样一起比。 */
 export type ModelUsed = { provider: string; model: string };
-
-/* 「继续」那一句怎么认，搬到了 `lib/spoken.ts`——输入框也要用它，见那边的说明。 */
-export { isNudge };
 
 /**
  * A split reply has two identities; neither identity changes when more text arrives.
@@ -356,22 +355,27 @@ export function runs(rawMessages: Message[], compactions: { at: number }[] = [],
 	let closer = null as Extract<Run, { kind: "message" }> | null;
 	/*
 	 * `ended`：这一轮确实收了尾。还在跑的那一轮（最新的回复还在写、或者刚交出调用）谁是最后一行还没定，
-	 * 页脚留在原处——它跑着时本来就不画（`currentTurnStart`），先拆出一行只会是一行空的。
+	 * 页脚留在原处——它跑着时本来就不画（`Run.newest`），先拆出一行只会是一行空的。
+	 *
+	 * 交回挂上 `closes` 的那一行，最后一轮要在它上面再标一个 `newest`。
 	 */
 	const closeTurn = (ended = true) => {
+		let closing: Extract<Run, { kind: "message" }> | null = closer;
 		if (closer && ended && spoke(closer) && out.slice(out.lastIndexOf(closer) + 1).some((run) => run.kind === "tools")) {
 			const { message, index, upTo, from } = closer;
 			// 页脚整个搬下去，话底下不留：一句中途的 `pauses` 也是页脚，留着就是同一轮两个。
 			delete closer.pauses;
 			// 账也记到这一轮最后，和页脚站的位置说同一件事：话后面那段活的时间在里面。
-			out.push({ kind: "message", message, index, upTo, from, turnStats: snapshot(clock), closes: true, trailer: true, key: `trailer-${drawnAt(message)}-${index}` });
+			closing = { kind: "message", message, index, upTo, from, turnStats: snapshot(clock), closes: true, trailer: true, key: `trailer-${drawnAt(message)}-${index}` };
+			out.push(closing);
 		} else if (closer) closer.closes = true;
 		closer = null;
+		return closing;
 	};
-	// 还在写的（pending）、说完要接着调工具的（toolUse）都不是一轮的最后一句，和 `rows.tsx` 的 `settled` 同一条线。
+	// 还在写的、说完要接着调工具的都不是一轮的最后一句；只开头推理的那一行也不是，页脚归后面的正文。
 	const consider = (row: Extract<Run, { kind: "message" }>) => {
 		const { message } = row;
-		if (row.lead || message.role !== "assistant" || message.stopReason === "pending" || message.stopReason === "toolUse") return;
+		if (row.lead || message.role !== "assistant" || !settled(message.stopReason)) return;
 		closer = row;
 	};
 
@@ -437,7 +441,7 @@ export function runs(rawMessages: Message[], compactions: { at: number }[] = [],
 		 * 是主智能体说完一段话、隔了几分钟又自己动了起来。插在一轮中间的那种只是这段工作里的一步，
 		 * 见 `isProcess`。
 		 */
-		if (message.role === "user" && (message.synthetic || isNudge(message)) && !message.delivery && !message.peer) continue;
+		if (message.role === "user" && message.synthetic && !message.delivery && !message.peer) continue;
 
 		/*
 		 * 回答之后补勾清单的那一次 todo_write 不画：回答和它的页脚已经是这一轮的结尾，再在下面画一行
@@ -540,7 +544,8 @@ export function runs(rawMessages: Message[], compactions: { at: number }[] = [],
 	}
 
 	const latest = messages[live];
-	closeTurn(!(latest?.role === "assistant" && (latest.stopReason === "pending" || latest.stopReason === "toolUse")));
+	const newest = closeTurn(!(latest?.role === "assistant" && !settled(latest.stopReason)));
+	if (newest) newest.newest = true;
 
 	// A compaction recorded after the last message still belongs at the end.
 	while (nextMark < marks.length) {

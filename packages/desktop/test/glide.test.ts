@@ -31,7 +31,7 @@ function carryOn(): Message {
 
 /** The runtime keeping a turn moving, which is invisible for the same reasons. */
 function nudge(): Message {
-	return user("（自动继续）继续");
+	return { ...user("（自动继续）继续"), synthetic: true };
 }
 
 function assistant(content: AssistantContent[], stopReason: StopReason): AssistantMessage {

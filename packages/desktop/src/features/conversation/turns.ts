@@ -5,8 +5,7 @@
  * 页脚算的一轮和分行切的一轮不一样，花销就记到了别的回合头上。
  */
 
-import { isNudge } from "../../lib/spoken.ts";
-import type { Message, UserContent } from "@plume/core";
+import type { AssistantMessage, Message, UserContent } from "@plume/core";
 import { freshTokens } from "@plume/core/tokens";
 import { CARRY_ON_PROMPTS, todosFrom } from "../../store/derive.ts";
 
@@ -198,22 +197,19 @@ export function resumesTurn(messages: Message[], index: number): boolean {
  * 一直在干活，把它算成新的一轮，一段没断过的工作就被切成几段。
  */
 export function opensTurn(message: Message): boolean {
-	if (message.role !== "user" || isNudge(message)) return false;
+	if (message.role !== "user") return false;
 	if (!message.synthetic) return true;
 	return Boolean(message.delivery || message.peer) && !message.steered;
 }
 
 /**
- * 最新那一轮从哪一条消息开始，切法和 `runs` 换轮的地方是同一条。
+ * 这条回复是停在了这里，还是中途歇一下。
  *
- * 会话还在跑时，这一轮的 `closes` 只是「到目前为止」的最后一句：清单追问之后模型可能接着干活、
- * 再说一段，页脚要等跑完才知道该落在谁身上。调用方拿这个下标判断一行是不是还在跑的这一轮里。
+ * `pending` 还在写；`toolUse` 交给了工具，后面还有。其余的——正常停、长度上限、出错、被停下——都是停了，
+ * 一轮的页脚只会落在这种回复上。
  */
-export function currentTurnStart(messages: Message[]): number {
-	for (let i = messages.length - 1; i >= 0; i--) {
-		if (opensTurn(messages[i]) && !resumesTurn(messages, i)) return i;
-	}
-	return 0;
+export function settled(stopReason: AssistantMessage["stopReason"]): boolean {
+	return stopReason !== "pending" && stopReason !== "toolUse";
 }
 
 /**

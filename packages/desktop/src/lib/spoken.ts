@@ -7,14 +7,7 @@
  */
 
 import type { Message } from "@plume/core";
-import { translate } from "../i18n/translate.ts";
 import { stripPlaceholders } from "./attachment-placeholders.ts";
-
-/** The runtime's "carry on" message, recognised by what it says as well as by its flag. */
-export function isNudge(message: Message | undefined): boolean {
-	if (message?.role !== "user") return false;
-	return message.content.some((c) => c.type === "text" && c.text.startsWith(translate("grouping.autoContinue")));
-}
 
 /** 人说过的一句话，连同它当初那条消息。 */
 export interface Spoken {
@@ -54,7 +47,7 @@ export function spokenByPerson(messages: readonly Message[]): Spoken[] {
 	const said: Spoken[] = [];
 	for (const message of messages) {
 		if (!readable(message)) continue;
-		if (message.role !== "user" || message.synthetic || isNudge(message)) continue;
+		if (message.role !== "user" || message.synthetic) continue;
 		const body = message.content
 			.filter((block): block is Extract<typeof block, { type: "text" }> => block.type === "text")
 			.map((block) => block.text)

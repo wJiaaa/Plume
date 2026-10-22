@@ -13,7 +13,6 @@ import type { AssistantContent, AssistantMessage, Message, StopReason, ToolCallC
 import { emptyUsage } from "@plume/core";
 
 import { runs, type Run } from "../src/features/conversation/grouping.ts";
-import { currentTurnStart } from "../src/features/conversation/turns.ts";
 
 function user(text: string): Message {
 	return { role: "user", content: [{ type: "text", text }], timestamp: 1 };
@@ -44,6 +43,10 @@ function result(id: string, toolName = "read"): Message {
 /** 带页脚的那些行，记成消息下标。 */
 function closing(rows: Run[]): number[] {
 	return rows.flatMap((row) => (row.kind === "message" && row.closes ? [row.index] : []));
+}
+
+function newest(rows: Run[]): number[] {
+	return rows.flatMap((row) => (row.kind === "message" && row.newest ? [row.index] : []));
 }
 
 test("清单追问之后接着干活又说了话，页脚只在后面那段", () => {
@@ -82,10 +85,11 @@ test("说完一句接着调工具的回复不是一轮的结尾；每轮各有�
 
 test("运行时插的话不开新的一轮，人说的话才开", () => {
 	const messages = [user("改一下"), assistant([text("改好了")], "stop"), injected(PLAN_ASK), assistant([text("接着")], "pending")];
-	// 还在跑：前面那段眼下是这一轮的最后一句，但它在 currentTurnStart 之后，调用方据此先不画页脚。
+	// 还在跑：前面那段眼下是这一轮的最后一句，但它属于最新一轮（newest），调用方据此先不画页脚。
 	assert.deepEqual(closing(runs(messages)), [1]);
-	assert.equal(currentTurnStart(messages), 0);
-	assert.equal(currentTurnStart([...messages, user("再改一处")]), 4);
+	assert.deepEqual(newest(runs(messages)), [1]);
+	// 人又开了口：那一轮定了，新的一轮还没有说完的话。
+	assert.deepEqual(newest(runs([...messages, user("再改一处")])), []);
 });
 
 function delivered(id: string, steered: boolean): Message {
@@ -172,4 +176,11 @@ test("继续之后还在跑：页脚不先拆出来，等这一轮收了尾再�
 		assistant([call("b")], "toolUse"),
 	];
 	assert.deepEqual(shape(runs(messages)), ["人:0", "话:1+页脚", "活:a", "人:3", "活:b"]);
+});
+
+test("最后一轮的页脚单独成行时，newest 标在那一行上，不在话底下", () => {
+	const messages = [user("发版"), assistant([text("先检查"), call("a")], "aborted"), { ...result("a"), isError: true }];
+	const rows = runs(messages);
+	assert.deepEqual(shape(rows), ["人:0", "话:1", "活:a", "页脚:1"]);
+	assert.deepEqual(rows.flatMap((row) => (row.kind === "message" && row.newest ? [row.trailer === true] : [])), [true]);
 });

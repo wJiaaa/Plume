@@ -2517,7 +2517,6 @@ export const zhCN = {
 	"messageActions.fork": "从这里分叉",
 	"messageActions.forkTitle": "{title}（分叉）",
 	"messageActions.forkFailed": "分叉失败",
-	"grouping.autoContinue": "（自动继续）",
 	"fileBrowser.needProject": "先打开一个项目",
 	"openTarget.reveal": "在文件管理器中显示",
 	"openTarget.revealFinder": "在访达中显示",

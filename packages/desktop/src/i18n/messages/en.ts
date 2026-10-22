@@ -2340,7 +2340,6 @@ export const en = {
 	"messageActions.fork": "Fork from here",
 	"messageActions.forkTitle": "{title} (fork)",
 	"messageActions.forkFailed": "Could not fork",
-	"grouping.autoContinue": "(carried on automatically)",
 	"fileBrowser.needProject": "Open a project first",
 	"openTarget.reveal": "Show in the file manager",
 	"openTarget.revealFinder": "Show in the Finder",

@@ -5,7 +5,6 @@
 import type { AssistantMessage, Message } from "@plume/core";
 import { followups } from "@plume/core/followups";
 import { restated } from "@plume/core/reply-text";
-import { isNudge } from "./spoken.ts";
 
 /**
  * 从末尾往回找最近一条回复；中间隔着人说的话就没有——人已经接过话了，那条回复的下一步不再是下一步。
@@ -15,7 +14,7 @@ function latestReply(messages: readonly Message[]): AssistantMessage | null {
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const message = messages[i];
 		if (message.role === "assistant") return message;
-		if (message.role === "user" && !message.synthetic && !message.peer?.length && !message.delivery?.length && !isNudge(message)) return null;
+		if (message.role === "user" && !message.synthetic && !message.peer?.length && !message.delivery?.length) return null;
 	}
 	return null;
 }

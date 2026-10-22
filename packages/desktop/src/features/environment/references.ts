@@ -16,7 +16,7 @@
 
 import type { ImageContent, Message } from "@plume/core";
 import { findMentionRanges, sentKind } from "../composer/index.ts";
-import { isNudge, readable } from "../../lib/spoken.ts";
+import { readable } from "../../lib/spoken.ts";
 import { baseName } from "../../lib/paths.ts";
 
 export interface ImageReference {
@@ -70,8 +70,8 @@ export function referencesIn(messages: readonly Message[]): References {
 	for (const [at, message] of messages.entries()) {
 		if (!readable(message)) continue;
 		if (message.role === "user") {
-			// 和问题导航同一条判断：`synthetic` 和续跑提示都挂在 user 名下，却不是人说的一问。
-			if (message.synthetic || isNudge(message)) continue;
+			// 和问题导航同一条判断：运行时插的话（续跑提示也带 `synthetic`）挂在 user 名下，却不是人说的一问。
+			if (message.synthetic) continue;
 			turn += 1;
 			index = at;
 			userReferences(message, at, addImage, addFile);

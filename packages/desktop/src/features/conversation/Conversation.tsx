@@ -16,7 +16,6 @@ import { GeneratedImages } from "./ImageCanvas.tsx";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { ActionSpinner } from "../../ui/motion/loaders.tsx";
 import { runs, runKey, type Run } from "./grouping.ts";
-import { currentTurnStart } from "./turns.ts";
 import { turnBlocks, withoutThinking } from "./turn-blocks.ts";
 import { intact } from "../../lib/transcript.ts";
 import { ToolRun as ToolRunGroup, WINDOW_TURNS } from "./runs.tsx";
@@ -139,7 +138,6 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
     const list = runs(messages, compactions, commandRuns, hiccups);
     return showThinking ? list : withoutThinking(list);
   }, [messages, compactions, commandRuns, hiccups, showThinking]);
-  const turnStart = useMemo(() => currentTurnStart(messages), [messages]);
   /*
    * 按内容记住，不按 `messages`：它每个 token 都换，跟着换的话 `draw` 也每个 token 都是新的，
    * `WorkStep` 的 memo 就形同虚设。
@@ -166,9 +164,8 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
       index={run.index}
       upTo={run.upTo}
       from={run.from}
-      lead={run.lead}
-      /* 页脚只给一轮的最后一句；还在跑的那一轮谁是最后一句还没定，见 `currentTurnStart`。 */
-      continued={!run.closes || (running && run.index >= turnStart)}
+      /* 页脚只给一轮的最后一句；还在跑的那一轮谁是最后一句还没定，见 `Run.newest`。 */
+      continued={!run.closes || (running && run.newest === true)}
       pauses={run.pauses}
       trailer={run.trailer}
       /* Computed with the grouping, so its identity changes only when the transcript
@@ -184,7 +181,7 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
      * 里收成了 `WorkStep`，正在做的那一步的光也由那边给。
      */
     <ToolRunGroup key={`${activeSessionId}:${runKey(run)}`} calls={run.calls} shown={run.shown} />
-  ), [activeSessionId, running, turnStart, separators]);
+  ), [activeSessionId, running, separators]);
   /*
    * 先分块，再开窗——顺序反过来就是那个「点了没反应」的 bug。
    *
