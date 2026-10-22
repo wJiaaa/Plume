@@ -2,6 +2,67 @@
 
 这个文件由 `pnpm release` 生成，条目来自提交信息。写得含糊的提交在这里也含糊，所以值得在提交时就写清楚。
 
+## [0.9.49](https://github.com/wJiaaa/Plume/releases/tag/v0.9.49) - 2026-10-22
+
+<!-- plume:notes en -->
+
+### New
+
+- **MCP servers are shared between conversations.** Every live conversation used to start its own copy of each server, so three open chats meant three processes of the same stdio server, and eight meant eight. Now each server runs once, conversations borrow it, and it stops when the last one lets go. A server that keeps state per conversation, such as one driving a browser or holding a database connection, can be switched to **Separate for each conversation** in its MCP settings to get one copy per chat again. When a shared server asks a question mid-call, it goes to the conversation that made the call; if nobody is calling it, the request is declined instead of shown to whichever chat happens to be first.
+
+### Changes
+
+- **Opening an old conversation no longer starts it.** The context meter beside the composer asked for a breakdown as soon as it appeared, and answering that started the agent with its skills, plugins and every MCP server — five new processes on a setup with five servers, a 65 ms freeze with thirty. A conversation that is not running now answers from its log, the subagent list included, and with a side chat open the parent is no longer pulled up either. Switching back to a conversation holds the main process for 3–9 ms instead of 21–40 ms.
+- **Long conversations no longer get heavier to draw as they grow.** With a main chat and side chats streaming at once, or a model calling tools in parallel batches, the renderer's CPU climbed with the length of the conversation. Text reveal, fades, counters and the thinking orb now share one ~30 Hz tick, the main process sends only the part of a reply that changed instead of the whole message for every token, and each row listens only to what it draws. On the same probe (batches of six read-only calls, about 170 turns) the renderer ends near 52% instead of 63%, with 602 React commits per 12 seconds instead of 1,558. A background conversation running a noisy command also stops dragging the foreground stream back to one store write per event.
+- **One language server per project.** Three conversations in the same folder, or one that sent out subagents, ran three copies of tsserver at a few hundred MB each. They share one now; a worktree has its own files and still gets its own.
+- **Read-only shell commands skip the workspace snapshot.** Each command was wrapped in five or six git processes and a read of every modified file, only to record what it changed. A read-only command changes nothing: in a repository with 55 modified files, six of them in parallel spent about 200 ms of main-process time and 0.8 CPU-seconds of git on snapshots.
+- **Fewer git processes.** Every filename-only link in a reply ran its own `git ls-files`, and opening one conversation once started 44 of them. A project's files are now listed once and searched in memory. The change count under the composer runs two git processes instead of five (median 51 ms → 45 ms).
+- **Plume starts a little sooner.** The splash screen stays at least 0.9 s instead of 2 s: the sidebar's data arrives in about 300 ms, so every launch spent 1.7 s in front of a screen that was already ready. Setting the Dock icon now waits until the window is shown, and the window appears at a median of 517 ms instead of 555 ms.
+- **Compaction happens before the price goes up.** On a model whose input price doubles past a line (272k for gpt-6.1-sol), compaction used to trigger above that line, so every turn after crossing it was billed at the higher rate. It now triggers at the line. Lines below 128k are ignored: a 1M-window model with a 32k tier had been compacting at 32k, leaving about 4k for the conversation after the prompt and tools, and summarizing almost every turn.
+
+### Fixes
+
+- **A conversation whose subagents are still working no longer shows as finished.** The turn that sends a subagent off ends right away, so the list marked the conversation "Finished · unread" and announced it, then lit up again and announced it a second time when the results came in. It now counts as running until its subagents report back.
+- **The running indicator no longer disappears before a tool call, or jumps along under an answer.** It hid as soon as text started streaming, and most providers don't label the short line a model writes before calling tools, so it blinked out before every batch of calls. Streaming text now counts as the answer once it has a line break or passes 150 characters. Measured on 1,447 such opening lines and 410 answers from real sessions: the opening lines have a median of 58 characters, the answers 885; 2.8% of opening lines are taken for answers (the indicator comes back when the tool call arrives), and a typical answer is recognized by its 73rd character.
+- **The reasoning effort picked on the new-chat page no longer snaps back a second later.** One click sent two saves, and whichever came back last carried the old level.
+- **The update dialog checks again when you open it.** It showed the result from launch, or from the check six hours earlier, so after a release it could still offer — and download — the previous version. A check that fails while offline no longer hides an update that was already found.
+- **File links with a GitHub line anchor open at that line.** `pricing.go#L449` and `#L42-L50` were read as part of the file name, and the file could not be found. Other anchors (`README.md#usage`) open the file; a `#` in a folder name (`src/C#/a.cs`) is left as part of the path.
+- **In very large repositories, a filename-only link no longer lands in `node_modules`.** Listing every file overflowed git's 32 MB output limit, Plume fell back to walking the folder without `.gitignore`, and found a file of the same name in dependencies or build output. It now asks git about that one name.
+- **Turning on Reduce motion stops a thinking orb that is already spinning.** It only looked at the setting when it first appeared.
+- **On macOS, the Dock icon is set even when the first window is closed before it shows.**
+
+<!-- plume:notes zh-CN -->
+
+<details>
+<summary>中文（简体）</summary>
+
+### 新功能
+
+- **MCP 服务器在会话之间共用。** 以前每个在线会话各连一遍：开着三个会话，同一台 stdio 服务器就是三个进程，开八个就是八个。现在每台只起一个，会话借着用，最后一个用完才关。要按会话分开状态的服务器（驱动浏览器的、攥着数据库连接的），在 MCP 设置里打开「每个会话独立」，就回到一个会话一份。共用的服务器中途发来提问时，问的是正在调用它的那个会话；没人在调用就直接拒绝，不去猜该问谁。
+
+### 变化
+
+- **点开历史会话，不再把它拉起来。** 输入框旁的上下文表一出现就要读数，而回答它要先拉起 agent，连同技能、插件和每一台 MCP 服务器：配了 5 台 MCP 就新起 5 个进程，配 30 台主进程卡 65ms。没在跑的会话现在从日志里回答，子智能体名单也一样；开着侧边聊天时点旧会话，也不再连带拉起它的父会话。切回一个会话，主进程最长卡 3–9ms，原来是 21–40ms。
+- **会话越长、界面越吃 CPU 的情况收住了。** 主会话和几个侧边聊天同时输出，或者模型一批批并行调工具时，渲染进程的 CPU 跟着会话长度往上走。现在放字、淡入、数字爬升和思考球共用一个约 30Hz 的拍子，主进程只发回复里变了的那一截、不再每个 token 发一整条消息，每一行只订阅自己画的那部分。同一个探针（每批 6 个只读调用、跑到约 170 轮）收尾时，渲染进程从 63% 降到 52% 上下，每 12 秒的提交次数从 1558 降到 602。后台会话跑着一个输出很多的命令时，前台的流式输出也不会再被拖回每个事件写一次。
+- **同一个项目只起一个语言服务器。** 同一个目录开三个会话，或者一个会话派出子智能体，原来就是三套 tsserver，每套几百 MB。现在共用一套；worktree 是另一批文件，仍然各用各的。
+- **只读命令不再拍工作区快照。** 每条命令前后各起五六个 git、把每个改过的文件读一遍，只为记下它改了什么，而只读命令什么都不改。55 个改动文件的仓库里，6 条并行的只读命令光是快照就占掉主进程约 200ms、git 约 0.8 CPU 秒。
+- **少起 git 进程。** 回复里只写文件名的链接，原来每个各跑一次 `git ls-files`，打开一个会话起过 44 个。现在一个项目只列一遍文件、在内存里找。输入框下的改动统计从 5 个 git 进程减到 2 个，中位数 51ms → 45ms。
+- **启动快了一点。** 启动画面最短停留从 2 秒改成 0.9 秒——侧边栏的数据约 300ms 就到齐，每次启动都对着一个早已准备好的界面多等 1.7 秒。Dock 图标改到窗口显示之后再设，窗口出现的中位时间从 555ms 到 517ms。
+- **压缩赶在涨价之前。** 有分档定价的模型（gpt-6.1-sol 输入过 272k 单价翻倍）上，压缩原来在分档线之上才触发，越线以后每一轮都按高一档计费。现在正好在分档线上压。低于 128k 的分档线不再算数：1M 窗口的模型挂着一条 32k 的分档，原来在 32k 就压，扣掉提示词和工具只剩约 4k 给对话，几乎每一轮都在做摘要。
+
+### 修复
+
+- **子智能体还在跑，会话列表不再显示「已完成」。** 派出子智能体的那一轮当场就结束了，列表于是标成「已完成 · 未查看」、报一次完成，结果回来又亮起来、再报一次。现在子智能体交差之前，这个会话都算在跑。
+- **调工具前的那句话不再让运行指示器消失，结论流出来时它也不再一跳一跳。** 原来正文一开始流，指示器就藏起来；可大多数服务商不会给「我先看一下这个文件」这种开场白打标记，于是每批工具调用之前它都闪没一次。现在正在流的正文要出现换行、或者超过 150 字才算结论。拿本机 1447 条开场白和 410 条结论量过：开场白中位 58 字，结论中位 885 字；2.8% 的开场白会被当成结论（工具调用一到，指示器就回来），一条结论通常在第 73 个字就被认出来。
+- **新对话页选的推理档位，不再过一秒跳回原档。** 点一下发出了两次保存，后返回的那次带着旧档位，把刚选的盖了回去。
+- **点开更新弹窗时会重新检查。** 原来显示的是启动时、或者 6 小时前那次检查的结果：发了新版以后弹窗里还是上一版，点下载下的也是上一版。离线时检查失败，也不会再把已经发现的新版本一起抹掉。
+- **带 GitHub 行号锚点的文件链接，能定位到那一行。** `pricing.go#L449`、`#L42-L50` 原来被当成文件名的一部分，点开找不到文件。别的锚点（`README.md#usage`）去掉锚点直接打开文件；目录名里的 `#`（`src/C#/a.cs`）照常当作路径。
+- **超大仓库里，只写文件名的链接不再找到 `node_modules` 里的同名文件。** 一次列出全部文件超过了 git 32MB 的输出上限，于是退回去直接遍历目录，而遍历不认 `.gitignore`，依赖和构建产物里的同名文件就被找了出来。现在只按这一个名字去问 git。
+- **打开「减少动态效果」，正在转的思考球当场停下。** 它原来只在出现的那一刻看一次设置。
+- **macOS 上第一个窗口还没显示就被关掉时，Dock 图标照样会设置。**
+
+</details>
+
 ## [0.9.48](https://github.com/wJiaaa/Plume/releases/tag/v0.9.48) - 2026-10-22
 
 <!-- plume:notes en -->
