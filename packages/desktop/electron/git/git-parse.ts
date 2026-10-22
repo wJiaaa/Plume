@@ -42,6 +42,20 @@ export function parseStatusZ(out: string): { header: string; entries: StatusEntr
 }
 
 /**
+ * The branch named by `status --branch`'s header, and whether it has a first commit yet.
+ *
+ * The forms git writes: `main...origin/main [ahead 1]`, `main`, `No commits yet on main` (`Initial
+ * commit on main` before git 2.15) and `HEAD (no branch)`. Null on a detached HEAD, which is what
+ * `gitBranch` answers there too. A branch name cannot contain `..`, so the first `...` ends it.
+ */
+export function statusBranch(header: string): { branch: string | null; born: boolean } {
+	const unborn = /^(?:No commits yet|Initial commit) on (.+)$/.exec(header);
+	if (unborn) return { branch: unborn[1]!, born: false };
+	if (!header || header.startsWith("HEAD (no branch)")) return { branch: null, born: true };
+	return { branch: header.split("...")[0]!.split(" ")[0]!, born: true };
+}
+
+/**
  * Line counts per path, from `--numstat -z`.
  *
  * The format writes `added\tremoved\tpath\0` for an ordinary change, and for a rename writes the

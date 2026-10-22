@@ -10,7 +10,7 @@ import { isAbsolute, join } from "node:path";
 import type { GitOperation, GitStatus, GitStatusFile } from "@plume/contract";
 import { git, run, mapLimit, MAX_BLOB_BYTES, MAX_FILES } from "./git-exec.ts";
 import { classify } from "./git-diff.ts";
-import { parseNumstat, parseStatusZ } from "./git-parse.ts";
+import { parseNumstat, parseStatusZ, statusBranch } from "./git-parse.ts";
 import { classifyRemote } from "./git-remote-state.ts";
 import { gitBranch, isGitRepo } from "./git-probe.ts";
 
@@ -33,8 +33,6 @@ import { gitBranch, isGitRepo } from "./git-probe.ts";
 export async function workspaceStat(
 	cwd: string,
 ): Promise<{ branch: string | null; added: number; removed: number; files: number }> {
-	if (!(await isGitRepo(cwd))) return { branch: null, added: 0, removed: 0, files: 0 };
-
 	/*
 	 * The same list the panel walks, truncated at the same point.
 	 *
@@ -42,16 +40,20 @@ export async function workspaceStat(
 	 * opens said 10k. Both now start from `status -uall` and stop at `MAX_FILES`, so the number
 	 * on the bar is a promise about what you will find inside.
 	 *
-	 * The three reads are independent, so they go at once. Each one is a process spawn — cheap on
-	 * its own and not cheap three deep, on a call the window blocks on every time it opens a
-	 * project or moves between conversations.
+	 * One process, not four. Every one is a spawn, and spawning blocks this thread for 1.5–3ms
+	 * each — on a call made every time the window moves between conversations. `--branch` already
+	 * answers the other three: git fails it outside a repository, and its header names the branch
+	 * and says whether there is a first commit to diff against (see `statusBranch`).
 	 */
-	const [branch, status, hasHead] = await Promise.all([
-		gitBranch(cwd),
-		git(cwd, ["status", "--porcelain=v1", "-uall", "-z"]).catch(() => ""),
-		git(cwd, ["rev-parse", "--verify", "HEAD"]).then(() => true).catch(() => false),
-	]);
-	const entries = parseStatusZ(status).entries.slice(0, MAX_FILES);
+	let status: string;
+	try {
+		status = await git(cwd, ["status", "--porcelain=v1", "-uall", "-z", "--branch"]);
+	} catch {
+		return { branch: null, added: 0, removed: 0, files: 0 };
+	}
+	const parsed = parseStatusZ(status);
+	const { branch, born: hasHead } = statusBranch(parsed.header);
+	const entries = parsed.entries.slice(0, MAX_FILES);
 
 	// One `--numstat` for every tracked change, rather than a git call per file. Binary files count
 	// as zero lines: they change, but not by a line count.
