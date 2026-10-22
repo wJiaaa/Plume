@@ -48,3 +48,26 @@ test("a stale acknowledgement rebases onto the new file requested meanwhile", ()
 	assert.deepEqual(rebased.tabs, [a, b, c]);
 	assert.equal(rebased.wrap, false);
 });
+
+test("a jump to lines crosses windows only when well-formed, and only with the request that carried it", () => {
+	const reveal = { from: 88, to: 90, at: 7 };
+	assert.deepEqual(readFilePanelState({ ...initial, reveal }), { ...initial, reveal });
+	for (const bad of [{ from: 0, to: 3, at: 1 }, { from: 5, to: 4, at: 1 }, { from: 1.5, to: 2, at: 1 }, { from: 1, to: 2 }, "88"]) {
+		assert.equal(readFilePanelState({ ...initial, reveal: bad }), null, JSON.stringify(bad));
+	}
+	// 带行号打开：换到那个文件、以源码看、跳行；下一次不带行号的请求不沿用这一次。
+	const jumped = requestFilePanel({ ...initial, showSource: false }, { ...initial, path: c.path, tabs: [c], showSource: false, reveal });
+	assert.equal(jumped.path, c.path);
+	assert.equal(jumped.showSource, true);
+	assert.deepEqual(jumped.reveal, reveal);
+	assert.equal("reveal" in requestFilePanel(jumped, { ...initial, path: a.path, tabs: [a] }), false);
+});
+
+test("a jump requested while a detached change was pending survives the rebase", () => {
+	const reveal = { from: 150, to: 150, at: 9 };
+	const remote = requestFilePanel(initial, { ...initial, reveal });
+	const local = { ...initial, wrap: false };
+	const rebased = mergeFilePanelChanges(initial, local, remote);
+	assert.deepEqual(rebased.reveal, reveal);
+	assert.equal(rebased.wrap, false);
+});

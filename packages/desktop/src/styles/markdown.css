@@ -737,6 +737,18 @@
 }
 
 /*
+ * `:42` 跟在名字后面，名字太长时省略的是名字：行号是这枚链接比单写文件名多出来的那点信息，不能先被裁掉。
+ * 负的外边距抵掉 `<a>` 的 gap，冒号贴着名字；淡一档，读起来是名字的附注。
+ */
+[data-ly-file-line] {
+  align-self: baseline;
+  flex-shrink: 0;
+  margin-inline-start: -0.3em;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
  * 文件链接里那枚 `<code>` 不是一块行内代码，是这枚胶囊的内容。
  *
  * 底色、内边距、圆角归外面那个链接管，里面这枚什么都不画——描边同理：行内代码配了一圈边之后，

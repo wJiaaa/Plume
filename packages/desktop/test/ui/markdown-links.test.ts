@@ -36,7 +36,9 @@ test("backticked file links show the filename inside the chip and keep the path 
 		assert.ok(icon);
 		assert.ok(name);
 		assert.equal(name.textContent, "result.md");
-		assert.equal(link.getAttribute("data-ly-tip"), "docs/result.md");
+		// 地址带的行号跟在名字后面单独一段，提示里是带行号的路径。
+		assert.equal(wrap.querySelector("[data-ly-file-line]")?.textContent, ":1");
+		assert.equal(link.getAttribute("data-ly-tip"), "docs/result.md:1");
 		assert.ok(link.contains(icon));
 		assert.ok(link.contains(name));
 		assert.equal(wrap.querySelector("code"), null);

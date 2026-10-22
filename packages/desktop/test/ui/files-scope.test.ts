@@ -173,7 +173,7 @@ test("a file opened from a screen's Files panel opens the file pane in that scre
 
 test("under the file's tab is where it is, and its name still opens the tree", async () => {
 	useApp.setState({ settings: { ...DEFAULT_SETTINGS } });
-	useOpenFile.setState({ files: { [fileSlot("b", "file")]: { path: "/work/beta/src/lib.ts", name: "lib.ts", contents: null, opening: null, loading: false } } });
+	useOpenFile.setState({ files: { [fileSlot("b", "file")]: { path: "/work/beta/src/lib.ts", name: "lib.ts", contents: null, opening: null, loading: false, reveal: null } } });
 	const b = await inScreen("b", h(FileTitle));
 	assert.equal(b.text(), "betasrclib.ts", "that screen's project, the folder, then the file");
 	await click(b.find("button"));
@@ -184,7 +184,7 @@ test("under the file's tab is where it is, and its name still opens the tree", a
 
 test("the tree under the open file's name lists that screen's project, and hands off to that screen", async () => {
 	useApp.setState({ settings: { ...DEFAULT_SETTINGS } });
-	useOpenFile.setState({ files: { [fileSlot("b", "file")]: { path: "/work/beta/lib.ts", name: "lib.ts", contents: null, opening: null, loading: false } } });
+	useOpenFile.setState({ files: { [fileSlot("b", "file")]: { path: "/work/beta/lib.ts", name: "lib.ts", contents: null, opening: null, loading: false, reveal: null } } });
 	const b = await inScreen("b", h(FileTitle));
 	await click(b.find("button"));
 	await settle();

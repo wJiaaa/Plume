@@ -24,6 +24,7 @@ import { useApp } from "../../store/index.ts";
 import { applyFilePanelState, filePanelSnapshot } from "../../store/file-panel-handoff.ts";
 import { fileSlot, openFileOf, useOpenFile } from "../../store/openFile.ts";
 import { allowsMany, basePanelKind, nextPanelKind, sideIdOfPanel } from "../../lib/panel-instance.ts";
+import type { LineRange } from "../../lib/markdown/file-link.ts";
 import type { DraftQuote } from "../../lib/quote.ts";
 import { baseName, canonicalPath, samePath } from "../../lib/paths.ts";
 import { emptyDockTree, usePaneDock } from "./pane-store.ts";
@@ -313,13 +314,17 @@ function inMain(kind: PanelKind, target: string | undefined) {
  *   没有扩展名，`.md` 就画不成文档。
  * - 读到了才开出那一格；读不到在这里说一声，说清读的是哪儿。从不 reject：调用方十来处，从前各自
  *   `.catch(notify)`，有一半没接。
+ * - `lines` 让那一格滚到这几行并亮一下；已经开着的同一格也照样跳。面板窗口里点的，行号跟着请求交给
+ *   主窗口；那一格弹出去了，行号记在这一格上，经 `filePanelSnapshot` 交给那个窗口。
  */
-export function openFilePane(given: string, target?: string): Promise<void> {
+export function openFilePane(given: string, target?: string, lines?: LineRange | null): Promise<void> {
 	// 同一个文件只开一格，不管路径怎么写：`C:/…`、`c:/…` 和 `C:\…` 在 Windows 上是同一个文件，见 `samePath`。
 	const path = canonicalPath(given);
 	const file = { path, name: baseName(path) || path };
 	if (inPanelWindow()) {
-		if (bridge.windows?.openPanelInMain) void bridge.windows.openPanelInMain({ ...inMain("file", target), file });
+		if (bridge.windows?.openPanelInMain) {
+			void bridge.windows.openPanelInMain({ ...inMain("file", target), file: { ...file, ...(lines ? { lines: { from: lines.from, to: lines.to } } : {}) } });
+		}
 		return Promise.resolve();
 	}
 	const scope = screenFor(target);
@@ -346,7 +351,7 @@ export function openFilePane(given: string, target?: string): Promise<void> {
 	 * Read first, then show. A file that cannot be read does not leave an empty tab behind, and a
 	 * pane already showing something keeps showing it.
 	 */
-	return files.open(fileSlot(scope, kind), file).then(async (shown) => {
+	return files.open(fileSlot(scope, kind), file, lines).then(async (shown) => {
 		if (shown) {
 			openScopedPanel(kind as PanelKind, scope);
 			return;
@@ -473,7 +478,7 @@ export function watchPanelWindows(): () => void {
 	 * through this window's own file boundary, as a click here would read it.
 	 */
 	const stopOpen = bridge.windows.onOpenPanel?.(({ kind, scope, file }) => {
-		if (file && basePanelKind(kind) === "file") void openFilePane(file.path, scope);
+		if (file && basePanelKind(kind) === "file") void openFilePane(file.path, scope, file.lines);
 		else openScopedPanel(kind as PanelKind, scope);
 	}) ?? (() => {});
 	const stopRestore = bridge.windows.onRestorePanel(({ kind, scope, fileState }) => {

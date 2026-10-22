@@ -1,17 +1,56 @@
+/** 一个链接指着的那几行，从 1 数起，`from <= to`。 */
+export interface LineRange {
+	from: number;
+	to: number;
+}
+
+const LINE_SUFFIX = /:(\d+)(?:-(\d+))?$/;
+
+/**
+ * `src/a.ts:42`、`src/a.ts:42-50` 拆成路径和行号。
+ *
+ * `:0` 不算行号，但照样从路径上去掉：留着它，`a.ts:0` 会被当成一个叫这个名字的文件去找。
+ */
+export function splitLineSuffix(text: string): { path: string; lines: LineRange | null } {
+	const match = LINE_SUFFIX.exec(text);
+	if (!match) return { path: text, lines: null };
+	const path = text.slice(0, match.index);
+	const from = Number(match[1]);
+	const to = match[2] ? Number(match[2]) : from;
+	if (from < 1) return { path, lines: null };
+	return { path, lines: { from: Math.min(from, to), to: Math.max(from, to) } };
+}
+
+export function lineLabel(lines: LineRange): string {
+	return lines.from === lines.to ? `${lines.from}` : `${lines.from}-${lines.to}`;
+}
+
 /**
  * What a local file link should show in the transcript.
  *
  * Models write [`docs/issue/very-long-name.md`](docs/issue/very-long-name.md). Painting that whole
  * path inside a chip forces a wrap through the middle of a word. The chip keeps the filename;
  * overflow is an ellipsis, never a second line. The path belongs on the tooltip.
+ *
+ * 行号先看链接地址，再看文字：`[a.ts:42](src/a.ts)` 这种写法里行号只在文字上。文字里的只在它写的就是
+ * 路径时才算，「端口 8080:3000」不是第 3000 行。`line` 是胶囊上要画的那段，同样只在胶囊写的是文件名
+ * 时给——「入口逻辑:42」读起来不像话，那时行号只进提示。
  */
-export function fileLinkCaption(label: string, path: string): { text: string; tip: string } {
-	const trimmed = label.trim().replace(/:\d+(?:-\d+)?$/, "");
+export function fileLinkCaption(
+	label: string,
+	path: string,
+	given: LineRange | null = null,
+): { text: string; tip: string; lines: LineRange | null; line: string | null } {
+	const own = splitLineSuffix(label.trim());
+	const trimmed = own.path;
 	const base = path.split(/[/\\]/).pop()?.trim() || path;
-	if (!trimmed) return { text: base, tip: path };
-	const pathLike = /[/\\]/.test(trimmed) || trimmed === base;
-	if (!pathLike) return { text: trimmed, tip: path };
-	return { text: trimmed.split(/[/\\]/).pop() || base, tip: trimmed };
+	const pathLike = !trimmed || /[/\\]/.test(trimmed) || trimmed === base;
+	const lines = given ?? (pathLike ? own.lines : null);
+	const line = lines && pathLike ? lineLabel(lines) : null;
+	const suffix = lines ? `:${lineLabel(lines)}` : "";
+	if (!trimmed) return { text: base, tip: path + suffix, lines, line };
+	if (!pathLike) return { text: trimmed, tip: path + suffix, lines, line };
+	return { text: trimmed.split(/[/\\]/).pop() || base, tip: trimmed + suffix, lines, line };
 }
 
 /**
@@ -34,7 +73,7 @@ const BARE_FILE_EXTENSIONS = new Set(
 export function filePathInCode(text: string): string | null {
 	const raw = text.trim();
 	if (!raw || raw.length > 300 || /[\s()[\]{}<>"'`,;=*?|$&!]/.test(raw) || raw.includes("://")) return null;
-	const path = raw.replace(/:\d+(?:-\d+)?$/, "");
+	const { path } = splitLineSuffix(raw);
 	if (/[/\\]$/.test(path)) return null;
 	const base = path.split(/[/\\]/).pop() ?? "";
 	const ext = /^[\w@+-][\w.@+-]*\.([A-Za-z][A-Za-z0-9]{0,9})$/.exec(base)?.[1];

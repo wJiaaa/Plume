@@ -16,6 +16,7 @@
 
 import { create } from "zustand";
 import type { FileContents, FileEntry } from "../../electron/ipc-types.ts";
+import type { LineRange } from "../lib/markdown/file-link.ts";
 import { baseName, isDescendantPath } from "../lib/paths.ts";
 import { bridge } from "../services/index.ts";
 
@@ -40,9 +41,18 @@ export interface OpenFile {
 	 */
 	opening: string | null;
 	loading: boolean;
+	/**
+	 * 打开时要滚到、要亮一下的那几行——回复里 `a.ts:42` 那种链接带来的。
+	 *
+	 * `at` 每次打开都换一个：同一个文件同一行再点一次，编辑器也要再跳一次，而对象内容一样时它看不出这是新的一次。
+	 */
+	reveal: (LineRange & { at: number }) | null;
 }
 
-const EMPTY: OpenFile = { path: null, name: null, contents: null, loading: false, opening: null };
+const EMPTY: OpenFile = { path: null, name: null, contents: null, loading: false, opening: null, reveal: null };
+
+// 从时钟起数：`at` 会交给弹出去的文件窗口比对，主窗口重载后从 0 数起，会撞上那边已经跳过的那一次。
+let reveals = Date.now();
 
 /**
  * 一格文件面板在这份表里的键：哪一屏的哪一格。
@@ -81,8 +91,9 @@ interface OpenFileState {
 	 * Show this file in that pane, replacing whatever it showed.
 	 *
 	 * `false` when the file could not be read: the pane keeps what it had, and the caller says so.
+	 * `lines` 是要定位到的行；给了它，Markdown 也以源码打开，渲染出来的页面上没有行。
 	 */
-	open(slot: string, entry: Pick<FileEntry, "path" | "name">): Promise<boolean>;
+	open(slot: string, entry: Pick<FileEntry, "path" | "name">, lines?: LineRange | null): Promise<boolean>;
 	/**
 	 * A rename or a move the open files have to survive.
 	 *
@@ -111,7 +122,7 @@ export const useOpenFile = create<OpenFileState>((set, get) => {
 		setWrap: (wrap) => set({ wrap }),
 		setShowSource: (showSource) => set({ showSource }),
 
-		async open(slot, entry) {
+		async open(slot, entry, lines) {
 			/*
 			 * The tab updates now; the content area updates when there is something to put in it.
 			 *
@@ -132,8 +143,8 @@ export const useOpenFile = create<OpenFileState>((set, get) => {
 				 */
 				if (!read) return false;
 				// Together, so the pane never shows one file's name over another file's contents.
-				patch(slot, { path: entry.path, name: entry.name, contents: read });
-				set({ last: entry.path, showSource: false });
+				patch(slot, { path: entry.path, name: entry.name, contents: read, reveal: lines ? { ...lines, at: ++reveals } : null });
+				set({ last: entry.path, showSource: !!lines });
 				return true;
 			} finally {
 				if (openFileOf(get(), slot).opening === entry.path) patch(slot, { loading: false, opening: null });

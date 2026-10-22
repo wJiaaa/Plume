@@ -127,8 +127,8 @@ interface PanelInMain {
 	kind: string;
 	/** The screen the panel was popped out of, where the request was made. */
 	scope?: string;
-	/** For the file pane: the file to open. */
-	file?: { path: string; name: string };
+	/** For the file pane: the file to open, and the lines to land on when the link named some. */
+	file?: { path: string; name: string; lines?: import("../shared/file-panel-state.ts").FileLines };
 }
 
 /** One shell in a directory, as the tab strip lists it. */

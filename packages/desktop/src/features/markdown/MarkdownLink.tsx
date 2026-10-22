@@ -7,7 +7,7 @@ import { ExternalLink, FolderOpen, Globe } from "../../ui/icons/index.ts";
 import { type CSSProperties, isValidElement, type ReactNode, type SyntheticEvent, useContext, useState } from "react";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import { resolveAsset, isAbsolutePath } from "../../lib/markdown/assets.ts";
-import { fileLinkCaption } from "../../lib/markdown/file-link.ts";
+import { fileLinkCaption, splitLineSuffix, type LineRange } from "../../lib/markdown/file-link.ts";
 import { bridge } from "../../services/index.ts";
 import { useApp } from "../../store/index.ts";
 import { openFilePane } from "../dock/index.ts";
@@ -123,9 +123,21 @@ function actionsOffset(chip: HTMLElement, pointerX: number): number {
  * into the height of a line. How it shows, how it hides and what happens on a device without hover
  * are all in `markdown.css`, under `[data-ly-file-actions]`.
  */
-function FileLink({ href, path, choices, children }: { href: string; path: string; choices?: readonly string[]; children: ReactNode }) {
+function FileLink({
+	href,
+	path,
+	lines,
+	choices,
+	children,
+}: {
+	href: string;
+	path: string;
+	lines: LineRange | null;
+	choices?: readonly string[];
+	children: ReactNode;
+}) {
 	const revealLabel = useRevealLabel();
-	const caption = fileLinkCaption(textOf(children), path);
+	const caption = fileLinkCaption(textOf(children), path, lines);
 	// Only a trailing slash says folder without asking the disk; one written without it still opens right, see `openFilePane`.
 	const look = lookFor(path.split(/[/\\]/).pop() || path, /[/\\]$/.test(href));
 	// The file pane opens in the screen this link is drawn in: the keyboard reaches a link in a screen
@@ -142,7 +154,7 @@ function FileLink({ href, path, choices, children }: { href: string; path: strin
 	const [side, setSide] = useState<"above" | "below">("above");
 	/** Pixels from the chip's left edge to the bar's; `null` keeps it right, for focus, which has no pointer to face. */
 	const [offset, setOffset] = useState<number | null>(null);
-	const openFile = () => void openFilePane(path, screen ?? undefined);
+	const openFile = () => void openFilePane(path, screen ?? undefined, caption.lines);
 	const fail = (error: unknown) => useApp.getState().notify(String(error), "error");
 	// A page the agent wrote is something to look at, not only source to read: the click still opens the source.
 	const page = /\.html?$/i.test(path);
@@ -199,6 +211,7 @@ function FileLink({ href, path, choices, children }: { href: string; path: strin
 			>
 				<look.Icon size={13} strokeWidth={1.9} style={{ color: iconColour(look) }} />
 				<span data-ly-file-name>{caption.text}</span>
+				{caption.line && <span data-ly-file-line>:{caption.line}</span>}
 			</a>
 			{/* Both exits act on one file, and which one is the question the click asks. */}
 			{!choices && (
@@ -222,7 +235,7 @@ function FileLink({ href, path, choices, children }: { href: string; path: strin
 			)}
 			{pathMenu.element}
 			{choices && picking && (
-				<FileChoices anchor={picking} paths={choices} root={project} onPick={(choice) => void openFilePane(choice, screen ?? undefined)} onClose={() => setPicking(null)} />
+				<FileChoices anchor={picking} paths={choices} root={project} onPick={(choice) => void openFilePane(choice, screen ?? undefined, caption.lines)} onClose={() => setPicking(null)} />
 			)}
 		</span>
 	);
@@ -268,7 +281,7 @@ export function Link({ href, children }: { href: string; children: ReactNode }) 
 	const scoped = useContext(SessionScope);
 	const local = !!scoped && href.startsWith(`ly-preview://${scoped}/`);
 	const safe = local || href.startsWith("http://") || href.startsWith("https://");
-	const target = href.replace(/:\d+(?:-\d+)?$/, "");
+	const { path: target, lines } = splitLineSuffix(href);
 	const guess = safe ? null : resolveAsset(baseDir ?? project ?? (isAbsolutePath(href) ? "/" : undefined), target);
 	/*
 	 * `approvals.ts:125` joined to the working directory mostly names nothing: models write the bare
@@ -279,6 +292,6 @@ export function Link({ href, children }: { href: string; children: ReactNode }) 
 	const located = useLocatedPaths(guess && !baseDir && project && !isAbsolutePath(target) ? project : null, target);
 	const path = located.length === 1 ? located[0] : guess;
 	if (!safe && !path) return <>{children}</>;
-	if (path) return <FileLink href={href} path={path} choices={located.length > 1 ? located : undefined}>{children}</FileLink>;
+	if (path) return <FileLink href={href} path={path} lines={lines} choices={located.length > 1 ? located : undefined}>{children}</FileLink>;
 	return <WebLink href={href}>{children}</WebLink>;
 }

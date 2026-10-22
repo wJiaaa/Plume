@@ -162,3 +162,22 @@ test("moving a file while its read is pending restarts at the new path and settl
 	assert.equal(shown(DETACHED).opening, null);
 	assert.equal(shown(DETACHED).loading, false);
 });
+
+test("a detached pane takes the lines to jump to, also for the file it already shows", async () => {
+	await applyFilePanelState(DETACHED, { ...initial, reveal: { from: 88, to: 88, at: 1 } });
+	assert.deepEqual(shown(DETACHED).reveal, { from: 88, to: 88, at: 1 });
+	// 同一个文件换一行：不重读，跳行照样换上。
+	await applyFilePanelState(DETACHED, { ...initial, reveal: { from: 150, to: 150, at: 2 } });
+	assert.deepEqual(reads, [b.path]);
+	assert.deepEqual(shown(DETACHED).reveal, { from: 150, to: 150, at: 2 });
+	assert.deepEqual(filePanelSnapshot(DETACHED).reveal, { from: 150, to: 150, at: 2 });
+});
+
+test("a main-window pane opened at a line hands that line to its snapshot", async () => {
+	await useOpenFile.getState().open(MAIN, a, { from: 42, to: 50 });
+	const { reveal } = filePanelSnapshot(MAIN);
+	assert.deepEqual({ from: reveal?.from, to: reveal?.to }, { from: 42, to: 50 });
+	assert.equal(filePanelSnapshot(MAIN).showSource, true);
+	await useOpenFile.getState().open(MAIN, b);
+	assert.equal("reveal" in filePanelSnapshot(MAIN), false);
+});

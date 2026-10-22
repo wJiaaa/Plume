@@ -15,7 +15,8 @@ export function filePanelSnapshot(slot: string): FilePanelState {
 	const open = openFileOf({ files }, slot);
 	const path = open.opening ?? open.path;
 	const name = path === open.path && open.name ? open.name : path ? baseName(path) : null;
-	return { path, tabs: path && name ? [{ path, name }] : [], wrap, showSource };
+	const state: FilePanelState = { path, tabs: path && name ? [{ path, name }] : [], wrap, showSource };
+	return open.reveal ? { ...state, reveal: open.reveal } : state;
 }
 
 const setSlot = (slot: string, next: Partial<OpenFile>) =>
@@ -26,16 +27,19 @@ export async function applyFilePanelState(slot: string, state: FilePanelState, u
 	const current = openFileOf(useOpenFile.getState(), slot);
 	const tab = state.tabs.find((entry) => entry.path === state.path);
 	const needsRead = state.path !== current.path || !current.contents;
+	// 已经开着的同一个文件不重读，跳行照样要换上：主窗口那边点的是同一个文件的另一行。
+	const reveal = state.reveal ?? null;
 	update(() => {
 		useOpenFile.setState({ wrap: state.wrap, showSource: state.showSource });
 		if (tab && needsRead) setSlot(slot, { opening: tab.path, loading: true });
-		if (!tab) setSlot(slot, { path: null, name: null, contents: null, opening: null, loading: false });
+		if (tab && !needsRead && (reveal?.at ?? 0) !== (current.reveal?.at ?? 0)) setSlot(slot, { reveal });
+		if (!tab) setSlot(slot, { path: null, name: null, contents: null, opening: null, loading: false, reveal: null });
 	});
 	if (!tab || !needsRead) return;
 	try {
 		const contents = await bridge.files.read(tab.path);
 		if (openFileOf(useOpenFile.getState(), slot).opening !== tab.path) return;
-		update(() => setSlot(slot, { path: tab.path, name: tab.name, contents, opening: null, loading: false }));
+		update(() => setSlot(slot, { path: tab.path, name: tab.name, contents, opening: null, loading: false, reveal }));
 	} catch (error) {
 		if (openFileOf(useOpenFile.getState(), slot).opening === tab.path) update(() => setSlot(slot, { opening: null, loading: false }));
 		throw error;

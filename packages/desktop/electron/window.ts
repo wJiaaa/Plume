@@ -12,6 +12,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { plumeHome, type Settings } from "@plume/core";
 import { app, BrowserWindow, ipcMain, nativeTheme, screen } from "electron";
+import type { FileLines } from "../shared/file-panel-state.ts";
 import { MAC_MAIN_TRAFFIC_LIGHT_POSITION, MAC_TRAFFIC_LIGHT_POSITION, NATIVE_HEADER_HEIGHT } from "../shared/window-chrome.ts";
 import { appIconCandidates, dockIconCandidates, type IconLocation } from "./app-icon-path.ts";
 import { reopenMaximized, stateToSave, type Opened, type WindowState } from "./window-state.ts";
@@ -325,7 +326,7 @@ export function closePanelWindow(input: { kind: string; scope: string }): boolea
  * file that opened somewhere the user is not looking is indistinguishable from nothing happening
  * — which is exactly the bug this fixes.
  */
-export function requestOpenPanel(input: { kind: string; scope?: string; file?: { path: string; name: string } }): boolean {
+export function requestOpenPanel(input: { kind: string; scope?: string; file?: { path: string; name: string; lines?: FileLines } }): boolean {
 	if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return false;
 	if (mainWindow.isMinimized()) mainWindow.restore();
 	mainWindow.show();

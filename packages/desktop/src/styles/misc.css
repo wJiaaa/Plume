@@ -317,6 +317,23 @@
 }
 
 /*
+ * 从回复里 `a.ts:42` 那种链接跳过来时，那几行亮一下（`features/editor/reveal-lines.ts`）。
+ *
+ * 先停在高亮上让眼睛落过去，再淡回底色；装饰在动画结束后才摘掉。三个类压过主题里 `.cm-activeLine`
+ * 的两个类：被跳到的那一行同时也是光标所在行。减少动效时淡出变成停够了直接消失——延迟不受那个开关管。
+ */
+.ly-cm .cm-line.cm-ly-reveal {
+  background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  animation: ly-cm-reveal 600ms var(--ly-e-out) 1400ms forwards;
+}
+
+@keyframes ly-cm-reveal {
+  to {
+    background-color: transparent;
+  }
+}
+
+/*
  * Checkerboard behind image previews.
  *
  * A transparent PNG on a white pane looks like a PNG with a white background, and the

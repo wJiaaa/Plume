@@ -184,12 +184,20 @@ test("openPanelInMain forwards the screen and the file a panel window names, and
 	assert.deepEqual(await call("windows:openPanelInMain", panel, { kind: "file", scope: "sess-b", file: { path: "/project/b.ts", name: "b.ts", contents: "not forwarded" } }), { ok: true });
 	assert.deepEqual(fixture.openedInMain, [{ kind: "file", scope: "sess-b", file: { path: "/project/b.ts", name: "b.ts" } }]);
 
+	// 带着行号点的：行号逐字段重建，多出来的字段不转发。
+	fixture.openedInMain.length = 0;
+	assert.deepEqual(await call("windows:openPanelInMain", panel, { kind: "file", file: { path: "/project/b.ts", name: "b.ts", lines: { from: 88, to: 90, extra: 1 } } }), { ok: true });
+	assert.deepEqual(fixture.openedInMain, [{ kind: "file", file: { path: "/project/b.ts", name: "b.ts", lines: { from: 88, to: 90 } } }]);
+
 	for (const bad of [
 		{ kind: "file", scope: 3 },
 		{ kind: "file", scope: "" },
 		{ kind: "file", file: "/project/b.ts" },
 		{ kind: "file", file: { path: "", name: "b.ts" } },
 		{ kind: "file", file: { path: "/project/b.ts", name: 1 } },
+		{ kind: "file", file: { path: "/project/b.ts", name: "b.ts", lines: { from: 0, to: 2 } } },
+		{ kind: "file", file: { path: "/project/b.ts", name: "b.ts", lines: { from: 9, to: 2 } } },
+		{ kind: "file", file: { path: "/project/b.ts", name: "b.ts", lines: "88" } },
 		// Only the file pane opens a file.
 		{ kind: "files", file: { path: "/project/b.ts", name: "b.ts" } },
 	]) {

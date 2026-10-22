@@ -9,7 +9,7 @@ import { SheetView } from "./SheetView.tsx";
 import { Markdown } from "../markdown/index.ts";
 import { directoryOf } from "../../lib/markdown/assets.ts";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
-import { useOpenFile } from "../../store/openFile.ts";
+import { useOpenFile, type OpenFile } from "../../store/openFile.ts";
 import { bridge } from "../../services/index.ts";
 
 const IMAGE = new Set(["png", "jpg", "jpeg", "gif", "webp", "avif", "bmp", "ico", "svg"]);
@@ -77,10 +77,12 @@ export function FileViewer({
 	path,
 	name,
 	contents,
+	reveal,
 }: {
 	path: string;
 	name: string;
 	contents: FileContents;
+	reveal?: OpenFile["reveal"];
 }) {
 	const kind = fileKind(name, contents);
 	/*
@@ -139,7 +141,7 @@ export function FileViewer({
 					</div>
 				</Scroller>
 			) : (
-				<CodeEditor path={path} text={text} wrap={wrap} />
+				<CodeEditor path={path} text={text} wrap={wrap} reveal={reveal} />
 			)}
 		</div>
 	);

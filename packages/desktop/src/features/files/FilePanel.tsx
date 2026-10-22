@@ -22,6 +22,7 @@ export function FilePanel() {
 	const contents = usePaneFile((s) => s.contents);
 	const loading = usePaneFile((s) => s.loading);
 	const opening = usePaneFile((s) => s.opening);
+	const reveal = usePaneFile((s) => s.reveal);
 
 	if (!path && !opening) {
 		return (
@@ -59,6 +60,7 @@ export function FilePanel() {
 			path={path}
 			name={name ?? path}
 			contents={contents}
+			reveal={reveal}
 		/>
 	);
 }

@@ -12,7 +12,7 @@
  */
 
 import { BrowserWindow, ipcMain } from "electron";
-import { readFilePanelState, requestFilePanel, type FilePanelVersion } from "../../shared/file-panel-state.ts";
+import { readFileLines, readFilePanelState, requestFilePanel, type FileLines, type FilePanelVersion } from "../../shared/file-panel-state.ts";
 import {
 	broadcastSessionWindows,
 	closePanelWindow,
@@ -173,11 +173,15 @@ export function registerWindowsIpc(): void {
 		const origin = "scope" in input ? input.scope : undefined;
 		if (origin !== undefined && origin !== null && (typeof origin !== "string" || !origin)) return { ok: false };
 		const named = "file" in input ? input.file : undefined;
-		let file: { path: string; name: string } | undefined;
+		let file: { path: string; name: string; lines?: FileLines } | undefined;
 		if (named !== undefined && named !== null) {
 			if (input.kind !== "file" || typeof named !== "object" || !("path" in named) || !("name" in named)) return { ok: false };
 			if (typeof named.path !== "string" || !named.path || typeof named.name !== "string") return { ok: false };
-			file = { path: named.path, name: named.name };
+			// 行号同样逐字段重建；给了却不成形就整条拒掉，和路径、名字一样。
+			const given = "lines" in named ? named.lines : undefined;
+			const lines = given === undefined || given === null ? null : readFileLines(given);
+			if (given !== undefined && given !== null && !lines) return { ok: false };
+			file = { path: named.path, name: named.name, ...(lines ? { lines } : {}) };
 		}
 		return {
 			ok: requestOpenPanel({ kind: input.kind, ...(typeof origin === "string" ? { scope: origin } : {}), ...(file ? { file } : {}) }),

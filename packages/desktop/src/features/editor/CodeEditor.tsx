@@ -18,6 +18,8 @@ import { GRAMMARS, grammarKeyFor, highlightStyle } from "../../lib/code/highligh
 import { editorTheme } from "./theme.ts";
 import { labelSearchPanel, searchPhrases } from "./chrome.ts";
 import { EditorMenu } from "./EditorMenu.tsx";
+import { revealHighlight, revealLines } from "./reveal-lines.ts";
+import type { LineRange } from "../../lib/markdown/file-link.ts";
 import { useContextMenu } from "../../ui/overlay/ContextMenu.tsx";
 import { OverlayScrollbar } from "../../ui/scroll/OverlayScrollbar.tsx";
 
@@ -34,12 +36,15 @@ export function CodeEditor({
 	path,
 	text,
 	wrap,
+	reveal,
 }: {
 	/** Identity of the document; changing it rebuilds the state. */
 	path: string;
 	text: string;
 	/** Soft-wrap long lines instead of scrolling sideways. */
 	wrap?: boolean;
+	/** 要跳到、亮一下的那几行；`at` 换了才是新的一次，见 `OpenFile.reveal`。 */
+	reveal?: (LineRange & { at: number }) | null;
 }) {
 	const host = useRef<HTMLDivElement>(null);
 	/*
@@ -63,6 +68,8 @@ export function CodeEditor({
 	const wrapping = useRef(new Compartment());
 	/** The text the document was last seeded with, so a re-read that changed nothing is not a reload. */
 	const seeded = useRef(text);
+	/** 这个视图已经跳过的那一次 `reveal.at`。 */
+	const revealed = useRef(0);
 	const menu = useContextMenu();
 
 	const appearance = useApp((s) => s.settings?.appearance);
@@ -86,6 +93,7 @@ export function CodeEditor({
 				foldGutter(),
 				bracketMatching(),
 				highlightSelectionMatches(),
+				revealHighlight,
 				/*
 				 * ⌘F opens it, and it opens at the top.
 				 *
@@ -139,6 +147,11 @@ export function CodeEditor({
 
 		const instance = new EditorView({ state, parent: element });
 		view.current = instance;
+		/*
+		 * 新视图还没跳过。StrictMode 和被 Activity 藏起再显示时，这个 effect 会清理再跑一遍、换一个视图，
+		 * 记录留在 ref 上的话，下面的跳行会以为这一次已经跳过——开发构建里点链接从来不跳，就是这样。
+		 */
+		revealed.current = 0;
 
 		// CodeMirror builds the find bar on first open, so this watches for it rather than running once.
 		const panels = new MutationObserver(() => labelSearchPanel(element));
@@ -184,6 +197,18 @@ export function CodeEditor({
 		seeded.current = text;
 		instance.dispatch({ changes: { from: 0, to: instance.state.doc.length, insert: text } });
 	}, [text]);
+
+	/*
+	 * 排在建视图和换文本之后：行号对的是刚读到的这份文本。同一个视图只跳一次同一个 `at`：文本重读、
+	 * 换行这些重画不能把人拽回去。视图重建过（见上面建视图那里）就再跳——新视图从顶上开始，停在链接
+	 * 指的那一行比停在第一行对。
+	 */
+	useEffect(() => {
+		const instance = view.current;
+		if (!instance || !reveal || reveal.at === revealed.current) return;
+		revealed.current = reveal.at;
+		revealLines(instance, reveal);
+	}, [path, reveal]);
 
 	function openFind() {
 		const instance = view.current;
