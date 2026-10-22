@@ -98,6 +98,8 @@ test("focusing a conversation again while its command runs keeps the command run
 	await useApp.getState().openSession(meta("b"));
 	// The command goes on printing while it is parked, which marks the parked copy for a re-read.
 	applyAgentEvent("a", { type: "tool_update", toolCallId: "call-1", partial: printed("tick\ntick") }, useApp.setState, useApp.getState);
+	// A parked conversation's output lands once a tick (`coalesce`); focus cannot come back sooner.
+	flushCoalesced();
 	assert.ok(useApp.getState().sessionCache.a?.dirty, "the parked copy took the output");
 
 	// Focus comes back, and the conversation is read again from the main process.
