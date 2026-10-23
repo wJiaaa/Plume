@@ -24,6 +24,7 @@ import { ArrowRight, CircleAlert, Info, MessageCirclePlus, TriangleAlert, X } fr
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useApp } from "../../store/index.ts";
+import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import { groupNotices, schedule, TOAST_Z, visibleToasts, type Deadline, type ToastGroup } from "./stack.ts";
 import { useLayout } from "../../app/layout.tsx";
 import { portal } from "../../ui/overlay/portal.ts";
@@ -48,6 +49,8 @@ export function Toaster() {
 	const newSession = useApp((s) => s.newSession);
 	const setComposerDraft = useApp((s) => s.setComposerDraft);
 	const openSessionById = useApp((s) => s.openSessionById);
+	const openExtensions = useApp((s) => s.openExtensions);
+	const setPluginsProject = useApp((s) => s.setPluginsProject);
 	/**
 	 * Hand an error to a fresh conversation, already written up, and stop there.
 	 *
@@ -229,6 +232,22 @@ export function Toaster() {
 							>
 								<ArrowRight size={12} strokeWidth={2} aria-hidden />
 							</button>
+						)}
+						{group.extensions && (
+							<IconButton
+								size="xs"
+								emphasis
+								className="-my-px"
+								label={t("toaster.openExtensions")}
+								icon={<ArrowRight size={12} strokeWidth={2} aria-hidden />}
+								onClick={() => {
+									if (group.extensions) {
+										if (group.extensions.project) setPluginsProject(group.extensions.project);
+										openExtensions(group.extensions.tab);
+									}
+									dismiss(group);
+								}}
+							/>
 						)}
 						{/*
 						 * Only on errors, and only ever one per card.

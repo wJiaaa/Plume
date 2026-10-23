@@ -10,6 +10,7 @@
  * Pure, so `node --test` can hold it to those claims.
  */
 
+import type { ExtensionsTab } from "../../store/index.ts";
 import { explain } from "./explain.ts";
 
 export type ToastLevel = "info" | "warn" | "error";
@@ -20,6 +21,8 @@ export interface Notice {
 	message: string;
 	/** If present, clicking on this notice can navigate to the corresponding session. */
 	sessionId?: string;
+	/** Where to go to act on it: the card offers to open that tab of the plugins page. */
+	extensions?: { tab: ExtensionsTab; project?: string };
 }
 
 /** One card: the message, and every notice that is currently saying it. */
@@ -32,6 +35,8 @@ export interface ToastGroup {
 	hint?: string;
 	/** Target session to jump to when clicked. */
 	sessionId?: string;
+	/** Plugins-page tab to open, scoped to a project when given. */
+	extensions?: { tab: ExtensionsTab; project?: string };
 	/** Newest last. More than one means the same thing happened again. */
 	ids: string[];
 }
@@ -94,7 +99,7 @@ export function groupNotices(notices: readonly Notice[]): ToastGroup[] {
 		const key = `${notice.level}:${notice.sessionId ?? ""}:${said.message}`;
 		const existing = byKey.get(key);
 		if (existing) existing.ids.push(notice.id);
-		else byKey.set(key, { key, level: notice.level, message: said.message, hint: said.hint, sessionId: notice.sessionId, ids: [notice.id] });
+		else byKey.set(key, { key, level: notice.level, message: said.message, hint: said.hint, sessionId: notice.sessionId, ...(notice.extensions ? { extensions: notice.extensions } : {}), ids: [notice.id] });
 	}
 	return [...byKey.values()];
 }

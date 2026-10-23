@@ -32,6 +32,11 @@ export function useMemoryPass(): void {
 			 * 就是每天一条关于什么都没发生的通知。
 			 */
 			if (!cancelled && result?.memory) notify(translate("memoryPass.updated", { n: result.sessions }));
+			/*
+			 * 候选只在设置 › 插件 › 技能里列着，从前没有任何地方说它来了：实测四个项目各攒了一份，
+			 * 一份也没被批准或否决过。
+			 */
+			if (!cancelled && result?.proposedSkill) notify(translate("memoryPass.skillProposed", { name: result.proposedSkill }), "info", undefined, { extensions: { tab: "skills", project: cwd } });
 		}, IDLE_MS);
 
 		return () => { cancelled = true; window.clearTimeout(timer); };

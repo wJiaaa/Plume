@@ -87,7 +87,7 @@ export interface MemoryApi {
  */
 export interface ProjectMemoryApi {
 	/** 该跑就跑一遍：返回写了什么、读了几个会话；没开、还没到时候、没有模型时交回为什么没跑。 */
-	extract(cwd: string): Promise<{ memory: string; sessions: number; skipped?: string }>;
+	extract(cwd: string): Promise<{ memory: string; sessions: number; skipped?: string; proposedSkill?: string }>;
 	/** 这个项目记住的：`learn` 写的每一条，和抽取出来的那一份，各带写入时间与最后注入时间。 */
 	list(cwd: string): Promise<{
 		lessons: { text: string; context?: string; at: number; lastInjectedAt?: number }[];
