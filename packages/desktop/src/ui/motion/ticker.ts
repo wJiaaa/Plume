@@ -47,7 +47,6 @@ let frame = 0;
 let timer = 0;
 let last = Number.NEGATIVE_INFINITY;
 let minimized = false;
-const minimizedListeners = new Set<(minimized: boolean) => void>();
 
 /**
  * 窗口是不是最小化了。页面自己察觉不到（`visibilityState` 仍是 visible、rAF 照跑），由 `App` 接主进程的
@@ -58,18 +57,9 @@ export function windowMinimized(): boolean {
 	return minimized;
 }
 
-/** 订阅最小化 / 还原，返回退订。 */
-export function onWindowMinimized(listener: (minimized: boolean) => void): () => void {
-	minimizedListeners.add(listener);
-	return () => {
-		minimizedListeners.delete(listener);
-	};
-}
-
 export function setWindowMinimized(value: boolean): void {
 	if (value === minimized) return;
 	minimized = value;
-	for (const listener of minimizedListeners) listener(value);
 	// 最小化时约下的那一拍可能还要等近 100ms：还原后的第一眼就该是正常节奏。
 	if (value || !timer) return;
 	window.clearTimeout(timer);
