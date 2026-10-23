@@ -62,6 +62,7 @@
 | [0054](0054-host-assembly-without-kernel.md) | 删掉插件内核中间层（Context、事件总线、十个默认插件）和 `capability.js`：它们登记的都是模块自带的默认值，两条管道没有监听者；接口回到各自模块，`kernel/` 只剩宿主装配（会话存储、skill 注册表），core 里谁也不 import 它；以后插件化从按会话注入接 |
 | [0055](0055-contract-owns-ipc-types.md) | IPC 的签名与载荷类型住进 `@plume/contract`，按主题分文件；契约只许 `import type`，来源只限 core 的 `contract-types` 与 `client-types`；手机只经 `@plume/contract/mobile` |
 | [0056](0056-revert-takes-files-back.md) | 撤回和编辑重发可以连同被截掉那几轮改过的文件一起撤：先演算再确认，全有或全无，被别人改过的不覆盖不合并，先写文件再截对话 |
+| [0057](0057-run-outcome-and-file-ownership.md) | 一轮正常返回不等于做完：`prompt()` 交回这一轮怎么收的场，任务队列与定时任务据此记失败；定时任务收尾前不叠跑；「交回这里」等会话闲下来再交；子代理交接说清验证到哪一步；同一个文件只有一个写入方（约定，不是锁）；验收状态、后续任务队列、写锁、持久回执都等到真有需要 |
 | [0058](0058-review-in-its-own-session.md) | `/review` 在桌面端交给新开的只读审阅会话：原会话填必填字段的交接单，运行时附上最后批准的计划和用户原话的原文，审阅会话开在和原会话完全相同的目录里、多一维意图对照，审完用 `ask_session` 问原会话修哪几条（原会话定不下再问人）、由审阅会话自己修，报告经 `spawnedFrom.reportBack` 交回原会话；没有 `review_session` 的宿主照旧当场审 |
 
 写一份新的：复制最近一份的结构，编号往下走，加进这张表。

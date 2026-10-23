@@ -23,6 +23,9 @@ interface TaskArgs {
  * 放在系统提示里按推理等级换五种说法，档位变一次，提示词就要补发一次增量；而高档那几句「可以主动
  * 派」「放开编排」只说了倾向、没说标准，量到的是主代理把「给刚写的函数补测试」也派了出去——为了派，
  * 先在推理里把接口约定一条条写死，子代理从零开始又设计一遍。
+ *
+ * 最后一句是写入归属：同一个文件只有一个写入方。并行改同一批文件的两个子代理互相覆盖，派完接着做
+ * 的父会话也可能去改子代理正在改的那个——这里不加锁，按文件划清是协作约定，见 ADR-0057。
  */
 export const taskTool: Tool<TaskArgs> = {
 	name: "task",
@@ -36,7 +39,8 @@ export const taskTool: Tool<TaskArgs> = {
 		"Agents with write tools edit files directly; their risky actions are asked of the user here, like yours. " +
 		"Calls in one reply run in parallel (extra ones queue), so dispatch independent pieces together; have each skip builds, lints and tests, and verify once yourself after they have all reported. " +
 		"While they run, do not wait, poll or redo their work: carry on with anything that does not depend on them, or tell the user in a sentence what you dispatched and end your turn. " +
-		"Pieces that need a shared interface which does not exist yet are not independent — write the interface first, or do not split.",
+		"Pieces that need a shared interface which does not exist yet are not independent — write the interface first, or do not split. " +
+		"Each file has one writer: when sub-agents may edit files, name in each prompt the files it owns, and never give two of them the same file; while one is editing its files, do not edit them yourself.",
 	parameters: {
 		type: "object",
 		properties: {

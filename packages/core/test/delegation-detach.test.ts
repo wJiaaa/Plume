@@ -345,6 +345,17 @@ test("送达消息：几个结果一条消息，失败的说出原因，给界�
 	]);
 });
 
+test("送达消息：没做完的在标签上就标出来，不只靠正文第一行", () => {
+	const text = textOf(
+		deliveryMessage([
+			{ report: { id: "s:sub:1", answer: { text: "⚠ 到了检查点……", incomplete: true } }, summary: { agent: "general", description: "改接口", status: "done" } },
+			{ report: { id: "s:sub:2", answer: { text: "做完了" } }, summary: { agent: "general", description: "改调用方", status: "done" } },
+		]),
+	);
+	assert.match(text, /<subagent_result id="s:sub:1" [^>]*status="done" incomplete="true">/);
+	assert.match(text, /<subagent_result id="s:sub:2" [^>]*status="done">/);
+});
+
 test("设置里把并发调大，排着的当场开跑——不等一个永远轮不到的「下一轮」", async () => {
 	const root = await mkdtemp(join(tmpdir(), "ly-gatewidth-"));
 	process.env.PLUME_HOME = join(root, "home");

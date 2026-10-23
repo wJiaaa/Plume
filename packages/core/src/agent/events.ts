@@ -383,6 +383,12 @@ export interface QueuedTask {
 	/** Why it failed, when it did. */
 	error?: string;
 	/**
+	 * 失败的不是请求，是这一轮没做完就停了：原地打转，或者续跑之后还是到了轮数上限。
+	 *
+	 * 和 `error` 分开：这两种没有一句服务商的话可以转述，该怎么说由界面决定。
+	 */
+	unfinished?: "stalled" | "max_turns";
+	/**
 	 * Who cancelled it, because the two cases mean opposite things to the person watching.
 	 *
 	 * `user` is the withdraw button: you took it back, you know what happened, and the row saying
@@ -395,5 +401,8 @@ export interface QueuedTask {
 	 */
 	cancelledBy?: "user" | "stop";
 }
+
+/** 一轮怎么收的场：`AgentSession.prompt` 交回给开这一轮的调用方。 */
+export type TurnEnd = Pick<Extract<AgentEvent, { type: "agent_end" }>, "reason" | "error">;
 
 export type AgentEventSink = (event: AgentEvent) => void | Promise<void>;

@@ -79,6 +79,10 @@ const zhCN = {
 	"scheduled.started": "定时任务「{name}」开始运行",
 	"scheduled.failed": "定时任务「{name}」失败：{reason}",
 	"scheduled.couldNotStart": "定时任务「{name}」无法启动：{reason}",
+	// 一轮正常返回、却没做完时，替 {reason} 说清是哪一种。
+	"scheduled.modelError": "模型服务出错",
+	"scheduled.stalled": "反复做同一个调用、没有进展，没做完就停下了",
+	"scheduled.maxTurns": "到了轮数上限，没做完",
 	// Settings → Models: the connection test and the model listing. `listed` counts with {n}, so the
 	// languages that inflect write it in a form that reads right for any number.
 	"provider.notFound": "未找到该供应商配置",
@@ -274,6 +278,9 @@ export const NATIVE_CATALOGS: Record<NativeLocale, NativeCatalog> = {
 		"scheduled.started": "Scheduled task “{name}” started",
 		"scheduled.failed": "Scheduled task “{name}” failed: {reason}",
 		"scheduled.couldNotStart": "Scheduled task “{name}” could not start: {reason}",
+		"scheduled.modelError": "the model service returned an error",
+		"scheduled.stalled": "it kept making the same call without progress and stopped before finishing",
+		"scheduled.maxTurns": "it reached the turn limit before finishing",
 		"provider.notFound": "Provider not found in settings",
 		"provider.modelNotFound": "That model is not configured for this provider",
 		"provider.listed": "Connected. Models available: {n}",

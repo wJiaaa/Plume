@@ -1599,6 +1599,8 @@ export const en = {
 	"taskStrip.done": "Done",
 	"taskStrip.failedWith": "Failed · {error} · can be retried",
 	"taskStrip.failed": "Failed · can be retried",
+	"taskStrip.stalled": "Unfinished · stopped after repeating the same call · can be retried",
+	"taskStrip.maxTurns": "Unfinished · reached the turn limit · can be retried",
 	"taskStrip.interrupted": "The main conversation paused and took this with it · can be resumed",
 	"taskStrip.withdrawn": "Taken back",
 	"taskStrip.runNow": "Run it now",

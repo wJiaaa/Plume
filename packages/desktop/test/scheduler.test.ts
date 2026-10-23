@@ -48,7 +48,7 @@ function scheduled(start: () => Promise<AgentSession>, name = task.name): { sche
 }
 
 /** A session that starts, and whose turn does whatever `turn` does. */
-const session = (turn: () => Promise<unknown>) => async () => ({ meta: { id: "session" }, prompt: turn }) as unknown as AgentSession;
+const session = (turn: () => Promise<unknown>) => async () => ({ meta: { id: "session" }, prompt: turn, whenIdle: async () => {} }) as unknown as AgentSession;
 
 /** The turn is deliberately not awaited by the tick, so what it does arrives a moment later. */
 const settled = () => new Promise((resolve) => setImmediate(resolve));
@@ -170,4 +170,69 @@ test("a task's run starts in the task's project", async () => {
 	});
 	await scheduler.tick(Date.now());
 	assert.deepEqual(asked, [["/work/app", "model", "proj-b"]]);
+});
+
+test("一轮正常返回却没做完：原地打转、服务商出错都写到任务上；被人停下的不算失败", async () => {
+	for (const [ended, said] of [
+		[{ reason: "stalled" }, "反复做同一个调用、没有进展，没做完就停下了"],
+		[{ reason: "max_turns" }, "到了轮数上限，没做完"],
+		[{ reason: "error", error: "HTTP 401" }, "HTTP 401"],
+		[{ reason: "error" }, "模型服务出错"],
+		[{ reason: "aborted" }, undefined],
+		[{ reason: "done" }, undefined],
+	] as const) {
+		let settings = { scheduledTasks: [daily], defaultModelId: "m" } as unknown as Settings;
+		const scheduler = new Scheduler({
+			getSettings: () => settings,
+			saveSettings: async (next) => {
+				settings = next;
+			},
+			createSession: async () => ({ meta: { id: "s1" }, prompt: async () => ended, whenIdle: async () => {} }) as unknown as AgentSession,
+			notify: () => {},
+		});
+		await scheduler.tick(Date.UTC(2026, 8, 27));
+		await settled();
+		await settled();
+		assert.equal(settings.scheduledTasks[0].lastError, said, ended.reason);
+	}
+});
+
+test("上一次还没收尾，到期也不再开一个；收尾之后只补跑一次", async () => {
+	let settings = { scheduledTasks: [{ ...daily, schedule: { kind: "interval", minutes: 1 } }], defaultModelId: "m" } as unknown as Settings;
+	let started = 0;
+	let finishTurn!: () => void;
+	let idle!: () => void;
+	const scheduler = new Scheduler({
+		getSettings: () => settings,
+		saveSettings: async (next) => {
+			settings = next;
+		},
+		createSession: async () => {
+			started += 1;
+			return {
+				meta: { id: `s${started}` },
+				prompt: () => new Promise<{ reason: "done" }>((resolve) => (finishTurn = () => resolve({ reason: "done" }))),
+				// 这一轮做完之后，后台子代理送回来的几轮还在跑：闲下来才算收尾。
+				whenIdle: () => new Promise<void>((resolve) => (idle = resolve)),
+			} as unknown as AgentSession;
+		},
+		notify: () => {},
+	});
+	const minute = 60_000;
+	const start = Date.UTC(2026, 8, 27);
+	await scheduler.tick(start);
+	await scheduler.tick(start + 2 * minute);
+	await scheduler.tick(start + 3 * minute);
+	assert.equal(started, 1, "一轮还在跑，到期两次都跳过");
+
+	finishTurn();
+	await settled();
+	await scheduler.tick(start + 4 * minute);
+	assert.equal(started, 1, "这一轮做完了，后台的还没回来，也还没收尾");
+
+	idle();
+	await settled();
+	await scheduler.tick(start + 5 * minute);
+	await scheduler.tick(start + 5 * minute + 1);
+	assert.equal(started, 2, "收尾之后补跑一次，不是把错过的几次都补上");
 });

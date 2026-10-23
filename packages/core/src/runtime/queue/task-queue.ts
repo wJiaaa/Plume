@@ -11,12 +11,12 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { QueuedTask } from "../../agent/events.ts";
+import type { QueuedTask, TurnEnd } from "../../agent/events.ts";
 import { nextTask } from "./scheduling.ts";
 
 export interface TaskQueueOptions {
-	/** Run one task to completion. Throwing marks it failed. */
-	run(task: QueuedTask): Promise<void>;
+	/** Run one task to completion and say how its turn ended. Throwing marks it failed; see `settledAs`. */
+	run(task: QueuedTask): Promise<TurnEnd | void>;
 	/** Whether the session is busy with something that is not a task. */
 	busy(): boolean;
 	/** Called whenever the list changes, so the UI can be told. */
@@ -111,6 +111,8 @@ export class TaskQueue {
 		delete task.cancelledBy;
 		delete task.finishedAt;
 		delete task.startedAt;
+		delete task.error;
+		delete task.unfinished;
 		await this.options.changed();
 		void this.drain();
 		return true;
@@ -198,8 +200,9 @@ export class TaskQueue {
 				}
 
 				let failure: string | null = null;
+				let ended: TurnEnd | void = undefined;
 				try {
-					await this.options.run(next);
+					ended = await this.options.run(next);
 				} catch (cause) {
 					failure = cause instanceof Error ? cause.message : String(cause);
 				}
@@ -212,8 +215,7 @@ export class TaskQueue {
 				 */
 				const settled = this.tasks.find((t) => t.id === next.id);
 				if (settled?.status === "running") {
-					settled.status = failure ? "failed" : "done";
-					if (failure) settled.error = failure;
+					Object.assign(settled, failure !== null ? { status: "failed", error: failure } : settledAs(ended));
 					settled.finishedAt = this.options.now();
 				}
 				await this.options.changed();
@@ -225,6 +227,21 @@ export class TaskQueue {
 }
 
 /**
+ * 一轮怎么收的场，落到任务上是什么。
+ *
+ * 正常返回不等于做完了：服务商出错、原地打转、跑满轮数，`prompt()` 都是正常返回的。从前只看有没有
+ * 抛，这三种都记成「已完成」，人看到的是一件没做完的事打着勾。记成失败，是因为失败那一行本来就带
+ * 「继续」（`isResumable`）。被停下却没经过 `abort` 的，按「随主会话停下」算，同样可以继续。
+ * 没有交回收场的——并进了别人正在跑的那一轮，`busy` 守着不该发生——按做完算。
+ */
+export function settledAs(ended: TurnEnd | void): Pick<QueuedTask, "status" | "error" | "unfinished" | "cancelledBy"> {
+	if (!ended || ended.reason === "done") return { status: "done" };
+	if (ended.reason === "aborted") return { status: "cancelled", cancelledBy: "stop" };
+	if (ended.reason === "error") return { status: "failed", ...(ended.error ? { error: ended.error } : {}) };
+	return { status: "failed", unfinished: ended.reason };
+}
+
+/**
  * The queue a session uses, with the two mechanical answers already filled in.
  *
  * Ids and clocks are the queue's business, not the session's — and a caller that had to supply
@@ -232,7 +249,7 @@ export class TaskQueue {
  * a task means, whether it is busy, and where to send the list when it changes.
  */
 export function sessionTaskQueue(deps: {
-	run(task: QueuedTask): Promise<void>;
+	run(task: QueuedTask): Promise<TurnEnd | void>;
 	busy(): boolean;
 	/** Given a snapshot, never the live list; see `TaskQueue.list`. */
 	changed(tasks: QueuedTask[]): Promise<void>;

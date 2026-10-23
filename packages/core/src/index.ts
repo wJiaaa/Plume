@@ -22,7 +22,7 @@ export { backgroundJobs } from "./tools/background-jobs.ts";
 export { streamAssistant } from "./ai/index.ts";
 export { sessionHeaders } from "./ai/cache-routing.ts";
 export { USER_AGENT } from "./ai/endpoint.ts";
-export type { AgentEvent, CommandRun, CompactCode, HookRun, NoticeCode, NoticeParams, QueuedTask, SessionWakeup } from "./agent/events.ts";
+export type { AgentEvent, CommandRun, CompactCode, HookRun, NoticeCode, NoticeParams, QueuedTask, SessionWakeup, TurnEnd } from "./agent/events.ts";
 export type { TodoItem } from "./tools/todo.ts";
 export { textResult } from "./agent/tool-run.ts";
 export { errorResult } from "./tools/result.ts";
