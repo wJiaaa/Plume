@@ -2,7 +2,7 @@
  * 转录按回合分块：开口那句话之后到下一句之前算一轮，有过程的一轮里同一类连着做的调用合成一步。
  *
  * 和 `grouping.ts` 是两层：那边把消息切成 Run（一句话、一段工具），这里把 Run 按回合收起来。
- * `Conversation` 两层都用，子智能体面板只用那一层。
+ * `Conversation` 和子智能体面板两层都用。
  */
 
 import type { DeliveredReport } from "@plume/core";

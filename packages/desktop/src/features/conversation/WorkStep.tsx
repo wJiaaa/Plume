@@ -33,27 +33,30 @@ import { RollWords } from "../../ui/motion/RollWords.tsx";
 import { useHeldKey } from "../../ui/motion/held.ts";
 import { describeCalls, describeOne, foldPolls, polledJob, startedJob } from "./call-words.ts";
 import type { Call, Run } from "./grouping.ts";
+import type { ToolRun as ToolRunState } from "../../store/index.ts";
 import { sameStep, thinkingLive, type Step } from "./turn-blocks.ts";
 import { useTranscriptDisclosure } from "./view-state.ts";
 import { useWriteDraft } from "./write-draft.ts";
 
 /** 一次调用画成的那一行：和它单独成行时是同一张工具卡。 */
-function drawCall({ block, stopReason, page }: Call, line?: { thinking?: ReactNode; extra?: ReactNode; polls?: string[] }) {
-	return <LiveToolCard block={block} stopReason={stopReason} page={page} thinking={line?.thinking} extra={line?.extra} polls={line?.polls} />;
+function drawCall({ block, stopReason, page }: Call, runs: Record<string, ToolRunState> | undefined, line?: { thinking?: ReactNode; extra?: ReactNode; polls?: string[] }) {
+	return <LiveToolCard block={block} stopReason={stopReason} page={page} runs={runs} thinking={line?.thinking} extra={line?.extra} polls={line?.polls} />;
 }
 
 /**
  * 只在这一段自己变了时重画，见 `sameStep`。`draw` 只在它画出来的东西会变时才换引用（见 `Conversation`）。
  * 漏比 `live` 的后果见 `ToolRun` 上那段：高亮会一直留在当过「正在做」的每一段上。
  */
-export const WorkStep = memo(WorkStepRow, (a, b) => a.live === b.live && a.draw === b.draw && sameStep(a.step, b.step));
+export const WorkStep = memo(WorkStepRow, (a, b) => a.live === b.live && a.draw === b.draw && a.runs === b.runs && sameStep(a.step, b.step));
 
-function WorkStepRow({ step, live, draw }: {
+function WorkStepRow({ step, live, draw, runs }: {
 	step: Step;
 	/** 这一段是不是这一轮此刻正在做的那一段：一轮还在跑，而它后面什么都还没有。 */
 	live: boolean;
 	/** 推理那一行怎么画，交给转录自己（`MessageRow`），这里不另做一份。 */
 	draw: (run: Run) => ReactNode;
+	/** 不在 store 里的那份工具记录（子智能体面板），见 `LiveToolCard` 的同名属性。按引用比：转录长了它才换。 */
+	runs?: Record<string, ToolRunState>;
 }) {
 	const tail = step.members[step.members.length - 1];
 	const writing = live && tail?.kind === "thinking" && thinkingLive(tail.run) ? tail.run : null;
@@ -84,11 +87,11 @@ function WorkStepRow({ step, live, draw }: {
 
 	if (single) {
 		const thoughts = step.members.flatMap((member) => (member.kind === "thinking" ? [member.run] : []));
-		return <div ref={box} data-ly-step={step.category}>{drawCall(step.calls[0], { thinking, extra: thoughts.length > 0 ? thoughts.map(draw) : undefined })}</div>;
+		return <div ref={box} data-ly-step={step.category}>{drawCall(step.calls[0], runs, { thinking, extra: thoughts.length > 0 ? thoughts.map(draw) : undefined })}</div>;
 	}
 	return (
 		<div ref={box}>
-			<StepGroup step={step} thought={thought} live={live} thinking={thinking} from={from.current} draw={draw} />
+			<StepGroup step={step} thought={thought} live={live} thinking={thinking} from={from.current} draw={draw} runs={runs} />
 		</div>
 	);
 }
@@ -96,7 +99,7 @@ function WorkStepRow({ step, live, draw }: {
 /** 这一行说的是总的那一句，而不是某一次调用。调用的 id 不会是它。 */
 const STEP = "step";
 
-function StepGroup({ step, thought, live, thinking, from, draw }: {
+function StepGroup({ step, thought, live, thinking, from, draw, runs: own }: {
 	step: Step;
 	/** 原地被它接替的那一行画出来的宽度；没有就是这一段刚出现。 */
 	from: { words: number; trail: number } | null;
@@ -105,13 +108,14 @@ function StepGroup({ step, thought, live, thinking, from, draw }: {
 	live: boolean;
 	thinking?: ReactNode;
 	draw: (run: Run) => ReactNode;
+	runs?: Record<string, ToolRunState>;
 }) {
 	const [open, setOpen] = useTranscriptDisclosure(step.key);
 	const { calls } = step;
 
-	const { added, removed } = useDiffTotals(calls);
+	const { added, removed } = useDiffTotals(calls, own);
 	// 是不是出过错也只取一个布尔：选出对象的选择器每次都是新的，别的卡片冒一行输出就会把这一行重画一遍。
-	const errored = useScopedFromToolRuns((runs) => calls.some(({ block }) => runs[block.id]?.status === "error"));
+	const errored = useScopedFromToolRuns((stored) => calls.some(({ block }) => (own ?? stored)[block.id]?.status === "error"));
 	// 后台命令回来时失败了也算：启动它的那次 bash 早就以「已放到后台」跑完了，记录上不会是错。
 	const failed = errored || step.members.some((member) => member.kind === "job" && member.run.message.role === "user" && member.run.message.delivery?.some((report) => report.status === "failed"));
 
@@ -119,21 +123,22 @@ function StepGroup({ step, thought, live, thinking, from, draw }: {
 	 * 跑着时说的那一次：第一个还在跑的调用，不是最后发出的那个。一次发出几个调用时它们各跑各的，最后那个
 	 * 可能早跑完了、前面那个还在跑。一个都没在跑（两批之间、下一个还没开跑）就说最后那个。
 	 */
-	const running = useScopedFromToolRuns((runs) => calls.find(({ block }) => runs[block.id]?.status === "running")?.block.id);
+	const running = useScopedFromToolRuns((stored) => calls.find(({ block }) => (own ?? stored)[block.id]?.status === "running")?.block.id);
 	const want = live ? (running ?? calls[calls.length - 1].block.id) : STEP;
 	// 每一句至少挂 `HOLD_MS`：一两百毫秒来一次的 read、grep 不再来一次滚一次，字读完了才换。从跑着换成总的也一样等。
 	const held = useHeldKey(want);
 	const current = held === STEP ? null : (calls.find(({ block }) => block.id === held) ?? calls[calls.length - 1]).block;
 	// 这一段默认收着：还在写的文件，路径和写了几行要在这一行上就看得到。见 `useWriteDraft`。
-	const unrecorded = useScopedFromToolRuns((runs) => (current ? !runs[current.id] : false));
+	// 带着记录来的（子智能体）每次调用都有一条，没有「还没记下」这回事，和 `PlainToolCard` 一样。
+	const unrecorded = useScopedFromToolRuns((stored) => (current && !own ? !stored[current.id] : false));
 	const { block: said, lines } = useWriteDraft(current, unrecorded);
 	// bash 给人看的那句话只在记录的 `summary` 里，参数里是命令本身。
-	const saidSummary = useScopedFromToolRuns((runs) => (said ? runs[said.id]?.summary : undefined));
+	const saidSummary = useScopedFromToolRuns((stored) => (said ? (own ?? stored)[said.id]?.summary : undefined));
 	const root = useScopedFromMeta((meta) => meta?.cwd);
 	// 查后台任务输出的那一次，说的是那条命令的说明，不是光秃秃的「查看输出」。
-	const saidJob = useScopedFromToolRuns((runs) => {
+	const saidJob = useScopedFromToolRuns((stored) => {
 		const job = said ? polledJob(said) : undefined;
-		return job ? startedJob(runs, job)?.summary : undefined;
+		return job ? startedJob(own ?? stored, job)?.summary : undefined;
 	});
 
 	// 哪样先来哪样在前：先有的那半句不能被后来的「思考 N 次」从前面挤开。
@@ -183,9 +188,9 @@ function StepGroup({ step, thought, live, thinking, from, draw }: {
 			<Collapse open={open} bodyClassName="pt-2.5">
 				<div data-ly-step-rail="" className="ml-[7px] flex flex-col gap-2.5 border-l border-line-soft pl-[14px]">
 					{foldPolls(step.members).map((line) =>
-						line.kind === "call" ? <Fragment key={line.call.block.id}>{drawCall(line.call)}</Fragment>
+						line.kind === "call" ? <Fragment key={line.call.block.id}>{drawCall(line.call, own)}</Fragment>
 						// 连着查同一个任务的几次是一行，key 跟第一次走：再查一次，这一行不卸掉重挂。
-						: line.kind === "polls" ? <Fragment key={line.calls[0].block.id}>{drawCall(line.calls[0], { polls: line.calls.map(({ block }) => block.id) })}</Fragment>
+						: line.kind === "polls" ? <Fragment key={line.calls[0].block.id}>{drawCall(line.calls[0], own, { polls: line.calls.map(({ block }) => block.id) })}</Fragment>
 						: draw(line.run))}
 				</div>
 			</Collapse>

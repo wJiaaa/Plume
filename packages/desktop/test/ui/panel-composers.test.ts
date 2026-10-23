@@ -161,7 +161,8 @@ test("子智能体转录：交代的任务是一张卡片，人说的话是气�
 		// 夹在两段话中间的那次 `ls`：从前这里只认思考和文字，它就这么不见了。
 		assert.match(view.text(), /先看看目录.*再读入口文件/);
 		// 两行工具调用：夹在中间的 `ls` 一行、排在最后的 `read` 一行。从前只有后面那一行。
-		assert.equal(view.all("[data-ly-run]").length, 2, `中间那次调用画出来了：${view.text()}`);
+		// 排在最后的那次和主会话一样收进一段活（`WorkStep`，`data-ly-step`），夹在话中间的照旧是 `ToolRun`。
+		assert.equal(view.all("[data-ly-run], [data-ly-step]").length, 2, `中间那次调用画出来了：${view.text()}`);
 	} finally {
 		await view.unmount();
 	}

@@ -3,7 +3,8 @@
  *
  * Follows the main conversation's layout and mechanics:
  * - Markdown rendering
- * - Collapsible ToolGroup and ToolCard — including calls in the middle of a reply
+ * - Turns split by `turnBlocks`: consecutive work and the reasoning between it fold into one
+ *   `WorkStep` line — including calls in the middle of a reply
  * - Tool loading, diff hunks and execution status derived from toolRuns
  * - ThinkingBlock
  *
@@ -14,9 +15,25 @@
 
 import { translate } from "../../i18n/translate.ts";
 import { CornerRightDown } from "../../ui/icons/index.ts";
-import { Fragment, memo, useMemo, useState } from "react";
+import { Fragment, memo, useMemo, useState, type ReactNode } from "react";
 import type { HookRun, Message, UserMessage } from "@plume/core";
-import { hasTroubledHooks, HookRunsButton, MessageActions, ModelSwitchRow, runs, runKey, segments, SpokenBubble, spokenText, ToolRun, withoutThinking } from "../conversation/index.ts";
+import {
+	hasTroubledHooks,
+	HookRunsButton,
+	MessageActions,
+	ModelSwitchRow,
+	runs,
+	runKey,
+	segments,
+	SpokenBubble,
+	spokenText,
+	ToolRun,
+	turnBlocks,
+	TurnWork,
+	withoutThinking,
+	WorkStep,
+	type Run,
+} from "../conversation/index.ts";
 import { useApp } from "../../store/index.ts";
 import { Markdown } from "../markdown/index.ts";
 import { ThinkingBlock } from "../conversation/index.ts";
@@ -64,105 +81,133 @@ export const SubAgentTranscript = memo(function SubAgentTranscript({
 		<StretchHooks key={`hooks-${start}`} runs={(hookRuns ?? []).filter((run) => run.at > start && run.at <= end)} />
 	);
 
+	/*
+	 * 一个 Run 画成哪一行，和主会话的 `draw` 一样：一句话、一张任务卡片、一段原样画的页面。连着做的活不在
+	 * 这里画，`turnBlocks` 已经把它们收成了一段（`WorkStep`），推理挂在那一段上。
+	 *
+	 * 从前这里逐个 Run 画，一条回复「想一下、并行跑两条命令」就是一行思考、一行工具，交替排下去——主会话
+	 * 里那是一行「思考 N 次 · 执行命令 M 个」。
+	 */
+	const draw = (run: Run): ReactNode => {
+		if (run.kind === "model") return <ModelSwitchRow key={runKey(run)} from={run.from} to={run.to} />;
+
+		if (run.kind === "tools") {
+			// Which run is being worked on is `grouping.ts`'s answer; whether anyone is working on
+			// it at all is this panel's. The same pair as in `Conversation`.
+			return <ToolRun key={runKey(run)} calls={run.calls} live={Boolean(isLive && run.live)} runs={toolRuns} shown={run.shown} />;
+		}
+
+		// 压缩命令和重连标记只在主会话里有：`runs(messages)` 没给它们。
+		if (run.kind !== "message") return null;
+		// 收尾那句的页脚另成的一行（见 `Run.trailer`）：这里不画一轮的页脚，画了就是同一段话两遍。
+		if (run.trailer) return null;
+		const { message, upTo } = run;
+		// Set only on the reply whose reasoning `grouping.ts` drew above the work; see `Run.from`.
+		const from = run.from ?? 0;
+		if (message.role === "user") {
+			if (message.synthetic) return null;
+			if (fromParent(message, run.index)) {
+				const previous = starts.findLast((start) => start < run.index);
+				return (
+					<Fragment key={runKey(run)}>
+						{previous !== undefined && stretchHooks(previous, run.index)}
+						<TaskBrief message={message} resumed={run.index > 0} />
+					</Fragment>
+				);
+			}
+			return (
+				<div key={runKey(run)} className="group/msg ly-enter flex flex-col items-end">
+					{/* 和侧边聊天同一个气泡——见 `SpokenBubble`。 */}
+					<SpokenBubble message={message} />
+					<MessageActions timestamp={message.timestamp} text={spokenText(message)} className="mt-1 pr-1" />
+				</div>
+			);
+		}
+
+		if (message.role === "assistant") {
+			/*
+			 * 按段画，和主会话的 `rows.tsx` 一样：夹在两段话中间的那几次调用收成一行。
+			 *
+			 * 这里从前只认思考和文字，别的一律 `null`——而一条回复里「先说两句、调几个工具、再说两
+			 * 句、再调」是常事，排在最后的那几次归下面那一行画，夹在中间的就这么不见了。面板上看起来
+			 * 是它说完一段话，下一段就凭空知道了答案。
+			 */
+			return (
+				<div key={runKey(run)} className="ly-enter flex flex-col gap-2.5">
+					{segments(message.content.slice(from, upTo)).map((segment, position) => {
+						if (segment.kind === "tools") {
+							return (
+								<ToolRun
+									key={`tools-${from + position}`}
+									calls={segment.blocks.map((block) => ({ block, stopReason: message.stopReason }))}
+									runs={toolRuns}
+								/>
+							);
+						}
+						const { block, index } = segment;
+						const at = from + index;
+						if (block.type === "thinking") {
+							if (!showThinking) return null;
+							return (
+								<ThinkingBlock
+									key={at}
+									text={block.thinking}
+									redacted={block.redacted === true}
+									startedAt={block.startedAt}
+									durationMs={block.durationMs}
+									live={message.stopReason === "pending" && at === message.content.length - 1}
+								/>
+							);
+						}
+						if (block.type === "text" && block.text.trim()) {
+							if (run.index === lastReply && echo?.includes(block.text.trim())) return null;
+							return (
+								<div key={at} className="min-w-0 max-w-full overflow-hidden">
+									<Markdown
+										text={block.text}
+										className="min-w-0 max-w-full break-words"
+										streaming={message.stopReason === "pending" && at === message.content.length - 1}
+									/>
+								</div>
+							);
+						}
+						return null;
+					})}
+					{message.stopReason === "error" && message.errorMessage && (
+						<div className="rounded-lg border border-danger/35 bg-danger/8 px-3 py-2 text-detail text-danger">
+							{message.errorMessage}
+						</div>
+					)}
+				</div>
+			);
+		}
+
+		return null;
+	};
+	const blocks = useMemo(() => turnBlocks(transcriptRuns, Boolean(isLive)), [transcriptRuns, isLive]);
+
 	return (
 		/*
 		 * 行距放在列表上，和侧边聊天、主会话一样。从前靠每段自带的 `mb-3`，而工具那一段没有，
 		 * 于是工具行和下一步的思考行贴成一对、每对之间再空 12px。
 		 */
 		<div className="flex flex-col gap-2.5">
-			{transcriptRuns.map((run) => {
-				if (run.kind === "model") return <ModelSwitchRow key={runKey(run)} from={run.from} to={run.to} />;
-
-				if (run.kind === "tools") {
-					// Which run is being worked on is `grouping.ts`'s answer; whether anyone is working on
-					// it at all is this panel's. The same pair as in `Conversation`.
-					return <ToolRun key={runKey(run)} calls={run.calls} live={Boolean(isLive && run.live)} runs={toolRuns} shown={run.shown} />;
-				}
-
-				// 收尾那句的页脚另成的一行（见 `Run.trailer`）：这里不画一轮的页脚，画了就是同一段话两遍。
-				if (run.trailer) return null;
-				const { message, upTo } = run;
-				// Set only on the reply whose reasoning `grouping.ts` drew above the work; see `Run.from`.
-				const from = run.from ?? 0;
-				if (message.role === "user") {
-					if (message.synthetic) return null;
-					if (fromParent(message, run.index)) {
-						const previous = starts.findLast((start) => start < run.index);
-						return (
-							<Fragment key={runKey(run)}>
-								{previous !== undefined && stretchHooks(previous, run.index)}
-								<TaskBrief message={message} resumed={run.index > 0} />
-							</Fragment>
-						);
-					}
-					return (
-						<div key={runKey(run)} className="group/msg ly-enter flex flex-col items-end">
-							{/* 和侧边聊天同一个气泡——见 `SpokenBubble`。 */}
-							<SpokenBubble message={message} />
-							<MessageActions timestamp={message.timestamp} text={spokenText(message)} className="mt-1 pr-1" />
-						</div>
-					);
-				}
-
-				if (message.role === "assistant") {
-					/*
-					 * 按段画，和主会话的 `rows.tsx` 一样：夹在两段话中间的那几次调用收成一行。
-					 *
-					 * 这里从前只认思考和文字，别的一律 `null`——而一条回复里「先说两句、调几个工具、再说两
-					 * 句、再调」是常事，排在最后的那几次归下面那一行画，夹在中间的就这么不见了。面板上看起来
-					 * 是它说完一段话，下一段就凭空知道了答案。
-					 */
-					return (
-						<div key={runKey(run)} className="ly-enter flex flex-col gap-2.5">
-							{segments(message.content.slice(from, upTo)).map((segment, position) => {
-								if (segment.kind === "tools") {
-									return (
-										<ToolRun
-											key={`tools-${from + position}`}
-											calls={segment.blocks.map((block) => ({ block, stopReason: message.stopReason }))}
-											runs={toolRuns}
-										/>
-									);
-								}
-								const { block, index } = segment;
-								const at = from + index;
-								if (block.type === "thinking") {
-									if (!showThinking) return null;
-									return (
-										<ThinkingBlock
-											key={at}
-											text={block.thinking}
-											redacted={block.redacted === true}
-											startedAt={block.startedAt}
-											durationMs={block.durationMs}
-											live={message.stopReason === "pending" && at === message.content.length - 1}
-										/>
-									);
-								}
-								if (block.type === "text" && block.text.trim()) {
-									if (run.index === lastReply && echo?.includes(block.text.trim())) return null;
-									return (
-										<div key={at} className="min-w-0 max-w-full overflow-hidden">
-											<Markdown
-												text={block.text}
-												className="min-w-0 max-w-full break-words"
-												streaming={message.stopReason === "pending" && at === message.content.length - 1}
-											/>
-										</div>
-									);
-								}
-								return null;
-							})}
-							{message.stopReason === "error" && message.errorMessage && (
-								<div className="rounded-lg border border-danger/35 bg-danger/8 px-3 py-2 text-detail text-danger">
-									{message.errorMessage}
-								</div>
-							)}
-						</div>
-					);
-				}
-
-				return null;
+			{blocks.map((block, at) => {
+				if (block.kind === "plain") return draw(block.runs[0]);
+				// 按开这一轮的那句话起名，和主会话一样：跑着的那一轮刚发出时下面还是空的。
+				const opener = blocks[at - 1];
+				const key = `process:${runKey((opener?.turn === block.turn ? opener : block).runs[0])}`;
+				const live = Boolean(isLive) && block.turn === blocks[blocks.length - 1].turn;
+				const tail = block.items[block.items.length - 1];
+				return (
+					<TurnWork
+						key={key}
+						entries={block.items.map((item) => ({
+							key: item.key,
+							node: item.kind === "step" ? <WorkStep step={item.step} live={live && item === tail} draw={draw} runs={toolRuns} /> : draw(item.run),
+						}))}
+					/>
+				);
 			})}
 			{!isLive && starts.length > 0 && stretchHooks(starts.at(-1)!, Infinity)}
 		</div>
