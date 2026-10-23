@@ -22,7 +22,7 @@ export { backgroundJobs } from "./tools/background-jobs.ts";
 export { streamAssistant } from "./ai/index.ts";
 export { sessionHeaders } from "./ai/cache-routing.ts";
 export { USER_AGENT } from "./ai/endpoint.ts";
-export type { AgentEvent, CommandRun, CompactCode, HookRun, NoticeCode, NoticeParams, QueuedTask } from "./agent/events.ts";
+export type { AgentEvent, CommandRun, CompactCode, HookRun, NoticeCode, NoticeParams, QueuedTask, SessionWakeup } from "./agent/events.ts";
 export type { TodoItem } from "./tools/todo.ts";
 export { textResult } from "./agent/tool-run.ts";
 export { errorResult } from "./tools/result.ts";
@@ -138,6 +138,7 @@ export { trustHookDigests, trustedHookDigests } from "./hooks/trust.ts";
 export { AgentSession, type AgentSessionOptions } from "./runtime/agent-session/session.ts";
 export { storedContextBreakdown } from "./runtime/agent-session/stored-context.ts";
 export { storedSubAgents } from "./runtime/agent-session/stored-sub-agents.ts";
+export { createWakeupTools } from "./runtime/agent-session/wakeup-tools.ts";
 export { summarizeSession } from "./runtime/summary/session-summary.ts";
 export {
 	plumeHome,
@@ -169,6 +170,8 @@ export {
 } from "./commands/expand.ts";
 export { loadSkills, isUnparsable, parseFrontmatter, type Skill, type SkillDiagnostic } from "./skills/loader.ts";
 export { skillTool } from "./skills/tool.ts";
+export { REVIEW_BODY, REVIEW_SESSION_OPENING } from "./commands/review.ts";
+export { REVIEW_FIX_KEY } from "./runtime/plan/plan-mode.ts";
 /*
  * 工具与平台这两处从 `export *` 改成点名。
  *

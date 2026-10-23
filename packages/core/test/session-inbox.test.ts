@@ -29,6 +29,19 @@ test("steering nobody took comes out first after the turn, ahead of what was que
 	assert.equal(inbox.empty, true);
 });
 
+test("clear hands back what it dropped, steering and queue both, as they were sent", () => {
+	const inbox = new SessionInbox();
+	const letter = (text: string): PeerLetter => ({ sessionId: "s-other", from: "Other [abc]", text });
+	inbox.accept({ message: said("steer") }, undefined, true);
+	inbox.accept({ message: peerMessage([letter("one")]) }, "followUp", true);
+	inbox.accept({ message: peerMessage([letter("two")]) }, "followUp", true);
+	const dropped = inbox.clear();
+	assert.equal(dropped.length, 3, "adjacent letters from one sender are not merged on the way out");
+	assert.equal(text(dropped[0]), "steer");
+	assert.deepEqual(dropped.slice(1).map((message) => lettersOnly(message)?.map((one) => one.text)), [["one"], ["two"]]);
+	assert.equal(inbox.empty, true);
+});
+
 test("stop drops both what would steer and what was queued", () => {
 	const inbox = new SessionInbox();
 	inbox.accept({ message: said("a") }, undefined, true);

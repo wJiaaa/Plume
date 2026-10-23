@@ -37,6 +37,7 @@ const BUILTIN_TOOLS = [
 	"lsp",
 	"bash",
 	"bash_output",
+	"monitor",
 	"todo_write",
 	"task",
 	"skill",

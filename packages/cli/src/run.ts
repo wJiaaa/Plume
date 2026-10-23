@@ -9,6 +9,7 @@
 import {
 	AgentSession,
 	bindPromptArguments,
+	builtinTools,
 	findPrompt,
 	listCommands,
 	parseInvocation,
@@ -16,6 +17,7 @@ import {
 	resolveInvocation,
 	resolveModel,
 	restated,
+	useToolRegistry,
 	type AgentEvent,
 	type AgentSessionOptions,
 	type SessionStorage,
@@ -93,6 +95,16 @@ export async function runOnce(options: RunOptions): Promise<RunResult> {
 			};
 		}
 	}
+
+	/*
+	 * 不给 monitor：命令行在第一次 `whenIdle` 就处置会话，而 `idle` 不算还在跑的 monitor，它刚起就被杀，
+	 * 输出一条也送不到。和定时唤醒没给命令行是同一个原因。从工具表里拿掉而不是留着让它报错：模型
+	 * 调一次才发现走不通，要多花一轮。整个进程只跑这一件事，表在会话里也就一直不变，不碰前缀缓存。
+	 * 先取一份再绑：绑上之后 `builtinTools` 读的就是这里给的表。
+	 */
+	const tools = builtinTools().filter((tool) => tool.name !== "monitor");
+	// oxlint-disable-next-line react-hooks/rules-of-hooks -- `useToolRegistry` binds the built-in tool list; it is not a React hook
+	useToolRegistry({ all: () => tools });
 
 	let status: RunStatus = "error";
 	let error: string | undefined;

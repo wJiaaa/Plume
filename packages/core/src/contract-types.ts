@@ -36,6 +36,7 @@ export type {
 	RegistryEntry,
 	ScreenshotSettings,
 	SessionMeta,
+	SessionWakeup,
 	Settings,
 	Skill,
 	SkillCandidate,

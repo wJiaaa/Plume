@@ -93,6 +93,17 @@ test("需要授权的操作没人能批，当场拒绝而不是等到超时", as
 	assert.ok(Date.now() - started < 10_000, "没有等授权超时");
 });
 
+test("命令行不提供 monitor：第一次闲下来就处置会话，它刚起就会被杀，输出一条也送不到", async () => {
+	const offered: string[][] = [];
+	const done = await runOnce({
+		prompt: "盯着日志", cwd: workspace, settings: SETTINGS, store: kernel.storage, log: () => {},
+		streamFn: async (context) => { offered.push(context.tools.map((tool) => tool.name)); return says([{ type: "text", text: "好。" }]); },
+	});
+	assert.equal(done.status, "done");
+	assert.ok(offered[0]?.includes("bash"), "bash 照常有");
+	assert.ok(!offered[0]?.includes("monitor"), "工具表里没有 monitor");
+});
+
 test("/skill 名 参数 按桌面端输入框的方式展开", async () => {
 	const { result, seen } = run("/demo 帮我整理", () => says([{ type: "text", text: "整理好了。" }]));
 	assert.equal((await result).answer, "整理好了。");

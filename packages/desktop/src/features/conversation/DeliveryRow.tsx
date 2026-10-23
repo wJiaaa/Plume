@@ -11,10 +11,11 @@
  *
  * 后台命令结束走的是同一条送达，画成和工具行同一个骨架的一行：它是命令，不是哪个智能体。
  * 从建议卡片上开出来、要求交回的会话也一样：画成「来自新会话 · 标题」，点了去那个会话。
+ * 模型自己安排的定时唤醒到点了也是：「定时唤醒 · 理由」，说明接下来这一轮是谁叫起来的。
  */
 
 import type { DeliveredReport } from "@plume/core";
-import { ChevronRight, CircleAlert, SquarePen, Terminal } from "../../ui/icons/index.ts";
+import { AlarmClock, ChevronRight, CircleAlert, SquarePen, Terminal } from "../../ui/icons/index.ts";
 import { useI18n } from "../../i18n/index.ts";
 import { translate } from "../../i18n/translate.ts";
 import { useAgentAvatars } from "../../store/agent-avatars.ts";
@@ -44,14 +45,37 @@ export function DeliveryRow({ delivery }: { delivery: DeliveredReport[] }) {
 	const jobs = delivery.filter((report) => report.kind === "job");
 	const sessions = delivery.filter((report) => report.kind === "session");
 	const agents = delivery.filter((report) => report.kind === undefined);
+	const wakeups = delivery.filter((report) => report.kind === "wakeup");
 	return (
 		<>
+			{wakeups.map((report) => (
+				<WakeupDelivery key={report.id} report={report} />
+			))}
 			{agents.length > 0 && <AgentDelivery delivery={agents} />}
 			{jobs.length > 0 && <JobDelivery jobs={jobs} />}
 			{sessions.map((report) => (
 				<SessionDelivery key={report.id} report={report} />
 			))}
 		</>
+	);
+}
+
+/**
+ * 定时唤醒到点了：一行题注，不能点——要做的事模型这一轮自己会说，还在等的那些在环境卡片里。
+ * cron 表达式只在悬停时出现，和后台命令那一行的完整命令一样。
+ */
+function WakeupDelivery({ report }: { report: DeliveredReport }) {
+	const { t } = useI18n();
+	return (
+		<div data-delivery-row="" data-delivery-kind="wakeup">
+			<FlowRow
+				icon={<AlarmClock size={13} strokeWidth={1.8} />}
+				title={<span className="font-normal">{t("wakeups.fired")}</span>}
+				summary={report.description}
+				label={report.description}
+				data-ly-tip={report.command}
+			/>
+		</div>
 	);
 }
 
@@ -98,11 +122,18 @@ function JobDelivery({ jobs }: { jobs: DeliveredReport[] }) {
 	 * 第一版是「后台命令已结束 · sleep 2; echo …; exit 1」：成败只能从一个灰色小图标去猜，而那串
 	 * shell 不是写给人读的——看的人说「看不懂」。
 	 */
-	const title = one ? t(one.status === "failed" ? "jobReturn.failed" : "jobReturn.done") : t("jobReturn.many", { n: jobs.length });
+	const title = one
+		? one.monitor
+			? one.monitor.stopped ? t("jobReturn.monitorStopped") : t("jobReturn.monitorLines", { n: one.monitor.lines })
+			: t(one.status === "failed" ? "jobReturn.failed" : "jobReturn.done")
+		// `monitor` 的一批是还在跑的命令送来的输出，「N 个后台命令结束」对它不成立。
+		: t(jobs.some((job) => job.monitor) ? "jobReturn.manyUpdates" : "jobReturn.many", { n: jobs.length });
 	const trailing = one
-		? one.status === "failed"
-			? one.exitCode == null ? t("jobReturn.killed") : t("jobReturn.exitCode", { code: one.exitCode })
-			: undefined
+		? one.monitor?.stopped
+			? t(one.monitor.stopped === "idle" ? "jobReturn.monitorIdle" : "jobReturn.monitorMaxEvents")
+			: one.status === "failed"
+				? one.exitCode == null ? t("jobReturn.killed") : t("jobReturn.exitCode", { code: one.exitCode })
+				: undefined
 		: failed > 0 ? t("jobReturn.failedCount", { n: failed }) : undefined;
 	return (
 		<div data-delivery-row="" data-delivery-kind="job">

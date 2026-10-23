@@ -309,10 +309,11 @@ async function assembleTurn(input: TurnInputs, hooks: TurnHooks): Promise<{ conf
 	/*
 	 * 计划模式的开关在状态图里，每轮开始按会话元数据写入。工具一律包一层：包的只是 `execute`、
 	 * 定义逐字节不变，开关是运行时读的——跑到一半打开、批准计划关掉，都在下一次调用就生效。
+	 * 审阅会话借同一层常拒写文件，见 `planModeTools`。
 	 */
 	const planMode = input.planMode === true;
 	can.state.set(PLAN_MODE_KEY, planMode);
-	const tools = planModeTools(bare, can.state);
+	const tools = planModeTools(bare, can.state, log.meta.spawnedFrom?.review === true);
 
 	/*
 	 * Where `agent://` finds the sub-agents this session dispatched.

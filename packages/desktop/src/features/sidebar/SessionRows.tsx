@@ -61,11 +61,16 @@ function Thread({ session, project, spawned, actions }: {
 	/*
 	 * 打开的会话不能藏在收起的一组里：在父会话里点建议新开一条、从命令面板跳过去，都会落到这里，
 	 * 侧边栏上却找不到亮着的那一行。真的展开而不是临时露出来，否则切走以后它又自己收回去。
+	 *
+	 * 只在「打开的是哪一条」变了的时候管，收起这件事本身不触发它。从前 `folded` 也在依赖里：人就在
+	 * 后续会话里点收起，同一帧就被这里展开回去，箭头闪一下、行都还在，像按钮坏了。那是人自己要藏的，
+	 * 不和他争；下一次切到被收起的那条，照样展开。
 	 */
-	const holdsOpen = useApp((s) => followUps.some((child) => child.id === (s.pendingSessionId ?? s.activeSessionId)));
+	const active = useApp((s) => s.pendingSessionId ?? s.activeSessionId);
+	const holdsOpen = followUps.some((child) => child.id === active);
 	useEffect(() => {
-		if (folded && holdsOpen) setFolded(session.id, false);
-	}, [folded, holdsOpen, session.id, setFolded]);
+		if (holdsOpen && useFoldedThreads.getState().folded.includes(session.id)) setFolded(session.id, false);
+	}, [active, holdsOpen, session.id, setFolded]);
 
 	return (
 		<div className="flex flex-col">

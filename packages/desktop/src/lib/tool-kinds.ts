@@ -60,6 +60,7 @@ const KIND: Record<string, MessageKey> = {
 	read: "tools.read",
 	bash: "tools.bash",
 	bash_output: "tools.output",
+	monitor: "tools.monitor",
 	glob: "tools.find",
 	grep: "tools.grep",
 	ls: "tools.ls",
@@ -86,6 +87,7 @@ const KIND: Record<string, MessageKey> = {
 	// The desktop's session-level tools (`electron/session/session-ops.ts`): the card says the rest, the row says what happened.
 	spawn_session: "tools.spawnSession",
 	archive_session: "tools.archiveSession",
+	review_session: "tools.reviewSession",
 	/*
 	 * 内置浏览器那几个（`electron/browser/browser-tools.ts`）。它们没有 `summarize`，core 给的摘要就是工具名本身，
 	 * 不在表里时一行读作「browser_act」。
@@ -100,6 +102,11 @@ const KIND: Record<string, MessageKey> = {
 	ask_session: "tools.askSession",
 	notify_session: "tools.notifySession",
 	wait_for_session: "tools.waitForSession",
+	// 模型给这个对话安排的定时唤醒（core 的 `wakeup-tools.ts`），见环境卡片「定时唤醒」那一节。
+	schedule_wakeup: "tools.scheduleWakeup",
+	cron_create: "tools.cronCreate",
+	cron_list: "tools.cronList",
+	cron_delete: "tools.cronDelete",
 };
 
 /**
@@ -120,6 +127,11 @@ const TIMES = new Set<MessageKey>(["tools.browserAct"]);
 const ACTIVITY: [RegExp, string, (match: RegExpMatchArray) => string][] = [
 	[/^Suggest session ?(.*)$/, "spawn_session", (m) => m[1]],
 	[/^Archive session$/, "archive_session", () => ""],
+	[/^Review session ?(.*)$/, "review_session", (m) => m[1]],
+	[/^Schedule wakeup ?(.*)$/, "schedule_wakeup", (m) => m[1]],
+	[/^Create cron ?(.*)$/, "cron_create", (m) => m[1]],
+	[/^List cron jobs$/, "cron_list", () => ""],
+	[/^Delete cron ?(.*)$/, "cron_delete", (m) => m[1]],
 	[/^Read (.+)$/, "read", (m) => baseName(m[1])],
 	[/^Write (.+)$/, "write", (m) => baseName(m[1])],
 	[/^Edit (.+)$/, "edit", (m) => baseName(m[1])],
@@ -177,6 +189,7 @@ const CATEGORY: Record<string, string> = {
 	symbol: "explore",
 	lsp: "explore",
 	bash_output: "terminal",
+	monitor: "terminal",
 	web_fetch: "web",
 	web_search: "web",
 };

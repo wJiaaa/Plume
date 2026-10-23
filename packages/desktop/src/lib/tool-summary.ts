@@ -40,7 +40,9 @@ export function summarizeToolCall(name: string, args: Record<string, unknown>): 
 			const term = str("query") ?? str("pattern") ?? str("search");
 			return term ? `Search ${term}` : "Search the web";
 		}
-		case "bash": {
+		// `monitor` 和 core 的 summarize 同一句：模型写的说明，没写就是命令第一行。
+		case "bash":
+		case "monitor": {
 			const cmd = str("description") ?? (str("command") ?? "bash").split("\n")[0].slice(0, 80);
 			return cmd || "Run bash command";
 		}
@@ -66,11 +68,22 @@ export function summarizeToolCall(name: string, args: Record<string, unknown>): 
 			const prompt = str("prompt")?.trim().split("\n")[0];
 			return prompt ? `Generate image ${prompt.slice(0, 80)}` : "Generate image";
 		}
-		// The main process's own words for the two session-level tools (`electron/session/session-ops.ts`), which `describeActivity` reads.
+		// The main process's own words for the session-level tools (`electron/session/session-ops.ts`, `review-session.ts`), which `describeActivity` reads.
 		case "spawn_session":
 			return `Suggest session ${(str("title") ?? "").trim()}`.trim();
 		case "archive_session":
 			return "Archive session";
+		case "review_session":
+			return `Review session ${(str("target") ?? "").trim()}`.trim();
+		// 和 core 的 `wakeup-tools.ts` 里各自的 `summarize` 同一句，`describeActivity` 认的是它。
+		case "schedule_wakeup":
+			return `Schedule wakeup ${(str("reason") ?? "").trim()}`.trim();
+		case "cron_create":
+			return `Create cron ${(str("cron") ?? "").trim()}`.trim();
+		case "cron_list":
+			return "List cron jobs";
+		case "cron_delete":
+			return `Delete cron ${(str("id") ?? "").trim()}`.trim();
 		default:
 			// MCP tools are named mcp__<server>__<tool>; show the readable half.
 			if (name.startsWith("mcp__")) {

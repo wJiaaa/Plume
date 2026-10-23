@@ -9,7 +9,7 @@
  * puts them together, in the order `window.plume` has always had them.
  */
 
-import type { AgentApi, DeliveryApi, ServicesApi, SideChatApi, SubAgentsApi, TasksApi } from "./agent.ts";
+import type { AgentApi, DeliveryApi, ServicesApi, SideChatApi, SubAgentsApi, TasksApi, WakeupsApi } from "./agent.ts";
 import type { AgentDefinitionsApi, CapabilitiesApi, CommandsApi, HooksApi, PluginsApi, SkillsApi } from "./extensions.ts";
 import type { ClipboardApi, FilesApi, WorkspaceApi } from "./files.ts";
 import type { ForgeApi } from "./forge.ts";
@@ -67,6 +67,7 @@ export interface PlumeApi {
 	subAgents: SubAgentsApi;
 	sideChat: SideChatApi;
 	tasks: TasksApi;
+	wakeups: WakeupsApi;
 	files: FilesApi;
 	clipboard: ClipboardApi;
 	terminal: TerminalApi;

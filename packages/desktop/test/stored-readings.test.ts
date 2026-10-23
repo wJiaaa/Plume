@@ -13,6 +13,7 @@ const fixtureUrl = `data:text/javascript,${encodeURIComponent(`
 export const handlers = new Map();
 export const started = [];
 export const ipcMain = { handle: (name, handler) => handlers.set(name, handler) };
+export const app = {}, BrowserWindow = {}, dialog = {};
 export const sessions = new Map();
 export const ensureLiveSession = async (id) => { started.push(id); return null; };
 const unused = () => { throw new Error("not part of this test"); };

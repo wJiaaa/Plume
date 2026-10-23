@@ -1,9 +1,9 @@
 /**
  * Results that finish in the background, carried back into the conversation.
  *
- * Three sources: sub-agents dispatched in the background (`detached-dispatches.ts`), background
- * commands that ended (`tools/background-jobs.ts`), and conversations started from this one's
- * suggestion that were asked to report back (`FinishedSession`). All are gathered for a moment and
+ * Four sources: sub-agents dispatched in the background (`detached-dispatches.ts`), background
+ * commands that ended (`tools/background-jobs.ts`), new output from a `monitor` (`tools/monitor.ts`),
+ * and conversations started from this one's suggestion that were asked to report back (`FinishedSession`). All are gathered for a moment and
  * handed to the session as one message — mid-turn it is spliced in, idle it starts a turn. Requests
  * from other sessions travel the same way but never in that message: see `flush`. (Notices from other
  * sessions do not come here at all: they never start a turn, see `AgentSession.receive`.)
@@ -17,7 +17,7 @@ import type { SettledDispatch } from "../sub-agent/detached-dispatches.ts";
 import { deliveryMessage, type FinishedJob, type FinishedSession } from "./delivery-message.ts";
 import type { SessionActivity } from "./session-activity.ts";
 import type { SubAgentSummary } from "../../types/sub-agent.ts";
-import type { BackgroundJob, BackgroundJobs } from "../../tools/background-jobs.ts";
+import type { BackgroundJob, BackgroundJobs, MonitorEvents } from "../../tools/background-jobs.ts";
 import { readJob } from "../../tools/bash.ts";
 import type { Message, PeerLetter } from "../../types.ts";
 import { bySender, peerMessage } from "./peer-letters.ts";
@@ -48,6 +48,7 @@ export interface DeliveryDeps {
 export class SessionDeliveries {
 	private reports: SettledDispatch[] = [];
 	private finishedJobs: BackgroundJob[] = [];
+	private monitorEvents: MonitorEvents[] = [];
 	private finishedSessions: FinishedSession[] = [];
 	/** 其他会话的请求：排到收件方这一轮之后，每个发件会话单独一轮。 */
 	private requests: PeerLetter[] = [];
@@ -74,6 +75,12 @@ export class SessionDeliveries {
 		this.schedule();
 	}
 
+	/** A monitor has new lines. It already spaced and capped them; this only gathers them with the rest. */
+	monitored(events: MonitorEvents): void {
+		this.monitorEvents.push(events);
+		this.schedule();
+	}
+
 	/** 从这里的建议开出来的会话跑完了第一轮，要交回来。 */
 	sessionFinished(session: FinishedSession): void {
 		this.finishedSessions.push(session);
@@ -88,7 +95,7 @@ export class SessionDeliveries {
 
 	/** 没有攒着待送的东西。会话判断空闲时要看它：攒着的那一条四百毫秒后就会开一轮。 */
 	get empty(): boolean {
-		return this.timer === null && !this.flushing && this.reports.length === 0 && this.finishedJobs.length === 0 && this.finishedSessions.length === 0 && this.requests.length === 0;
+		return this.timer === null && !this.flushing && this.reports.length === 0 && this.finishedJobs.length === 0 && this.monitorEvents.length === 0 && this.finishedSessions.length === 0 && this.requests.length === 0;
 	}
 
 	/**
@@ -100,14 +107,24 @@ export class SessionDeliveries {
 	 * commands are not stopped (the stop button is for this conversation, not for the dev server
 	 * the person had it start), but they no longer wake the session when they end either: if the
 	 * model needs the result next turn, it reads it itself with `bash_output`.
+	 *
+	 * Monitors are the exception either way. The stop button ends them (`BackgroundJobs.stopMonitors`)
+	 * and passes `monitors: true`, so what they had gathered goes with them. A message that interrupts
+	 * the turn leaves them running, and their gathered lines — already marked read — still go out. So
+	 * does the end of one that exited on its own just before: `mute` leaves monitors alone, and that
+	 * report carries its exit status and the lines after its last batch, which nothing else will show.
+	 * Other background commands that ended meanwhile are still dropped, the same as the running ones
+	 * `mute` just silenced.
 	 */
-	clear(): void {
+	clear({ monitors }: { monitors: boolean }): void {
 		this.reports.length = 0;
-		this.finishedJobs.length = 0;
+		this.finishedJobs = monitors ? [] : this.finishedJobs.filter((job) => job.kind === "monitor");
+		if (monitors) this.monitorEvents.length = 0;
 		this.finishedSessions.length = 0;
 		this.requests.length = 0;
 		if (this.timer) clearTimeout(this.timer);
 		this.timer = null;
+		if (this.monitorEvents.length > 0 || this.finishedJobs.length > 0) this.schedule();
 	}
 
 	/**
@@ -116,6 +133,12 @@ export class SessionDeliveries {
 	 */
 	keepOnly(dispatched: ReadonlySet<string>): void {
 		this.reports = this.reports.filter((report) => dispatched.has(report.id));
+	}
+
+	/** Drop what is held for these background jobs; see `stopCutWatches` in `session-rewind.ts`. */
+	forgetJobs(ids: ReadonlySet<string>): void {
+		this.finishedJobs = this.finishedJobs.filter((job) => !ids.has(job.id));
+		this.monitorEvents = this.monitorEvents.filter((events) => !ids.has(events.id));
 	}
 
 	private schedule(): void {
@@ -142,10 +165,11 @@ export class SessionDeliveries {
 		const reports = settled
 			.map((report) => ({ report, summary: this.deps.detail(report.id) }))
 			.filter(({ report, summary }) => summary?.status !== "aborted" && !report.answer?.stoppedByUser);
+		const monitors = this.takeMonitorEvents();
 		const jobs = this.takeFinishedJobs();
 		const sessions = this.finishedSessions.splice(0, this.finishedSessions.length);
 		const requests = this.requests.splice(0, this.requests.length);
-		if (reports.length === 0 && jobs.length === 0 && sessions.length === 0 && requests.length === 0) return;
+		if (reports.length === 0 && jobs.length === 0 && monitors.length === 0 && sessions.length === 0 && requests.length === 0) return;
 		const { activity } = this.deps;
 		// A manual compaction is rewriting the history: wait until it has written the boundary
 		// before coming in, the same as a message from the person.
@@ -162,12 +186,29 @@ export class SessionDeliveries {
 		 * 请求不并进后台结果，不同会话的请求也不并在一起：发件方等回来的是处理它那封信的那一轮最后
 		 * 说的话，几家并成一轮，每一家拿到的都是同一段回答。
 		 */
-		const background = reports.length + jobs.length + sessions.length;
+		const background = reports.length + jobs.length + monitors.length + sessions.length;
 		const parts: { message: Message; deliver?: "followUp" }[] = [
-			...(background > 0 ? [{ message: deliveryMessage(reports, jobs, reports.length > 0 ? this.deps.outstanding() : [], sessions) }] : []),
+			...(background > 0 ? [{ message: deliveryMessage(reports, jobs, reports.length > 0 ? this.deps.outstanding() : [], sessions, monitors) }] : []),
 			...bySender(requests).map((group) => ({ message: peerMessage(group), deliver: "followUp" as const })),
 		];
 		await Promise.all(parts.map(({ message, deliver }) => this.deps.submit(message, deliver)));
+	}
+
+	/**
+	 * The gathered monitor batches, less those of a monitor stopped meanwhile from the services panel
+	 * or with `bash_output`. Stopped, not quiet: a monitor whose end the model has already read with
+	 * `bash_output` is quiet, yet its last batch is lines that read did not show.
+	 *
+	 * A monitor that stopped itself is quiet too, but all of its batches stay: its own stop came right
+	 * after its last batch, which is what tells the model it ended, and a batch sent just before that
+	 * one is still waiting here when a burst of output fills `max_events` within the gathering window.
+	 * Those lines were marked read when they were sent, so dropping them here loses them for good.
+	 */
+	private takeMonitorEvents(): MonitorEvents[] {
+		const registry = this.deps.jobs();
+		const taken = this.monitorEvents.splice(0, this.monitorEvents.length);
+		const ended = new Set(taken.filter((events) => events.stopped !== undefined).map((events) => events.id));
+		return taken.filter((events) => ended.has(events.id) || !registry.wasStopped(events.id));
 	}
 
 	/**

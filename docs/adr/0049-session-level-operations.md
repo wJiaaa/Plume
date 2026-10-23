@@ -2,6 +2,9 @@
 
 - 状态：已采纳
 - 日期：2026-10-14（移植自上游 kittors/Lyra main 的 ADR-0039，v0.9.27 之后）；2026-10-15 修订第 8 条，加第 9、10 条
+- 现状（2026-10-23）：第 9 条里送回那一步改在第一轮结束、会话闲下来（后台子代理都送回了）之后；撕条子仍在第一轮
+  结束时。ADR-0051 之后派了子代理的那一轮当场收尾，在那一刻送回的是「已派出」那句话，结论再也送不回来。见
+  [ADR-0058](0058-review-in-its-own-session.md)
 - 相关：desktop `electron/session/session-ops.ts`（两件工具与 `archiveAfterTurn`）、`shared/session-suggestion.ts`、
   `electron/session/session-hub.ts`（注入与观察）、`electron/session/prompt-input.ts`、`electron/session/create-session.ts`、
   `src/store/turn-slice.ts`（`startSession`）、`src/store/session-suggestions.ts`、

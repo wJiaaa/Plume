@@ -24,7 +24,11 @@ import {
 import { grantArtifactRead } from "../session/readable-artifacts.ts";
 import { exportTrajectory, type TrajectoryExportFormat } from "../session/trajectory-export.ts";
 import { readTrajectoryChanges } from "../session/trajectory-changes.ts";
-import { ipcMain } from "electron";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { conversationMarkdown, markdownFileName } from "../session/conversation-markdown.ts";
+import { nativeText, nativeTranslator } from "../i18n.ts";
 import { resolveSessionApproval } from "../session/approval-response.ts";
 import { revertPlan } from "../session/revert-files.ts";
 import type { AgentCapabilities, PlumeApi } from "@plume/contract";
@@ -66,6 +70,35 @@ export function registerSessionsIpc({
 }: SessionsIpcDeps): void {
 	const store = readStore();
 	ipcMain.handle("sessions:exportTrajectory", (_event, sessionId: string, format: TrajectoryExportFormat, selection?: { id?: string; correlationId?: string }) => exportTrajectory(store, sessionId, format, selection, sessions.get(sessionId)?.running ?? false));
+
+	/*
+	 * 路径只从这里的保存对话框来，窗口只给一个会话 id：和导出原始记录一样，渲染进程既不指定写到哪，
+	 * 也不递内容。正在跑的会话照样能导出，读到的是已经落盘的部分——还在流的那条回复不在消息记录里。
+	 */
+	ipcMain.handle("sessions:exportMarkdown", async (event, sessionId: string): Promise<string | null> => {
+		const meta = await store.get(sessionId);
+		if (!meta) throw new Error(nativeText("sessions.notFound"));
+		const settings = readSettings();
+		const t = nativeTranslator(settings.uiLocale, app.getLocale());
+		const options = {
+			title: t("export.dialogTitle"),
+			defaultPath: join(app.getPath("downloads"), markdownFileName(meta.title, t("export.untitled"))),
+			filters: [{ name: "Markdown", extensions: ["md"] }],
+		};
+		const window = BrowserWindow.fromWebContents(event.sender);
+		const picked = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options);
+		if (picked.canceled || !picked.filePath) return null;
+		// 对话框开着的时候会话可能又写了几条，关上之后再读。
+		const loaded = await store.load(sessionId, { display: true });
+		if (!loaded) throw new Error(nativeText("sessions.notFound"));
+		const modelLabel = (provider: string, model: string) => {
+			const entry = settings.providers.find((each) => each.id === provider);
+			return `${entry?.name ?? provider}/${entry?.models.find((each) => each.modelId === model)?.name ?? model}`;
+		};
+		const text = conversationMarkdown({ title: loaded.meta.title, cwd: loaded.meta.cwd, messages: loaded.messages, compactions: loaded.compactions, exportedAt: new Date(), modelLabel }, t);
+		await writeFile(picked.filePath, text, "utf8");
+		return picked.filePath;
+	});
 
 	ipcMain.handle("sessions:list", async () => store.listSessions());
 

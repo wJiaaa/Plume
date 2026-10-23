@@ -17,7 +17,7 @@ import { drawnAt } from "../../store/message-event.ts";
 import type { Hiccup } from "../../lib/hiccup.ts";
 import { intact } from "../../lib/transcript.ts";
 import { previewPages, samePage, type PageState } from "./preview-pages.ts";
-import { SPAWN_SESSION_TOOL } from "../../../shared/session-suggestion.ts";
+import { REVIEW_SESSION_TOOL, SPAWN_SESSION_TOOL } from "../../../shared/session-suggestion.ts";
 import { newClock, opensTurn, resumesTurn, saw, settled, snapshot, type TurnStats } from "./turns.ts";
 
 type ToolCallBlock = Extract<AssistantContent, { type: "toolCall" }>;
@@ -295,7 +295,8 @@ export function runs(rawMessages: Message[], commands: CommandRun[] = [], hiccup
 	const pages = previewPages(messages, (at) => opensTurn(messages[at]) && !resumesTurn(messages, at));
 	const shows = (call: Call) => {
 		// 建议另开的会话是等人点「开始」的卡片，折进过程就没人点了；参数被退回的没有卡片，照常是活。
-		if (call.block.name === SPAWN_SESSION_TOOL) return !failed.has(call.block.id);
+		// 交出去的审阅也一样站出来：报告回来之前，那一行是去看审阅进度的唯一入口。
+		if (call.block.name === SPAWN_SESSION_TOOL || call.block.name === REVIEW_SESSION_TOOL) return !failed.has(call.block.id);
 		if (call.block.name !== "preview" || failed.has(call.block.id)) return false;
 		if (call.page) return !("publishing" in call.page);
 		return call.block.arguments?.check !== true;

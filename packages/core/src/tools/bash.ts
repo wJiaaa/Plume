@@ -353,26 +353,9 @@ export const bashTool: Tool<BashArgs> = {
 			return errorResult(error instanceof Error ? error.message : String(error));
 		}
 
-		/*
-		 * What this command reads, judged the way the file tools judge it.
-		 *
-		 * Above the read-only table on purpose. That table decides whether a command is *changing*
-		 * anything, and it answers "no" for `cat` whatever `cat` is pointed at — which made this
-		 * tool the way around `read`'s workspace boundary and around the credential rule both.
-		 * Asking here means one answer to "may this be read", wherever the reading starts.
-		 */
-		const refusedRead = await authorizeCommandReads(args.command, ctx);
-		if (refusedRead) return errorResult(refusedRead);
-
-		if (ctx.requestApproval && !args.escalate && !isReadOnlyCommand(args.command)) {
-			const decision = await ctx.requestApproval({
-				kind: "bash",
-				title: args.description ?? "Run shell command",
-				detail: args.command,
-				subject: args.command,
-			});
-			if (decision !== "once" && decision !== "always") return declinedResult("The user rejected this command.");
-		}
+		// An escalated command was asked about above, with the wider mode named; once is enough.
+		const refused = await authorizeCommand(args.command, args.description, ctx, !args.escalate);
+		if (refused) return refused;
 
 		/*
 		 * The shell the model was told it writes for: the session's mode picks it, not the mode this
@@ -580,6 +563,40 @@ export const bashTool: Tool<BashArgs> = {
 };
 
 /**
+ * Whether a command may run: what it reads, and — unless it provably writes nothing — the person's
+ * say. `undefined` is yes; anything else is the result to return instead of running it.
+ *
+ * Shared with `monitor`, which runs a shell command too and must not be a way around this. The
+ * request's `kind` is `bash` for both, and that is what the approval policy dispatches on: in `auto`
+ * it is `assessCommand` that judges the command (`approval-policy.ts`), whichever tool sent it.
+ *
+ * `ask` is false only for an escalated `bash`, which was already asked about with the wider mode named.
+ */
+export async function authorizeCommand(command: string, title: string | undefined, ctx: ToolContext, ask = true): Promise<ToolResult | undefined> {
+	/*
+	 * What this command reads, judged the way the file tools judge it.
+	 *
+	 * Above the read-only table on purpose. That table decides whether a command is *changing*
+	 * anything, and it answers "no" for `cat` whatever `cat` is pointed at — which made this
+	 * tool the way around `read`'s workspace boundary and around the credential rule both.
+	 * Asking here means one answer to "may this be read", wherever the reading starts.
+	 */
+	const refusedRead = await authorizeCommandReads(command, ctx);
+	if (refusedRead) return errorResult(refusedRead);
+
+	if (ask && ctx.requestApproval && !isReadOnlyCommand(command)) {
+		const decision = await ctx.requestApproval({
+			kind: "bash",
+			title: title ?? "Run shell command",
+			detail: command,
+			subject: command,
+		});
+		if (decision !== "once" && decision !== "always") return declinedResult("The user rejected this command.");
+	}
+	return undefined;
+}
+
+/**
  * Keep a process that is still running as a background job of this session.
  *
  * For a command that outlived the default timeout, and for what a finished command left running
@@ -665,21 +682,31 @@ function track(
 	});
 }
 
-async function startBackground(args: BashArgs, ctx: ToolContext, shell: CommandShell): Promise<ToolResult> {
+/**
+ * Start a command as a background job of this session: sandboxed, logged, readable with
+ * `bash_output`, listed and stoppable in the services panel. `monitor` starts its jobs here too, so
+ * it differs from `run_in_background` only in what it does with the output, not in how it runs.
+ */
+export async function launchJob(
+	args: { command: string; description?: string },
+	ctx: ToolContext,
+	shell: CommandShell,
+	kind?: BackgroundJob["kind"],
+): Promise<{ job: BackgroundJob; process: SandboxProcess } | { error: string }> {
 	const outputLog = await createOutputLog(ctx.scratchDir);
-	const id = randomUUID();
 	let child: SandboxProcess;
 	try {
 		child = getSandbox().run(args.command, { cwd: ctx.cwd, mode: ctx.sandboxMode, shell });
 	} catch (error) {
 		await outputLog?.close();
-		return errorResult(`Failed to start command: ${error instanceof Error ? error.message : String(error)}`);
+		return { error: `Failed to start command: ${error instanceof Error ? error.message : String(error)}` };
 	}
 
 	const job: BackgroundJob = {
-		id,
+		id: randomUUID(),
 		command: args.command,
 		...(args.description ? { description: args.description } : {}),
+		...(kind ? { kind } : {}),
 		startedAt: Date.now(),
 		exitCode: null,
 		output: "",
@@ -690,9 +717,16 @@ async function startBackground(args: BashArgs, ctx: ToolContext, shell: CommandS
 	const jobs = backgroundJobs(ctx.state);
 	track(job, child, jobs, outputLog);
 	jobs.add(job, child);
+	return { job, process: child };
+}
+
+async function startBackground(args: BashArgs, ctx: ToolContext, shell: CommandShell): Promise<ToolResult> {
+	const started = await launchJob(args, ctx, shell);
+	if ("error" in started) return errorResult(started.error);
+	const { id, outputPath } = started.job;
 	return {
 		content: [{ type: "text", text: `Started background job ${id}. ${followUp(ctx, id)}` }],
-		details: { kind: "bash_background", id, command: args.command, outputPath: outputLog?.path },
+		details: { kind: "bash_background", id, command: args.command, outputPath },
 	};
 }
 
@@ -781,10 +815,28 @@ export function readJob(job: BackgroundJob): { status: string; text: string } {
 	if (stream) {
 		text = stream.unread.render(MODEL_OUTPUT_CHARS);
 		hint = fullLogHint(stream.unread, job.outputPath);
-		stream.unread = new OutputBuffer(stream.all.end);
-		stream.readAt = Date.now();
+		markJobRead(job);
 	}
 	return { status, text: `${text || "(no new output)"}${hint}` };
+}
+
+/**
+ * The model has been shown everything this job printed so far, other than through `bash_output`:
+ * `monitor` delivered it. A later `bash_output` then starts after it instead of sending it again.
+ *
+ * `unsent` is the end of the output that was not shown — a line `monitor` has not seen finish, or
+ * the lines after the one that filled its `max_events` — and stays unread, so the report of how the
+ * command ended does not start halfway through a line. It begins at the start of a line or holds no
+ * line break, which is what lets its position be counted back from the end.
+ */
+export function markJobRead(job: BackgroundJob, unsent = ""): void {
+	const stream = streams.get(job);
+	if (!stream) return;
+	const end = stream.all.end;
+	const breaks = unsent.split("\n").length - 1;
+	stream.unread = new OutputBuffer(breaks === 0 ? { line: end.line, column: end.column - unsent.length } : { line: end.line - breaks, column: 0 });
+	stream.unread.append(unsent);
+	stream.readAt = Date.now();
 }
 
 /**

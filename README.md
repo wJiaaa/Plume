@@ -78,9 +78,9 @@ Plume does not ship a model, so the first launch cannot send a message. Open Set
 ## What it does
 
 - **Your models.** Any number of providers, any number of models on each, over **Responses** (`/v1/responses`), **Anthropic Messages** (`/v1/messages`) or **Chat Completions** (`/v1/chat/completions`).
-- **20 built-in tools**, in the groups the code uses:
+- **21 built-in tools**, in the groups the code uses:
   - Files and code: `read` `write` `edit` `ls` `glob` `grep` `symbol` `lsp`
-  - Commands: `bash` `bash_output`
+  - Commands: `bash` `bash_output` `monitor`
   - Session and memory: `todo_write` `task` `skill` `recall` `learn` `ask_user`
   - Network and preview: `web_fetch` `web_search` `preview` `image_generate`
 - **Skills.** `SKILL.md` plus YAML frontmatter. Only the name and description enter the system prompt. The body is injected when the model calls `skill`, so dozens of skills do not burn the context window.

@@ -36,7 +36,7 @@
 ```
 
 - `type: "command"` 交给 shell 执行，可写 `shell` 指定 shell、`async: true` 后台运行不等结果、`timeout`（秒）。`type: "process"` 直接起进程，`args` 是参数数组，超时写 `timeoutMs`（毫秒）。默认超时 60 秒。
-- **匹配器**：留空或 `*` 匹配全部；只含字母、数字、`_` 和 `|` 时按名字精确匹配，多个用 `|` 隔开（如 `Bash|Edit`，不要用逗号）；其他写法按正则，例如 `mcp__.*` 匹配所有 MCP 工具。工具名大小写两种都认：`bash` 和 `Bash`、`edit` 和 `Edit` 都行。
+- **匹配器**：留空或 `*` 匹配全部；只含字母、数字、`_` 和 `|` 时按名字精确匹配，多个用 `|` 隔开（如 `Bash|Edit`，不要用逗号）；其他写法按正则，例如 `mcp__.*` 匹配所有 MCP 工具。工具名大小写两种都认：`bash` 和 `Bash`、`edit` 和 `Edit` 都行。`Bash` 也匹配 `monitor`：它跑的同样是一条 shell 命令，`tool_input.command` 和 bash 同形，要区分就看 `tool_name`，那里照实写 `monitor`。
 - **输入**：事件内容以 JSON 从标准输入送进去（如 `tool_name`、`tool_input`）。环境变量有 `CLAUDE_PROJECT_DIR`、`PLUME_PROJECT_DIR`、`CLAUDE_SESSION_ID`、`PLUME_SESSION_ID`。
 - **输出**：退出码 0 时读标准输出里的 JSON（`decision`、`reason`、`additionalContext`、`hookSpecificOutput.permissionDecision` 等），不是 JSON 就忽略；是 JSON 但带了不认识的顶层字段算失败。退出码 2 表示阻止，原因取标准错误。其他退出码记为失败，但不阻止。
 - 多个钩子给出权限结论时取最严的：deny > ask > allow。命令要到沙箱外运行（提权）时，钩子的 allow 不算数，仍要你在卡片上批准；deny 照常生效。

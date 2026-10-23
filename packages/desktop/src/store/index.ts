@@ -411,7 +411,7 @@ export interface AppState extends QueueSlice {
 	commandRuns: CommandRun[];
 	/** 钩子的执行记录；`at` 是它发生时转录里的消息数，据此归到那一轮。 */
 	hookRuns: HookRun[];
-  notices: { id: string; level: "info" | "warn" | "error"; message: string; sessionId?: string; extensions?: { tab: ExtensionsTab; project?: string } }[];
+  notices: { id: string; level: "info" | "warn" | "error"; message: string; sessionId?: string; reveal?: string; extensions?: { tab: ExtensionsTab; project?: string } }[];
   capabilities: AgentCapabilities | null;
 
   bootstrap(): Promise<void>;
@@ -591,10 +591,11 @@ export interface AppState extends QueueSlice {
   setPlanMode(on: boolean, sessionId?: string | null): Promise<void>;
   dismissNotice(id: string): void;
   /**
+   * `reveal` 是一个刚写到磁盘上的文件：提示上多一个按钮，在访达 / 资源管理器里把它指出来。
    * `extensions` 是插件页的一栏：提示说的事要去那儿处理（后台总结出的技能候选），多一个按钮直达。
    * 带 `project` 就切到那个项目的范围——候选按项目列，停在「用户」范围上什么也看不到。
    */
-  notify(message: string, level?: "info" | "warn" | "error", sessionId?: string, options?: { extensions?: { tab: ExtensionsTab; project?: string } }): void;
+  notify(message: string, level?: "info" | "warn" | "error", sessionId?: string, options?: { reveal?: string; extensions?: { tab: ExtensionsTab; project?: string } }): void;
   /**
    * 和主进程校一次「当前会话在不在跑」。
    *
@@ -827,11 +828,11 @@ export const useApp = create<AppState>((set, get) => ({
   dismissNotice: (id) =>
     set({ notices: get().notices.filter((n) => n.id !== id) }),
 
-  notify: (message, level = "info", sessionId?: string, options?: { extensions?: { tab: ExtensionsTab; project?: string } }) =>
+  notify: (message, level = "info", sessionId?: string, options?: { reveal?: string; extensions?: { tab: ExtensionsTab; project?: string } }) =>
     set({
       notices: [
         ...get().notices,
-        { id: `${Date.now()}-${Math.random()}`, level, message, sessionId, ...(options?.extensions ? { extensions: options.extensions } : {}) },
+        { id: `${Date.now()}-${Math.random()}`, level, message, sessionId, ...(options?.reveal ? { reveal: options.reveal } : {}), ...(options?.extensions ? { extensions: options.extensions } : {}) },
       ],
     }),
 

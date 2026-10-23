@@ -8,8 +8,8 @@ import { runAgent } from "../src/agent/loop.ts";
 import { buildSystemPrompt } from "../src/prompt/system.ts";
 import { ApprovalGate } from "../src/runtime/policy/approvals.ts";
 import { compactIfNeeded } from "../src/runtime/compaction/compaction.ts";
-import { inPlanMode, PLAN_MODE_KEY, planModeTools } from "../src/runtime/plan/plan-mode.ts";
-import { currentPlan, planTitle, renderPlan } from "../src/runtime/plan/plan-view.ts";
+import { inPlanMode, PLAN_MODE_KEY, REVIEW_FIX_KEY, planModeTools } from "../src/runtime/plan/plan-mode.ts";
+import { currentPlan, latestApprovedPlan, planTitle, renderPlan } from "../src/runtime/plan/plan-view.ts";
 import { PLAN_APPROVE, PLAN_REVISE, submitPlanTool } from "../src/runtime/plan/plan-tool.ts";
 import { formatTaskContext, taskContextFromHistory } from "../src/runtime/compaction/task-context.ts";
 import { TODOS_KEY, todosFromLog } from "../src/tools/todo.ts";
@@ -69,6 +69,10 @@ test("in plan mode only file writes are refused, and the schemas are untouched",
 	await wBash.execute({ command: "rm -rf x" }, ctx);
 	assert.equal(bash.calls.length, 3, "everything but the escalation ran");
 	assert.deepEqual(new Set(bash.calls.map((call) => call.sandboxMode)), new Set(["read-only"]), "and every one of them confined");
+	// `monitor` 跑的也是 shell 命令：同一道只读沙箱。
+	const monitor = fake("monitor");
+	await planModeTools([monitor.tool], state)[0].execute({ command: "npm run dev" }, ctx);
+	assert.equal(monitor.calls[0]?.sandboxMode, "read-only");
 
 	assert.match(textOf(await wLsp.execute({ operation: "rename", newName: "x" }, ctx)), /rename edits files/);
 	await wLsp.execute({ operation: "references" }, ctx);
@@ -88,6 +92,41 @@ test("in plan mode only file writes are refused, and the schemas are untouched",
 	await wBash.execute({ command: "rm -rf x" }, ctx);
 	assert.equal(edit.calls.length, 1);
 	assert.equal(bash.calls.at(-1)?.sandboxMode, "workspace-write");
+});
+
+test("审阅会话：同一层常拒写文件，提示是它自己的话；不进计划模式，命令不压沙箱", async () => {
+	const state = new Map<string, unknown>();
+	const [edit, write, lsp, bash, monitor, read] = ["edit", "write", "lsp", "bash", "monitor", "read"].map((name) => fake(name));
+	const [wEdit, wWrite, wLsp, wBash, wMonitor, wRead] = planModeTools([edit, write, lsp, bash, monitor, read].map((f) => f.tool), state, true);
+	const ctx = ctxWith(state);
+
+	for (const [tool, args] of [[wEdit, { path: "a" }], [wWrite, { path: "a" }], [wLsp, { operation: "rename", newName: "x" }]] as const) {
+		const text = textOf(await tool.execute(args, ctx));
+		assert.match(text, /^Review session: .* did not run\. .*ask it with `ask_session`/, "被拒时告诉它怎么解开");
+		assert.doesNotMatch(text, /Plan mode|submit_plan/, "不是计划模式，不叫它交计划");
+	}
+	assert.deepEqual([edit.calls.length, write.calls.length], [0, 0]);
+
+	await wLsp.execute({ operation: "references" }, ctx);
+	await wRead.execute({ path: "a" }, ctx);
+	await wBash.execute({ command: "pnpm test", escalate: "danger-full-access" }, ctx);
+	await wMonitor.execute({ command: "pnpm dev" }, ctx);
+	assert.deepEqual([lsp.calls.length, read.calls.length], [1, 1]);
+	// verify 跑测试要写缓存：命令留给权限档，不换成只读沙箱，提权也不在这里拦。
+	assert.deepEqual([bash.calls[0]?.sandboxMode, monitor.calls[0]?.sandboxMode], ["workspace-write", "workspace-write"]);
+
+	// 人在审阅会话里又开了计划模式：两层都在，计划模式那层照旧。
+	state.set(PLAN_MODE_KEY, true);
+	assert.match(textOf(await wEdit.execute({}, ctx)), /^Review session/);
+	await wBash.execute({ command: "ls" }, ctx);
+	assert.equal(bash.calls.at(-1)?.sandboxMode, "read-only");
+
+	// 原会话答复了修哪几条：同一张表放行写文件。
+	state.set(PLAN_MODE_KEY, false);
+	state.set(REVIEW_FIX_KEY, true);
+	await wEdit.execute({ path: "a" }, ctx);
+	await wLsp.execute({ operation: "rename", newName: "x" }, ctx);
+	assert.deepEqual([edit.calls.length, lsp.calls.length], [1, 2]);
 });
 
 function approvalFixture(mode: "ask" | "auto" | "full" = "full") {
@@ -255,6 +294,41 @@ test("currentPlan reads the last submitted plan off the log, approved or not", (
 	const compacted = { role: "user", synthetic: true, content: [], timestamp: 2, compactionContext: { plan: { ...PLAN, approvedAt: 1 } } } as unknown as Message;
 	assert.deepEqual(currentPlan([compacted]), { plan: { ...PLAN, approvedAt: 1 }, status: "approved" });
 	assert.equal(currentPlan([compacted, call("e", second)])?.toolCallId, "e");
+});
+
+test("latestApprovedPlan 取最终批准的那一版，带着批注；打回的、被退回的不算", () => {
+	const call = (id: string, args: Record<string, unknown>) =>
+		({ role: "assistant", content: [{ type: "toolCall", id, name: "submit_plan", arguments: args }], timestamp: 1 }) as unknown as Message;
+	const result = (id: string, details: unknown, isError = false) =>
+		({ role: "toolResult", toolCallId: id, toolName: "submit_plan", content: [], isError, details, timestamp: 1 }) as Message;
+	const second = { plan: PLAN.plan.replace("# 改登录", "# 改登录 v2") };
+
+	assert.equal(latestApprovedPlan([]), null, "没有计划");
+	const declined = [call("a", PLAN), result("a", { kind: "plan-feedback", feedback: "再想想" })];
+	assert.equal(latestApprovedPlan(declined), null, "打回的不是批准的计划");
+	assert.equal(latestApprovedPlan([call("a", PLAN)]), null, "还在等审批的也不是");
+
+	// 打回以后改了再交、批准时附了注意事项：取到的是第二版，注意事项在结果里而不在参数里。
+	const approved = [...declined, call("b", second), result("b", { kind: "plan", plan: { ...second, notes: "别动 session.ts", approvedAt: 1 } })];
+	assert.deepEqual(latestApprovedPlan(approved), { ...second, notes: "别动 session.ts" });
+	assert.match(renderPlan(latestApprovedPlan(approved)!), /别动 session\.ts/);
+
+	// 批准之后又交了一份被打回、一份被工具退回：照着做的仍是先前批准的那份。
+	const later = [...approved, call("c", PLAN), result("c", { kind: "plan-feedback", feedback: "不要" }), call("d", { plan: "" }), result("d", undefined, true)];
+	assert.equal(latestApprovedPlan(later)?.plan, second.plan);
+	// 两次都批准了：后一次为准。
+	assert.equal(latestApprovedPlan([...approved, call("e", PLAN), result("e", { kind: "plan", plan: { ...PLAN, approvedAt: 2 } })])?.plan, PLAN.plan);
+
+	// 压缩以后只剩快照。
+	const compacted = { role: "user", synthetic: true, content: [], timestamp: 2, compactionContext: { plan: { ...PLAN, approvedAt: 1 } } } as unknown as Message;
+	assert.equal(latestApprovedPlan([compacted, call("f", second), result("f", { kind: "plan-feedback", feedback: "x" })])?.plan, PLAN.plan);
+
+	// 「在新会话里执行」批准的：实施不在这个会话里，跳过它，往回找这个会话自己照着做的那份。
+	const handedOff = [...approved, call("g", PLAN), result("g", { kind: "plan", plan: { ...PLAN, handoff: true, approvedAt: 3 } })];
+	assert.equal(latestApprovedPlan(handedOff)?.plan, second.plan);
+	assert.equal(latestApprovedPlan([call("g", PLAN), result("g", { kind: "plan", plan: { ...PLAN, handoff: true, approvedAt: 3 } })]), null, "只交接过的，没有计划");
+	const compactedHandoff = { ...compacted, compactionContext: { plan: { ...PLAN, handoff: true, approvedAt: 1 } } } as unknown as Message;
+	assert.equal(latestApprovedPlan([compactedHandoff]), null, "快照里的交接计划也跳过");
 });
 
 test("approving with comments keeps them on the plan as notes, without sending it back", async () => {

@@ -109,6 +109,12 @@ test("父会话收起、展开后续会话，收着的状态重新加载后还�
 		await until(app, `document.querySelector('[data-ly-row="c2"] > button[aria-current]')`);
 		await until(app, settled("p,c1,c2,g1,n", open.gapBelowParent));
 		assert.equal((await measure()).expanded, "true", "打开的会话不能藏在收起的一组里");
+
+		// 就停在后续会话里点收起：是人自己要藏的，要真的收起，不能下一帧又被展开回去。
+		await hover(app, '[data-ly-row="p"]');
+		await click(app, FOLD);
+		await until(app, settled("p,n", open.gapBelowParent));
+		assert.equal((await measure()).expanded, "false", "停在后续会话里也能把它收起");
 	} finally {
 		await app.stop();
 		await renderer.close();

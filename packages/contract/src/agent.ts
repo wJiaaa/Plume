@@ -11,6 +11,7 @@ import type {
 	MessageAttachment,
 	QueuedTask,
 	SessionMeta,
+	SessionWakeup,
 	SubAgentDetail,
 	SubAgentSummary,
 	ThinkingLevel,
@@ -198,6 +199,16 @@ export interface TasksApi {
 	 * so and nothing could act on it.
 	 */
 	resume(sessionId: string, taskId: string): Promise<boolean>;
+}
+
+/**
+ * What the model scheduled to come back to this conversation (`schedule_wakeup`, `cron_*`). Live
+ * changes arrive as the `wakeups` agent event; `list` is for a window that was not listening.
+ */
+export interface WakeupsApi {
+	list(sessionId: string): Promise<SessionWakeup[]>;
+	/** False when it already fired, was cancelled, or the session is not live. */
+	cancel(sessionId: string, wakeupId: string): Promise<boolean>;
 }
 
 export interface DeliveryApi {

@@ -65,6 +65,7 @@ import { PLAN_MODE_KEY } from "../plan/plan-mode.ts";
 import { rewind, type RewindParts } from "./session-rewind.ts";
 import { changedPaths, mainChatContext, SIDE_CHAT_PROFILE, sideChangesNote, sideChatTools } from "../side-chat/side-session.ts";
 import { peerMessage } from "./peer-letters.ts";
+import { SessionWakeups, type WakeupClock } from "./session-wakeups.ts";
 
 export interface AgentSessionOptions {
 	cwd: string;
@@ -113,6 +114,8 @@ export interface AgentSessionOptions {
 	elicitation?: boolean;
 	/** 宿主在会话之间共用的 MCP 连接（`mcp/pool.ts`）。命令行一次只有一个会话，不给。 */
 	mcpPool?: McpPool;
+	/** 定时唤醒用的时钟（`session-wakeups.ts`）。不给就是真的；测试给假的，免得真等一分钟。 */
+	wakeupClock?: WakeupClock;
 }
 
 export class AgentSession {
@@ -186,6 +189,11 @@ export class AgentSession {
 	private readonly spokenWaits = new SpokenWaits(() => this.inbox.spoken || (this.running && this.notices.length > 0));
 	/** 跑完了、还没送回主会话的后台结果；攒一小会儿再送。见 `session-deliveries.ts`。 */
 	private readonly deliveries: SessionDeliveries;
+	/**
+	 * 模型给这个对话安排的定时唤醒与 cron（`session-wakeups.ts`）。宿主注入的那几件工具（`wakeup-tools.ts`）
+	 * 按会话 id 找到这里；没注入工具的宿主里它就一直是空的。
+	 */
+	readonly wakeups: SessionWakeups;
 	/** 剪枝器最后一次从日志放回视图时对着的那份历史；见 `preparePruner`。 */
 	private viewsSeededFor: Message[] | null = null;
 	/** 上一个进程退出时还在后台跑的子代理，等人下一次开口时一起告诉主会话。见 `exit-cut.ts`。 */
@@ -255,6 +263,7 @@ export class AgentSession {
 			if (event.type === "agent_end") this.lastEnd = event.reason;
 			this.activity.observe(event);
 			this.subAgentContexts.observe(event);
+			this.wakeups.observe(event);
 			return options.emit(event);
 		}, options.meta);
 		const sideTools = options.parent ? sideChatTools(options.parent, () => this.modelInEffect()) : [];
@@ -278,7 +287,13 @@ export class AgentSession {
 			settled: () => this.checkIdle(),
 		});
 		backgroundJobs(this.can.state).onFinished((job) => this.deliveries.jobFinished(job));
+		backgroundJobs(this.can.state).onMonitorEvents((events) => this.deliveries.monitored(events));
 		backgroundJobs(this.can.state).onMonitorsChanged((running) => void this.emit({ type: "monitors", running }).catch(() => {}));
+		this.wakeups = new SessionWakeups({
+			deliver: (message) => this.deliverWakeup(message),
+			changed: (wakeups) => void this.emit({ type: "wakeups", wakeups }).catch(() => {}),
+			clock: options.wakeupClock,
+		});
 		this.approvals = sessionApprovalGate({
 			mode: () => this.settings.permissionMode,
 			cwd: () => this.cwd,
@@ -364,6 +379,26 @@ export class AgentSession {
 		}
 		this.notices.push(letter);
 		if (this.running) this.spokenWaits.release();
+	}
+
+	/**
+	 * 定时唤醒到点了：排到这一轮之后（`followUp`），闲着就开一轮。不插进正在跑的回合——那一轮在做
+	 * 别的事，到点的提醒等它做完再看不迟。
+	 *
+	 * 和后台结果的送达一样先等手动压缩写完边界；等的时候人按了停止就不送了（那时任务表也已经清空）。
+	 * 答没送出去时是 false：任务表据此不再把这个任务当成「上一次还没看完」。
+	 */
+	private async deliverWakeup(message: Message): Promise<boolean> {
+		const mark = this.activity.mark();
+		if (this.activity.compaction) await this.activity.compaction.catch(() => {});
+		if (this.disposed || this.activity.stoppedSince(mark)) return false;
+		try {
+			await this.submit(message, { fromPerson: false, deliver: "followUp" });
+			return true;
+		} catch (error) {
+			await this.emit({ type: "notice", level: "error", message: error instanceof Error ? error.message : String(error) }).catch(() => {});
+			return false;
+		}
 	}
 
 	/** 攒着的通知，作为这一轮里的一条消息交出去；没有就是空的。 */
@@ -820,13 +855,14 @@ export class AgentSession {
 		 * `interrupt`：停下正在跑的，等它把半截回复和工具结果都落了盘，再拿这句开新的一轮。
 		 *
 		 * 插话要等模型写完手上这一步——一次思考加一大段输出可以是好几分钟，按下去之后什么也没发生。
-		 * 停止用的就是停止按钮那一套（`abort`），半截回复怎么留、没跑完的工具怎么答，和按停一样。
+		 * 停止用的就是停止按钮那一套（`halt`），半截回复怎么留、没跑完的工具怎么答，和按停一样；只是
+		 * 不收回 monitor 和定时唤醒——对话还在往下走，模型还指着它们。
 		 * 等到会话完全放手才提交，不然这句话会落在被停掉那一轮的回复前面，或者被当成插话收进去又
 		 * 随停止一起清掉。
 		 */
 		let interrupting = false;
 		if (options.deliver === "interrupt" && this.running) {
-			this.abort();
+			this.halt({ revoke: false });
 			await this.activity.quiet();
 			interrupting = true;
 		}
@@ -1043,13 +1079,30 @@ export class AgentSession {
 		void this.tasks.drain();
 	}
 
+	/** The stop button, and the command line's Ctrl-C: see `halt`. */
 	abort(): void {
+		this.halt({ revoke: true, pressed: true });
+	}
+
+	/**
+	 * Stop the turn that is running.
+	 *
+	 * `revoke` is for the stop button only: it also takes back what the model set up to come back
+	 * by itself — its monitors and its scheduled wakeups. A message that interrupts the turn and an
+	 * edit that rewinds it stop the turn too, but nobody asked for those to go: the conversation
+	 * carries on, and the model still counts on them.
+	 *
+	 * `pressed` is someone actually stopping it. Quitting the app and disposing take back the same
+	 * things, but say nothing: what is said is written into the conversation, and after a restart it
+	 * would read as a stop nobody pressed.
+	 */
+	private halt({ revoke, pressed = false }: { revoke: boolean; pressed?: boolean }): void {
 		void this.title.cancel();
 		// The prompt owner records a cancelled startup before resolving, so disposal cannot race
 		// an unawaited append after the caller has already finished the opening submission.
 		this.activity.stop();
-		// Steering and the queue both go: see `SessionInbox.clear`.
-		this.inbox.clear();
+		// Steering and the queue both go: see `SessionInbox.clear`. A wakeup among them fires again: see `SessionWakeups.dropped`.
+		this.wakeups.dropped(this.inbox.clear());
 		/*
 		 * Explicitly, as well as through the chain.
 		 *
@@ -1062,17 +1115,29 @@ export class AgentSession {
 		this.approvals.rejectAll();
 		// 放了手的、攒着没送的都不再送回来；后台命令照跑，只是结束时不再叫醒会话。见 `SessionDeliveries.clear`。
 		this.dispatches.forget();
-		this.deliveries.clear();
-		backgroundJobs(this.can.state).mute();
+		this.deliveries.clear({ monitors: revoke });
+		const jobs = backgroundJobs(this.can.state);
+		jobs.mute();
+		if (revoke) jobs.stopMonitors();
 		// Stop means stop. Letting the queue carry on after the button was pressed would be
 		// the opposite of what pressing it asks for.
 		void this.tasks.cancelAll();
+		/*
+		 * 定时唤醒也一起取消，和「停下的会话不再被后台结果叫醒」同一个理由：自动续跑是模型的决定，按停止
+		 * 就是收回它。取消了就说一声——那是模型说过「十分钟后再看」的事，悄悄没了，人会一直等。
+		 * 退出、处置时不说（`pressed`）：会话已经没有人看了。
+		 */
+		const cancelled = revoke ? this.wakeups.cancelAll() : 0;
+		if (cancelled > 0 && pressed) {
+			void this.emit({ type: "notice", level: "info", message: `Stopped: ${cancelled} pending wakeup(s) cancelled.`, code: "wakeups-cancelled", params: { n: cancelled } }).catch(() => {});
+		}
 		// 闲着时按停，攒着的来信被清掉了，没有哪个回合收尾会再替等的人看一眼。
 		this.checkIdle();
 	}
 
 	/** Wait for in-flight tools before discarding a plan so a late todo_write cannot restore it. */
 	async discardTaskPlan(): Promise<void> {
+		// 侧边聊天里「让主会话停下、清单作废」：比单纯停下更彻底，收回的东西和停止按钮一样。
 		this.abort();
 		await this.activity.settled();
 		await this.tasks.discardPlan();
@@ -1200,7 +1265,7 @@ export class AgentSession {
 	): Promise<void> {
 		await this.title.cancel();
 		if (this.running) {
-			this.abort();
+			this.halt({ revoke: false });
 			// Acceptance writes and follow-up draining also own the history, before/after driveTurn.
 			await (this.activity.holding("prompt") ?? this.activity.holding("resume"))?.catch(() => {});
 		}
@@ -1228,8 +1293,8 @@ export class AgentSession {
 	}
 
 	private rewindParts(): RewindParts {
-		const { log, deliveries, dispatches, subAgents } = this;
-		return { log, state: this.can.state, deliveries, dispatches, subAgents, emit: (event) => this.emit(event) };
+		const { log, deliveries, dispatches, subAgents, wakeups } = this;
+		return { log, state: this.can.state, deliveries, dispatches, subAgents, wakeups, emit: (event) => this.emit(event) };
 	}
 
 	/**
@@ -1260,14 +1325,14 @@ export class AgentSession {
 		this.can.state.delete(SESSION_START_KEY);
 		const runner = await loadHookRunner({ settings: this.settings, cwd: this.cwd });
 		if (!runner.has("SessionEnd")) return;
-		this.abort();
+		this.halt({ revoke: true });
 		await this.activity.quiet().catch(() => {});
 		await runSessionEndHooks({ runner, cwd: this.cwd, sessionId: this.log.meta.id, permissionMode: this.settings.permissionMode }, reason);
 	}
 
 	async dispose(reason: SessionEndReason = "other"): Promise<void> {
 		this.disposed = true;
-		this.abort();
+		this.halt({ revoke: true });
 		// 收尾后的自动压缩不是人发起的，处置时多半还在跑：等它停下再往下走，免得宿主删了日志它还在写。
 		await this.activity.compaction?.catch(() => {});
 		await this.end(reason).catch(() => {});

@@ -29,6 +29,10 @@ test("summarizeToolCall handles missing and alias arguments without displaying '
 	assert.equal(summarizeToolCall("web_search", { pattern: "react hooks" }), "Search react hooks");
 	assert.equal(summarizeToolCall("web_search", {}), "Search the web");
 
+	// monitor: the same line as a bash command, as core's summarize says it
+	assert.equal(summarizeToolCall("monitor", { command: "tail -f app.log", description: "Watch the log" }), "Watch the log");
+	assert.equal(summarizeToolCall("monitor", { command: "tail -f app.log\nmore" }), "tail -f app.log");
+
 	// bash_output: no uuid in either
 	assert.equal(summarizeToolCall("bash_output", { id: "a6f8d1fa-8c85-4ff7-b557-dc15c306b644" }), "Check job");
 	assert.equal(summarizeToolCall("bash_output", { id: "a6f8d1fa-8c85-4ff7-b557-dc15c306b644", kill: true }), "Stop job");

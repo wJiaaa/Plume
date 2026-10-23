@@ -9,7 +9,7 @@
  * keeps the map from being reachable — and therefore mutable — from six different files.
  */
 
-import { AgentSession, backgroundJobs, McpPool, plumeHome, removeSessionArtifacts, type AgentEvent, type SessionEndReason, type SessionMeta, type SessionStorage, type Settings } from "@plume/core";
+import { AgentSession, backgroundJobs, createWakeupTools, McpPool, plumeHome, removeSessionArtifacts, REVIEW_BODY, REVIEW_FIX_KEY, type AgentEvent, type SessionEndReason, type SessionMeta, type SessionStorage, type Settings } from "@plume/core";
 import type { BrowserWindow } from "electron";
 import { browserState, closeSessionBrowser, createBrowserTools } from "../browser/index.ts";
 import { autoCreateSessionWorktree, bringBackWorktree, cleanOldWorktrees, reclaimWorktree } from "../git/index.ts";
@@ -27,6 +27,7 @@ import { createPeerRouter, createPeerTools, lastReply } from "../peer/index.ts";
 import { archiveAfterTurn, createSessionOpsTools } from "./session-ops.ts";
 import { reportBackAfterFirstTurn } from "./session-report-back.ts";
 import { handOffApprovedPlans } from "./plan-handoff.ts";
+import { createReviewSessionTool, startReviewSessions } from "./review-session.ts";
 import { MessagePatcher } from "../../shared/message-patch.ts";
 import { restoreRevertedFiles } from "./revert-files.ts";
 
@@ -111,6 +112,7 @@ const reportsBack = reportBackAfterFirstTurn({
 		const session = sessions.get(id);
 		return session ? lastReply(session) : "";
 	},
+	whenIdle: (id) => sessions.get(id)?.whenIdle() ?? Promise.resolve(),
 	write: async (id, spawnedFrom) => {
 		const session = sessions.get(id);
 		if (session) await session.log.append({ type: "meta", meta: { ...session.meta, spawnedFrom } });
@@ -138,11 +140,42 @@ const planHandoffs = handOffApprovedPlans({
 	failed: (parentId, message) => broadcast(parentId, { type: "notice", level: "error", message }),
 });
 /** 和 `peerTools` 一样每个会话共用一份：工具本身不带状态，是谁调的看 `ctx.sessionId`。 */
-const sessionOps = createSessionOpsTools({ archiveAfterTurn: (id) => archives.request(id) });
+const sessionOps = [...createSessionOpsTools({ archiveAfterTurn: (id) => archives.request(id) }), createReviewSessionTool({ meta: (id) => sessions.get(id)?.meta })];
+/** `/review` 交出来的审阅：原会话调了 `review_session`，在它同一个目录里开审阅会话、要它交回——见 `review-session.ts`。 */
+const reviews = startReviewSessions({
+	source: (id) => {
+		const session = sessions.get(id);
+		return session && !session.parent ? { meta: session.meta, messages: session.messages, cwd: session.cwd } : undefined;
+	},
+	// 完整的显示历史，和导出 Markdown 读的同一份：压缩换掉的早期消息在这里还在。
+	history: async (id) => (await deps.store().load(id, { display: true }))?.messages ?? null,
+	settings: () => deps.settings(),
+	start: async ({ parent, toolCallId, cwd, modelId, title, prompt }) => {
+		// 审查说明（`/review` 展开的那段正文）在前、交接单在后；气泡里只显示交接单，正文是写给模型的几千字。
+		const content = [{ type: "text" as const, text: `${REVIEW_BODY}\n\n---\n\n${prompt}` }];
+		/*
+		 * 不经 `ownWorkspace`、不开新工作树、不带走 `worktree`：目录必须就是原会话此刻那一个，否则看不到
+		 * 那些未提交的改动；`worktree` 留在原会话身上，审阅会话删掉时才不会顺手把那棵工作树收走。
+		 * 这一点和建议卡片、计划交接都不同，那两处开在项目上。
+		 */
+		const saved = await createSessionIn(cwd, modelId, { content, displayText: prompt, worktree: false, title, spawnedFrom: { sessionId: parent.id, toolCallId, reportBack: true, review: true } }, parent.project);
+		await promptSession(saved.meta.id, content, { resumePending: true });
+	},
+	failed: (parentId, message) => broadcast(parentId, { type: "notice", level: "error", message }),
+	// 第 F 步：原会话答复了修哪几条，审阅会话从此能改文件。只记在状态图里，见 `REVIEW_FIX_KEY`。
+	allowFixes: (id) => { sessions.get(id)?.can.state.set(REVIEW_FIX_KEY, true); },
+});
+/** 定时唤醒那四件（core 的 `wakeup-tools.ts`），同样共用一份，按 `ctx.sessionId` 找到那个会话的任务表。 */
+const wakeupTools = createWakeupTools((id) => sessions.get(id)?.wakeups);
 
 export async function createSession(cwd: string, modelId: string, initial?: InitialPrompt, project?: string): Promise<SessionSnapshot> {
 	// 「不在项目中工作」 arrives as the shared `general`; each conversation runs in a directory of its own.
-	const saved = await createStoredSession(deps.store(), deps.settings(), await ownWorkspace(cwd), modelId, initialPrompt(initial), project);
+	return createSessionIn(await ownWorkspace(cwd), modelId, initialPrompt(initial), project);
+}
+
+/** In exactly this directory, with an `initial` that has already passed the gate (or never crossed IPC). */
+async function createSessionIn(cwd: string, modelId: string, initial?: InitialPrompt, project?: string): Promise<SessionSnapshot> {
+	const saved = await createStoredSession(deps.store(), deps.settings(), cwd, modelId, initial, project);
 	stageSession(saved);
 	if (initial) submitted.add(saved.meta.id);
 	return saved;
@@ -161,7 +194,7 @@ function stageSession(saved: SessionSnapshot, parent?: AgentSession): AgentSessi
 	}
 	const browser = createBrowserTools();
 	const session = new AgentSession({ cwd: saved.meta.cwd, settings: deps.settings(), store: deps.store(), meta: saved.meta,
-		extraTools: [...browser.tools, ...peerTools, ...sessionOps], mcpPool, emit: (event) => broadcast(saved.meta.id, event), compactWhenIdle: true, suggestFollowups: true });
+		extraTools: [...browser.tools, ...peerTools, ...sessionOps, ...wakeupTools], mcpPool, emit: (event) => broadcast(saved.meta.id, event), compactWhenIdle: true, suggestFollowups: true });
 	session.restore(saved.messages);
 	sessions.set(saved.meta.id, session);
 	browsers.set(saved.meta.id, browser.dispose);
@@ -332,6 +365,7 @@ export function broadcast(sessionId: string, event: AgentEvent): void {
 	archives.observe(sessionId, event);
 	reportsBack.observe(sessionId, event);
 	planHandoffs.observe(sessionId, event);
+	reviews.observe(sessionId, event);
 }
 
 /**
@@ -544,6 +578,8 @@ function sessionBusy(id: string): boolean {
 	if (!session.idle || session.meta.pendingPrompt) return true;
 	if (liveSides(id).some((side) => sessionBusy(side.meta.id))) return true;
 	if (backgroundJobs(session.can.state).list().some((job) => job.status === "running" || job.status === "stopping")) return true;
+	// 模型说过「十分钟后再看」的会话：回收了，那个唤醒就跟着没了，而人只是去别的对话看了一眼。
+	if (session.wakeups.list().length > 0) return true;
 	/*
 	 * 主会话已经收尾、子代理还在后台跑的，也是一场进行中的对话。
 	 *

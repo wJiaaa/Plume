@@ -17,13 +17,13 @@
 
 import { useState, type ReactNode } from "react";
 import type { AssistantContent, AssistantMessage, Message } from "@plume/core";
-import { SPAWN_SESSION_TOOL, type SessionSuggestionDetails } from "../../../shared/session-suggestion.ts";
+import { SPAWN_SESSION_TOOL, type ReviewSessionDetails, type SessionSuggestionDetails } from "../../../shared/session-suggestion.ts";
 import { focusScreenOf, useScopedFromMessages, useScopedSessionId, useScopedWorkspace } from "../../app/session-scope.tsx";
 import { useI18n } from "../../i18n/index.ts";
 import { bridge } from "../../services/index.ts";
 import { useApp, type ToolRun } from "../../store/index.ts";
 import { dismissSuggestion, startedFrom, useDismissedSuggestions, type SessionSuggestion } from "../../store/session-suggestions.ts";
-import { ChevronRight, Reply, SquarePen, X } from "../../ui/icons/index.ts";
+import { ChevronRight, FileSearch, Reply, SquarePen, X } from "../../ui/icons/index.ts";
 import { WorktreeToggle } from "../../ui/inputs/WorktreeToggle.tsx";
 import { Button } from "../../ui/primitives/Button.tsx";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
@@ -182,7 +182,7 @@ function Suggested({ sessionId, suggestion }: { sessionId: string; suggestion: S
 	const { callId, details } = suggestion;
 	const startedId = useStartedId(sessionId, callId);
 	const dismissed = useDismissedSuggestions((s) => s.ids.includes(callId));
-	if (startedId) return <Started sessionId={sessionId} callId={callId} title={details.title} startedId={startedId} />;
+	if (startedId) return <Started sessionId={sessionId} callId={callId} title={details.title} startedId={startedId} icon={<SquarePen size={13} strokeWidth={1.8} />} label={t("sessionOps.newSession")} />;
 	// 收起只是一句记录：建议还在日志里，这里不再催人。
 	if (dismissed)
 		return (
@@ -201,7 +201,16 @@ function Suggested({ sessionId, suggestion }: { sessionId: string; suggestion: S
 	);
 }
 
-function Started({ sessionId, callId, title, startedId }: { sessionId: string; callId: string; title: string; startedId: string }) {
+function Started({ sessionId, callId, title, startedId, icon, label, lateReportBack = true }: {
+	sessionId: string;
+	callId: string;
+	title: string;
+	startedId: string;
+	icon: ReactNode;
+	label: string;
+	/** 审阅会话不给：交回就是它存在的理由，关掉了报告就没人接。 */
+	lateReportBack?: boolean;
+}) {
 	const { t } = useI18n();
 	const activity = useApp((s) => s.activity[startedId] ?? null);
 	const from = useApp((s) => s.sessions.find((one) => one.id === startedId)?.spawnedFrom);
@@ -215,8 +224,8 @@ function Started({ sessionId, callId, title, startedId }: { sessionId: string; c
 	return (
 		<div data-ly-session-suggestion="started" data-ly-suggestion-call={callId} className="flex min-w-0 items-center gap-1">
 			<FlowRow
-				icon={<SquarePen size={13} strokeWidth={1.8} />}
-				title={<span className="font-normal">{t("sessionOps.newSession")}</span>}
+				icon={icon}
+				title={<span className="font-normal">{label}</span>}
 				summary={<span data-ly-suggestion-title>{title}</span>}
 				running={running}
 				trailing={
@@ -234,7 +243,7 @@ function Started({ sessionId, callId, title, startedId }: { sessionId: string; c
 				label={failed ? `${title} · ${t("sessionOps.failed")}` : title}
 				data-ly-suggestion-action="open"
 			/>
-			{running && from && !from.settled && <LateReportBack startedId={startedId} on={from.reportBack === true} />}
+			{lateReportBack && running && from && !from.settled && <LateReportBack startedId={startedId} on={from.reportBack === true} />}
 		</div>
 	);
 }
@@ -253,4 +262,24 @@ function LateReportBack({ startedId, on }: { startedId: string; on: boolean }) {
 			.finally(() => setAsked(null));
 	};
 	return <ReportBackToggle compact on={asked ?? on} onChange={change} />;
+}
+
+/**
+ * 一次 `review_session`：`/review` 交出去的审阅会话。不经卡片——人敲 `/review` 就是同意——所以直接是开始以后
+ * 那一行，和建议卡片开始以后缩成的同一行（`Started`），只是行首换成审阅的图标、名字叫「审阅会话」。
+ * 主进程在调用结束后才建会话，中间那一下以及没建出来的（主会话里另有一条报错）只是一行不能点的记录。
+ */
+export function ReviewSessionRow({ block, run, fallback }: { block: ToolCall; run?: ToolRun; fallback: ReactNode }) {
+	const { t } = useI18n();
+	const sessionId = useScopedSessionId();
+	const details = run?.status === "done" ? (run.result?.details as ReviewSessionDetails | undefined) : undefined;
+	const startedId = useStartedId(sessionId, block.id);
+	if (details?.kind !== "review_session" || !sessionId) return fallback;
+	const icon = <FileSearch size={13} strokeWidth={1.8} />;
+	if (startedId) return <Started sessionId={sessionId} callId={block.id} title={details.subject} startedId={startedId} icon={icon} label={t("sessionOps.reviewSession")} lateReportBack={false} />;
+	return (
+		<div data-ly-session-suggestion="review" data-ly-suggestion-call={block.id}>
+			<FlowRow icon={icon} title={<span className="font-normal">{t("sessionOps.reviewSession")}</span>} summary={<span data-ly-suggestion-title>{details.subject}</span>} />
+		</div>
+	);
 }

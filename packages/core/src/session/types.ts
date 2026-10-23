@@ -165,7 +165,7 @@ export interface SessionMeta {
 export interface SpawnedFrom {
 	/** The conversation the suggestion was made in. */
 	sessionId: string;
-	/** The `spawn_session` call that made it. */
+	/** The `spawn_session` (or `review_session`) call that made it. */
 	toolCallId: string;
 	/**
 	 * Hand this conversation's first reply back to the one that suggested it, the way a sub-agent's
@@ -174,6 +174,11 @@ export interface SpawnedFrom {
 	 * switched on or off while that first turn runs.
 	 */
 	reportBack?: true;
+	/**
+	 * Started by `review_session` rather than from a suggestion card: a read-only review of the
+	 * conversation that started it. Kept for good, so a review session cannot hand its review off again.
+	 */
+	review?: true;
 	/** The first turn has ended; whether to report back is no longer a question. */
 	settled?: true;
 }

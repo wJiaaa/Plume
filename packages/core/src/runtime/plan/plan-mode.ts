@@ -8,6 +8,10 @@
  * 模型，裁过的表一变整段前缀缓存就作废；提示词是请求，模型会忘。所以每个工具的 schema 原样留着，
  * `execute` 外面包一层：开关开着就拒绝会写文件的调用；批准那一刻开关关掉，同一轮里同一张工具表接着用。
  * 包的是会话的状态图，所以这一轮派出去的子代理拿到的也是包过的工具，同样受管。见 ADR-0044。
+ *
+ * 审阅会话（`SpawnedFrom.review`）借同一层拒绝写文件，但不是计划模式：不换提示词、不要计划，
+ * `bash` 也不压进只读沙箱，留给权限档——它派的 `verify` 要跑测试和类型检查，那些会写缓存。
+ * 原会话答复了修哪几条之后，宿主写下 `REVIEW_FIX_KEY`，从此放行。见 ADR-0058。
  */
 
 import { errorResult } from "../../tools/result.ts";
@@ -16,6 +20,14 @@ import { SUBMIT_PLAN_TOOL_NAME } from "./plan-view.ts";
 
 /** 会话状态图里的开关。每轮开始按 `SessionMeta.planMode` 写入，批准计划时就地关掉。 */
 export const PLAN_MODE_KEY = "planMode";
+
+/**
+ * 审阅会话可以改文件了：原会话已经答复修哪几条。宿主看到那次 `ask_session` 拿到回答时写入。
+ *
+ * 只在状态图里、不落盘：应用重开后又是只读，模型被拒时照拒绝里的话再问一次就行，比把「问过」从
+ * 记录里推回来简单，也不会因为认错一次回答而放行。
+ */
+export const REVIEW_FIX_KEY = "reviewFixesAllowed";
 
 export function inPlanMode(state: Map<string, unknown>): boolean {
 	return state.get(PLAN_MODE_KEY) === true;
@@ -31,6 +43,19 @@ export function inPlanMode(state: Map<string, unknown>): boolean {
  */
 const FILE_WRITERS = new Set(["write", "edit"]);
 
+/** 这次调用会不会改文件，会的话为什么。`bash` 不在这里，见 `FILE_WRITERS`。 */
+function edits(tool: Tool, args: Record<string, unknown>): string | undefined {
+	if (tool.name === "lsp") return args.operation === "rename" ? "a rename edits files" : undefined;
+	return FILE_WRITERS.has(tool.name) ? "it edits files" : undefined;
+}
+
+function reviewRefusal(tool: string, why: string): ToolResult {
+	return errorResult(
+		`Review session: ${why}, so "${tool}" did not run. A review session reads until the conversation that wrote the ` +
+		"change has said which findings to fix: finish the report, then ask it with `ask_session` (step F). Once it answers, edits are allowed.",
+	);
+}
+
 function refusal(tool: string, why: string): ToolResult {
 	return errorResult(
 		`Plan mode: ${why}, so "${tool}" did not run. Files stay unchanged until the user approves a plan; every other ` +
@@ -43,20 +68,24 @@ function refusal(tool: string, why: string): ToolResult {
  *
  * 只换 `execute`，name / description / parameters 原样，发给模型的工具定义逐字节不变。开关是
  * 运行时读的：`submit_plan` 批准后把它关掉，包着的 `execute` 就直接放行，不用换表。
+ *
+ * `review` 是审阅会话：不看计划模式的开关，原会话答复之前（`REVIEW_FIX_KEY`）写文件的调用一律拒绝，别的照常。
  */
-export function planModeTools(tools: readonly Tool[], state: Map<string, unknown>): Tool[] {
+export function planModeTools(tools: readonly Tool[], state: Map<string, unknown>, review = false): Tool[] {
 	return tools.map((tool) => ({
 		...tool,
 		execute: (args: Record<string, unknown>, ctx: ToolContext) => {
+			const why = review && state.get(REVIEW_FIX_KEY) !== true ? edits(tool, args) : undefined;
+			if (why) return Promise.resolve(reviewRefusal(tool.name, why));
 			if (!inPlanMode(state)) return tool.execute(args, ctx);
 			const verdict = allow(tool, args);
 			if (verdict !== "ok") return Promise.resolve(verdict);
 			/*
 			 * 命令一律压进只读沙箱：它是「不改文件」在 shell 里唯一可靠的那道线——除 `/dev/null`
 			 * 外拒绝一切写，这台机器没有沙箱后端就拒绝运行，不会退回无约束。外层的 `sandboxMode`
-			 * 来自权限档，批准后同一轮里恢复成那一档。
+			 * 来自权限档，批准后同一轮里恢复成那一档。`monitor` 跑的也是 shell 命令，同一道线。
 			 */
-			if (tool.name === "bash") return tool.execute(args, { ...ctx, sandboxMode: "read-only" });
+			if (tool.name === "bash" || tool.name === "monitor") return tool.execute(args, { ...ctx, sandboxMode: "read-only" });
 			return tool.execute(args, ctx);
 		},
 	}));
@@ -64,8 +93,8 @@ export function planModeTools(tools: readonly Tool[], state: Map<string, unknown
 
 function allow(tool: Tool, args: Record<string, unknown>): "ok" | ToolResult {
 	if (tool.name === "bash") return args.escalate ? refusal(tool.name, "commands run in a read-only sandbox and may not leave it") : "ok";
-	if (tool.name === "lsp") return args.operation === "rename" ? refusal(tool.name, "a rename edits files") : "ok";
-	return FILE_WRITERS.has(tool.name) ? refusal(tool.name, "it edits files") : "ok";
+	const why = edits(tool, args);
+	return why ? refusal(tool.name, why) : "ok";
 }
 
 /** 计划模式的一轮查过东西、以正文收尾、却没交计划时，说一次的那句。 */

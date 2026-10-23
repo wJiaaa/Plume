@@ -24,6 +24,7 @@ import { imageTool } from "./image.ts";
 import { learnTool } from "./learn.ts";
 import { lsTool } from "./ls.ts";
 import { lspTool } from "./lsp.ts";
+import { monitorTool } from "./monitor.ts";
 import { previewTool } from "./preview.ts";
 import { readTool } from "./read.ts";
 import { recallTool } from "./recall.ts";
@@ -46,8 +47,8 @@ const FILE_TOOLS = [
 	lspTool,
 ] as unknown as Tool[];
 
-/** Running commands, and reading what a backgrounded one has printed since. */
-const SHELL_TOOLS = [bashTool, bashOutputTool] as unknown as Tool[];
+/** Running commands, reading what a backgrounded one has printed since, and watching one that never ends. */
+const SHELL_TOOLS = [bashTool, bashOutputTool, monitorTool] as unknown as Tool[];
 
 /** The agent's own working memory: its plan, its delegates, what it has been told. */
 const AGENT_TOOLS = [

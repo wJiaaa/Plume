@@ -1,4 +1,4 @@
-import { Box, Eraser, FoldVertical, ListOrdered, MessageCirclePlus, Server, Settings2, SquareTerminal } from "../../ui/icons/index.ts";
+import { Box, Eraser, FileSearch, FoldVertical, ListOrdered, MessageCirclePlus, Server, Settings2, SquareTerminal } from "../../ui/icons/index.ts";
 import { ScrollText } from "../../ui/scroll/ScrollText.tsx";
 import type { CommandEntry } from "./command-catalog.ts";
 import { CompletionPopup } from "./CompletionPopup.tsx";
@@ -14,6 +14,8 @@ const GROUPS: Record<CommandEntry["kind"], MessageKey> = {
 function iconOf(command: CommandEntry) {
 	if (command.kind === "skill") return Box;
 	if (command.kind === "prompt") return Server;
+	// 没有宿主动作、展开成一段话发出去的内建命令，眼下只有 `/review`。
+	if (command.kind === "builtin" && !command.action) return FileSearch;
 	switch (command.action) {
 		case "compact": return FoldVertical;
 		case "clear": return Eraser;

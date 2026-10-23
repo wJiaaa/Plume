@@ -50,6 +50,7 @@ async function idleSession(overrides: Record<string, unknown> = {}) {
 		messages: [{ role: "user" }],
 		can: { state: new Map() },
 		subAgents: { list: () => [] },
+		wakeups: { list: () => [] },
 		initialize: async () => {},
 		dispose: async () => {},
 		...overrides,
@@ -99,7 +100,7 @@ test("主会话撤空，旁边的侧边聊天跟着收掉；撤到中间不碰",
 test("侧边聊天还在答，父会话不算空闲", async () => {
 	const parent = await idleSession();
 	const side = await sideChatOpen(parent, DEFAULT_SIDE_CHAT_ID);
-	const live = { meta: side, parent: hub.sessions.get(parent), running: true, get idle() { return !this.running; }, can: { state: new Map() }, subAgents: { list: () => [] }, dispose: async () => {} };
+	const live = { meta: side, parent: hub.sessions.get(parent), running: true, get idle() { return !this.running; }, can: { state: new Map() }, subAgents: { list: () => [] }, wakeups: { list: () => [] }, dispose: async () => {} };
 	hub.sessions.set(side.id, live as never);
 
 	assert.deepEqual(await hub.deleteIdleSessions([parent]), [], "the person is talking to it");
@@ -112,6 +113,14 @@ test("另一个会话的信攒着还没进对话（`running` 还是假），不�
 	const id = await idleSession({ idle: false });
 	assert.deepEqual(await hub.deleteIdleSessions([id]), []);
 	(hub.sessions.get(id) as unknown as { idle: boolean }).idle = true;
+	assert.deepEqual(await hub.deleteIdleSessions([id]), [id]);
+});
+
+test("还有待触发的定时唤醒：不算空闲，回收或按时间清理都不会把它连同唤醒一起放掉", async () => {
+	const pending = [{ id: "wake-1" }];
+	const id = await idleSession({ wakeups: { list: () => pending } });
+	assert.deepEqual(await hub.deleteIdleSessions([id]), []);
+	pending.length = 0;
 	assert.deepEqual(await hub.deleteIdleSessions([id]), [id]);
 });
 
@@ -159,7 +168,7 @@ test("名额满了，旁边只挂着空闲侧边聊天的会话照样回收，�
 	const withSide = async (running: boolean) => {
 		const parent = await idleSession({ dispose });
 		const side = await sideChatOpen(parent, DEFAULT_SIDE_CHAT_ID);
-		hub.sessions.set(side.id, { meta: side, parent: hub.sessions.get(parent), running, idle: !running, can: { state: new Map() }, subAgents: { list: () => [] }, dispose } as never);
+		hub.sessions.set(side.id, { meta: side, parent: hub.sessions.get(parent), running, idle: !running, can: { state: new Map() }, subAgents: { list: () => [] }, wakeups: { list: () => [] }, dispose } as never);
 		return { parent, side: side.id };
 	};
 	// 最久没碰的两个：一个侧边聊天空着，一个侧边聊天在答。

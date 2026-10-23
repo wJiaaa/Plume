@@ -476,7 +476,7 @@ export const Composer = memo(function Composer({ centered = false }: {
 			}
 			if (!planOn) await useApp.getState().setPlanMode(true, activeSessionId);
 		}
-		if (builtin && builtin.action !== "plan") {
+		if (builtin?.action && builtin.action !== "plan") {
 			if (attachments.length || sessionRefs.length || quotes.length) { useApp.getState().notify(translate("composer.commandNoFiles"), "warn"); return; }
 			if (builtin.action === "compact" && !activeSessionId) { useApp.getState().notify(translate("composer.nothingToCompact"), "warn"); return; }
 			if (builtin.action !== "compact" && invocation?.rest) { useApp.getState().notify(translate("composer.commandNoArgs"), "warn"); return; }

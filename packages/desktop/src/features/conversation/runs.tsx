@@ -10,7 +10,7 @@ import type { AssistantContent, AssistantMessage } from "@plume/core";
 import { PreviewCall, type PreviewInfo } from "../files/index.ts";
 import { ToolCard } from "./ToolCard.tsx";
 import { DispatchFaces, useDelegation, useDispatches } from "./DelegationCard.tsx";
-import { SessionSuggestionCard } from "./SessionSuggestionCard.tsx";
+import { ReviewSessionRow, SessionSuggestionCard } from "./SessionSuggestionCard.tsx";
 import { ToolGroup } from "./ToolGroup.tsx";
 import type { ToolRun as ToolRunState } from "../../store/index.ts";
 import { useScopedFromMeta, useScopedFromToolRuns, useScopedRunning } from "../../app/session-scope.tsx";
@@ -132,6 +132,7 @@ export function LiveToolCard({
   const plain = <PlainToolCard block={block} run={run} stopReason={stopReason} runs={runs} turnRunning={turnRunning} thinking={thinking} extra={extra} page={page} polls={polls} />;
   // 子智能体的转录里没有这件工具（`sessionOnly`），带着 `runs` 来的照旧是工具行。
   if (block.name === "spawn_session" && !runs) return <SessionSuggestionCard block={block} run={run} stopReason={stopReason} turnRunning={turnRunning} fallback={plain} />;
+  if (block.name === "review_session" && !runs) return <ReviewSessionRow block={block} run={run} fallback={plain} />;
   return plain;
 }
 

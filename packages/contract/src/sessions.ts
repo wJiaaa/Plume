@@ -69,6 +69,12 @@ export interface SessionsApi {
 	/** Write the session out to a temporary file and return its path. `jsonl` is the raw records. */
 	exportTrajectory(sessionId: string, format: "json" | "md" | "output" | "jsonl", selection?: { id?: string; correlationId?: string }): Promise<string>;
 	/**
+	 * Save the conversation as Markdown for a person to read, where the system save dialog says. The
+	 * path comes from that dialog in the main process, never from the window. Resolves to the path
+	 * written, or null when the dialog was cancelled.
+	 */
+	exportMarkdown(sessionId: string): Promise<string | null>;
+	/**
 	 * Fork from just before a message the person wrote: everything before it in a new session, this
 	 * one untouched. `messageIndex` is its place in the transcript the window shows, checked against
 	 * `timestamp`; `title` names the fork in the window's language. Null when the message is not found.

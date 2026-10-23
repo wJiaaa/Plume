@@ -13,9 +13,9 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 import { createElement as h } from "react";
 import type { SessionMeta, ToolCallContent, UserContent } from "@plume/core";
-import type { SessionSuggestionDetails } from "../../shared/session-suggestion.ts";
+import type { ReviewSessionDetails, SessionSuggestionDetails } from "../../shared/session-suggestion.ts";
 import { SessionScope } from "../../src/app/session-scope.tsx";
-import { SessionSuggestionCard } from "../../src/features/conversation/SessionSuggestionCard.tsx";
+import { ReviewSessionRow, SessionSuggestionCard } from "../../src/features/conversation/SessionSuggestionCard.tsx";
 import { SuggestionsSection } from "../../src/features/environment/SuggestionsSection.tsx";
 import { EnvironmentToggle } from "../../src/features/environment/EnvironmentToggle.tsx";
 import { translate } from "../../src/i18n/translate.ts";
@@ -420,6 +420,39 @@ test("开始以后改主意：第一轮还在跑时打开交回，问主进程�
 		await waitFor(() => toggle() === undefined, "第一轮结束，开关走了");
 	} finally {
 		await view.unmount();
+	}
+});
+
+test("交给审阅会话的那一行：没有卡片、直接是开始以后那一行，名字叫审阅会话；点了过去，没有交回开关", async () => {
+	const details: ReviewSessionDetails = { kind: "review_session", title: "审阅 · 登录改走 OAuth", subject: "登录改走 OAuth" };
+	const block: ToolCallContent = { type: "toolCall", id: "toolu_review", name: "review_session", arguments: {} };
+	const done: ToolRun = { toolCallId: block.id, toolName: "review_session", summary: "Review session", args: block.arguments, status: "done", startedAt: 1, result: { content: [], details } };
+	const row = (run?: ToolRun) => scoped(h(ReviewSessionRow, { block, run, fallback: FALLBACK }));
+	const opened: string[] = [];
+	const reviewing = meta("s-review", { spawnedFrom: { sessionId: "s-origin", toolCallId: block.id, reportBack: true, review: true } });
+	useApp.setState({ sessions: [meta("s-origin")], activity: {}, openSessionById: async (id: string) => { opened.push(id); return true; } });
+
+	const waiting = await mount(row(done));
+	try {
+		// 主进程在调用结束后才建会话：这一下只是一行记录，点不动。
+		assert.equal(waiting.find("[data-ly-session-suggestion]").getAttribute("data-ly-session-suggestion"), "review");
+		assert.equal(waiting.all("button").length, 0);
+		useApp.setState({ sessions: [meta("s-origin"), reviewing], activity: { "s-review": "running" } });
+		await waitFor(() => waiting.all('[data-ly-session-suggestion="started"]').length === 1, "审阅会话出现在列表里");
+		assert.ok(waiting.text().includes(translate("sessionOps.reviewSession")));
+		assert.ok(waiting.text().includes("登录改走 OAuth"));
+		assert.equal(waiting.all("[data-ly-suggestion-report]").length, 0, "交回是审阅会话存在的理由，不给关");
+		assert.equal(waiting.all("[data-ly-suggestion-action=\"start\"]").length, 0, "人敲 /review 就是同意，没有「开始」");
+		await click(waiting.find('[data-ly-suggestion-action="open"]'));
+		assert.deepEqual(opened, ["s-review"]);
+	} finally {
+		await waiting.unmount();
+	}
+	const refused = await mount(row({ ...done, status: "error", result: { content: [], details: undefined } }));
+	try {
+		assert.equal(refused.all("[data-test-fallback]").length, 1, "被退回的调用照常是工具行");
+	} finally {
+		await refused.unmount();
 	}
 });
 

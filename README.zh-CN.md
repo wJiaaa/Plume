@@ -99,9 +99,9 @@ Plume 不自带模型，所以第一次打开是发不出消息的。到「设�
 ## 能力
 
 - **自定义模型**：任意数量的供应商，每个供应商挂任意数量的模型。对接 **Responses**（`/v1/responses`）、**Anthropic Messages**（`/v1/messages`）和 **Chat Completions**（`/v1/chat/completions`）三种格式。
-- **20 个内置工具**，按代码里的分组：
+- **21 个内置工具**，按代码里的分组：
   - 文件与代码：`read` `write` `edit` `ls` `glob` `grep` `symbol` `lsp`
-  - 执行命令：`bash` `bash_output`
+  - 执行命令：`bash` `bash_output` `monitor`
   - 会话与记忆：`todo_write` `task` `skill` `recall` `learn` `ask_user`
   - 网络与预览：`web_fetch` `web_search` `preview` `image_generate`
 - **Skill**：`SKILL.md` + YAML frontmatter。只有名称和描述进系统提示，正文在模型调用 `skill` 工具时才注入。装几十个技能也不烧上下文。

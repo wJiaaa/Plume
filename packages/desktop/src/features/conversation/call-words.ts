@@ -26,7 +26,7 @@ export function describeCalls(calls: Call[]): string {
 }
 
 function counted(calls: Call[]): Call[] {
-  const commands = calls.some(({ block }) => block.name === "bash");
+  const commands = calls.some(({ block }) => block.name === "bash" || block.name === "monitor");
   const jobs = new Set<unknown>();
   return calls.filter(({ block }) => {
     if (block.name !== "bash_output") return true;
@@ -47,7 +47,7 @@ function counted(calls: Call[]): Call[] {
  * read 和 ls 不在这里，说的是 `locationOf`：让模型每次读文件都写一句，写出来的是「读取第三上游响应归一化」
  * 「读取第三上游请求分发」——同一个句式套七遍，中间是它自己起的代号。Claude Code、pi 的 read 也都不收说明。
  */
-const DESCRIBED = new Set(["grep", "glob", "bash"]);
+const DESCRIBED = new Set(["grep", "glob", "bash", "monitor"]);
 
 /**
  * 读文件、列目录那一行说的对象：相对工作区的完整路径，照 pi 的写法。
@@ -82,11 +82,11 @@ export function polledJob(block: ToolCallBlock): string | undefined {
   return typeof id === "string" && kill !== true ? id : undefined;
 }
 
-/** 启动这个后台任务的那次 `bash`：它的 `summary` 是模型给那条命令写的说明。 */
+/** 启动这个后台任务的那次 `bash` 或 `monitor`：它的 `summary` 是模型给那条命令写的说明。 */
 export function startedJob(runs: Record<string, ToolRunState>, job: string): ToolRunState | undefined {
   for (const run of Object.values(runs)) {
     const details = run.result?.details as { kind?: unknown; id?: unknown } | undefined;
-    if (details?.kind === "bash_background" && details.id === job) return run;
+    if ((details?.kind === "bash_background" || details?.kind === "monitor") && details.id === job) return run;
   }
   return undefined;
 }

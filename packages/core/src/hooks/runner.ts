@@ -62,9 +62,14 @@ export interface HookRunnerOptions {
 /**
  * Plume 的工具名是小写的（`bash`、`edit`），照 Claude Code 写的 matcher 是 `Bash|Edit`。两种都认，
  * 同一份配置搬过来不用改。
+ *
+ * `monitor` 也认 `bash`/`Bash`：它跑的就是一条 shell 命令，参数里同样是 `command`。只认自己的名字，
+ * 给 `Bash` 配的拦截钩子（拦 `git push --force` 这类）就看不到经它跑的命令，它成了绕过钩子的路。
+ * `tool_name` 照实还是 `monitor`，钩子要区分也分得出。
  */
 const TOOL_ALIASES: Record<string, string[]> = {
 	bash: ["Bash"],
+	monitor: ["bash", "Bash"],
 	bash_output: ["BashOutput"],
 	read: ["Read"],
 	write: ["Write"],

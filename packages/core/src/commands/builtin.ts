@@ -4,6 +4,8 @@
  * appears as a command that does nothing.
  */
 
+import { REVIEW_ARGUMENT_HINT, REVIEW_DESCRIPTION } from "./review.ts";
+
 /** 宿主要实现的那几个动作。加一个之前先问：它在没有窗口的地方是什么意思？ */
 export type CommandAction =
 	/** 把之前的对话压缩成摘要。 */
@@ -20,7 +22,11 @@ export type CommandAction =
 export interface BuiltinCommand {
 	name: string;
 	description: string;
-	action: CommandAction;
+	/**
+	 * 宿主替人做的那件事。没有它的是展开成一段话发给模型的命令（`/review`），任何宿主都能用，
+	 * 展开见 `invoke.ts` 的 `resolveInvocation`。正文不放在这里：这张表要经 IPC 送进菜单和设置页。
+	 */
+	action?: CommandAction;
 	argumentHint?: string;
 }
 
@@ -36,10 +42,11 @@ export const BUILTIN_COMMANDS: BuiltinCommand[] = [
 	{ name: "commands", description: "管理斜杠命令，或新建一个", action: "manage-commands" },
 	{ name: "btw", description: "另开一个侧边聊天问这句话，不进这个对话", action: "aside", argumentHint: "要问的话" },
 	{ name: "plan", description: "切换计划模式：先只读调查、交一份计划，批准后再动手", action: "plan", argumentHint: "可选：要规划的事" },
+	{ name: "review", description: REVIEW_DESCRIPTION, argumentHint: REVIEW_ARGUMENT_HINT },
 ];
 
-/** 宿主实现了哪些动作，就提供哪些内建命令。 */
+/** 宿主实现了哪些动作，就提供哪些内建命令；展开成一段话的那几条不靠宿主，都提供。 */
 export function builtinCommandsFor(supported: readonly CommandAction[]): BuiltinCommand[] {
 	const can = new Set(supported);
-	return BUILTIN_COMMANDS.filter((command) => can.has(command.action));
+	return BUILTIN_COMMANDS.filter((command) => !command.action || can.has(command.action));
 }

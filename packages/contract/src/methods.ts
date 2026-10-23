@@ -94,6 +94,7 @@ export const METHODS = {
 		trajectory: "sessions:trajectory",
 		trajectoryChanges: "sessions:trajectoryChanges",
 		exportTrajectory: "sessions:exportTrajectory",
+		exportMarkdown: "sessions:exportMarkdown",
 		forkBefore: "sessions:forkBefore",
 		forkAfter: "sessions:forkAfter",
 		remove: "sessions:remove",
@@ -139,6 +140,10 @@ export const METHODS = {
 		cancel: "tasks:cancel",
 		dismiss: "tasks:dismiss",
 		resume: "tasks:resume",
+	},
+	wakeups: {
+		list: "wakeups:list",
+		cancel: "wakeups:cancel",
 	},
 	files: {
 		list: "files:list",

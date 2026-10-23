@@ -8,6 +8,7 @@ import {
 	Copy,
 	CornerUpRight,
 	ExternalLink,
+	FileDown,
 	Folder,
 	FolderInput,
 	History,
@@ -338,6 +339,19 @@ export function SessionMenu({
 						}
 					>
 						{t("sessionMenu.exportRecords")}
+					</MenuItem>
+					<MenuItem
+						icon={<FileDown size={13} strokeWidth={1.8} />}
+						onClick={() => {
+							onClose();
+							// 取消保存对话框就是什么都不做，不报也不提示。
+							void bridge.sessions
+								.exportMarkdown(session.id)
+								.then((path) => path && notify(t("sessionMenu.markdownExported"), "info", undefined, { reveal: path }))
+								.catch((error) => notify(String(error), "error"));
+						}}
+					>
+						{t("sessionMenu.exportMarkdown")}
 					</MenuItem>
 					<MenuItem icon={<Copy size={13} strokeWidth={1.8} />} onClick={() => void copy(session.id, t("sessionMenu.sessionIdCopied"))}>
 						{t("sessionMenu.copySessionId")}

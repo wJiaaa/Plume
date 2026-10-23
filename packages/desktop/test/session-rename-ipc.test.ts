@@ -13,6 +13,7 @@ const fixtureUrl = `data:text/javascript,${encodeURIComponent(`
 export const handlers = new Map();
 export const broadcasts = [];
 export const ipcMain = { handle: (name, handler) => handlers.set(name, handler) };
+export const app = {}, BrowserWindow = {}, dialog = {};
 export const sessions = new Map();
 export const broadcast = (id, event) => broadcasts.push({ id, event });
 const unused = () => { throw new Error("not part of this test"); };

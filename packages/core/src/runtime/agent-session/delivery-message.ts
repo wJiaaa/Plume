@@ -1,8 +1,9 @@
 /**
- * 后台跑完的东西，作为一条消息回到主会话时长什么样：子代理的结果、自己结束了的后台命令、从建议
- * 卡片上开出来的会话交回的第一轮。什么时候送、攒多久见 `session-deliveries.ts`。
+ * 后台跑完的东西，作为一条消息回到主会话时长什么样：子代理的结果、自己结束了的后台命令、`monitor`
+ * 送来的新输出、从建议卡片上开出来的会话交回的第一轮。什么时候送、攒多久见 `session-deliveries.ts`。
  */
 
+import type { MonitorEvents } from "../../tools/background-jobs.ts";
 import type { DeliveredReport, Message } from "../../types.ts";
 import type { SubAgentSummary } from "../../types/sub-agent.ts";
 import type { SettledDispatch } from "../sub-agent/detached-dispatches.ts";
@@ -59,7 +60,13 @@ export interface DeliveryItem {
  *
  * `delivery` 给界面：画成一行「谁的结果到了」，不是一个人发的气泡。
  */
-export function deliveryMessage(items: DeliveryItem[], jobs: FinishedJob[] = [], pending: Pick<SubAgentSummary, "agent" | "description">[] = [], sessions: FinishedSession[] = []): Message {
+export function deliveryMessage(
+	items: DeliveryItem[],
+	jobs: FinishedJob[] = [],
+	pending: Pick<SubAgentSummary, "agent" | "description">[] = [],
+	sessions: FinishedSession[] = [],
+	monitors: MonitorEvents[] = [],
+): Message {
 	const blocks = items.map(({ report, summary }) => {
 		const status = report.error ? "failed" : (summary?.status ?? "done");
 		const body = report.error ? `它没能跑完：${report.error}` : report.answer?.text || "（它跑完了，但什么都没交回来。）";
@@ -107,6 +114,27 @@ export function deliveryMessage(items: DeliveryItem[], jobs: FinishedJob[] = [],
 					"（运行时送达）你之前放到后台的命令结束了。下面是它的退出状态和你上次读取之后的输出，不用再拿 bash_output 去查：",
 					...jobs.map((job) => `<background_job id="${job.id}" command="${attribute(job.command)}" status="${attribute(job.status)}">\n${job.output}\n</background_job>`),
 				];
+	/*
+	 * `monitor` 的一批新输出。界面上和后台命令结束同一种行（`kind: "job"`），点了同样去任务面板；
+	 * `monitor` 告诉它这是一批输出，不是结束。
+	 */
+	const monitorReports: DeliveredReport[] = monitors.map((one) => ({
+		id: one.id,
+		kind: "job",
+		agent: "",
+		description: one.description || one.command,
+		command: one.command,
+		status: "done",
+		monitor: { lines: one.lines, ...(one.stopped ? { stopped: one.stopped } : {}) },
+	}));
+	const monitorParts =
+		monitors.length === 0
+			? []
+			: [
+					"（运行时送达）你用 monitor 监视的命令有新输出，下面是上次送达之后的新行，不用拿 bash_output 去查。" +
+						"只在这些输出需要你处理时才行动，否则一句话带过；用不着它了就用 bash_output 加 kill: true 停掉：",
+					...monitors.map(monitorBlock),
+				];
 	const sessionReports: DeliveredReport[] = sessions.map((one) => ({ id: one.sessionId, kind: "session", agent: "", description: one.title, status: one.status }));
 	const sessionParts =
 		sessions.length === 0
@@ -120,13 +148,26 @@ export function deliveryMessage(items: DeliveryItem[], jobs: FinishedJob[] = [],
 		role: "user",
 		synthetic: true,
 		timestamp: Date.now(),
-		delivery: [...delivery, ...jobReports, ...sessionReports],
+		delivery: [...delivery, ...jobReports, ...monitorReports, ...sessionReports],
 		/*
 		 * 一份报告一个文本块：发送前和 `task` 当场交回的结果按同一条线剪（见 `pruneMessage`），分块时
 		 * 只剪超长的那份，几份一起到的时候不会把夹在中间的整份剪掉。
 		 */
-		content: [...agentParts, ...jobParts, ...sessionParts].map((text) => ({ type: "text" as const, text })),
+		content: [...agentParts, ...jobParts, ...monitorParts, ...sessionParts].map((text) => ({ type: "text" as const, text })),
 	};
+}
+
+/** 一批 monitor 输出：丢了多少行、为什么停了，都写在标签里面，模型读到的和它看见的行在一处。 */
+function monitorBlock(one: MonitorEvents): string {
+	const dropped = one.dropped > 0 ? [`[更早的 ${one.dropped} 行超出单次送达的上限，没有放进来${one.outputPath ? `；完整输出在 ${one.outputPath}` : ""}]`] : [];
+	const stopped =
+		one.stopped === "max_events"
+			? [`[监视已停止：输出满了 max_events 的 ${one.limit} 行，进程已结束]`]
+			: one.stopped === "idle"
+				? [`[监视已停止：${Math.round((one.limit ?? 0) / 1000)} 秒没有新输出（idle_timeout），进程已结束]`]
+				: [];
+	const body = [...dropped, ...(one.text ? [one.text] : []), ...stopped].join("\n");
+	return `<monitor_events id="${one.id}" command="${attribute(one.command)}" lines="${one.lines}" status="${one.stopped ? "stopped" : "running"}">\n${body}\n</monitor_events>`;
 }
 
 /** 标签属性里的值：引号换掉，换行压平，免得一句描述把标签撑破。 */

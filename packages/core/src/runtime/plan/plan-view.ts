@@ -71,6 +71,29 @@ export interface CurrentPlan {
 }
 
 /**
+ * 会话里最后一份批准了的计划，带着批准时附上的注意事项；从没批准过就是 null。
+ *
+ * 和 `currentPlan` 不同：那边要的是人眼下在看的那份，打回的也算；这里要的是实施所依据的那份——批准之后
+ * 又交了一份被打回的，照着做的仍是先前批准的那一份。修订就是再交一次，所以往回找到的第一份批准结果就是
+ * 最终那一版。压缩以后调用和结果可能都不在了，那时以快照里批准的那份为准。
+ *
+ * 「在新会话里执行」批准的（`handoff`）跳过：实施在另一个会话里，这个会话的改动不是照着它做的。
+ */
+export function latestApprovedPlan(messages: readonly Message[]): PlanDraft | null {
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const message = messages[i];
+		if (message.role === "toolResult" && message.toolName === SUBMIT_PLAN_TOOL_NAME && !message.isError) {
+			const approved = approvedPlanOf(message.details);
+			if (!approved || approved.handoff) continue;
+			const { approvedAt: _approvedAt, ...plan } = approved;
+			return plan;
+		}
+		if (message.role === "user" && message.synthetic && message.compactionContext?.plan && !message.compactionContext.plan.handoff) return message.compactionContext.plan;
+	}
+	return null;
+}
+
+/**
  * 会话里眼下的那份计划：最后一次交上来的，不论批没批。
  *
  * 不另存文件，直接从历史里读——交计划的调用和它的结果本来就在会话日志里，再写一份就是两处真相

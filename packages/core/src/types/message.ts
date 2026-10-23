@@ -377,10 +377,13 @@ export interface DeliveredReport {
 	 * 后台命令结束了，而不是子代理跑完了。这时 `agent` 为空，`description` 是模型起任务时写的那句
 	 * 说明（没写就是命令本身），`command` 是完整命令，`exitCode` 为 null 表示被信号终止。
 	 */
-	kind?: "job" | "session";
+	kind?: "job" | "session" | "wakeup";
 	/*
 	 * `session`：一个从建议卡片上开出来的会话交回了第一轮的回复。`id` 是那个会话的 id，`description` 是它的
 	 * 标题，`agent` 为空。
+	 *
+	 * `wakeup`：模型自己安排的定时唤醒到点了（`session-wakeups.ts`）。`id` 是那个任务的 id，`description`
+	 * 是给人看的那句（唤醒的理由，cron 的 prompt 第一行），`command` 是 cron 表达式，一次性唤醒没有。
 	 */
 	command?: string;
 	exitCode?: number | null;
@@ -389,6 +392,11 @@ export interface DeliveredReport {
 	status: "done" | "failed" | "aborted";
 	/** 没做完就停下了（检查点、原地打转、上游出错）——报告是阶段性的。 */
 	incomplete?: boolean;
+	/**
+	 * `kind` 为 `job` 时，这不是命令结束，是 `monitor` 送来的一批新输出：`lines` 行，`exitCode` 不设。
+	 * 达到上限自己停了的，最后一批带着 `stopped`。
+	 */
+	monitor?: { lines: number; stopped?: "max_events" | "idle" };
 }
 
 /**

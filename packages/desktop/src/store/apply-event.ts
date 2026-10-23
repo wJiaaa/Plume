@@ -38,6 +38,7 @@ import { sessionTitle } from "../lib/session-title.ts";
 import { completionNotice } from "../lib/session-notifications.ts";
 import { dropHandoff, takeHandoff } from "./handoff.ts";
 import { setMonitors } from "./session-monitors.ts";
+import { setWakeups } from "./session-wakeups.ts";
 
 type Get = () => AppState;
 type Set = (partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)) => void;
@@ -53,6 +54,14 @@ const RECONNECTED = new Set<AgentEvent["type"]>([
 ]);
 
 export function applyAgentEvent(sessionId: string, event: AgentEvent, set: Set, get: Get): void {
+	/*
+	 * 定时唤醒的表不是转录的一部分，也不分屏上屏下：按会话记下就走，环境卡片那一节和按钮上的圆点读它。
+	 * 不往下走，免得它被当成一条转录事件去折叠、去缓存。
+	 */
+	if (event.type === "wakeups") {
+		setWakeups(sessionId, event.wakeups);
+		return;
+	}
 	if (event.type === "monitors") {
 		setMonitors(sessionId, event.running);
 		return;

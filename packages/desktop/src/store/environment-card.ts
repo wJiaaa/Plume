@@ -12,9 +12,9 @@ import { create } from "zustand";
  * 的行为，主进程用不着知道。
  */
 
-export type EnvironmentSection = "openIn" | "jobs" | "subAgents" | "suggestions" | "pullRequest" | "sideChats" | "summary" | "references";
+export type EnvironmentSection = "openIn" | "jobs" | "subAgents" | "suggestions" | "wakeups" | "pullRequest" | "sideChats" | "summary" | "references";
 
-export const ENVIRONMENT_SECTIONS: EnvironmentSection[] = ["openIn", "jobs", "subAgents", "suggestions", "pullRequest", "sideChats", "summary", "references"];
+export const ENVIRONMENT_SECTIONS: EnvironmentSection[] = ["openIn", "jobs", "subAgents", "suggestions", "wakeups", "pullRequest", "sideChats", "summary", "references"];
 
 const STORAGE_KEY = "plume:environment-card";
 

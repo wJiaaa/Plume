@@ -1,9 +1,12 @@
 import {
+	AlarmClock,
+	AlarmClockOff,
 	AppWindow,
 	Archive,
 	Cable,
 	Camera,
 	FileCode,
+	FileSearch,
 	FilePlus,
 	FileText,
 	FolderTree,
@@ -42,6 +45,7 @@ const ICONS: Record<string, typeof FileText> = {
 	grep: Search,
 	bash: Terminal,
 	bash_output: Terminal,
+	monitor: Terminal,
 	todo_write: ListTodo,
 	task: Users,
 	skill: Sparkles,
@@ -51,6 +55,7 @@ const ICONS: Record<string, typeof FileText> = {
 	// The sidebar's own marks for a new chat and for archiving, so the row and the place it acts on agree.
 	spawn_session: SquarePen,
 	archive_session: Archive,
+	review_session: FileSearch,
 	browser_open: Globe,
 	browser_act: MousePointer2,
 	browser_tabs: AppWindow,
@@ -61,6 +66,11 @@ const ICONS: Record<string, typeof FileText> = {
 	ask_session: MessageCircleQuestionMark,
 	notify_session: Send,
 	wait_for_session: Hourglass,
+	// 定时唤醒：建的两个是闹钟，取消是划掉的闹钟，列出来的和环境卡片那一节同一枚。
+	schedule_wakeup: AlarmClock,
+	cron_create: AlarmClock,
+	cron_list: AlarmClock,
+	cron_delete: AlarmClockOff,
 };
 
 /**

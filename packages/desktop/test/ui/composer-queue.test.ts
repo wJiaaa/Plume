@@ -93,14 +93,14 @@ test("命令自己声明了 steer，正忙时仍旧插进去", async () => {
 });
 
 test("条上留原文，发出去的是展开后的正文", async () => {
-	setup({ draft: "/review 这次的改动", commands: [command("review", "审一遍：$ARGUMENTS，按严重程度排序。")] });
+	setup({ draft: "/audit 这次的改动", commands: [command("audit", "审一遍：$ARGUMENTS，按严重程度排序。")] });
 	const view = await mount(composer());
 	try {
 		await click(view.find('[data-composer-send="send"]'));
 		await act(async () => {});
 		const queued = useApp.getState().queued.a?.[0];
-		assert.equal(queued?.preview, "/review 这次的改动", "条上要认得出是自己写的那一行");
-		assert.equal(queued?.draft.text, "/review 这次的改动", "编辑退回去的也是那一行，而不是展开后的几百字");
+		assert.equal(queued?.preview, "/audit 这次的改动", "条上要认得出是自己写的那一行");
+		assert.equal(queued?.draft.text, "/audit 这次的改动", "编辑退回去的也是那一行，而不是展开后的几百字");
 		assert.ok(queued?.content.some((block) => block.type === "text" && block.text.includes("按严重程度排序")), "真正发出去的是展开后的正文");
 	} finally { await view.unmount(); useApp.setState(previous, true); }
 });

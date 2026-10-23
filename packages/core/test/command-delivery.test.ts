@@ -82,9 +82,10 @@ test("宿主实现了哪些动作，就拿到哪些内建命令", () => {
 	 */
 	assert.deepEqual(
 		builtinCommandsFor(["compact"]).map((c) => c.name),
-		["compact"],
+		["compact", "review"],
 	);
-	assert.deepEqual(builtinCommandsFor([]).length, 0);
+	// 展开成一段话发给模型的（`/review`）不靠宿主动作，哪儿都有。
+	assert.deepEqual(builtinCommandsFor([]).map((c) => c.name), ["review"]);
 	assert.equal(builtinCommandsFor(["compact", "clear", "manage-commands", "aside", "plan"]).length, BUILTIN_COMMANDS.length);
 });
 

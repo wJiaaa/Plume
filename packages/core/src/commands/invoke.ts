@@ -9,6 +9,13 @@
 
 import { expandCommand, resolveCommand, skillNameOf, type Invocation } from "./expand.ts";
 import type { SlashCommand } from "./loader.ts";
+import { reviewRequest } from "./review.ts";
+
+/**
+ * 内建命令里展开成一段话的那几条。先于磁盘上的命令：同名的内建命令总赢（见 `BUILTIN_COMMANDS`），
+ * 菜单里列的是它，回车发出去的也得是它。
+ */
+const BUILTIN_PROMPTS: Record<string, (rest: string) => string> = { review: reviewRequest };
 
 /** The parts of a skill listing the resolver needs. */
 export interface SkillCommandTarget {
@@ -42,6 +49,12 @@ export function resolveInvocation(
 	invocation: Invocation,
 	catalogue: { commands: SlashCommand[]; skills?: SkillCommandTarget[] },
 ): ResolvedInvocation | null {
+	const builtin = Object.hasOwn(BUILTIN_PROMPTS, invocation.name.toLowerCase()) ? BUILTIN_PROMPTS[invocation.name.toLowerCase()] : undefined;
+	if (builtin) {
+		const rest = invocation.rest.trim();
+		// 正文有几千字，是写给模型的；气泡里只留人敲的那一行。
+		return { outgoing: builtin(rest), displayText: [`/${invocation.name}`, rest].filter(Boolean).join(" ") };
+	}
 	/*
 	 * 精确命中优先，否则唯一的末段匹配——`/commit` 找到 `git:commit`。
 	 *

@@ -44,6 +44,16 @@ test("the same words at different levels are different cards", () => {
 	assert.equal(groups.length, 2, "a warning and a failure are not the same event");
 });
 
+test("two exports to different files are two cards, each pointing at its own file", () => {
+	const groups = groupNotices([
+		{ ...notice("1", "已导出为 Markdown", "info"), reveal: "/d/a.md" },
+		{ ...notice("2", "已导出为 Markdown", "info"), reveal: "/d/b.md" },
+		{ ...notice("3", "已导出为 Markdown", "info"), reveal: "/d/b.md" },
+	]);
+	assert.deepEqual(groups.map((g) => [g.reveal, g.ids]), [["/d/a.md", ["1"]], ["/d/b.md", ["2", "3"]]]);
+	assert.equal(groupNotices([notice("4", "x")])[0].reveal, undefined);
+});
+
 test("same-titled sessions keep separate navigation targets while duplicates within one session merge", () => {
 	const groups = groupNotices([
 		{ ...notice("a-1", "同名任务已完成", "info"), sessionId: "a" },

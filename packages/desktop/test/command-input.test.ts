@@ -17,3 +17,11 @@ test("completion uses the caret and leaves a selected range, inline code and pat
 	assert.equal(commandCompletion("`/rev", 5, 5), null);
 	assert.equal(commandCompletion("src/foo", 7, 7), null);
 });
+
+test("/review is a built-in command: listed with the others, with its own usage, and sent as text", () => {
+	const review = commandEntries([], []).find((entry) => entry.name === "review");
+	assert.equal(review?.kind, "builtin");
+	assert.equal(review?.action, undefined, "没有宿主动作：发出去，由 resolveInvocation 展开");
+	assert.ok(review?.argumentHint?.includes("--effort"));
+	assert.equal(commandDecoration("/review", commandEntries([], []))?.hint, review?.argumentHint);
+});

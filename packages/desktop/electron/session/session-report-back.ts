@@ -2,6 +2,14 @@
  * 从建议卡片上开出来、被要求交回的会话（`SpawnedFrom.reportBack`）：第一轮结束时把它最后那段回复
  * 送回提建议的那个对话，和子代理的结果走同一条送达（core 的 `receiveSessionReport`）。
  *
+ * 交，要等交给它的那件事做完：第一次 `agent_end` 之后，会话还得闲下来。派了子代理的那一轮当场就
+ * 收尾（ADR-0051），那时最后那段话是「已派出，等结果」；从前就在这一刻交回，真正的结论在之后送达的
+ * 那几轮里写出来，再也到不了提建议的那个对话。闲下来再送，送的是最后那一轮的话，收场也按最后那一轮
+ * 算。边界：这段时间里人在它里面说的话也算进这件事。
+ *
+ * 交不交、撕条子，仍在第一次 `agent_end` 当场定下，只有「送」往后推：撕条子挪到闲下来之后，那段时间
+ * 里退出应用，重启后条子还在，人在里面随便聊的下一轮就会被交回去。
+ *
  * 只交第一轮。那是卡片交给它的那件事；之后人在它里面接着聊，每说完一轮都往回送，就是拿别人的对话
  * 去叫醒提建议的那个。所以第一轮无论怎么收场都记一笔 `settled`、撕掉 `reportBack`，重启后也不再交。
  * 被人停下的不交——停下是人的决定，叫醒父会话去处理半截结果是在和这个决定争。出错、跑到上限的照样交，
@@ -27,6 +35,8 @@ export interface ReportBackDeps {
 	running(sessionId: string): boolean;
 	/** 它最后那段回复。 */
 	reply(sessionId: string): string;
+	/** 它手上什么都没有了（core 的 `AgentSession.whenIdle`）；不在内存里的立刻兑现。 */
+	whenIdle(sessionId: string): Promise<void>;
 	/** 写一条换了 `spawnedFrom` 的 meta。 */
 	write(sessionId: string, from: SpawnedFrom): Promise<void>;
 	/** 送到父会话；父会话删了、归档了就不送。 */
@@ -50,24 +60,52 @@ export function reportBackAfterFirstTurn(deps: ReportBackDeps): ReportBack {
 	 * 有这一项就听它的，没有才看 meta。
 	 */
 	const changed = new Map<string, boolean>();
-	const plain = (from: SpawnedFrom): SpawnedFrom => ({ sessionId: from.sessionId, toolCallId: from.toolCallId });
+	/** 第一轮结束、在等会话闲下来的，和这段时间里最近那一轮的收场。 */
+	const ending = new Map<string, Extract<AgentEvent, { type: "agent_end" }>["reason"]>();
+	// `review` 不是一次性的：它说的是这个会话是什么，交没交回都还是审阅会话（`review-session.ts` 凭它拒绝再转交）。
+	const plain = (from: SpawnedFrom): SpawnedFrom => ({ sessionId: from.sessionId, toolCallId: from.toolCallId, ...(from.review ? { review: true as const } : {}) });
 
-	const settle = async (sessionId: string, meta: SessionMeta, from: SpawnedFrom, reason: Extract<AgentEvent, { type: "agent_end" }>["reason"]) => {
+	/** 第一轮结束：撕条子，定下交不交。 */
+	const settle = async (sessionId: string, from: SpawnedFrom): Promise<boolean> => {
 		const wanted = changed.get(sessionId) ?? from.reportBack === true;
 		changed.delete(sessionId);
 		await deps.write(sessionId, { ...plain(from), settled: true });
-		if (!wanted || reason === "aborted") return;
-		await deps.deliver(from.sessionId, { sessionId, title: meta.title, status: reason === "done" ? "done" : "failed", reply: deps.reply(sessionId) });
+		return wanted;
+	};
+
+	/** 会话闲下来了：按最后那一轮的收场送出去。被人停下的不送。 */
+	const deliver = async (sessionId: string, meta: SessionMeta, from: SpawnedFrom) => {
+		const reason = ending.get(sessionId);
+		ending.delete(sessionId);
+		if (!reason || reason === "aborted") return;
+		// 标题可能是这段时间里才起好的。
+		const title = deps.meta(sessionId)?.title ?? meta.title;
+		await deps.deliver(from.sessionId, { sessionId, title, status: reason === "done" ? "done" : "failed", reply: deps.reply(sessionId) });
 	};
 
 	return {
 		observe(sessionId, event) {
-			if (event.type !== "agent_end" || handled.has(sessionId)) return;
+			if (event.type !== "agent_end") return;
+			if (ending.has(sessionId)) {
+				ending.set(sessionId, event.reason);
+				return;
+			}
+			if (handled.has(sessionId)) return;
 			const meta = deps.meta(sessionId);
 			const from = meta?.spawnedFrom;
 			if (!meta || !from || from.settled) return;
 			handled.add(sessionId);
-			void settle(sessionId, meta, from, event.reason).catch((error: unknown) => console.error("[session-report-back] report failed", error));
+			// 当场登记：写 meta 那一拍里结束的送达轮也要记到。
+			ending.set(sessionId, event.reason);
+			const report = async () => {
+				if (!(await settle(sessionId, from))) {
+					ending.delete(sessionId);
+					return;
+				}
+				await deps.whenIdle(sessionId);
+				await deliver(sessionId, meta, from);
+			};
+			void report().catch((error: unknown) => console.error("[session-report-back] report failed", error));
 		},
 		async set(sessionId, on) {
 			const from = deps.meta(sessionId)?.spawnedFrom;

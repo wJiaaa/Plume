@@ -84,6 +84,27 @@ test("建议的会话交回：一行「来自新会话 · 标题」，不画子�
 	}
 });
 
+test("monitor 送来一批输出：和后台命令同一种行，标题说有几行新输出，不说「完成」；自己停了说停了、为什么", async () => {
+	const job = { id: "j", kind: "job" as const, agent: "", description: "盯着日志", command: "tail -f app.log", status: "done" as const };
+	const running = await mount(h(DeliveryRow, { delivery: [{ ...job, monitor: { lines: 3 } }] }));
+	try {
+		const row = running.find<HTMLButtonElement>("[data-delivery-kind=job] button");
+		assert.match(row.textContent ?? "", /监视到 3 行新输出/);
+		assert.match(row.textContent ?? "", /盯着日志/);
+		assert.doesNotMatch(row.textContent ?? "", /后台命令完成/, "命令还在跑，不能说它完成了");
+	} finally {
+		await running.unmount();
+	}
+	const stopped = await mount(h(DeliveryRow, { delivery: [{ ...job, monitor: { lines: 0, stopped: "idle" as const } }] }));
+	try {
+		const row = stopped.find<HTMLButtonElement>("[data-delivery-kind=job] button");
+		assert.match(row.textContent ?? "", /监视已停止/);
+		assert.match(row.textContent ?? "", /长时间没有输出/);
+	} finally {
+		await stopped.unmount();
+	}
+});
+
 test("子智能体要授权：卡上是它的脸和一行「谁在请求」；主智能体自己要的照旧是那枚图标", async () => {
 	Object.defineProperty(window, "plume", { configurable: true, value: {} });
 	useApp.setState({

@@ -139,6 +139,17 @@ test("matcher：名字列表、正则，以及 Claude Code 风格的工具名", 
 	assert.equal(decision?.block, true, "Bash 匹配 Plume 的 bash");
 });
 
+test("给 Bash 配的拦截钩子也看得到经 monitor 跑的命令：tool_input.command 和 bash 同一个形状", async () => {
+	const guard = node(`${READ_STDIN}if(String(input.tool_input.command).includes('push --force')){process.stderr.write(input.tool_name+' 不许强推');process.exit(2)}})`);
+	for (const matcher of ["Bash", "bash"]) {
+		const before = makeBeforeToolCall(scope(config("PreToolUse", [guard], matcher)));
+		const blocked = await before({ toolName: "monitor", args: { command: "git push --force && tail -f ci.log" }, toolCallId: "c1" });
+		assert.equal(blocked?.block, true, `matcher ${matcher} 匹配 monitor`);
+		assert.equal(blocked?.reason, "monitor 不许强推", "tool_name 照实是 monitor");
+		assert.equal((await before({ toolName: "monitor", args: { command: "tail -f app.log" }, toolCallId: "c2" }))?.block, undefined);
+	}
+});
+
 test("退出码 2 拦下调用、原因取 stderr；其他非零只记失败，不替它拦", async () => {
 	const runs: HookRun[] = [];
 	const blocking = makeBeforeToolCall(scope(config("PreToolUse", [node("process.stderr.write('不许动 lockfile');process.exit(2)")]), runs));

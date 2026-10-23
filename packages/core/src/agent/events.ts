@@ -85,7 +85,9 @@ export type NoticeCode =
 	/** The automatic continuations are used up; stopped. */
 	| "continue-limit"
 	/** An MCP server would not connect, or gave up reconnecting. Params: `server`, `error`. */
-	| "mcp-failed";
+	| "mcp-failed"
+	/** Stopping the conversation also cancelled its pending wakeups and cron jobs. Params: `n`. */
+	| "wakeups-cancelled";
 
 /** Values a host fills into its own wording of a coded notice. */
 export type NoticeParams = Record<string, string | number>;
@@ -330,8 +332,37 @@ export type AgentEvent =
 	 * one thing a "what is it going to do next" list must never be.
 	 */
 	| { type: "tasks"; tasks: QueuedTask[] }
+	/**
+	 * 这个会话里待触发的定时唤醒变了（`schedule_wakeup`、`cron_*`，见 `runtime/agent-session/session-wakeups.ts`）。
+	 *
+	 * 和 `tasks` 一样每次带整张表：只有几行，漏收一次的窗口也不会拿着一张悄悄错了的单子。
+	 */
+	| { type: "wakeups"; wakeups: SessionWakeup[] }
 	/** 这个会话里还在跑的 `monitor` 有几个变了。它会自己叫醒会话，窗口据此在环境按钮上亮点。 */
 	| { type: "monitors"; running: number };
+
+/**
+ * 一个会话里待触发的定时唤醒：到点往这个对话送一条消息，模型带着已有上下文接着做。
+ *
+ * 只活在会话的内存里，应用退出、会话被处置、人按停止都会让它没了。每次开一个新会话的「定时任务」
+ * 是另一回事（`config/schedule.ts`）。
+ */
+export interface SessionWakeup {
+	id: string;
+	/** `wakeup`：`schedule_wakeup` 的一次性唤醒；`cron`：`cron_create` 建的。 */
+	kind: "wakeup" | "cron";
+	prompt: string;
+	/** `schedule_wakeup` 写的那句为什么等这么久，给人看。 */
+	reason?: string;
+	cron?: string;
+	recurring: boolean;
+	createdAt: number;
+	nextAt: number;
+	/** 循环任务过了这个时刻就不再触发。一次性的没有。 */
+	expiresAt?: number;
+	/** 已经送进对话的次数，跳过的不算。 */
+	fired: number;
+}
 
 /**
  * Work handed to a session from somewhere other than its own composer.

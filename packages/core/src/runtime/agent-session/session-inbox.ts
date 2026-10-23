@@ -104,9 +104,13 @@ export class SessionInbox {
 	/**
 	 * Drop everything waiting: stop means this conversation stops now, not "stop this turn, then run
 	 * the three I queued" — that would go on spending after the screen has just said it stopped.
+	 *
+	 * Returns what was dropped: a scheduled wakeup among it has to hear that it never got in.
 	 */
-	clear(): void {
+	clear(): Message[] {
+		const dropped = [...this.steering, ...this.queued.map((entry) => entry.message)];
 		this.steering.length = 0;
 		this.queued.length = 0;
+		return dropped;
 	}
 }

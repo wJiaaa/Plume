@@ -20,10 +20,12 @@
 
 import { useI18n } from "../../i18n/index.ts";
 import { translate } from "../../i18n/translate.ts";
-import { ArrowRight, CircleAlert, Info, MessageCirclePlus, TriangleAlert, X } from "../../ui/icons/index.ts";
+import { ArrowRight, CircleAlert, CornerUpRight, Info, MessageCirclePlus, TriangleAlert, X } from "../../ui/icons/index.ts";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useApp } from "../../store/index.ts";
+import { revealLabel } from "../../store/open-targets.ts";
+import { bridge } from "../../services/index.ts";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import { groupNotices, schedule, TOAST_Z, visibleToasts, type Deadline, type ToastGroup } from "./stack.ts";
 import { useLayout } from "../../app/layout.tsx";
@@ -232,6 +234,23 @@ export function Toaster() {
 							>
 								<ArrowRight size={12} strokeWidth={2} aria-hidden />
 							</button>
+						)}
+						{/*
+						 * 刚写到磁盘上的文件：在访达 / 资源管理器里指给人看。`-my-px` 让 20px 的按钮占住这一行 18px
+						 * 的高度，有它没它卡片一样高。
+						 */}
+						{group.reveal && (
+							<IconButton
+								size="xs"
+								emphasis
+								className="-my-px"
+								label={revealLabel()}
+								icon={<CornerUpRight size={12} strokeWidth={2} aria-hidden />}
+								onClick={() => {
+									if (group.reveal) void bridge.workspace.reveal(group.reveal);
+									dismiss(group);
+								}}
+							/>
 						)}
 						{group.extensions && (
 							<IconButton
