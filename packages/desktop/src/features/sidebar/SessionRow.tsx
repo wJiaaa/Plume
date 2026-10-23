@@ -14,7 +14,7 @@ import { useI18n } from "../../i18n/index.ts";
 import type { SessionMeta } from "@plume/core";
 import { rowActivity } from "../../lib/row-activity.ts";
 import { useApp, useRunningBeside } from "../../store/index.ts";
-import { Archive, ArchiveRestore, Pin, PinOff, Trash2 } from "../../ui/icons/index.ts";
+import { Archive, ArchiveRestore, ChevronRight, Pin, PinOff, Trash2 } from "../../ui/icons/index.ts";
 import { memo, useState } from "react";
 import { useLayout } from "../../app/layout.tsx";
 import { sessionTitle } from "../../lib/session-title.ts";
@@ -30,6 +30,8 @@ import { offerSessionDrag } from "../split/index.ts";
 import { openScopedPanel, usePaneDock } from "../dock/index.ts";
 import { DropLineIndicator } from "./DropIndicator.tsx";
 import { useRowLit } from "./use-row-lit.ts";
+import { useFoldedThreads } from "./folded-threads.ts";
+import { GroupActivity } from "./GroupActivity.tsx";
 import { HoverRow, HoverRowReveal, hoverSlot } from "../../ui/row/HoverRow.tsx";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import { TimeAgo } from "../../ui/primitives/TimeAgo.tsx";
@@ -104,6 +106,7 @@ export const SessionRow = memo(function SessionRow({
 	session,
 	project,
 	nested = false,
+	followUps,
 	actions,
 }: {
 	session: SessionMeta;
@@ -112,6 +115,11 @@ export const SessionRow = memo(function SessionRow({
 	 * line. It moves with its parent, so it is not a reorder handle or target of its own.
 	 */
 	nested?: boolean;
+	/**
+	 * The conversations nested under this one, when there are any: the row then offers to fold them,
+	 * and while folded says how many it is holding (`SessionRows`' `Thread` does the folding).
+	 */
+	followUps?: readonly SessionMeta[];
 	/**
 	 * What this conversation belongs to, shown on hover rather than on the row.
 	 *
@@ -152,6 +160,8 @@ export const SessionRow = memo(function SessionRow({
 	const isUnread = settings?.unreadSessionIds?.includes(session.id) ?? false;
 	const { compact } = useLayout();
 	const menu = usePopover();
+	const folded = useFoldedThreads((s) => (followUps ? s.folded.includes(session.id) : false));
+	const setFolded = useFoldedThreads((s) => s.setFolded);
 
 	/*
 	 * Two motions, for the two things that happen to a new conversation's name.
@@ -285,8 +295,28 @@ export const SessionRow = memo(function SessionRow({
 					</span>
 				)}
 				{/* In the indent the titles already had, so nothing moved to make room for it. */}
-				<SessionStatus activity={rowActivity(activity, sideRunning, active)} unread={isUnread} worktree={session.worktree?.branch} />
+				{followUps ? (
+					// 悬停时把位置让给上面盖着的折叠按钮，两者不同时出现。
+					<span className="flex shrink-0 transition-opacity duration-[var(--ly-t-quick)] group-hover/row:opacity-0 group-has-[:focus-visible]/row:opacity-0">
+						<SessionStatus activity={rowActivity(activity, sideRunning, active)} unread={isUnread} worktree={session.worktree?.branch} />
+					</span>
+				) : (
+					<SessionStatus activity={rowActivity(activity, sideRunning, active)} unread={isUnread} worktree={session.worktree?.branch} />
+				)}
 				<ScrollText text={title} className="ly-fade-tail min-w-0 flex-1" />
+				{/*
+				 * 收起时说清楚收了几条，和项目折叠后标题右边那个数是同一件事；里面有在跑的就换成转圈，
+				 * 否则在跑的那条被收起来以后侧边栏上就没有任何东西在动了。垫一层底：光秃秃的数字紧挨着
+				 * 「4 天」，读出来是「3 4 天」。底色用 `ink/10` 而不是 `card-hover`，后者就是打开那一行的底色。
+				 */}
+				{followUps && folded && (
+					<span
+						data-ly-row-folded={followUps.length}
+						className="flex h-4 min-w-[18px] shrink-0 items-center justify-center rounded-full bg-ink/10 px-1.5 text-caption text-ink-muted tabular-nums transition-opacity duration-[var(--ly-t-quick)] group-hover/row:opacity-0 group-has-[:focus-visible]/row:opacity-0"
+					>
+						<GroupActivity sessions={followUps} collapsed count={followUps.length} />
+					</span>
+				)}
 				{/*
 				 * 最后活动距今多久，占的是悬停按钮落下的那一角：按钮出来时它让位，两者从不同时出现。
 				 * 不管列表按哪个时间排，这里都是 updatedAt——扫一眼要回答的是「这条多久没动了」。
@@ -296,6 +326,31 @@ export const SessionRow = memo(function SessionRow({
 					className="shrink-0 text-caption text-ink-muted transition-opacity duration-[var(--ly-t-quick)] group-hover/row:opacity-0 group-has-[:focus-visible]/row:opacity-0"
 				/>
 			</button>
+
+			{followUps && (
+				/*
+				 * 盖在状态点上而不是放进按钮里：按钮里不能再套按钮，而放进右侧那排悬停按钮，
+				 * 它就和置顶、归档挤在一起，离它管的那几行最远。20px 的圆心对准 14px 状态槽的圆心
+				 * （`pl-2.5` + 7px）。
+				 */
+				<span className="absolute top-1/2 left-[7px] flex -translate-y-1/2 opacity-0 transition-opacity duration-[var(--ly-t-quick)] group-hover/row:opacity-100 has-[:focus-visible]:opacity-100">
+					<IconButton
+						size="xs"
+						label={t(folded ? "sessionRow.expandFollowUps" : "sessionRow.collapseFollowUps")}
+						ariaLabel={t(folded ? "sessionRow.expandFollowUpsOne" : "sessionRow.collapseFollowUpsOne", { title: sessionTitle(session.title) })}
+						expanded={!folded}
+						onClick={() => setFolded(session.id, !folded)}
+						data-ly-row-fold=""
+						icon={
+							<ChevronRight
+								size={12}
+								strokeWidth={2.2}
+								className={`transition-transform duration-[var(--ly-t-quick)] ${folded ? "" : "rotate-90"}`}
+							/>
+						}
+					/>
+				</span>
+			)}
 
 			<HoverRowReveal className="rounded-r-lg">
 				{inArchive ? (

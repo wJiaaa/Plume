@@ -64,7 +64,8 @@ export function useUnfold(ref: RefObject<HTMLElement | null>) {
 		/** 包住「收起」的回调：先收到只剩前 `keep` 行的高度，播完再收起。 */
 		fold: (keep: number, collapse: () => void) => () => {
 			const el = ref.current;
-			const last = el?.querySelectorAll<HTMLElement>("[data-ly-row]")[keep - 1];
+			// 收起的后续会话还挂着（`Collapsible` 只把它们压成零高并 `inert`），不能算进「前 `keep` 行」。
+			const last = el?.querySelectorAll<HTMLElement>("[data-ly-row]:not([inert] *)")[keep - 1];
 			if (!el || !last || motionReduced()) {
 				stop();
 				collapse();
