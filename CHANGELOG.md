@@ -2,6 +2,55 @@
 
 这个文件由 `pnpm release` 生成，条目来自提交信息。写得含糊的提交在这里也含糊，所以值得在提交时就写清楚。
 
+## [0.9.52](https://github.com/wJiaaa/Plume/releases/tag/v0.9.52) - 2026-10-23
+
+<!-- plume:notes en -->
+
+### New
+
+- **`/review` hands the review to a separate review chat.** The conversation that wrote the code tended to agree with itself, and reading the diff filled up its context. Now `/review` is a built-in command, listed under Commands in the `/` menu. It writes a hand-off and opens a read-only review chat under it in the sidebar, named "Review ·" and the conversation's title, in the same folder or worktree. The review chat gets your plan and your own messages word for word, not a summary of them. When it is done it asks the original conversation which findings to fix. That conversation decides from what you said, and asks you only about the ones it cannot settle. The review chat makes the fixes, runs the checks and sends the report back, with what was fixed and what was left. Until that answer comes, it cannot edit files. Run `/review` again and you get a new review chat. A different model for reviews can be picked in Settings › Subagents.
+- **The agent can watch a long-running command instead of polling it.** A dev server or a test watcher sends its new output back in batches, and the agent picks it up from there. In the Environment card these commands are tagged "monitor", and the button shows a dot while one runs even when the card is closed. Each batch wakes the agent for a turn.
+- **The agent can come back later on its own**, once ("check the build in 10 minutes") or on a repeat. Pending ones are listed under Scheduled wakeups in the Environment card, where you can cancel them. They last only while the app is open: quitting it or pressing Stop cancels them.
+- **Export as Markdown** in a chat's menu: a file for people to read, next to the existing raw records export.
+- **Follow-ups under a chat can be collapsed in the sidebar.** Hover the parent and the status dot becomes an arrow; once collapsed, a small count shows how many are hidden, with a spinner if one of them is running. It is remembered across restarts.
+- **When memory comes up with a suggested skill, you hear about it.** A notice names the skill, and **Take a look** opens the skills page on that project. Before, suggestions only sat in Settings, and none had ever been approved or rejected.
+- **Pictures in a message are called "Image 1", "Image 2"** instead of their file names. Camera and chat-app names like `dji_mimo_…_photo.JPG` filled a whole line and pushed the label to wrap. The real name is still shown on hover and still sent to the model. Documents keep their names.
+
+### Fixes
+
+- **Side chat tasks and scheduled tasks that stopped early were shown as done.** A task stopped by a provider error, by repeating the same call, or by the turn limit got a green check and "Done". It is now marked unfinished with the reason and can be retried. A scheduled task records the error and sends a failure notice.
+- **Scheduled tasks no longer pile up** when they run longer than their interval. The next run waits until the current one, including its sub-agents, has finished; runs that came due meanwhile are made up once.
+- **A chat asked to report back sent "dispatched, waiting for results" instead of its answer.** If its first turn dispatched sub-agents, that sentence was what came back, and the real conclusion never arrived. It now waits until the chat has finished.
+- **Dev servers started by a sub-agent kept running after it finished**, out of sight in the Environment card and impossible to stop until the app quit. They are stopped when the sub-agent is done.
+- **Memory no longer loses old conclusions or repeats your instructions.** It was rewritten from scratch every day from the last 30 days of chats, so anything learned from an older chat disappeared, and many entries restated AGENTS.md or learned.md. It now edits the previous version, reading only the chats since the last pass. On one project, 10 entries went down to 7, and the three removed were those repeats.
+- **The agent is told when a sub-agent did not finish.** The result used to say `status="done"` with only a ⚠ in the text. Sub-agents now also list what they changed and what they checked. Sub-agents that write files in parallel are each given their own files, so they do not overwrite one another.
+
+<!-- plume:notes zh-CN -->
+
+<details>
+<summary>中文（简体）</summary>
+
+### 新功能
+
+- **`/review` 交给一个单独的审阅会话去审。** 写代码的那个会话审自己，容易认同自己，读 diff 还会占满它的上下文。现在 `/review` 是内建命令，在 `/` 菜单的「命令」组里。敲下去，原会话写一份交接单，在侧栏里它下面开一个只读的审阅会话，叫「审阅 · 原会话标题」，目录（或工作树）和原会话相同。审阅会话拿到的是你批准的计划和你说过的原话，不是转述。审完它先问原会话修哪几条：原会话按你说过的话定，定不下来的才问你。修由审阅会话来，修完跑检查，报告连同修了什么、留下什么交回原会话。答复之前它改不了任何文件。再敲一次 `/review` 就另开一个审阅会话。审阅用的模型可以在 设置 › 智能体 里单独选。
+- **长跑的命令，agent 可以盯着看，不用反复去查。** dev server、监听模式的测试有了新输出就成批送回去，agent 接着处理。这类命令在「环境」卡片里标着「监视」，卡片收着时按钮上也有亮点。每送一批，agent 就会被叫醒跑一轮。
+- **agent 可以过一会儿自己回来接着做**，一次（「10 分钟后看看构建」）或者循环。排着的都列在「环境」卡片的「定时唤醒」里，可以取消。只在应用开着时有效：退出应用或按停止都会取消。
+- **会话菜单里可以「导出为 Markdown」**，是给人读的版本，原来的「导出原始记录」还在。
+- **侧栏里，会话下面的后续会话可以收起。** 悬停父会话，状态点变成折叠箭头；收起后行尾标出收了几条，里面有在跑的就显示转圈。重启后保持。
+- **记忆里总结出新技能时会提示你。** 提示里写着技能名，点「去看看」直接打开那个项目的技能页。原来候选只躺在设置里，从来没人批准或否决过一个。
+- **消息里的图片一律叫「图片 1」「图片 2」**，不再摆出文件名。相机、聊天软件起的名字（`dji_mimo_…_photo.JPG` 这种）一放就是一整行，标签还被挤到折行。悬停照样看得到真名，发给模型的也还是真名。文档照旧显示文件名。
+
+### 修复
+
+- **侧边聊天的任务和定时任务半路停下，却显示成做完了。** 服务商出错、反复做同一个调用、到了轮数上限，任务都会打绿勾、显示「已完成」。现在标成没做完，写明原因，可以重试；定时任务会记下错误并发失败通知。
+- **定时任务跑得比间隔还久时，不再一次叠一次。** 下一次等这一次连同它的子 Agent 全部收尾才开始；这期间到期了几次，事后只补跑一次。
+- **要求「交回这里」的会话，交回来的是「已派出，等结果」。** 第一轮派了子 Agent 的会话，送回去的就是这句话，真正的结论再也到不了。现在等它把事做完再交。
+- **子 Agent 起的 dev server，它收工后还一直在跑。** 「环境」卡片里看不见，也停不掉，要等应用退出。现在子 Agent 收工时一起停掉。
+- **记忆不再丢掉旧的结论，也不再复述你的指令。** 原来每天拿最近 30 天的会话整份重写，比 30 天更早的会话里学到的东西就此消失，不少条目在复述 AGENTS.md、learned.md 里已有的话。现在在上一版上增删改，只读上次之后的会话。拿一个项目实测，10 条降到 7 条，去掉的正是那三条重复。
+- **子 Agent 没做完，主 agent 会知道。** 原来结果上写着 `status="done"`，只有正文里一个 ⚠。现在子 Agent 还会列出改了哪些文件、验证过什么。并行派出去改文件的几个子 Agent，各自分到不同的文件，不再互相覆盖。
+
+</details>
+
 ## [0.9.51](https://github.com/wJiaaa/Plume/releases/tag/v0.9.51) - 2026-10-23
 
 <!-- plume:notes en -->
