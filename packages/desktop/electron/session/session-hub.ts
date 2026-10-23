@@ -111,6 +111,7 @@ const reportsBack = reportBackAfterFirstTurn({
 		const session = sessions.get(id);
 		return session ? lastReply(session) : "";
 	},
+	whenIdle: (id) => sessions.get(id)?.whenIdle() ?? Promise.resolve(),
 	write: async (id, spawnedFrom) => {
 		const session = sessions.get(id);
 		if (session) await session.log.append({ type: "meta", meta: { ...session.meta, spawnedFrom } });

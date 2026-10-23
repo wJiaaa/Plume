@@ -1,5 +1,5 @@
 /**
- * 要求交回的建议会话：第一轮结束才交、只交一次，人停下的不交，出错的标成没跑完。规则在
+ * 要求交回的建议会话：第一轮结束、会话闲下来才交，只交一次，人停下的不交，出错的标成没跑完。规则在
  * `electron/session/session-report-back.ts`。
  */
 
@@ -11,14 +11,16 @@ import { reportBackAfterFirstTurn, type SessionReport } from "../electron/sessio
 const end = (reason: Extract<AgentEvent, { type: "agent_end" }>["reason"]): AgentEvent => ({ type: "agent_end", reason });
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-function host(spawnedFrom?: SessionMeta["spawnedFrom"], running = true) {
+function host(spawnedFrom?: SessionMeta["spawnedFrom"], running = true, idle: () => Promise<void> = async () => {}) {
 	const metas = new Map<string, Partial<SessionMeta>>([["s-child", { id: "s-child", title: "补上使用说明", spawnedFrom }]]);
 	const log: string[] = [];
 	const delivered: { parentId: string; report: SessionReport }[] = [];
+	let reply = "补好了。";
 	const watcher = reportBackAfterFirstTurn({
 		meta: (id) => metas.get(id) as SessionMeta | undefined,
 		running: () => running,
-		reply: () => "补好了。",
+		reply: () => reply,
+		whenIdle: idle,
 		write: async (id, from) => {
 			log.push(`write:${id}:${from.settled ? "settled" : from.reportBack ? "on" : "off"}`);
 			const meta = metas.get(id);
@@ -29,7 +31,7 @@ function host(spawnedFrom?: SessionMeta["spawnedFrom"], running = true) {
 			delivered.push({ parentId, report });
 		},
 	});
-	return { watcher, log, delivered, metas };
+	return { watcher, log, delivered, metas, say: (text: string) => (reply = text) };
 }
 
 const FROM = { sessionId: "s-parent", toolCallId: "toolu_1", reportBack: true as const };
@@ -120,4 +122,45 @@ test("晚了的不算：第一轮已经结束、已经 settled、没在跑、不
 		assert.equal(await watcher.set("s-child", true), false);
 		assert.deepEqual(log, []);
 	}
+});
+
+test("第一轮派了子代理就收尾：条子当场撕掉，等后台的都送回、会话闲下来，交最后那一轮的话和收场", async () => {
+	let idle!: () => void;
+	const { watcher, delivered, log, say } = host(FROM, true, () => new Promise<void>((resolve) => (idle = resolve)));
+	say("已派出三个审查，结果回来再说。");
+	watcher.observe("s-child", end("done"));
+	// 写 meta 的那一拍还没过，送达那一轮就结束了：也要记到。
+	watcher.observe("s-child", end("error"));
+	await settle();
+	assert.deepEqual(log, ["write:s-child:settled"], "条子当场撕：这段时间里退出应用，重启后也不会把人后来的聊天交回去");
+	assert.equal(delivered.length, 0, "派完那一轮收尾时不送");
+
+	say("合并后的结论：a.ts:12 要补空值判断。");
+	watcher.observe("s-child", end("done"));
+	idle();
+	await settle();
+	assert.equal(delivered.length, 1);
+	assert.deepEqual(delivered[0].report, { sessionId: "s-child", title: "补上使用说明", status: "done", reply: "合并后的结论：a.ts:12 要补空值判断。" });
+});
+
+test("中间一轮出错、最后那一轮也没跑完：按最后那一轮标成没跑完", async () => {
+	let idle!: () => void;
+	const { watcher, delivered } = host(FROM, true, () => new Promise<void>((resolve) => (idle = resolve)));
+	watcher.observe("s-child", end("done"));
+	watcher.observe("s-child", end("stalled"));
+	await settle();
+	idle();
+	await settle();
+	assert.equal(delivered[0]?.report.status, "failed");
+});
+
+test("等后台结果的时候人按了停：最后那一轮是 aborted，不交", async () => {
+	let idle!: () => void;
+	const { watcher, delivered } = host(FROM, true, () => new Promise<void>((resolve) => (idle = resolve)));
+	watcher.observe("s-child", end("done"));
+	watcher.observe("s-child", end("aborted"));
+	await settle();
+	idle();
+	await settle();
+	assert.equal(delivered.length, 0);
 });
