@@ -130,6 +130,7 @@ export function restoreSubAgents(records: readonly SessionRecord[], rebuild?: Re
 
 function dispatched(drafts: Map<string, Draft>, event: Event<"subagent">, at: number): void {
 	const known = drafts.get(event.id);
+	const model = ranOn(event);
 	if (known) {
 		// A resume: same row, running again. Its opening line arrived as a `subagent_message` just before.
 		known.summary.status = "running";
@@ -138,6 +139,7 @@ function dispatched(drafts: Map<string, Draft>, event: Event<"subagent">, at: nu
 		known.summary.error = undefined;
 		known.summary.resumes = (known.summary.resumes ?? 0) + 1;
 		known.lastSeen = at;
+		known.summary.model = model ?? known.summary.model;
 		if (event.provider !== known.ran.provider || event.model !== known.ran.model) {
 			// `runSubAgent` stripped everything before this stretch's opening line, which is the last message.
 			known.switchedAt = Math.max(0, known.messages.length - 1);
@@ -150,6 +152,7 @@ function dispatched(drafts: Map<string, Draft>, event: Event<"subagent">, at: nu
 			id: event.id,
 			agent: event.agent,
 			description: event.description,
+			...(model ? { model } : {}),
 			status: "running",
 			startedAt: at,
 			toolCalls: 0,
@@ -166,6 +169,12 @@ function dispatched(drafts: Map<string, Draft>, event: Event<"subagent">, at: nu
 		hookRuns: new Map(),
 		lastSeen: at,
 	});
+}
+
+/** 名单上那一行要的「跑在哪个模型上」；很早的日志连模型都没记，那就没有。 */
+function ranOn(event: Event<"subagent">): SubAgentSummary["model"] {
+	if (!event.provider || !event.model) return undefined;
+	return { provider: event.provider, model: event.model, ...(event.thinking ? { thinking: event.thinking } : {}) };
 }
 
 /** Records a rewind cut off, gone — the same rule the session's own replay follows. */

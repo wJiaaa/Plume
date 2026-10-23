@@ -185,10 +185,12 @@ export class SubAgentRegistry {
 	 * 不是又派了一个。上一段的结论、错误、「没做完」的标记都清掉：它们说的是上一段怎么停的，
 	 * 这一段还没停。
 	 */
-	reopen(id: string, input: { abort: () => void; queued?: boolean }): boolean {
+	reopen(id: string, input: { abort: () => void; queued?: boolean; model?: SubAgentSummary["model"] }): boolean {
 		const found = this.records.get(id);
 		if (!found || isActive(found.status)) return false;
 		found.status = input.queued ? "queued" : "running";
+		// 续跑时按此刻的设置重选过：说的是这一段在用的，不是第一段的。
+		if (input.model) found.model = input.model;
 		found.background = undefined;
 		found.awaitingApproval = undefined;
 		found.endedAt = undefined;
@@ -217,6 +219,7 @@ export class SubAgentRegistry {
 		id: string;
 		agent: string;
 		description: string;
+		model?: SubAgentSummary["model"];
 		abort: () => void;
 		/** 派出去了，但还要在闸门后面排队。轮到它时调 `admit`。 */
 		queued?: boolean;
@@ -226,6 +229,7 @@ export class SubAgentRegistry {
 			id: input.id,
 			agent: input.agent,
 			description: input.description,
+			...(input.model ? { model: input.model } : {}),
 			status: input.queued ? "queued" : "running",
 			startedAt: Date.now(),
 			toolCalls: 0,

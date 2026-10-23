@@ -166,12 +166,14 @@ export async function dispatchSubAgent(
 	const stopByUser = () => controller.abort(STOPPED_BY_USER);
 	// 要排队的，先以「排队中」上名单——排着的时候也看得见、停得下。
 	const queued = options.admission !== undefined;
-	if (earlier) registry?.reopen(id, { abort: stopByUser, queued });
+	const ran = { provider: chosen.provider.id, model: chosen.model.modelId, thinking: chosen.thinking };
+	if (earlier) registry?.reopen(id, { abort: stopByUser, queued, model: ran });
 	else
 		registry?.start({
 			id,
 			agent: definition.name,
 			description: input.description,
+			model: ran,
 			abort: stopByUser,
 			queued,
 		});
@@ -204,8 +206,9 @@ export async function dispatchSubAgent(
 		description: input.description,
 		prompt: input.prompt,
 		tools: allowed.map((tool) => tool.name),
-		provider: chosen.provider.id,
-		model: chosen.model.modelId,
+		provider: ran.provider,
+		model: ran.model,
+		thinking: ran.thinking,
 		...(earlier ? { resumed: true } : {}),
 	});
 

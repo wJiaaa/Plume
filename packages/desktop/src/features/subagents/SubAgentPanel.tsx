@@ -40,10 +40,10 @@ import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { useFollowBottom } from "../../ui/scroll/useFollowBottom.ts";
 import { tailSignature } from "../../ui/scroll/signature.ts";
 import { useAgentAvatars } from "../../store/agent-avatars.ts";
-import { stateOf } from "../../lib/dispatches.ts";
 import { AgentAvatar } from "../../ui/avatar/AgentAvatar.tsx";
 import { wayBack } from "./way-back.ts";
 import { SubAgentHeader } from "./SubAgentHeader.tsx";
+import { SubAgentModel } from "./SubAgentModel.tsx";
 import { hasContent, Prose, StructuredOutput } from "./StructuredOutput.tsx";
 import { Button } from "../../ui/primitives/Button.tsx";
 import { fromParent, SubAgentTranscript } from "./SubAgentMessageRow.tsx";
@@ -365,7 +365,6 @@ function Redispatch({ agent }: { agent: SubAgentSummary }) {
  */
 function IdleComposer({ placeholder, agent, sessionId }: { placeholder: string; agent?: SubAgentSummary; sessionId?: string | null }) {
 	const { t } = useI18n();
-	const avatarOf = useAgentAvatars();
 	return (
 		<div className="ly-composer-pad mx-auto w-full max-w-[var(--ly-content)] shrink-0">
 			<ComposerShell
@@ -374,24 +373,11 @@ function IdleComposer({ placeholder, agent, sessionId }: { placeholder: string; 
 				onSubmit={() => undefined}
 				disabled
 				placeholder={placeholder}
-				left={
-					<>
-						<IconButton size="composer" emphasis disabled label={t("composer.addAttachment")} onClick={() => undefined} icon={<Plus size={16} strokeWidth={1.9} />} />
-						{/*
-						 * 和在跑时那一格同一个位置、同一张脸，只是淡下去：跑完的那一刻这一行不跳。从前这里在右边
-						 * 另画一个「• 定向纠偏」，和占位里那句一字不差，一个框里说了两遍同一个词。
-						 */}
-						{agent && (
-							<span className="flex h-7 min-w-0 items-center gap-1.5 px-2 text-label text-ink-faint opacity-60">
-								<AgentAvatar avatar={avatarOf(agent.agent)} size={14} mood={stateOf(agent)} seed={agent.agent} interactive={false} />
-								<span className="truncate">{t("subAgent.steering")}</span>
-							</span>
-						)}
-					</>
-				}
+				left={<IconButton size="composer" emphasis disabled label={t("composer.addAttachment")} onClick={() => undefined} icon={<Plus size={16} strokeWidth={1.9} />} />}
 				right={
 					<>
 						{agent && sessionId && <SubAgentMeter agent={agent} sessionId={sessionId} />}
+						{agent?.model && <SubAgentModel used={agent.model} />}
 						<ComposerSend running={false} disabled onSend={() => undefined} onStop={() => undefined} />
 					</>
 				}
@@ -413,7 +399,6 @@ function IdleComposer({ placeholder, agent, sessionId }: { placeholder: string; 
  */
 function Steer({ agent, sessionId }: { agent: SubAgentSummary; sessionId: string }) {
 	const { t } = useI18n();
-	const avatarOf = useAgentAvatars();
 	const { text, setText, attachments, setAttachments, clear } = useDraft<DraftAttachment>(`subagent:${sessionId}:${agent.id}`);
 	const [sending, setSending] = useState(false);
 	const field = useRef<HTMLTextAreaElement>(null);
@@ -482,19 +467,12 @@ function Steer({ agent, sessionId }: { agent: SubAgentSummary; sessionId: string
 				onSubmit={() => void send()}
 				placeholder={t("subAgent.steerPlaceholder")}
 				attachments={kit.tray()}
-				left={
-					<>
-						{kit.addButton}
-						{/* 说给谁听：它的脸在这儿，字就不用再写一遍名字。 */}
-						<span className="flex h-7 min-w-0 items-center gap-1.5 px-2 text-label text-ink-faint">
-							<AgentAvatar avatar={avatarOf(agent.agent)} size={14} mood={stateOf(agent)} seed={agent.agent} interactive={false} />
-							<span className="truncate">{t("subAgent.steering")}</span>
-						</span>
-					</>
-				}
+				// 说给谁听不用写：这个框就在它的面板里，顶上是它的脸和名字。
+				left={kit.addButton}
 				right={
 					<>
 						<SubAgentMeter agent={agent} sessionId={sessionId} />
+						{agent.model && <SubAgentModel used={agent.model} />}
 						<ComposerSend running={false} disabled={empty || sending} onSend={() => void send()} onStop={() => undefined} />
 					</>
 				}
@@ -508,5 +486,10 @@ function Steer({ agent, sessionId }: { agent: SubAgentSummary; sessionId: string
 function SubAgentMeter({ agent, sessionId }: { agent: SubAgentSummary; sessionId: string }) {
 	const settings = useApp((s) => s.settings);
 	const messageCount = useSubAgents((s) => s.transcripts[agent.id]?.length ?? 0);
-	return <ContextMeter messageCount={messageCount} settings={settings} modelId={null} sessionId={sessionId} subAgentId={agent.id} running={agent.status === "running"} openFile={openFile} />;
+	// 和主输入框一样，挤不下时先让出它，模型名留着——见 `SubAgentModel`。
+	return (
+		<div data-ly-fit-drop="2" className="flex shrink-0 items-center">
+			<ContextMeter messageCount={messageCount} settings={settings} modelId={null} sessionId={sessionId} subAgentId={agent.id} running={agent.status === "running"} openFile={openFile} />
+		</div>
+	);
 }

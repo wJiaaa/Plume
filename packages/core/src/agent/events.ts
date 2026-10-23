@@ -1,5 +1,5 @@
 import type { AutoCompactionState, CompactionVia } from "../types/compaction.ts";
-import type { ApprovalRisk, AssistantMessage, Message, RequestPrefix, StreamEvent, ToolResult, ToolResultMessage } from "../types.ts";
+import type { ApprovalRisk, AssistantMessage, Message, RequestPrefix, StreamEvent, ThinkingLevel, ToolResult, ToolResultMessage } from "../types.ts";
 import type { SubAgentSummary } from "../types/sub-agent.ts";
 import type { Failure } from "../ai/failure.ts";
 
@@ -241,7 +241,7 @@ export type AgentEvent =
 	 * `resumed`：同一个 id 又跑起来一段，`prompt` 是这一段说给它的话。轨迹靠 id 把派发和回报配成
 	 * 一对，续跑的那一段要有自己的起点，不然第二份回报找到的是上一段的开头。
 	 */
-	| { type: "subagent"; id: string; agent: string; description: string; prompt: string; tools: string[]; provider?: string; model?: string; resumed?: boolean }
+	| { type: "subagent"; id: string; agent: string; description: string; prompt: string; tools: string[]; provider?: string; model?: string; thinking?: ThinkingLevel; resumed?: boolean }
 	/**
 	 * One message from inside a sub-agent, as it is written.
 	 *

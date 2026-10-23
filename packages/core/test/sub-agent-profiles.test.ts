@@ -3,6 +3,8 @@ import { test } from "node:test";
 import { DEFAULT_SETTINGS, normalizeSettings } from "../src/config/settings.ts";
 import { normalizeSubAgentProfiles, parseModelRef, resolveSubAgentModel } from "../src/config/model-choice.ts";
 import { runSubAgent } from "../src/runtime/sub-agent/sub-agent.ts";
+import { SubAgentRegistry } from "../src/runtime/sub-agent/sub-agents.ts";
+import type { AgentEvent } from "../src/agent/events.ts";
 import { THINKING_LEVELS, thinkingOptionsFor } from "../src/ai/thinking-options.ts";
 import { BUILTIN_AGENTS } from "../src/tools/task.ts";
 import { emptyUsage, type AssistantMessage, type ModelConfig, type ProviderConfig, type Settings } from "../src/types.ts";
@@ -50,11 +52,17 @@ test("normalization retains valid overrides and discards malformed imported sett
 
 test("real dispatch uses configured provider and thinking on the wire configuration", async () => {
 	let seen = false;
-	await runSubAgent({ sessionId: "profile-test", cwd: process.cwd(), settings: { ...settings, subAgentProfiles: { explore: { modelId: "b/same", thinking: "ultra" } } }, tools: [], skills: [], agents: [explore], requestApproval: async () => "once", emit: () => {}, streamFn: async (_context, config) => {
+	const registry = new SubAgentRegistry();
+	const events: AgentEvent[] = [];
+	await runSubAgent({ sessionId: "profile-test", cwd: process.cwd(), settings: { ...settings, subAgentProfiles: { explore: { modelId: "b/same", thinking: "ultra" } } }, tools: [], skills: [], agents: [explore], registry, requestApproval: async () => "once", emit: (event) => void events.push(event), streamFn: async (_context, config) => {
 		seen = true;
 		assert.equal(config.provider.id, "b"); assert.equal(config.model.id, "b/same"); assert.equal(config.thinking, "ultra");
 		const response: AssistantMessage = { role: "assistant", content: [{ type: "text", text: "Done" }], api: provider.api, provider: "b", model: model.modelId, usage: emptyUsage(), stopReason: "stop", timestamp: 1 };
 		return response;
 	} }, { description: "Read", prompt: "Read", agentType: "explore" }, provider, model);
 	assert.equal(seen, true);
+	// 面板要能说出它跑在谁身上、想多久：名单上和落进日志的那条事件都带着。
+	assert.deepEqual(registry.list()[0]?.model, { provider: "b", model: "gpt-5.6-sol", thinking: "ultra" });
+	const dispatched = events.find((event) => event.type === "subagent");
+	assert.equal(dispatched?.type === "subagent" && dispatched.thinking, "ultra");
 });

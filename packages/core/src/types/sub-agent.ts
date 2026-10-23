@@ -4,6 +4,7 @@
  */
 
 import type { Usage } from "./message.ts";
+import type { ThinkingLevel } from "./provider.ts";
 
 /**
  * Where a sub-agent is in its life.
@@ -24,6 +25,14 @@ export interface SubAgentSummary {
 	agent: string;
 	/** The parent's own 3-5 word summary of what it delegated. */
 	description: string;
+	/**
+	 * 它跑在哪个模型上、想多久：派出去时按定义和设置定下的，跟派它的那个会话不一定一样（思考等级
+	 * 故意用应用默认，见 `sub-agent-config.ts`）。续跑会重新选，所以存的是最近这一段的。
+	 *
+	 * `model` 是发给服务商的那个 id，和 `subagent` 事件里的同一对——日志里只有这一对，读回来的
+	 * 会话也要答得出。更早的日志没记思考等级，`thinking` 就没有。
+	 */
+	model?: { provider: string; model: string; thinking?: ThinkingLevel };
 	status: SubAgentStatus;
 	startedAt: number;
 	endedAt?: number;

@@ -255,3 +255,14 @@ test("one taken off the roster by hand stays off", () => {
 	const restored = restoreSubAgents([...log(dispatch("s:sub:1"), dispatch("s:sub:2"), done("s:sub:1")), { seq: 4, ts: 2_000, type: "event", event: { type: "subagent_dismissed", id: "s:sub:1" } } as SessionRecord], rebuild);
 	assert.deepEqual(restored.map((one) => one.summary.id), ["s:sub:2"]);
 });
+
+test("the roster row read back from the log says which model it ran on and how hard it thought, as of its latest stretch", () => {
+	const first = restoreSubAgents(log(dispatch("s:sub:1", { provider: "fake", model: "model", thinking: "high" }), done()));
+	assert.deepEqual(first[0]?.summary.model, { provider: "fake", model: "model", thinking: "high" });
+	// 续跑时换过模型，名单说的是这一段的。
+	const resumed = restoreSubAgents(log(dispatch("s:sub:1", { provider: "fake", model: "model", thinking: "high" }), done(), dispatch("s:sub:1", { provider: "other", model: "big", thinking: "low", resumed: true }), done()));
+	assert.deepEqual(resumed[0]?.summary.model, { provider: "other", model: "big", thinking: "low" });
+	// 记模型之前的日志：没有就是没有，不编一个。
+	const old = restoreSubAgents(log(dispatch(), done()));
+	assert.equal(old[0]?.summary.model, undefined);
+});

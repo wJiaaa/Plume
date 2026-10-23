@@ -1356,7 +1356,7 @@ export const en = {
 	"subAgent.fileUnreadable": "Could not read {name}",
 	"subAgent.gone": "This sub-agent has finished; the message did not reach it.",
 	"subAgent.steerPlaceholder": "Correct it, add something, or tell it to wrap up…",
-	"subAgent.steering": "Steering",
+	"subAgent.modelTip": "Set when it was dispatched and fixed for this run. To change it, go to Settings › Subagents.",
 	"projectMenu.removeConfirm": "Remove {name}?",
 	"projectMenu.removeDetail": "Its conversations are archived with it and can be brought back from Settings › Archived. The folder and everything in it stay on disk; the pin and the name you gave it are lost.",
 	"projectMenu.editProject": "Edit the project",

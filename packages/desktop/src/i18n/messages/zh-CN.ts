@@ -1533,7 +1533,7 @@ export const zhCN = {
 	"subAgent.fileUnreadable": "无法读取文件 {name} 的内容",
 	"subAgent.gone": "这个子 Agent 已经结束了，消息没有送达。",
 	"subAgent.steerPlaceholder": "纠偏、补充信息，或让它收尾…",
-	"subAgent.steering": "定向纠偏",
+	"subAgent.modelTip": "派它出去时定下的，跑着的时候换不了。要换，去 设置 › 智能体。",
 	"projectMenu.removeConfirm": "移除 {name}？",
 	"projectMenu.removeDetail": "它的聊天会一并归档，之后能在设置 › 已归档里找回。磁盘上的目录和里面的文件都不动；置顶、改过的名字这些会丢。",
 	"projectMenu.editProject": "编辑项目",
