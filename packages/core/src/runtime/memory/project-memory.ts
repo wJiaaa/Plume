@@ -49,6 +49,14 @@ export const MAX_LESSONS = 100;
 export const MAX_LESSON_CHARS = 2000;
 const MAX_CONTEXT_CHARS = 400;
 
+/**
+ * 后台抽取读到哪儿了：这个时间之前结束的会话已经合并进 `MEMORY.md`。
+ *
+ * 只对现存的 `MEMORY.md` 有意义，所以丢掉那个文件时一起删：人丢掉它是要重新总结，留着游标的话
+ * 下一次只读新会话，旧会话里的结论再也回不来。
+ */
+export const EXTRACT_CURSOR = ".cursor";
+
 export function projectMemoryDir(cwd: string): string {
 	return join(plumeHome(), "projects", projectIdFor(memoryHome(cwd)), "memory");
 }
@@ -269,6 +277,7 @@ export async function forgetAllLessons(cwd: string): Promise<void> {
 export async function forgetExtractedMemory(cwd: string): Promise<boolean> {
 	try {
 		await rm(join(projectMemoryDir(cwd), "MEMORY.md"));
+		await rm(join(projectMemoryDir(cwd), EXTRACT_CURSOR), { force: true });
 		invalidateMemorySnapshots();
 		return true;
 	} catch {

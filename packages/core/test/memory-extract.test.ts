@@ -101,6 +101,13 @@ test("a two-message session is a lookup, not work", () => {
 	assert.equal(isCandidate({ updatedAt: now - MIN_AGE_MS - 1, messageCount: 2 }, now), false);
 });
 
+test("a session already merged last time is not read again", () => {
+	const now = Date.now();
+	const ended = now - MIN_AGE_MS - 1000;
+	assert.equal(isCandidate({ updatedAt: ended, messageCount: 20 }, now, ended), false, "合并过的不再读");
+	assert.equal(isCandidate({ updatedAt: ended, messageCount: 20 }, now, ended - 1), true, "之后又动过就再读");
+});
+
 // ---------------------------------------------------------------------------
 // What it sends
 // ---------------------------------------------------------------------------
@@ -199,10 +206,77 @@ test("«nothing worth recording» is an answer, not a lesson", async () => {
 	assert.match(result.skipped ?? "", /没有值得记的/);
 });
 
+/** 按顺序回答每一次请求，并留下每一次发了什么。 */
+function capturing(replies: string[]) {
+	const inputs: { system: string; text: string }[] = [];
+	const stream = ((_provider: unknown, _model: unknown, context: { systemPrompt: string; messages: Message[] }) => {
+		const message = context.messages[0];
+		inputs.push({ system: context.systemPrompt, text: message.role === "user" && typeof message.content !== "string" ? message.content.map((b) => (b.type === "text" ? b.text : "")).join("") : "" });
+		return (scripted(replies[inputs.length - 1] ?? "（没有）") as () => AsyncGenerator)();
+	}) as never;
+	return { stream, inputs };
+}
+
+test("it merges into the previous version, and sees what is already said elsewhere", async () => {
+	/*
+	 * 以前上一版不进输入、每天整份重写：来源会话一过 30 天，结论就没了；又看不到 learned.md 和
+	 * 指令，实测一半条目在复述那两处。
+	 */
+	const merged = await mkdtemp(join(tmpdir(), "ly-ext-merge-"));
+	try {
+		await writeFile(join(merged, "AGENTS.md"), "发版用 pnpm release patch", "utf8");
+		await recordLesson(merged, { text: "跑测试前清掉 PLUME_DOCS" });
+		await mkdir(projectMemoryDir(merged), { recursive: true });
+		await writeFile(join(projectMemoryDir(merged), "MEMORY.md"), "# 从会话里总结的\n\n由后台抽取生成\n\n- 两个月前总结的一条\n", "utf8");
+
+		const model = capturing(["- 两个月前总结的一条\n- 新会话里的一条"]);
+		const result = await extractMemory({ cwd: merged, candidates: [session("new", ["新会话的内容", "好"])], stream: model.stream, globalInstructions: "用中文回复", ...DEPS });
+
+		const sent = model.inputs[0].text;
+		assert.match(sent, /两个月前总结的一条/, "上一版进了输入");
+		assert.match(sent, /跑测试前清掉 PLUME_DOCS/, "刻意记下的进了输入");
+		assert.match(sent, /发版用 pnpm release patch/, "项目指令进了输入");
+		assert.match(sent, /用中文回复/, "全局指令进了输入");
+		assert.match(sent, /新会话的内容/);
+		assert.ok(!sent.includes("由后台抽取生成"), "给人看的文件头不发");
+		assert.equal(result.answered, true);
+		assert.match(await readFile(join(projectMemoryDir(merged), "MEMORY.md"), "utf8"), /新会话里的一条/);
+	} finally {
+		await rm(merged, { recursive: true, force: true });
+	}
+});
+
+test("«nothing to change» leaves the previous version as it was", async () => {
+	const kept = await mkdtemp(join(tmpdir(), "ly-ext-kept-"));
+	try {
+		const file = join(projectMemoryDir(kept), "MEMORY.md");
+		await mkdir(projectMemoryDir(kept), { recursive: true });
+		await writeFile(file, "# 从会话里总结的\n\n- 上一版的一条\n", "utf8");
+		const result = await extractMemory({ cwd: kept, candidates: [session("s", ["随便聊聊", "好"])], stream: scripted("（没有）"), ...DEPS });
+		assert.equal(result.answered, true, "答过了，这批会话算读过");
+		assert.equal(await readFile(file, "utf8"), "# 从会话里总结的\n\n- 上一版的一条\n");
+	} finally {
+		await rm(kept, { recursive: true, force: true });
+	}
+});
+
+test("a skill it proposes is reported back, even when memory had nothing to change", async () => {
+	const proposing = await mkdtemp(join(tmpdir(), "ly-ext-skill-"));
+	try {
+		const proposal = "NAME: run-checks\nDESCRIPTION: 改完 core 之后\nSCOPE: project\nSOURCES: a,b\nBODY:\n## 适用范围\na\n## 输入与前置检查\nb\n## 执行步骤\nc\n## 验证与失败处理\nd";
+		const model = capturing(["（没有）", proposal]);
+		const result = await extractMemory({ cwd: proposing, candidates: [session("a", ["x", "y"]), session("b", ["x", "y"])], stream: model.stream, ...DEPS });
+		assert.equal(result.proposedSkill, "run-checks");
+	} finally {
+		await rm(proposing, { recursive: true, force: true });
+	}
+});
+
 test("a provider that fails is a pass that did not happen, not an error", async () => {
 	const result = await extractMemory({ cwd: project, candidates: [session("s4", ["a", "b"])], stream: scripted("x", "error"), ...DEPS });
 	assert.equal(result.memory, "");
 	assert.ok(result.skipped);
+	assert.ok(!result.answered, "没答上的会话下次还要读");
 });
 
 test("no candidates means no request", async () => {

@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { DEFAULT_SETTINGS, type Settings } from "../src/config/settings.ts";
 import { lastPassAt, PASS_INTERVAL_MS, runMemoryPass, shouldRunPass } from "../src/runtime/memory/memory-pass.ts";
-import { projectMemoryDir } from "../src/runtime/memory/project-memory.ts";
+import { forgetExtractedMemory, projectMemoryDir } from "../src/runtime/memory/project-memory.ts";
 import { projectIdFor } from "../src/session/store.ts";
 import type { SessionStorage } from "../src/session/storage.ts";
 import type { AssistantMessage, Message } from "../src/types.ts";
@@ -44,7 +44,7 @@ function settings(over: Partial<Settings> = {}): Settings {
 	};
 }
 
-function scripted(text: string) {
+function scripted(text: string, stopReason: AssistantMessage["stopReason"] = "stop") {
 	const message = {
 		role: "assistant",
 		content: [{ type: "text", text }],
@@ -52,7 +52,7 @@ function scripted(text: string) {
 		provider: "p",
 		model: "m",
 		usage: {},
-		stopReason: "stop",
+		stopReason,
 		timestamp: 0,
 	} as AssistantMessage;
 	return (async function* () {
@@ -240,4 +240,32 @@ test("抽取用设置里单独选的模型，没选或已被删掉就用默认�
 
 test("the project-memory off switch blocks automatic extraction at the runtime boundary", () => {
 	assert.deepEqual(shouldRunPass(settings({ personalization: { enableProjectMemory: false }, memoryExtraction: true }), null), { run: false, reason: "declined" });
+});
+
+test("a session merged once is not read again the next day, unless a pass failed to read it", async () => {
+	/*
+	 * 以前每天重读最近 30 天的会话，同一个会话被读近 30 遍。游标只在模型答过时往前走：没答上
+	 * 的那批下次还要读，否则它们永远进不了记忆。
+	 */
+	const cursor = await mkdtemp(join(tmpdir(), "ly-pass-cursor-"));
+	try {
+		await seedSession(cursor, "c1", ["a", "b", "c", "d", "e", "f"], 20 * 60 * 60 * 1000);
+		const day = PASS_INTERVAL_MS + 1000;
+		const t0 = Date.now();
+
+		const failed = await runMemoryPass({ cwd: cursor, settings: settings(), storage: STORAGE, stream: scripted("x", "error"), now: t0 });
+		assert.equal(failed.sessions, 1);
+
+		const retried = await runMemoryPass({ cwd: cursor, settings: settings(), storage: STORAGE, stream: scripted("- 一条"), now: t0 + day });
+		assert.equal(retried.sessions, 1, "上次没答上，这次重读");
+
+		const next = await runMemoryPass({ cwd: cursor, settings: settings(), storage: STORAGE, stream: scripted("- 不该被读"), now: t0 + 2 * day });
+		assert.equal(next.skipped, "没有符合条件的会话", "答过的不再读");
+
+		await forgetExtractedMemory(cursor);
+		const again = await runMemoryPass({ cwd: cursor, settings: settings(), storage: STORAGE, stream: scripted("- 重新总结"), now: t0 + 3 * day });
+		assert.equal(again.sessions, 1, "人丢掉 MEMORY.md 是要重新总结，旧会话要再读");
+	} finally {
+		await rm(cursor, { recursive: true, force: true, maxRetries: 8, retryDelay: 25 });
+	}
 });

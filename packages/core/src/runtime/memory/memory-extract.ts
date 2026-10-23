@@ -12,8 +12,12 @@
  *   by default must not start doing that quietly. Off until someone says yes, once.
  *
  *   It never touches `learned.md`. That file holds what a person or the `learn` tool wrote on
- *   purpose. A pass that rewrites its own output wholesale is only safe because the deliberate
+ *   purpose. A pass that may rewrite or drop its own entries is only safe because the deliberate
  *   half lives somewhere else.
+ *
+ * 每次只读上次之后结束的会话，在上一版 `MEMORY.md` 上合并。以前每天从最近 30 天的会话整份重写，
+ * 上一版不进输入：来源会话一过 30 天，那条结论就在下次重写时消失；同一个会话被重读近 30 遍；
+ * 又看不到 `learned.md` 和项目指令，实测一半条目在复述那两处已有的话。
  *
  *   It takes a lock. Several windows are usually open, and two extractions writing the same file
  *   is how you get half of each.
@@ -26,7 +30,7 @@ import type { SessionStorage } from "../../session/storage.ts";
 import type { streamAssistant } from "../../ai/index.ts";
 import { proposeSkill, type SkillCandidate } from "./managed-skills.ts";
 import { readReply, replyText } from "../summary/one-shot.ts";
-import { projectMemoryDir, redactSecrets, sessionMemoryDir } from "./project-memory.ts";
+import { projectMemoryDir, readLessons, redactSecrets, sessionMemoryDir } from "./project-memory.ts";
 import { loadProjectInstructions } from "../../prompt/system.ts";
 
 /**
@@ -57,17 +61,22 @@ export interface ExtractionResult {
 	sessions: number;
 	/** Set when the pass did not run, with the reason. */
 	skipped?: string;
+	/** 模型给出了答复（包括「没有要改的」）：这批会话算读过了，游标可以往前走。 */
+	answered?: boolean;
+	/** 这次提出的技能候选名，进了待确认区。 */
+	proposedSkill?: string;
 }
 
 /**
  * Whether a session is worth reading.
  *
  * Also excludes the very short ones: a two-message session is a question and an answer, and the
- * lessons this is looking for come from work, not from lookups.
+ * lessons this is looking for come from work, not from lookups. `since` 是上次读到哪儿：
+ * 那之前就结束、之后没再动过的会话已经合并进上一版了。
  */
-export function isCandidate(session: { updatedAt: number; messageCount: number }, now = Date.now()): boolean {
+export function isCandidate(session: { updatedAt: number; messageCount: number }, now = Date.now(), since = 0): boolean {
 	const age = now - session.updatedAt;
-	return age >= MIN_AGE_MS && age <= MAX_AGE_MS && session.messageCount >= 6;
+	return age >= MIN_AGE_MS && age <= MAX_AGE_MS && session.updatedAt > since && session.messageCount >= 6;
 }
 
 /** Take the lock, or report who has it. `null` means somebody else is running. */
@@ -93,10 +102,23 @@ export async function acquireLock(dir: string, now = Date.now()): Promise<(() =>
  * Most of it is about what *not* to return, for the same reason `learn`'s description is: the
  * expensive failure is not an empty file, it is a file of facts that expire. Anything a reader
  * could get by opening the code will be wrong after the next refactor and believed anyway.
+ *
+ * 「（没有）」的意思是上一版原样保留，不是清空：便宜模型偷懒答一句「没有」，代价只是这次没更新。
  */
 export function extractionPrompt(): string {
 	return [
-		"你在读一个项目最近的几次会话记录，任务是提炼出**下次还用得上**的东西。",
+		"你在维护一个项目的「推断记忆」：从过去的会话里总结出的、**下次还用得上**的东西。",
+		"",
+		"输入有四部分：",
+		"- 当前指令（项目指令和用户的全局指令）、刻意记下的条目：这些每轮都会原样给模型看",
+		"- 上一版推断记忆：你要更新的对象，可能被人手改过",
+		"- 新会话：上次更新之后才结束的会话",
+		"",
+		"产出更新后的**完整**推断记忆：",
+		"- 上一版里仍然成立的条目保留，不要因为新会话没提到就删掉",
+		"- 新会话里值得记的加进去；和已有条目说同一件事的合成一条",
+		"- 新会话明确推翻了的条目改掉或删掉",
+		"- 当前指令或刻意记下的条目里已经说过的不要写；上一版里与它们重复的删掉",
 		"",
 		"值得记的：",
 		"- 这个仓库的约定，尤其是从代码里看不出来的（构建命令、部署流程、为什么某处要那么写）",
@@ -112,7 +134,8 @@ export function extractionPrompt(): string {
 		"",
 		"记忆库里一条过时的事实比没有这条更糟，因为模型会照着它做决定。宁可少写。",
 		"",
-		"输出 markdown 列表，每条一行，一两句话，具体可执行。确实没有值得记的就输出「（没有）」。",
+		"输出 markdown 列表，每条一行，一两句话，具体可执行，只输出列表本身。",
+		"上一版不需要任何改动（没有要加的，也没有要改或删的）时，只输出「（没有）」。",
 	].join("\n");
 }
 
@@ -226,6 +249,30 @@ async function skillProposalInput(cwd: string, candidates: ExtractionCandidate[]
 	return redactSecrets(`## 当前项目指令\n${current || "未找到项目指令文件。技能执行时仍须重新发现当前配置，不能假定历史命令仍然适用。"}\n\n## 历史会话证据\n${renderSessions(candidates)}`);
 }
 
+/**
+ * 合并时要看的全部东西。
+ *
+ * 当前指令和 `learned.md` 放进来是为了**不**复述它们：那两处每轮都原样进提示词，`MEMORY.md`
+ * 再说一遍只是多花一份 token，还更早撞上注入预算。
+ */
+async function extractionInput(options: ExtractOptions): Promise<string> {
+	const [instructions, lessons, previous] = await Promise.all([
+		loadProjectInstructions(options.cwd).catch(() => []),
+		readLessons(options.cwd).catch(() => []),
+		readExtractedMemory(options.cwd),
+	]);
+	const current = [
+		...instructions.map((file) => `### ${relative(options.cwd, file.path)}\n${file.content}`),
+		...(options.globalInstructions?.trim() ? [`### 用户的全局指令\n${options.globalInstructions.trim()}`] : []),
+	].join("\n\n");
+	return redactSecrets([
+		`## 当前指令\n${current || "（没有）"}`,
+		`## 刻意记下的条目\n${lessons.map((lesson) => `- ${lesson.text}`).join("\n") || "（没有）"}`,
+		`## 上一版推断记忆\n${previous || "（还没有）"}`,
+		`## 新会话\n${renderSessions(options.candidates)}`,
+	].join("\n\n"));
+}
+
 function textOf(message: Message): string {
 	return message.content
 		.filter((block): block is { type: "text"; text: string } => block.type === "text")
@@ -242,6 +289,8 @@ export interface ExtractOptions {
 	signal?: AbortSignal;
 	/** Where the reply's bill goes. The pass belongs to no session, so no transcript counts it. */
 	spent?: (usage: Usage) => Promise<void>;
+	/** 设置里的全局自定义指令：它每轮都在提示词里，合并时据此不复述。 */
+	globalInstructions?: string;
 }
 
 /**
@@ -265,7 +314,7 @@ export async function extractMemory(options: ExtractOptions): Promise<Extraction
 			{
 				systemPrompt: extractionPrompt(),
 				messages: [
-					{ role: "user", content: [{ type: "text", text: renderSessions(options.candidates) }], timestamp: Date.now() },
+					{ role: "user", content: [{ type: "text", text: await extractionInput(options) }], timestamp: Date.now() },
 				],
 				tools: [],
 			},
@@ -293,9 +342,12 @@ export async function extractMemory(options: ExtractOptions): Promise<Extraction
 		/*
 		 * "（没有）" is a real answer and must not be written as if it were a lesson. A model told to
 		 * find something will find something; leaving it a way to say no is what keeps the file from
-		 * filling with restatements of the obvious.
+		 * filling with restatements of the obvious. 它现在的意思是「上一版不用改」，文件原样留着。
 		 */
-		if (!text || /^（?没有）?$/.test(text)) return { memory: "", sessions: options.candidates.length, skipped: "这些会话里没有值得记的" };
+		if (!text || /^（?没有）?$/.test(text)) {
+			const proposedSkill = await proposeFromSessions(options).catch(() => null);
+			return { memory: "", sessions: options.candidates.length, skipped: "这些会话里没有值得记的", answered: true, ...(proposedSkill ? { proposedSkill } : {}) };
+		}
 
 		/*
 		 * 写盘前再脱一次。输入侧已经脱过，这里防的是另一种事：模型凭形状重构出一个像密钥的串，
@@ -306,8 +358,8 @@ export async function extractMemory(options: ExtractOptions): Promise<Extraction
 		const body = [
 			"# 从会话里总结的",
 			"",
-			`由后台抽取生成，读了 ${options.candidates.length} 次会话。可以手改，但下一次抽取会整份重写这个文件——`,
-			"要保留的内容请移到 `learned.md`，那个文件抽取永远不碰。",
+			`由后台抽取生成，每次在这一版上合并新结束的会话（上次读了 ${options.candidates.length} 次）。可以手改，下次合并照着改过的继续——`,
+			"要保留的内容请移到 `learned.md`：这里的条目合并时可能被改写或删掉，那个文件抽取永远不碰。",
 			"",
 			clean,
 			"",
@@ -326,8 +378,8 @@ export async function extractMemory(options: ExtractOptions): Promise<Extraction
 		 * 可有可无的东西去赌一个有用的东西。
 		 */
 		// What it proposes goes to `.pending`, not into use: see `managed-skills.ts`.
-		await proposeFromSessions(options).catch(() => null);
-		return { memory: clean, sessions: options.candidates.length };
+		const proposedSkill = await proposeFromSessions(options).catch(() => null);
+		return { memory: clean, sessions: options.candidates.length, answered: true, ...(proposedSkill ? { proposedSkill } : {}) };
 	} finally {
 		await release();
 	}
@@ -390,6 +442,7 @@ export async function findCandidates(
 	storage: Pick<SessionStorage, "listSessions" | "messages">,
 	cwd: string,
 	now = Date.now(),
+	since = 0,
 ): Promise<ExtractionCandidate[]> {
 	const found: ExtractionCandidate[] = [];
 	const dir = projectMemoryDir(cwd);
@@ -397,7 +450,7 @@ export async function findCandidates(
 	for (const meta of await storage.listSessions()) {
 		if (found.length >= MAX_SESSIONS) break;
 		// Age first: it is free, and the directory walks `.git` pointers on disk.
-		if (!isCandidate(meta, now) || sessionMemoryDir(meta) !== dir) continue;
+		if (!isCandidate(meta, now, since) || sessionMemoryDir(meta) !== dir) continue;
 		const messages = await storage.messages(meta.id).catch(() => []);
 		found.push({ id: meta.id, updatedAt: meta.updatedAt, messages });
 	}

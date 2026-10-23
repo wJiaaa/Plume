@@ -25,14 +25,14 @@ import type { streamAssistant } from "../../ai/index.ts";
 import { streamAssistant as realStream } from "../../ai/index.ts";
 import type { SessionStorage } from "../../session/storage.ts";
 import type { ModelConfig, ProviderConfig } from "../../types.ts";
-import { extractMemory, findCandidates, type ExtractionResult } from "./memory-extract.ts";
-import { projectMemoryDir } from "./project-memory.ts";
+import { extractMemory, findCandidates, MIN_AGE_MS, type ExtractionResult } from "./memory-extract.ts";
+import { EXTRACT_CURSOR, projectMemoryDir } from "./project-memory.ts";
 
 /**
  * 两次抽取之间至少隔多久。
  *
  * 候选会话本身就要「至少 12 小时没动过」，所以一天跑一次已经覆盖了每一个会变成候选的会话。
- * 更勤只会重复读同样那几十段转录。
+ * 更勤只是把一天里那几个新会话拆成好几次请求，每次都重发整份指令和上一版记忆。
  */
 export const PASS_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
@@ -62,15 +62,19 @@ function passModel(settings: Settings): PassModel | null {
 
 /** 上次跑完的时间戳，没跑过就是 null。 */
 export async function lastPassAt(cwd: string): Promise<number | null> {
-	const raw = await readFile(join(projectMemoryDir(cwd), ".last-pass"), "utf8").catch(() => null);
+	return readStamp(cwd, ".last-pass");
+}
+
+async function readStamp(cwd: string, file: string): Promise<number | null> {
+	const raw = await readFile(join(projectMemoryDir(cwd), file), "utf8").catch(() => null);
 	const at = raw === null ? Number.NaN : Number.parseInt(raw.trim(), 10);
 	return Number.isFinite(at) ? at : null;
 }
 
-async function markPass(cwd: string, at: number): Promise<void> {
+async function writeStamp(cwd: string, file: string, at: number): Promise<void> {
 	const dir = projectMemoryDir(cwd);
 	await mkdir(dir, { recursive: true });
-	await writeFile(join(dir, ".last-pass"), String(at), "utf8");
+	await writeFile(join(dir, file), String(at), "utf8");
 }
 
 export interface PassOptions {
@@ -96,10 +100,10 @@ export async function runMemoryPass(options: PassOptions): Promise<ExtractionRes
 	const verdict = shouldRunPass(options.settings, await lastPassAt(options.cwd), now);
 	if (!verdict.run) return { memory: "", sessions: 0, skipped: verdict.reason };
 
-	const candidates = await findCandidates(options.storage, options.cwd, now);
-	await markPass(options.cwd, now);
+	const candidates = await findCandidates(options.storage, options.cwd, now, (await readStamp(options.cwd, EXTRACT_CURSOR)) ?? 0);
+	await writeStamp(options.cwd, ".last-pass", now);
 	// 没有候选时 `extractMemory` 自己交回「没有符合条件的会话」。
-	return extractMemory({
+	const result = await extractMemory({
 		cwd: options.cwd,
 		candidates,
 		provider: verdict.provider,
@@ -109,5 +113,13 @@ export async function runMemoryPass(options: PassOptions): Promise<ExtractionRes
 		// A ledger that cannot be written must not cost the memory the reply just paid for.
 		spent: (usage) =>
 			options.storage.recordUsage({ source: "memory-extract", providerId: verdict.provider.id, modelId: verdict.model.modelId, usage }).catch(() => {}),
+		globalInstructions: options.settings.personalization?.customInstructions,
 	});
+	/*
+	 * 游标和 `.last-pass` 分开，只在这批会话真的被读过时才往前走：模型没返回、被中断、另一个窗口
+	 * 拿着锁，这批会话下次还要读，否则它们永远进不了记忆。走到「此刻已满 12 小时」的那条线，而
+	 * 不是此刻——还没满 12 小时的会话这次没读，下次要读到。
+	 */
+	if (candidates.length === 0 || result.answered) await writeStamp(options.cwd, EXTRACT_CURSOR, now - MIN_AGE_MS);
+	return result;
 }
