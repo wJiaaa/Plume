@@ -68,6 +68,8 @@ export function deliveryMessage(items: DeliveryItem[], jobs: FinishedJob[] = [],
 			summary ? `agent="${attribute(summary.agent)}"` : "",
 			summary ? `task="${attribute(summary.description)}"` : "",
 			`status="${status}"`,
+			// `done` 只说它停了；没做完的那种要在标签上就读得出来，不靠正文第一行那个 ⚠。
+			!report.error && (report.answer?.incomplete || summary?.incomplete) ? `incomplete="true"` : "",
 		].filter(Boolean);
 		return `<subagent_result ${attrs.join(" ")}>\n${body}\n</subagent_result>`;
 	});

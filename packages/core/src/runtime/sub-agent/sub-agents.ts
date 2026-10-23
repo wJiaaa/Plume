@@ -166,7 +166,14 @@ export class SubAgentRegistry {
 					"要继续那件事，只能重新派一个——在 prompt 里把它之前交回来的结论带上，别让新的从零查起。",
 			};
 		}
-		if (isActive(found.status)) return { refusal: `子代理 \`${found.id}\` 还在后台跑，跑完后结果会自动送到你这里，不需要续跑。` };
+		if (isActive(found.status)) {
+			// 不说「不需要续跑」：模型手上可能真有一件后续的事，那句话会让它把这件事丢掉，或者另派一个从零做。
+			return {
+				refusal:
+					`子代理 \`${found.id}\` 还在后台跑，现在续不了。它跑完后结果会自动送到你这里；要它接着做下一件事，等结果送到之后再用 resume 交代。` +
+					"不要为这件事另派一个子代理。",
+			};
+		}
 		if (!found.conversation) {
 			return { refusal: `子代理 \`${found.id}\` 的上下文已经不在了（应用重启过，或它没能留下），没法续跑。要继续，重新派一个并把它交回的结论带上。` };
 		}
