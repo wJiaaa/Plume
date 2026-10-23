@@ -94,6 +94,13 @@ export interface PlumeApi {
 	 */
 	onFullScreenChange(handler: (fullScreen: boolean) => void): () => void;
 	/**
+	 * The window was minimized or restored, reported by the window because the page cannot detect it.
+	 *
+	 * With `backgroundThrottling` off a minimized page still reads `visibilityState` as visible and
+	 * keeps getting animation frames, so decorative animations would go on repainting unseen.
+	 */
+	onMinimizedChange(handler: (minimized: boolean) => void): () => void;
+	/**
 	 * A menu item on the status bar icon was chosen.
 	 *
 	 * Sent only once the window can receive it, so a command given while the app was closed still

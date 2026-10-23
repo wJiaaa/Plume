@@ -293,6 +293,11 @@ const extras = {
 		ipcRenderer.on("window:fullscreen", listener);
 		return () => ipcRenderer.removeListener("window:fullscreen", listener);
 	},
+	onMinimizedChange: (handler) => {
+		const listener = (_e: Electron.IpcRendererEvent, minimized: boolean) => handler(minimized);
+		ipcRenderer.on("window:minimized", listener);
+		return () => ipcRenderer.removeListener("window:minimized", listener);
+	},
 	/** An error that reached the top of the main process. See `reportToTopLevel` in `main.ts`. */
 	onMainError: (handler) => {
 		const listener = (_e: Electron.IpcRendererEvent, payload: { origin: string; message: string }) => handler(payload);

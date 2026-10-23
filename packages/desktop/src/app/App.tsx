@@ -9,6 +9,7 @@
 import { translate } from "../i18n/translate.ts";
 import { Activity, Suspense, useEffect, useState } from "react";
 import { RetainedViews } from "../ui/layout/RetainedViews.tsx";
+import { setWindowMinimized } from "../ui/motion/ticker.ts";
 import { BootScreen, MIN_BOOT_MS } from "./boot/BootScreen.tsx";
 import { SplitWorkspace } from "../features/split/SplitWorkspace.tsx";
 import { revealInWorkspace, watchSessionWindows } from "../features/split/index.ts";
@@ -87,6 +88,9 @@ export function App() {
 	 *
 	 * Only the ones worth reading arrive here; `QUIET_IO` in `main.ts` drops the rest.
 	 */
+	// Nobody sees a minimized window, and the page cannot tell on its own — see `ui/motion/ticker.ts`.
+	useEffect(() => bridge.onMinimizedChange?.(setWindowMinimized), []);
+
 	useEffect(
 		() =>
 			bridge.onMainError(({ message }) => {

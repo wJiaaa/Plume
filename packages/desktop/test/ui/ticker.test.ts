@@ -1,7 +1,7 @@
 /**
  * 共用的一拍——见 `ui/motion/ticker.ts`。
  *
- * 钉住四件事：120Hz 屏上一秒只来 30 拍左右，不是 120 次；窗口没焦点时更慢；同一拍约的回调在同一帧里一起跑（几个面板的
+ * 钉住四件事：120Hz 屏上一秒只来 30 拍左右，不是 120 次；窗口最小化时更慢、失焦不慢；同一拍约的回调在同一帧里一起跑（几个面板的
  * 写入才会合成一次提交）；拍与拍之间不挂 rAF，合成器没有理由每帧来要主线程帧。
  *
  * 显示器是模拟的：一个按 120Hz 走的 vsync 和一份按时间排的计时器，不靠真时间，结果不随机器快慢变。
@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { test, type TestContext } from "node:test";
-import { cancelTick, requestTick, TICK_MS } from "../../src/ui/motion/ticker.ts";
+import { cancelTick, requestTick, setWindowMinimized, TICK_MS } from "../../src/ui/motion/ticker.ts";
 
 const VSYNC = 1000 / 120;
 /** 整个文件共用一只表：真的 `performance.now()` 不会倒着走，节拍器记着上一拍的时刻。 */
@@ -107,7 +107,7 @@ test("全部取消之后什么都不再跑", (t) => {
 	assert.equal(screen.rafCalls(), before, "取消之后不再约帧");
 });
 
-test("窗口没焦点时一秒约 10 拍，回到窗口立刻恢复 30 拍", (t) => {
+test("失焦照旧 30 拍；最小化时一秒约 10 拍，还原立刻恢复 30 拍", (t) => {
 	const screen = display(t);
 	const stamps: number[] = [];
 	let id = 0;
@@ -119,14 +119,20 @@ test("窗口没焦点时一秒约 10 拍，回到窗口立刻恢复 30 拍", (t)
 	try {
 		id = requestTick(loop);
 		screen.run(1000);
-		assert.ok(stamps.length >= 9 && stamps.length <= 11, `失焦一秒 ${stamps.length} 拍`);
+		assert.ok(stamps.length >= 29 && stamps.length <= 31, `失焦一秒 ${stamps.length} 拍：并排摆着的窗口人还看得见`);
+		const down = now;
+		setWindowMinimized(true);
+		screen.run(1000);
+		const minimized = stamps.filter((at) => at > down);
+		assert.ok(minimized.length >= 9 && minimized.length <= 11, `最小化一秒 ${minimized.length} 拍`);
 		const back = now;
-		window.dispatchEvent(new Event("focus"));
+		setWindowMinimized(false);
 		screen.run(1000);
 		const after = stamps.filter((at) => at > back);
-		assert.ok(after.length >= 29 && after.length <= 31, `回来一秒 ${after.length} 拍`);
-		assert.ok(after[0] - back < TICK_MS, `回来后第一拍不该再等满失焦时约的那 100ms：${Math.round(after[0] - back)}ms`);
+		assert.ok(after.length >= 29 && after.length <= 31, `还原一秒 ${after.length} 拍`);
+		assert.ok(after[0] - back < TICK_MS, `还原后第一拍不该再等满最小化时约的那 100ms：${Math.round(after[0] - back)}ms`);
 	} finally {
+		setWindowMinimized(false);
 		window.dispatchEvent(new Event("focus"));
 		cancelTick(id);
 	}

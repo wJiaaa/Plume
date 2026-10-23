@@ -583,6 +583,12 @@ function buildAppWindow(options: {
 	// The window can be restored into full screen, so the first frame has to be told as well.
 	win.webContents.on("did-finish-load", reportFullScreen);
 
+	// Minimizing, which the page cannot see either: `backgroundThrottling` is off, so it stays
+	// "visible" and keeps its frames. The run row's sweep and the sidebar's breathing dot stop on it.
+	const reportMinimized = () => win.webContents.send("window:minimized", win.isMinimized());
+	win.on("minimize", reportMinimized);
+	win.on("restore", reportMinimized);
+
 	/*
 	 * External links open in the user's browser, and the window stays on our own page.
 	 *

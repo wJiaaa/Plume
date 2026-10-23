@@ -2,7 +2,7 @@
  * 呼吸点、扫光按拍走——见 `ui/motion/ticked.ts`。
  *
  * 测试用的 DOM 不跑 CSS 动画，这里给元素塞几个假的：只看 hook 对它们做了什么。钉住四件事：点名的
- * 被暂停、之后每拍往前拨（窗口没焦点时停住）；没点名的（悬停时的滚动）一下都不碰；不再按拍走时交还给浏览器接着播；
+ * 被暂停、之后每拍往前拨（最小化时停住，失焦照走）；没点名的（悬停时的滚动）一下都不碰；不再按拍走时交还给浏览器接着播；
  * 几个元素同一拍里先读后写。
  */
 
@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { act, createElement as h, useRef } from "react";
 import { useTickedAnimations } from "../../src/ui/motion/ticked.ts";
+import { setWindowMinimized } from "../../src/ui/motion/ticker.ts";
 import { mount } from "../helpers/mount.ts";
 
 class FakeAnimation {
@@ -63,21 +64,26 @@ test("点名的动画暂停后按拍往前走，没点名的不碰，停下时�
 	}
 });
 
-test("窗口没焦点时停在原处，回到窗口从停下的地方接着走", async () => {
+test("窗口失焦照走，最小化时停在原处，还原后从停下的地方接着走", async () => {
 	const breathe = new FakeAnimation("ly-breathe-hue", 0);
 	const view = await mount(h(Host, { active: true, animations: [breathe] }));
 	try {
 		await wait(80);
 		window.dispatchEvent(new Event("blur"));
+		const blurred = breathe.currentTime;
+		await wait(350);
+		assert.ok(breathe.currentTime > blurred, "并排摆着的窗口人还看得见，失焦不停");
+		setWindowMinimized(true);
 		await wait(150);
 		const frozen = breathe.currentTime;
 		await wait(300);
-		assert.equal(breathe.currentTime, frozen, "没人看着的时候不拨");
-		window.dispatchEvent(new Event("focus"));
-		await wait(150);
-		assert.ok(breathe.currentTime > frozen, "回来接着走");
-		assert.ok(breathe.currentTime - frozen < 300, `不把失焦那段补回来：跳了 ${breathe.currentTime - frozen}ms`);
+		assert.equal(breathe.currentTime, frozen, "最小化了没人看着，不拨");
+		setWindowMinimized(false);
+		await wait(250);
+		assert.ok(breathe.currentTime > frozen, "还原后接着走");
+		assert.ok(breathe.currentTime - frozen < 300, `不把最小化那段补回来：跳了 ${breathe.currentTime - frozen}ms`);
 	} finally {
+		setWindowMinimized(false);
 		window.dispatchEvent(new Event("focus"));
 		await view.unmount();
 	}

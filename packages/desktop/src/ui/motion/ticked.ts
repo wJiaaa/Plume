@@ -1,6 +1,6 @@
 import { type RefObject, useEffect } from "react";
 import { motionReduced } from "./reduced.ts";
-import { cancelTick, requestTick, windowFocused } from "./ticker.ts";
+import { cancelTick, requestTick, windowMinimized } from "./ticker.ts";
 
 /** 运行行上扫过摘要的那道光，见 `glide.css`。 */
 export const GLIDE: ReadonlySet<string> = new Set(["ly-glide"]);
@@ -19,7 +19,9 @@ export const GLIDE: ReadonlySet<string> = new Set(["ly-glide"]);
  * 合成器照样每个 vsync 出一帧，模型挂住时 GPU 进程 22.6%、渲染进程 11.2%，按拍走是 11.9% / 10.4%。
  * 一秒 120 帧再便宜，也比 30 帧贵。
  *
- * 窗口没焦点时停在原处：拍子本来就慢到每秒 10 次，一个没人看着的呼吸点，不值得为它每秒重画十遍。
+ * 窗口最小化时停在原处，失焦时照走（跟着拍子降到每秒 10 次）。以前失焦就停：可并排摆着的窗口人还看得见，
+ * 扫光一定住就像这一轮卡死了。最小化才是真没人看——而主窗口关了 `backgroundThrottling`，页面自己
+ * 察觉不到（`visibilityState` 仍是 visible，rAF 照跑 120 帧），只能由主进程告诉它，见 `windowMinimized`。
  *
  * 只认 `names` 里点名的：同一个元素上可能还有要跟手的动画（摘要悬停时的滚动），那些照常逐帧。
  */
@@ -59,8 +61,8 @@ let tick = 0;
 let previous = 0;
 
 function loop(now: number): void {
-	// 窗口没焦点的那几拍不拨，回来时从停下的地方接着走，不会一下跳过去。
-	const step = windowFocused() && previous ? now - previous : 0;
+	// 最小化的那几拍不拨，还原时从停下的地方接着走，不会一下跳过去。
+	const step = !windowMinimized() && previous ? now - previous : 0;
 	previous = now;
 	// 每拍现读：挂扫光的那层可能比「开始运行」晚出现（摘要是流式写进来的）。
 	const found = [...entries].map((entry) => [entry, entry.ref.current?.getAnimations({ subtree: true }) ?? []] as const);

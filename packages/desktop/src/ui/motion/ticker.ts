@@ -1,6 +1,6 @@
 /**
  * 流式输出期间会动的东西共用的一拍：放字、淡入、数字爬升、思考球。用法和
- * `requestAnimationFrame` 一样，只是回调不在每一帧来，而是约 30 次每秒（窗口没焦点时 10 次）、
+ * `requestAnimationFrame` 一样，只是回调不在每一帧来，而是约 30 次每秒（窗口最小化时 10 次）、
  * 并且同一拍里的全部一起来。
  *
  * 为什么要一拍：120Hz 屏上，这几样东西各开一个 rAF，只要其中一个这一帧改了页面，整条样式、布局、
@@ -23,10 +23,10 @@
 export const TICK_MS = 1000 / 30;
 
 /**
- * 窗口没有焦点时一拍多长。窗口被整个挡住时浏览器自己会停帧，但并排摆着、人在另一个窗口里打字时
- * 它照常全速画；这时字照样往外放，只是没人盯着看每一笔。
+ * 窗口最小化时一拍多长。主窗口关了 `backgroundThrottling`，最小化以后浏览器照常全速出帧；字照样往外放，
+ * 只是没人看。只认最小化不认失焦：并排摆着的窗口人还看得见，放字一顿一顿就像卡了。
  */
-const BLURRED_TICK_MS = 1000 / 10;
+const MINIMIZED_TICK_MS = 1000 / 10;
 
 /**
  * 帧时间戳有抖动：120Hz 下第四帧可能只隔 33.2ms。差这一点就要多等一帧的话，30Hz 会掉成 24Hz。
@@ -46,30 +46,38 @@ let seq = 0;
 let frame = 0;
 let timer = 0;
 let last = Number.NEGATIVE_INFINITY;
-// store 经 `coalesce.ts` 引到这里，Node 里跑的单元测试也会 import 它，那里没有 DOM。
-const dom = typeof document !== "undefined";
-let focused = dom ? document.hasFocus() : true;
+let minimized = false;
+const minimizedListeners = new Set<(minimized: boolean) => void>();
 
-/** 窗口有没有焦点。没焦点时拍子放慢，`ticked.ts` 里的装饰动画干脆停住。 */
-export function windowFocused(): boolean {
-	return focused;
+/**
+ * 窗口是不是最小化了。页面自己察觉不到（`visibilityState` 仍是 visible、rAF 照跑），由 `App` 接主进程的
+ * `onMinimizedChange` 经 `setWindowMinimized` 喂进来。最小化时拍子放慢，`ticked.ts` 的装饰动画停住，
+ * 贴底跟随不滑。生成页面的预览不归这里，仍按失焦冻住（`PreviewCard`）。
+ */
+export function windowMinimized(): boolean {
+	return minimized;
 }
 
-if (dom) {
-	window.addEventListener("blur", () => {
-		focused = false;
-	});
-	window.addEventListener("focus", () => {
-		focused = true;
-		// 失焦时约下的那一拍可能还要等近 100ms：回到窗口的第一眼就该是正常节奏。
-		if (!timer) return;
-		window.clearTimeout(timer);
-		timer = 0;
-		schedule();
-	});
+/** 订阅最小化 / 还原，返回退订。 */
+export function onWindowMinimized(listener: (minimized: boolean) => void): () => void {
+	minimizedListeners.add(listener);
+	return () => {
+		minimizedListeners.delete(listener);
+	};
 }
 
-const interval = () => (focused ? TICK_MS : BLURRED_TICK_MS);
+export function setWindowMinimized(value: boolean): void {
+	if (value === minimized) return;
+	minimized = value;
+	for (const listener of minimizedListeners) listener(value);
+	// 最小化时约下的那一拍可能还要等近 100ms：还原后的第一眼就该是正常节奏。
+	if (value || !timer) return;
+	window.clearTimeout(timer);
+	timer = 0;
+	schedule();
+}
+
+const interval = () => (minimized ? MINIMIZED_TICK_MS : TICK_MS);
 
 function pump(now: number): void {
 	frame = 0;

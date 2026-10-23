@@ -21,6 +21,7 @@ import assert from "node:assert/strict";
 import { act, createElement as h } from "react";
 import { test } from "node:test";
 import { useFollowBottom, type FollowBottom } from "../../src/ui/scroll/useFollowBottom.ts";
+import { setWindowMinimized } from "../../src/ui/motion/ticker.ts";
 import { writeFollow, readFollow } from "../../src/ui/scroll/memory.ts";
 import { mount, type Mounted } from "../helpers/mount.ts";
 
@@ -340,19 +341,25 @@ test("写完那一刻剩下的字还在放：一秒内长出来的行照样滑�
 	await view.unmount();
 });
 
-test("窗口没焦点时输出中的长高一步到位，不再每帧追；回到窗口照旧滑", async () => {
-	const { view, el } = await open("blurred");
+test("窗口最小化时输出中的长高一步到位，不再每帧追；失焦和还原后照旧滑", async () => {
+	const { view, el } = await open("minimized");
 	window.dispatchEvent(new Event("blur"));
 	try {
-		await arrives(view, "blurred", 1, 26);
+		await arrives(view, "minimized", 1, 26);
 		await act(async () => controls.onResize(el));
-		assert.equal(el.scrollTop, bottom(), "没人盯着看，直接贴底");
+		assert.ok(el.scrollTop < bottom(), "失焦的窗口人还看得见，照旧滑");
+		await slid();
+		setWindowMinimized(true);
+		await arrives(view, "minimized", 2, 26);
+		await act(async () => controls.onResize(el));
+		assert.equal(el.scrollTop, bottom(), "没人看，直接贴底");
 	} finally {
+		setWindowMinimized(false);
 		window.dispatchEvent(new Event("focus"));
 	}
-	await arrives(view, "blurred", 2, 26);
+	await arrives(view, "minimized", 3, 26);
 	await act(async () => controls.onResize(el));
-	assert.ok(el.scrollTop < bottom(), "回来之后长高一行又是滑过去的");
+	assert.ok(el.scrollTop < bottom(), "还原之后长高一行又是滑过去的");
 	await view.unmount();
 });
 
