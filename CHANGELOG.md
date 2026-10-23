@@ -2,6 +2,53 @@
 
 这个文件由 `pnpm release` 生成，条目来自提交信息。写得含糊的提交在这里也含糊，所以值得在提交时就写清楚。
 
+## [0.9.51](https://github.com/wJiaaa/Plume/releases/tag/v0.9.51) - 2026-10-23
+
+<!-- plume:notes en -->
+
+### New
+
+- **Undoing or resending a message can put the files back too.** Undo used to cut only the conversation: files changed in the turns after that message stayed changed, so asking again started from code written by turns that no longer existed. The confirmation now lists those files with lines added and removed, and offers **Undo chat and files** or **Undo chat only** (for a resend, **Restore files and send** or **Resend only**). It is all or nothing. If any of the files was changed since by you or another conversation, was written by a command, or was not recorded, only the chat goes back and no file is touched. Resending with files is offered on the last message only.
+- **The sub-agent panel shows the model a sub-agent runs on and its reasoning effort**, in the spot where the main composer shows yours. Sub-agents pick their own model and effort, so these were often not what you saw in the main composer. When the panel is narrow, the other labels give way first so the model name stays readable.
+- **A finished auto-compaction is a divider line**, like switching models: "Context compacted (messages: 363 → 44)". Before, it was a row that looked like the replies around it.
+
+### Fixes
+
+- **Deleting a worktree from Settings could reach the main repository.** `git worktree list` puts the main checkout first and it was not excluded, so the removal could go on to delete that folder. Settings no longer force-removes a worktree; if it has uncommitted changes, it tells you how many. **Clean up old worktrees** showed as on in Settings while the app treated it as off; it is off in both now.
+- **A conversation in its own worktree starts from the project's memory.** Memory is kept per folder and a worktree is a different folder, so these conversations started with an empty memory, and what they learned went somewhere nobody read once the worktree was gone. They now read and write the main checkout's memory. A project opened through a symlink still does not match up.
+- **The first edit to a TypeScript file came back without diagnostics.** If the language server failed to start once in a folder, it was never tried there again.
+- **Sub-agents lost their report after a restart**, so their result and "continue" were both gone. Switching to another sub-agent in the panel no longer carries over the previous one's "Put in the composer".
+- **The sub-agent panel folds each turn the way the main conversation does.** A sub-agent that thinks and then runs two commands showed alternating thinking and tool rows; consecutive work is one line now.
+- **The sweep on the running line no longer freezes when the window loses focus.** With windows side by side, a frozen sweep looked like a stuck turn. It stops only when the window is minimized.
+- **Switching back to a conversation no longer regrows the end of each work step.** The failure mark and +N −M disappeared and grew back from 0 to full width over about 350 ms every time.
+- GitLab and Gitee pull requests no longer show a made-up "+0 −0 · 0 files".
+- Turning on plan mode in the middle of a turn takes effect. A hook config changed outside the app no longer stays trusted for commands you have not seen.
+
+<!-- plume:notes zh-CN -->
+
+<details>
+<summary>中文（简体）</summary>
+
+### 新功能
+
+- **撤回、重新发送一条消息时，可以连文件一起退回。** 原来撤回只截对话，之后那几轮改过的文件原样留在磁盘上：重新问的时候，模型面对的是「已经不存在的那几轮」写下的代码。现在确认框会列出这些文件和各自的增删行数，可以选「撤回对话和文件」或「只撤回对话」（重新发送时是「退回文件并发送」或「只重新发送」）。要退就全退：只要有一个文件之后被你或别的会话改过、是命令写的、或者没有记下来，就只撤回对话，一个文件都不动。连文件重新发送只对最后一条消息开放。
+- **子 Agent 面板显示它跑在哪个模型上、推理强度多少**，位置和主输入框显示这两项的地方一样。子 Agent 的模型和推理强度是单独选的，常常和主输入框上看到的不一样。面板窄时其他字先让位，保证模型名读得出。
+- **自动压缩完成后画成一条分隔线**，和换模型那条一样：「已压缩上下文：363 条消息整理为 44 条」。原来是一行和旁边回复长得一样的字。
+
+### 修复
+
+- **在设置里删除工作树，可能删到主仓库。** `git worktree list` 第一条就是主仓库，判断时没有排除，删除可能一路走到删掉那个目录。设置页不再强制删除；工作树里还有未提交的改动时，会说明有几处。「自动删除旧工作树」在设置页显示为开、应用实际按关处理，现在两边都是关。
+- **开在独立工作树里的会话，读得到项目的记忆。** 记忆按目录存，工作树是另一个目录，于是这些会话从一份空记忆开始，学到的东西又存进一个工作树收回后就没人再读的地方。现在读写的都是主仓库那一份。从软链路径打开的项目，两边仍然对不上。
+- **第一次改 TypeScript 文件拿不到诊断。** 语言服务在某个目录启动失败一次后，那里就再也不重试。
+- **重启后子 Agent 的回报丢了**，结果和「接着跑」都没了。面板切到另一个子 Agent 时，按钮不再带着上一个的「已填入输入框」。
+- **子 Agent 面板按回合收拢，和主会话一样。** 子 Agent 想一下、再并行跑两条命令，原来是思考、工具一行一行交替排下去，现在连着的活合成一行。
+- **窗口失焦时，运行行上的扫光不再定住。** 几个窗口并排摆着时，扫光一停，看上去就是这一轮卡死了。现在只在最小化时停。
+- **切回会话时，工作步骤的行尾不再重新长一遍。** 原来每次切回，失败记号和 +N −M 都先消失，再花约 350ms 从 0 长到原宽。
+- GitLab、Gitee 的 PR 不再显示凭空的「+0 −0 · 0 个文件」。
+- 一轮跑到一半打开计划模式，现在会生效。钩子配置在应用外被改过以后，不再对没看过的命令沿用原来的信任。
+
+</details>
+
 ## [0.9.50](https://github.com/wJiaaa/Plume/releases/tag/v0.9.50) - 2026-10-22
 
 <!-- plume:notes en -->
