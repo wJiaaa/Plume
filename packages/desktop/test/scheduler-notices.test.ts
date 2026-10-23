@@ -62,11 +62,11 @@ function harness(options: { unavailable?: string; failAtOnce?: string; slowSave?
 			const id = `session-${++created}`;
 			if (options.failAtOnce) {
 				const reason = options.failAtOnce;
-				return { meta: { id }, prompt: () => Promise.reject(new Error(reason)) } as unknown as AgentSession;
+				return { meta: { id }, prompt: () => Promise.reject(new Error(reason)), whenIdle: async () => {} } as unknown as AgentSession;
 			}
 			const turn = pendingTurn();
 			turns.push(turn);
-			return { meta: { id }, prompt: () => turn.promise } as unknown as AgentSession;
+			return { meta: { id }, prompt: () => turn.promise, whenIdle: async () => {} } as unknown as AgentSession;
 		},
 		notify: (message, level, about) => {
 			notices.push({ ...about, message, level });
@@ -124,23 +124,24 @@ test("a turn that fails while its start is still being saved is not lost", async
 	assert.equal(run.task().lastError, "the model is unavailable");
 });
 
-test("a late failure from an earlier run does not land on a later one", async () => {
+test("a run still going when the task comes due again is not doubled, and its failure lands on it", async () => {
 	const run = harness();
 	await run.scheduler.tick(NOW);
 	await run.scheduler.tick(NOW + HOUR);
-	assert.equal(run.task().lastSessionId, "session-2");
+	assert.equal(run.task().lastSessionId, "session-1", "the first run has not finished, so no second one starts beside it");
 
 	run.turns[0].fail(new Error("from the first run"));
 	await settled();
+	assert.equal(run.task().lastError, "from the first run");
 
-	assert.equal(run.task().lastError, undefined, "the second run has not failed");
-	// The first run did fail, and the window is still told so.
+	await run.scheduler.tick(NOW + HOUR + 1);
+	assert.equal(run.task().lastSessionId, "session-2", "once it has ended, the run that came due meanwhile starts");
 	assert.deepEqual(
 		run.notices.map((notice) => [notice.kind, notice.sessionId]),
 		[
 			["started", "session-1"],
-			["started", "session-2"],
 			["failed", "session-1"],
+			["started", "session-2"],
 		],
 	);
 });

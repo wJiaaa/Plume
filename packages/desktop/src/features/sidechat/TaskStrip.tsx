@@ -79,6 +79,8 @@ function statusOf(task: QueuedTask): string {
 		case "done":
 			return translate("taskStrip.done");
 		case "failed":
+			// 没做完就停下的那两种没有错误原文可转述，说清是哪一种；见 `QueuedTask.unfinished`。
+			if (task.unfinished) return translate(task.unfinished === "stalled" ? "taskStrip.stalled" : "taskStrip.maxTurns");
 			return task.error ? translate("taskStrip.failedWith", { error: task.error }) : translate("taskStrip.failed");
 		case "cancelled":
 			// The two cancellations, told apart — see `cancelledBy`.

@@ -1762,6 +1762,8 @@ export const zhCN = {
 	"taskStrip.done": "已完成",
 	"taskStrip.failedWith": "失败 · {error} · 可重试",
 	"taskStrip.failed": "失败 · 可重试",
+	"taskStrip.stalled": "没做完 · 反复做同一个调用后停下 · 可重试",
+	"taskStrip.maxTurns": "没做完 · 到了轮数上限 · 可重试",
 	"taskStrip.interrupted": "主会话已暂停，任务一并中断 · 可继续",
 	"taskStrip.withdrawn": "已撤回",
 	"taskStrip.runNow": "立即执行",

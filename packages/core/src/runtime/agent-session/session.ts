@@ -18,7 +18,7 @@
  * at once. Why it is split this way: ADR-0039.
  */
 
-import type { AgentEvent, AgentEventSink, QueuedTask } from "../../agent/events.ts";
+import type { AgentEvent, AgentEventSink, QueuedTask, TurnEnd } from "../../agent/events.ts";
 import type { LiveModel, StreamFn } from "../../agent/run-config.ts";
 import type { Settings } from "../../config/settings.ts";
 import type { SessionEndReason } from "../../hooks/config.ts";
@@ -155,6 +155,8 @@ export class AgentSession {
 	 * `log.emit`，记在 `emit` 里就一次也记不到——服务商报错、被停下的那一轮都会被当成 done。
 	 */
 	private lastEnd: Extract<AgentEvent, { type: "agent_end" }>["reason"] = "done";
+	/** 正在收尾的这一轮的 `agent_end`：`submit` 开轮前清掉、跑完读走，交给开这一轮的调用方。 */
+	private turnEnd: TurnEnd | undefined;
 	/** 谁此刻占着历史、怎么停下它。见 `session-activity.ts`。 */
 	private readonly activity = new SessionActivity();
 	/** 忙着的时候进来的话：插话或排队。见 `session-inbox.ts`。 */
@@ -252,7 +254,10 @@ export class AgentSession {
 		 * 排队出队要抢的那一拍。
 		 */
 		this.log = new SessionLog(options.store, (event) => {
-			if (event.type === "agent_end") this.lastEnd = event.reason;
+			if (event.type === "agent_end") {
+				this.lastEnd = event.reason;
+				this.turnEnd = { reason: event.reason, ...(event.error ? { error: event.error } : {}) };
+			}
 			this.activity.observe(event);
 			this.subAgentContexts.observe(event);
 			return options.emit(event);
@@ -274,7 +279,7 @@ export class AgentSession {
 			jobs: () => backgroundJobs(this.can.state),
 			detail: (id) => this.subAgents.detail(id),
 			outstanding: () => this.subAgents.list().filter((one) => this.dispatches.outstanding.has(one.id)),
-			submit: (message, deliver) => this.submit(message, { fromPerson: false, deliver }),
+			submit: async (message, deliver) => { await this.submit(message, { fromPerson: false, deliver }); },
 			settled: () => this.checkIdle(),
 		});
 		backgroundJobs(this.can.state).onFinished((job) => this.deliveries.jobFinished(job));
@@ -814,7 +819,7 @@ export class AgentSession {
 			sessionRefs?: Array<{ id: string; title: string }>;
 			attachments?: MessageAttachment[];
 		} = {},
-	): Promise<void> {
+	): Promise<TurnEnd | undefined> {
 		/*
 		 * `interrupt`：停下正在跑的，等它把半截回复和工具结果都落了盘，再拿这句开新的一轮。
 		 *
@@ -870,7 +875,7 @@ export class AgentSession {
 	private async submit(
 		message: Message,
 		options: { thinking?: ThinkingLevel; deliver?: "steer" | "followUp"; fromPerson: boolean; title?: () => Promise<void> },
-	): Promise<void> {
+	): Promise<TurnEnd | undefined> {
 		if (this.running) {
 			const went = this.inbox.accept({ message, thinking: options.thinking }, options.deliver, this.activity.steerable);
 			if (went === "steer") {
@@ -883,7 +888,7 @@ export class AgentSession {
 				 */
 				if (options.fromPerson || addressed(message)) this.spokenWaits.release();
 			}
-			return;
+			return undefined;
 		}
 
 		// Reserve the turn before the first disk write; another submission must queue during it.
@@ -891,7 +896,13 @@ export class AgentSession {
 		// 上一个进程没送回来的那几个，排在人这句话前面，同一轮里读到。见 `exit-cut.ts`。
 		const cut = options.fromPerson ? this.exitCut : null;
 		if (cut) this.exitCut = null;
+		/*
+		 * 这一句开的那一轮怎么收的场，在排在它后面的那几轮之前取：任务队列、定时任务据此分清「做完了」
+		 * 和「停了」——`prompt()` 正常返回不等于做完，服务商出错、原地打转都是正常返回的。
+		 */
+		let ended: TurnEnd | undefined;
 		const accept = async () => {
+			this.turnEnd = undefined;
 			await this.cancelPendingPrompt();
 			for (const one of cut ? [cut, message] : [message]) {
 				await this.log.commit(one);
@@ -900,8 +911,9 @@ export class AgentSession {
 			}
 			await options.title?.();
 
-			if (this.activity.stoppedSince(mark)) { await this.emit({ type: "agent_end", reason: "aborted" }); return; }
+			if (this.activity.stoppedSince(mark)) { await this.emit({ type: "agent_end", reason: "aborted" }); ended = this.turnEnd; return; }
 			await this.run(options.thinking);
+			ended = this.turnEnd;
 			await this.drainPending();
 		};
 		try { await this.activity.hold("prompt", accept); }
@@ -909,6 +921,7 @@ export class AgentSession {
 			void this.tasks.drain();
 			this.checkIdle();
 		}
+		return ended;
 	}
 
 	/**
