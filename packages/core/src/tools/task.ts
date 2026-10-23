@@ -1,7 +1,5 @@
 import { errorResult } from "./result.ts";
-import { SUBAGENTS_KEY } from "../resources/handlers.ts";
-import type { SubAgentRegistry } from "../runtime/sub-agent/sub-agents.ts";
-import type { SubAgentAnswer, Tool, ToolResult } from "../types.ts";
+import type { Tool, ToolResult } from "../types.ts";
 
 export { BUILTIN_AGENTS, type AgentDefinition } from "../agents-builtin.ts";
 import type { AgentDefinition } from "../agents-builtin.ts";
@@ -76,16 +74,11 @@ export const taskTool: Tool<TaskArgs> = {
 		 */
 		const agents = ctx.state.get(AGENTS_KEY) as AgentDefinition[] | undefined;
 		/*
-		 * 续跑：它是谁由它当初被派出去时定下，不看这次的 `subagent_type`。
-		 *
-		 * 能在这里认出来就在这里拦——找不到、还在跑、上下文已经没了，都给一句能据以行动的话，
-		 * 而不是一条「Sub-agent failed」。认不出来的（状态图里没有登记簿），交给
-		 * `runSubAgent` 自己认，它同样只放行自己派出去的那些。
+		 * 续跑：它是谁由它当初被派出去时定下，不看这次的 `subagent_type`。找不到、还在跑、上下文已经
+		 * 没了，`runSubAgent` 上名单之前就拒了，拒绝的话原样作为工具错误交回（见下面的 `catch`）。
 		 */
 		const resuming = typeof args.resume === "string" && args.resume.trim() ? args.resume.trim() : undefined;
-		const found = resuming ? (ctx.state.get(SUBAGENTS_KEY) as SubAgentRegistry | undefined)?.lookupResumable(resuming) : undefined;
-		if (found && "refusal" in found) return errorResult(found.refusal);
-		const requested = found ? found.summary.agent : args.subagent_type ?? "general";
+		const requested = args.subagent_type ?? "general";
 		if (!resuming && agents && !agents.some((a) => a.name === requested)) {
 			const available = agents.length > 0 ? agents.map((a) => a.name).join(", ") : "none are defined in this session";
 			return errorResult(`Unknown subagent_type "${requested}". Available: ${available}.`);
@@ -97,48 +90,18 @@ export const taskTool: Tool<TaskArgs> = {
 				prompt: args.prompt,
 				agentType: requested,
 				...(resuming ? { resume: resuming } : {}),
-				/*
-				 * 整轮被停时，下面那份结果没人收得到：停止和每个调用赛跑，赢的是一句通用的「已取消」。
-				 * 那句里没有 id，用户说「继续」之后模型只能从零重派——把它读过的再读一遍。
-				 */
-				onResumable: (id) =>
-					ctx.ifStopped?.({
-						content: [{ type: "text", text: stoppedHint(id) }],
-						details: { kind: "task", description: args.description, agentType: requested, subAgentId: id, ...(resuming ? { resumed: true } : {}) },
-					}),
 			});
 			/*
-			 * The object rides in `details`, never flattened into the text.
-			 *
-			 * `content` is what the model reads and `details` is what the UI renders and what
-			 * `agent://<id>/<field>` indexes into. Serialising the object into the text as well
-			 * would put it in the parent's context twice — once as prose, once as JSON — which is
-			 * the cost delegation exists to avoid.
+			 * 派出即放手：这里拿到的是「已派出」那句话和它的 id，结论稍后作为一条消息送回来
+			 * （`detached-dispatches.ts`）。卡片据此跟着登记簿画它的实时状态。
 			 */
 			return {
-				/*
-				 * The fallback is now only for a clean finish that said nothing at all.
-				 *
-				 * Every other ending describes itself — see `incompleteNote` in `sub-agent.ts`. What is
-				 * left is a run that stopped because it had nothing more to do and neither yielded nor
-				 * wrote a word. Saying that in those terms matters: the parent's next move after "it
-				 * finished and said nothing" is not the one it makes after "it was cut off partway".
-				 */
-				content: [
-					{
-						type: "text",
-						text: withResumeHint(answer.text || "（子代理没有留下任何输出：既没有调用 `yield` 交付结果，也没有说任何话。）", answer),
-					},
-				],
+				content: [{ type: "text", text: answer.text }],
 				details: {
 					kind: "task",
 					description: args.description,
-					agentType: requested,
-					output: answer.output,
-					warnings: answer.warnings?.length ? answer.warnings : undefined,
 					...(answer.id ? { subAgentId: answer.id } : {}),
-					...(resuming ? { resumed: true } : {}),
-					// 父会话没等它跑完：卡片据此跟着登记簿画它的实时状态，而不是把这句「转到后台」当结论。
+					...(resuming ? { resumed: true } : { agentType: requested }),
 					...(answer.detached ? { detached: true } : {}),
 				},
 			};
@@ -149,45 +112,3 @@ export const taskTool: Tool<TaskArgs> = {
 		}
 	},
 };
-
-/**
- * 整轮被停时接在「已取消」后面的那一句。
- *
- * 只给续跑的写法，不替模型决定要续：人按停止，可能是想换个方向。
- */
-function stoppedHint(id: string): string {
-	return (
-		`会话被停下时，子代理 \`${id}\` 还没做完，它的上下文还在。` +
-		`用户还要这件事的话，再调一次 \`task\`，传 \`resume: "${id}"\`，prompt 里写接着做什么——它会从停下的地方继续。` +
-		"**不要**重新派一个做同样的事：新派的从零开始，会把它读过的东西再读一遍。"
-	);
-}
-
-/**
- * 结果末尾那一句：它还在，怎么接着用它。
- *
- * 只说给模型听——面板上的人有「接着跑」按钮，这段话不进登记簿、不进面板。没做完的那种要说得
- * 最重：「从零重派」是反馈里白烧 token 的那条路，而模型不被明说就会走它——它只知道任务没完成，
- * 不知道那个子代理还在。做完了的也给一个 id，追问一句它刚才的结论不该从头再查一遍。
- */
-function withResumeHint(text: string, answer: SubAgentAnswer): string {
-	if (!answer.id) return text;
-	// 还在后台跑的，结果会自己送回来——这时候给一句「用 resume 追问它」，正好把模型往重复派活上引。
-	if (answer.detached) return `${text}\n\n（子代理 id：\`${answer.id}\`。）`;
-	if (answer.stoppedByUser) return `${text}\n\n（这个子代理是用户在面板上手动停下的。除非用户要求，不要续跑它。）`;
-	if (answer.incomplete) {
-		return (
-			`${text}\n\n要它接着干：再调一次 \`task\`，传 \`resume: "${answer.id}"\`，prompt 里写接着做什么（可以照它交接里的下一步）。` +
-			"它会带着全部上下文从停下的地方继续，只多付新增的轮次。**不要**重新派一个做同样的事——新派的从零开始，会把它读过的东西再读一遍。" +
-			"剩下的不多，也可以自己接手。"
-		);
-	}
-	/*
-	 * 末尾那半句「这是材料」是说给正要写回答的那个模型的。
-	 *
-	 * 指引里也写了，但指引在系统提示词里、隔着几万字；模型写最后那段回答时，眼前是这几份结果。
-	 * 没有这半句，几个子代理的结果一起回来时，它最顺手的写法就是按人头逐个转述——「子智能体 2：
-	 * 核心逻辑……」——把它自己该做的合并推给了读的人（2026-09-26 的真实会话就是这么答的）。
-	 */
-	return `${text}\n\n（子代理 id：\`${answer.id}\`。要追问它、或让它在这个基础上接着做，用 \`task\` 的 \`resume\`。它交的是材料：回答用户时和别的结论合在一起、按问题组织。）`;
-}

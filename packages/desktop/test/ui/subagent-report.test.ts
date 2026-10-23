@@ -9,13 +9,13 @@
 
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
-import { createElement as h } from "react";
+import { act, createElement as h } from "react";
 
 import type { SubAgentSummary } from "@plume/core";
 import { SubAgentPanel } from "../../src/features/subagents/SubAgentPanel.tsx";
 import { useApp } from "../../src/store/index.ts";
 import { useSubAgents } from "../../src/store/subAgents.ts";
-import { mount } from "../helpers/mount.ts";
+import { click, mount } from "../helpers/mount.ts";
 
 const zero = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
 
@@ -83,11 +83,50 @@ test("没跑完的：标题说没跑完，那段「为什么没跑完」的话�
 	}
 });
 
+test("出路按下去落成输入框里的草稿：续跑的带着 id，上下文不在的失败只能重派", async () => {
+	for (const [agent, button, draft] of [
+		[finished({ status: "aborted", resumable: true }), "[data-sub-resume] button", /用 task 的 resume 让它（s:sub:1）/],
+		[finished({ status: "failed", error: "上游 500" }), "[data-sub-redispatch] button", /「审一遍登录」失败了，重新派发/],
+	] as const) {
+		useApp.setState({ composerDraft: null });
+		const view = await show(agent);
+		try {
+			const pressed = view.find(button);
+			await click(pressed);
+			assert.match(useApp.getState().composerDraft?.text ?? "", draft);
+			assert.equal(useApp.getState().composerDraft?.sessionId, "s", "落在派它的那个会话上");
+			assert.match(pressed.textContent ?? "", /已填入输入框/);
+			assert.equal((pressed as HTMLButtonElement).disabled, true, "再按一次不会有第二份");
+		} finally {
+			await view.unmount();
+		}
+	}
+});
+
 test("对象是空壳时，画它最后说的那段话", async () => {
 	const view = await show(finished({ agent: "explore", output: { summary: "", files: [] }, answer: "入口在 src/login.ts，表单提交在第 12 行。" }));
 	try {
 		assert.match(view.find("[data-sub-report]").textContent ?? "", /入口在 src\/login\.ts/);
 		assert.equal(view.all("[data-structured-output]").length, 0);
+	} finally {
+		await view.unmount();
+	}
+});
+
+test("翻到另一个子代理，出路按钮是它自己的：上一个按过的「已填入」不跟过来", async () => {
+	const first = finished({ status: "aborted", resumable: true });
+	const second = finished({ id: "s:sub:2", description: "找入口", status: "failed", error: "上游 500" });
+	useApp.setState({ composerDraft: null });
+	useSubAgents.setState({ rosters: { s: [first, second] }, transcripts: { [first.id]: [], [second.id]: [] }, focused: first.id, loading: [] });
+	const view = await mount(h(SubAgentPanel));
+	try {
+		await click(view.find("[data-sub-resume] button"));
+		await act(async () => {
+			useSubAgents.setState({ focused: second.id });
+		});
+		const next = view.find<HTMLButtonElement>("[data-sub-redispatch] button");
+		assert.doesNotMatch(next.textContent ?? "", /已填入输入框/);
+		assert.equal(next.disabled, false);
 	} finally {
 		await view.unmount();
 	}

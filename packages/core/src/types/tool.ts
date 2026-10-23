@@ -17,15 +17,15 @@ export interface SubAgentAnswer {
 	text: string;
 	output?: Record<string, unknown>;
 	warnings?: string[];
-	/** 登记簿里的 id——续跑它要用的就是这个。没有登记簿的宿主（CLI、测试）没有。 */
+	/** 登记簿里的 id——续跑它要用的就是这个。派发时会话已经停了、一步都没跑的那种没有。 */
 	id?: string;
 	/** 没做完就停下了：到了检查点、原地打转、或者上游出错。它的上下文还在，可以续跑。 */
 	incomplete?: boolean;
 	/** 人在面板上把它按停的。派它来的那一方不该自作主张地让它接着跑。 */
 	stoppedByUser?: boolean;
 	/**
-	 * 父会话没等它跑完就放手了：人插了话，父会话先去回应。它在后台接着跑，跑完后结果由运行时
-	 * 作为一条消息送回——见 `runtime/sub-agent/delegation-waits.ts`。这时 `text` 说的是「它还在跑」，不是结论。
+	 * 派出去就放手了：它在后台跑，跑完后结果由运行时作为一条消息送回——见
+	 * `runtime/sub-agent/detached-dispatches.ts`。这时 `text` 说的是「它还在跑」，不是结论。
 	 */
 	detached?: boolean;
 }
@@ -96,15 +96,6 @@ export interface ToolContext {
 	signal?: AbortSignal;
 	/** Push an in-progress result so the UI can stream long-running tools. */
 	onProgress?: (partial: ToolResult) => void;
-	/**
-	 * What this call leaves behind if the turn is stopped before it returns.
-	 *
-	 * Stop races every call (`agent/tool-run.ts`), so whatever the tool would have returned after
-	 * the stop is thrown away and the model reads only "cancelled". A call whose work outlives the
-	 * turn — a sub-agent whose context can be resumed — says so here, and the runner appends it to
-	 * that "cancelled". The latest call wins.
-	 */
-	ifStopped?: (left: ToolResult) => void;
 	/** Ask the user to approve a side-effecting operation. */
 	requestApproval?: (request: ApprovalRequest) => Promise<ApprovalDecision>;
 	/**
@@ -155,7 +146,7 @@ export interface ToolContext {
 	 * 等一件不在这一轮里的事，但人一开口就放手：放手时交回 `null`。
 	 *
 	 * 插话只在两轮之间才有人取，卡在等待上的工具调用会把人说的话压到它返回为止。只有主会话给
-	 * （见 `delegation-waits.ts`）；没有它，工具就一直等到底。
+	 * （见 `spoken-waits.ts`）；没有它，工具就一直等到底。
 	 */
 	untilSpokenTo?: <T>(run: Promise<T>) => Promise<T | null>;
 	/** Shared per-session scratch space (todo list, file read cache, ...). */
@@ -298,7 +289,6 @@ export interface SubAgentInput {
 	description: string;
 	prompt: string;
 	agentType?: string;
-	model?: string;
 	/**
 	 * 接着跑哪一个，而不是新派一个。
 	 *
@@ -306,13 +296,6 @@ export interface SubAgentInput {
 	 * 地方继续。`agentType` 此时不起作用——它是谁，由它当初被派出去时定下。
 	 */
 	resume?: string;
-	/**
-	 * 从这一刻起它停下也能续跑，id 是这个。
-	 *
-	 * 给 `task` 用：整轮被停时它的返回值会被丢掉（见 `ToolContext.ifStopped`），能续跑的 id 只能
-	 * 提前递出来。新派的在拿到名额之后才叫——排着队就被停的那种什么都没留下，续不了。
-	 */
-	onResumable?: (id: string) => void;
 }
 
 export interface Tool<TArgs = Record<string, unknown>> extends ToolSpec {

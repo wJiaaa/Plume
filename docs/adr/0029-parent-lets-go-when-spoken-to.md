@@ -3,6 +3,9 @@
 - 状态：已采纳；第 2 条和「没有做的」第一条被 [ADR-0051](0051-sub-agents-report-one-by-one.md) 取代（派出即放手）
 - 日期：2026-09-26
 - 修订：[ADR-0024](0024-sub-agents-stop-at-checkpoints.md) 第 2 条（没写清单的子代理到检查点再给一段）
+- 现状（2026-10-23）：`delegation-waits.ts` 拆成 `runtime/sub-agent/detached-dispatches.ts`（派发）和
+  `runtime/agent-session/spoken-waits.ts`（人一开口就放手，只剩等另一个会话的工具在用）；名单上的
+  `background`、渲染进程的 `awaitingSubAgents` 已删除——派出即放手之后它们恒为真、恒为假
 - 相关：`packages/core/src/runtime/sub-agent/delegation-waits.ts`、`runtime/session.ts`（`submit`、`flushDeliveries`）、`runtime/turn-config.ts`（`spawnSubAgent`、`refreshDispatchGate`）、`runtime/sub-agent/sub-agent.ts`（`admission`、`workingNote`、`planDemand`）、`runtime/sub-agent/sub-agents.ts`（`queued`、`background`、`awaitingApproval`）、`runtime/sub-agent/dispatch-guard.ts`（`acquire`、`concurrencyNote`）、`runtime/continuation.ts`（`planless`）、`runtime/approvals.ts`（`approval_settled`、`rejectWhere`）、`tools/task.ts`；desktop `store/apply-event.ts`、`store/subAgents.ts`（`awaitingSubAgents`、`settled`）、`features/subagents/SubAgentBar.tsx`、`features/conversation/DeliveryRow.tsx`、`features/conversation/ApprovalOverlay.tsx`、`app/session-scope.tsx`（`useScopedWorking`）
 
 ## 背景

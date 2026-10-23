@@ -119,7 +119,7 @@ export type AgentEvent =
 	 */
 	// `notice` 是检查点上那句「清单还有 N 项，接着跑」——子代理自己的事，留在它自己的流里。
 	// `hook_run` 同理：子代理里跑的钩子归它自己的面板，`at` 是它自己转录里的位置（`SubAgentRegistry.hookRun`）。
-	| { type: "subagent_event"; id: string; event: Extract<AgentEvent, { type: "tool_start" | "tool_end" | "tool_left" | "request" | "retry" | "retry_settled" | "agent_end" | "turn_start" | "context" | "compacted" | "command_status" | "notice" | "hook_run" }> }
+	| { type: "subagent_event"; id: string; event: Extract<AgentEvent, { type: "tool_start" | "tool_end" | "request" | "retry" | "retry_settled" | "agent_end" | "turn_start" | "context" | "compacted" | "command_status" | "notice" | "hook_run" }> }
 	| { type: "message_start"; message: Message }
 	| { type: "message_update"; message: AssistantMessage; delta: StreamEvent }
 	| { type: "message_end"; message: Message }
@@ -135,14 +135,6 @@ export type AgentEvent =
 	| { type: "tool_update"; toolCallId: string; partial: ToolResult }
 	/** A call started waiting for a person, or stopped waiting. Recorded so a crash in between is known not to have run it. */
 	| { type: "tool_phase"; toolCallId: string; phase: "approval" | "running" }
-	/**
-	 * What a call leaves behind if it never returns — see `ToolContext.ifStopped`.
-	 *
-	 * Written down because the call can end two ways without returning: stopped in this process,
-	 * where the runner appends it to "cancelled", or the process dying, where the store appends it
-	 * to "interrupted" on the next open (`settleCalls`). Only the written copy reaches the second.
-	 */
-	| { type: "tool_left"; toolCallId: string; result: ToolResult }
 	| { type: "tool_end"; toolCallId: string; toolName: string; result: ToolResult; isError: boolean }
 	| {
 			type: "approval_request";
@@ -260,7 +252,8 @@ export type AgentEvent =
 	 * instead of having to have seen every event since it left.
 	 */
 	| { type: "subagents"; agents: SubAgentSummary[] }
-	| { type: "subagent_done"; id: string; steps: string[]; answer: string; status: "done" | "failed" | "aborted"; error?: string }
+	/** `output`、`warnings`、`incomplete` 和名单上的是同一份（`SubAgentRegistry.finish`）；早先的日志里没有。 */
+	| { type: "subagent_done"; id: string; steps: string[]; answer: string; status: "done" | "failed" | "aborted"; error?: string; output?: Record<string, unknown>; warnings?: string[]; incomplete?: boolean }
 	/**
 	 * Results a sub-agent's compaction cut, as they were sent from then on.
 	 *

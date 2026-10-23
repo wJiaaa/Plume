@@ -125,7 +125,7 @@ export function makeOnStop(scope: TurnHooks): StopHook {
 			{ ...base(scope, "Stop"), responseText, responsePreview: responseText.slice(0, 4000), toolCallCount, stopHookActive: continuations > 0 },
 			{ signal: scope.signal },
 		);
-		if (result.stopShouldContinue !== true || result.additionalContexts.length === 0 || continuations >= MAX_STOP_HOOK_CONTINUATIONS) return undefined;
+		if (result.continueStop !== true || result.additionalContexts.length === 0 || continuations >= MAX_STOP_HOOK_CONTINUATIONS) return undefined;
 		continuations += 1;
 		return hookContextMessage("Stop", result.additionalContexts) ?? undefined;
 	};
@@ -140,15 +140,13 @@ export function makeBeforeToolCall(scope: TurnHooks): BeforeToolCall {
 			{ matchValues: hookMatchValues(toolName), signal: scope.signal },
 		);
 		const contexts = result.additionalContexts;
-		if (result.permissionBehavior === "deny" || result.preventContinuation) {
-			return { block: true, reason: result.hookPermissionDecisionReason ?? result.stopReason ?? "Blocked by PreToolUse hook", contexts };
-		}
+		if (result.decision === "deny") return { block: true, reason: result.reason ?? "Blocked by PreToolUse hook", contexts };
 		const updated = result.updatedInput !== undefined && typeof result.updatedInput === "object" && result.updatedInput !== null && !Array.isArray(result.updatedInput)
 			? (result.updatedInput as Record<string, unknown>)
 			: undefined;
 		return {
 			...(updated ? { args: updated } : {}),
-			...(result.permissionBehavior === "allow" || result.permissionBehavior === "ask" ? { approval: result.permissionBehavior, approvalReason: result.hookPermissionDecisionReason } : {}),
+			...(result.decision ? { approval: result.decision, approvalReason: result.reason } : {}),
 			...(contexts.length > 0 ? { contexts } : {}),
 		};
 	};
@@ -166,10 +164,8 @@ export function makePermissionRequest(scope: TurnHooks): PermissionRequestHook {
 			{ ...base(scope, "PermissionRequest"), toolName, toolInput: args, toolCallId, reason: request.reason ?? request.title, requestId: toolCallId },
 			{ matchValues: hookMatchValues(toolName), signal: scope.signal },
 		);
-		const decision = result.permissionRequestResult;
-		if (result.preventContinuation || decision?.behavior === "deny" || (!decision && result.permissionBehavior === "deny")) return "reject";
-		if (decision?.behavior === "allow" || (!decision && result.permissionBehavior === "allow")) return "once";
-		return undefined;
+		if (result.decision === "deny") return "reject";
+		return result.decision === "allow" ? "once" : undefined;
 	};
 }
 

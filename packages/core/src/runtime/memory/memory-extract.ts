@@ -175,22 +175,19 @@ function skillProposalPrompt(): string {
  * 任何一处不完整都返回 null：一个缺了步骤的技能会以一个人不知道的方式改变 agent 的行为，
  * 而「少一个候选」这件事没有任何代价。
  */
-export function parseSkillProposal(text: string, sourceIds?: readonly string[]): SkillCandidate | null {
+export function parseSkillProposal(text: string, sourceIds: readonly string[]): SkillCandidate | null {
 	if (text.includes("（没有）") || text.includes("(没有)")) return null;
 	const name = /^NAME:\s*(.+)$/m.exec(text)?.[1]?.trim().toLowerCase();
 	const description = /^DESCRIPTION:\s*(.+)$/m.exec(text)?.[1]?.trim();
 	const body = text.split(/^BODY:\s*$/m)[1]?.trim();
 	if (!name || !description || !body) return null;
 	if (!/^[a-z][a-z0-9-]{1,40}$/.test(name)) return null;
-	if (sourceIds) {
-		const scope = /^SCOPE:\s*(.+)$/m.exec(text)?.[1]?.trim();
-		const sources = [...new Set((/^SOURCES:\s*(.+)$/m.exec(text)?.[1] ?? "").split(",").map((id) => id.trim()).filter(Boolean))];
-		if (scope !== "portable" && scope !== "project") return null;
-		if (sources.length < 2 || sources.some((id) => !sourceIds.includes(id))) return null;
-		if (!["适用范围", "输入与前置检查", "执行步骤", "验证与失败处理"].every((heading) => body.includes(`## ${heading}`))) return null;
-		return { name, description, body, scope, sourceSessions: sources };
-	}
-	return { name, description, body };
+	const scope = /^SCOPE:\s*(.+)$/m.exec(text)?.[1]?.trim();
+	const sources = [...new Set((/^SOURCES:\s*(.+)$/m.exec(text)?.[1] ?? "").split(",").map((id) => id.trim()).filter(Boolean))];
+	if (scope !== "portable" && scope !== "project") return null;
+	if (sources.length < 2 || sources.some((id) => !sourceIds.includes(id))) return null;
+	if (!["适用范围", "输入与前置检查", "执行步骤", "验证与失败处理"].every((heading) => body.includes(`## ${heading}`))) return null;
+	return { name, description, body, scope, sourceSessions: sources };
 }
 
 /** Render sessions compactly enough that several fit in one request. */

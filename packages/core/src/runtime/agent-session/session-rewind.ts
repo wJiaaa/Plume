@@ -9,7 +9,7 @@
 
 import type { AgentEventSink } from "../../agent/events.ts";
 import { TODOS_KEY, todosFromLog } from "../../tools/todo.ts";
-import type { DelegationWaits } from "../sub-agent/delegation-waits.ts";
+import type { DetachedDispatches } from "../sub-agent/detached-dispatches.ts";
 import type { SessionDeliveries } from "./session-deliveries.ts";
 import type { SessionLog } from "../record/session-log.ts";
 import type { SubAgentRegistry } from "../sub-agent/sub-agents.ts";
@@ -19,7 +19,7 @@ export interface RewindParts {
 	/** The session's tool state, where this turn's copy of the plan lives. */
 	state: Map<string, unknown>;
 	deliveries: SessionDeliveries;
-	delegations: DelegationWaits;
+	dispatches: DetachedDispatches;
 	subAgents: SubAgentRegistry;
 	emit: AgentEventSink;
 }
@@ -60,13 +60,13 @@ function restorePlan({ log, state }: RewindParts): void {
  * its history, and paying another turn for it. Dispatches still in the history are left alone:
  * someone is still waiting for those results.
  */
-function stopCutDelegations({ log, deliveries, delegations, subAgents }: RewindParts): void {
+function stopCutDelegations({ log, deliveries, dispatches, subAgents }: RewindParts): void {
 	const dispatched = new Set<string>();
 	for (const message of log.messages) {
 		const id = message.role === "toolResult" ? (message.details as { subAgentId?: unknown } | undefined)?.subAgentId : undefined;
 		if (typeof id === "string") dispatched.add(id);
 	}
-	// Ones already finished and waiting to be delivered are no longer in `delegations`; filter them separately.
+	// Ones already finished and waiting to be delivered are no longer in `dispatches`; filter them separately.
 	deliveries.keepOnly(dispatched);
-	for (const id of delegations.forgetUnless((id) => dispatched.has(id))) subAgents.abort(id);
+	for (const id of dispatches.forgetUnless((id) => dispatched.has(id))) subAgents.abort(id);
 }

@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseUnifiedDiff } from "../electron/forge/diff-parse.ts";
 import { toPatchFiles } from "../electron/forge/gitee.ts";
-import { assembleDiff, countLines } from "../electron/forge/patch.ts";
+import { assembleDiff } from "../electron/forge/patch.ts";
 
 const HUNK = ["@@ -1,3 +1,4 @@", " context", "-gone", "+added", "+also added"].join("\n");
 
@@ -84,14 +84,6 @@ test("several files come back as several files", () => {
 test("a file with no paths at all is skipped rather than emitted headerless", () => {
 	assert.equal(assembleDiff([{ oldPath: "", newPath: "", patch: HUNK }]), "");
 	assert.equal(assembleDiff([]), "");
-});
-
-test("counting lines ignores the file headers, which start with the same characters", () => {
-	// `+++ b/x` and `--- a/x` would otherwise be one added and one removed line in every file.
-	assert.deepEqual(countLines(["--- a/x", "+++ b/x", "@@ -1 +1 @@", "-old", "+new", "+extra"].join("\n")), {
-		added: 2,
-		removed: 1,
-	});
 });
 
 /*

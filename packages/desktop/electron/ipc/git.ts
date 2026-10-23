@@ -28,7 +28,7 @@ import {
 	QUIET_FETCH_TIMEOUT_MS,
 } from "../git/git-history.ts";
 import { initRepo, listRepos, listWorktrees } from "../git/git-repos.ts";
-import { removeWorktree } from "../git/git-worktrees.ts";
+import { removeLinkedWorktree } from "../git/worktree-lifecycle.ts";
 import {
 	bumpVersionFiles,
 	getReleaseInfo,
@@ -39,8 +39,8 @@ import {
 } from "../git/git-release.ts";
 import { generateCommitMessage } from "../git/git-commit-message.ts";
 import {
-	accounts,
 	commentOnPullRequest,
+	listAccounts,
 	listPullRequests,
 	pullRequestDetail,
 	pullRequestDiff,
@@ -111,7 +111,7 @@ export function registerGitIpc({ insideAProject }: GitIpcDeps): void {
 	// there is no longer a case where it is false. See `forge/vault.ts`.
 	ipcMain.handle("forge:kinds", async () => ({ kinds: FORGE_KINDS }));
 
-	ipcMain.handle("forge:accounts", async () => accounts());
+	ipcMain.handle("forge:accounts", async () => listAccounts());
 
 	ipcMain.handle("forge:signIn", async (_event, input: { kind: ForgeKind; baseUrl: string; token: string; label?: string }) =>
 		signIn(input),
@@ -129,17 +129,17 @@ export function registerGitIpc({ insideAProject }: GitIpcDeps): void {
 	 * 改仓库状态的那几条，和提交走同一道边界。
 	 *
 	 * 这五条从前一条守卫都没有，而它们都会写：切分支动工作区、建/删工作树动目录、`init` 会在
-	 * 任意路径上造一个仓库。最要命的是 `removeWorktree`——它在 `git worktree remove` 失败之后
-	 * 兜底 `rm -rf`，也就是说渲染进程拿着一个任意路径就能触发一次递归删除。那一侧也收紧了
-	 * （只删 `git worktree list` 认得的路径），这里是同一件事的第二层：先问它在不在已打开的
-	 * 项目里。
+	 * 任意路径上造一个仓库。最要命的是删工作树：它曾在 `git worktree remove` 失败之后兜底
+	 * `rm -rf`，渲染进程拿着一个任意路径就能触发一次递归删除。那一侧已经收紧（只删链接工作树、
+	 * 不再自己删目录，见 `removeLinkedWorktree`），这里是第二层：先问它在不在已打开的项目里。
 	 */
 	ipcMain.handle("git:switchBranch", guarded(switchBranch));
 
 	ipcMain.handle("git:removeWorktree", async (_event, cwd: string, worktreePath: string) => {
 		// 两个路径都要问：`cwd` 决定问哪个仓库，`worktreePath` 是真正会被删掉的那个。
 		if (!insideAProject(cwd) || !insideAProject(worktreePath)) return denied();
-		return removeWorktree(cwd, worktreePath);
+		// Not forced: the settings page asks no one, so one holding changes stays and git says why.
+		return removeLinkedWorktree(cwd, worktreePath);
 	});
 
 	ipcMain.handle("git:stat", async (_event, cwd: string) => workspaceStat(cwd));
@@ -279,7 +279,7 @@ export function registerGitIpc({ insideAProject }: GitIpcDeps): void {
 	ipcMain.handle("git:avatars", async (_event, people: { login: string; url?: string | null; accountId?: string }[]) => {
 		// Resolved here rather than sent from the renderer: the account list is the main process's,
 		// and a page that could name a host to fetch from is a page that widened the CSP by proxy.
-		const known = new Map((await accounts()).map((account) => [account.id, account]));
+		const known = new Map((await listAccounts()).map((account) => [account.id, account]));
 		return avatarsFor(Array.isArray(people) ? people.slice(0, 120) : [], (id) => known.get(id) ?? null);
 	});
 

@@ -50,14 +50,12 @@ export interface SystemPromptInput {
 	/** User's persistent memory entries. */
 	memorySnippet?: string;
 	/**
-	 * What was learned in this project, already rendered.
+	 * What was learned in this project, already rendered, one fragment per source file.
 	 *
 	 * Separate from `memorySnippet` because they have different scopes and different trust: the
 	 * global one is what the user typed about themselves, this one is what happened here. Merging
 	 * them would apply "this repository uses pnpm" to every other repository on the machine.
 	 */
-	projectMemory?: string;
-	/** The exact rendered fragments, with their source paths, when memory was loaded from disk. */
 	projectMemoryFiles?: { path: string; content: string }[];
 	/** Preferred personality tone. */
 	tone?: string;
@@ -297,11 +295,7 @@ export async function buildPromptContext(input: SystemPromptInput): Promise<Prom
 		prompt.add("userMemory", `\n\n${input.memorySnippet.trim()}`);
 	}
 
-	if (input.projectMemory?.trim()) {
-		if (input.projectMemoryFiles?.map(file => file.content).join("") === input.projectMemory) {
-			for (const file of input.projectMemoryFiles) prompt.add("projectMemory", file.content, { path: file.path });
-		} else prompt.add("projectMemory", input.projectMemory);
-	}
+	for (const file of input.projectMemoryFiles ?? []) prompt.add("projectMemory", file.content, { path: file.path });
 
 	prompt.add("skills", formatSkills(input.skills));
 	// Only worth listing when task is actually loaded — otherwise the model cannot dispatch.

@@ -126,6 +126,7 @@ function Transcript({ agent, agents, sessionId }: {
 	const messages = useSubAgents((s) => s.transcripts[agent.id]);
 	const hookRuns = useSubAgents((s) => s.hookRuns[agent.id]);
 	const loading = useSubAgents((s) => s.loading.includes(agent.id));
+	const way = wayBack(agent);
 
 	/*
 	 * One position per delegate, not one per panel.
@@ -203,8 +204,7 @@ function Transcript({ agent, agents, sessionId }: {
 				 * 跑到检查点停下的那种（`done` + `incomplete`）从前在这里什么都没有——而那正是反馈里
 				 * 「60 步跑满、啥都没干好」的那一个，最需要一个出路。重派只留给上下文已经不在的。
 				 */}
-				{wayBack(agent) === "resume" && <Resume agent={agent} />}
-				{wayBack(agent) === "redispatch" && <Redispatch agent={agent} />}
+				{way && <WayBack key={agent.id} agent={agent} way={way} />}
 				{/* Where "you have seen the newest output" is decided — see `useFollowBottom`. */}
 				<div ref={follow.tailRef} aria-hidden className="h-px w-full shrink-0" />
 			</Scroller>
@@ -284,72 +284,41 @@ function CopyReport({ text }: { text: string }) {
 }
 
 /**
- * 让主 Agent 带着这个子代理的上下文把它续上。
+ * 一次派发没做完之后的出路：「接着跑」带着它的上下文续上，「重新派发」从零再来一遍。
  *
- * 和「重新派发」同一个间接法、同一个理由：落成输入框里的一份草稿，人读过、改过、或者扔掉之后才
- * 花钱。草稿里带着 id——主 Agent 要用它调 `task` 的 `resume`，写一句「接着跑刚才那个」它不知道
- * 是哪一个。
+ * 两样都落成输入框里的一份草稿，而不是直接交给模型：人读过、改过、或者扔掉之后才花钱——这件事
+ * 已经花过一次钱了，按一下按钮不该是再花一次的最后一句话。续跑的草稿里带着 id：主 Agent 要用它
+ * 调 `task` 的 `resume`，写一句「接着跑刚才那个」它不知道是哪一个。
  *
  * 从前这两个是一枚带描边的小方块，只有一个播放 / 回转图标：看的人得先悬停才知道它是干什么的，
  * 而这恰恰是一次派发没做完之后唯一的出路。现在写着字。
  */
-function Resume({ agent }: { agent: SubAgentSummary }) {
+function WayBack({ agent, way }: { agent: SubAgentSummary; way: "resume" | "redispatch" }) {
 	const { t } = useI18n();
 	// The conversation that dispatched it, whose screen this panel is on — not the focused one.
 	const screen = useScopedSessionId();
 	const [asked, setAsked] = useState(false);
+	const resume = way === "resume";
+	const Icon = resume ? Play : RotateCcw;
+	const draft = () =>
+		resume
+			? t("subAgent.resumeDraft", { name: agent.description, id: agent.id })
+			: t(agent.status === "failed" ? "subAgent.redispatchDraftFailed" : "subAgent.redispatchDraftAborted", { name: agent.description });
 	return (
-		<div className="mt-2 w-fit" data-sub-resume>
+		<div className="mt-2 w-fit" data-sub-resume={resume || undefined} data-sub-redispatch={!resume || undefined}>
 			<Button
 				variant="subtle"
 				size="sm"
 				disabled={asked}
-				label={t("subAgent.resumeTip")}
-				icon={asked ? <Check size={13} strokeWidth={2.2} aria-hidden /> : <Play size={13} strokeWidth={1.9} aria-hidden />}
+				label={t(resume ? "subAgent.resumeTip" : "subAgent.redispatchTip")}
+				icon={asked ? <Check size={13} strokeWidth={2.2} aria-hidden /> : <Icon size={13} strokeWidth={1.9} aria-hidden />}
 				onClick={() => {
-					useApp.getState().setComposerDraft(t("subAgent.resumeDraft", { name: agent.description, id: agent.id }), { sessionId: screen, replace: true });
-					setAsked(true);
-				}}
-			>
-				{asked ? t("subAgent.drafted") : t("subAgent.resume")}
-			</Button>
-		</div>
-	);
-}
-
-function Redispatch({ agent }: { agent: SubAgentSummary }) {
-	const { t } = useI18n();
-	const screen = useScopedSessionId();
-	const [asked, setAsked] = useState(false);
-	return (
-		<div className="mt-2 w-fit" data-sub-redispatch>
-			<Button
-				variant="subtle"
-				size="sm"
-				disabled={asked}
-				label={t("subAgent.redispatchTip")}
-				icon={asked ? <Check size={13} strokeWidth={2.2} aria-hidden /> : <RotateCcw size={13} strokeWidth={1.9} aria-hidden />}
-				onClick={() => {
-					/*
-					 * Through the composer, not straight to the model.
-					 *
-					 * It lands as a draft you can read, edit, or throw away before anything runs — the
-					 * request is a sentence about work that already cost something once, and pressing a
-					 * button should not be the last word on spending it again.
-					 */
-					useApp
-						.getState()
-						.setComposerDraft(
-							t(agent.status === "failed" ? "subAgent.redispatchDraftFailed" : "subAgent.redispatchDraftAborted", {
-								name: agent.description,
-							}),
-							{ sessionId: screen, replace: true },
-						);
+					useApp.getState().setComposerDraft(draft(), { sessionId: screen, replace: true });
 					setAsked(true);
 				}}
 			>
 				{/* 派过之后变成一个勾：草稿已经在输入框里了，再按一次不会有第二份。 */}
-				{asked ? t("subAgent.drafted") : t("subAgent.redispatch")}
+				{asked ? t("subAgent.drafted") : t(resume ? "subAgent.resume" : "subAgent.redispatch")}
 			</Button>
 		</div>
 	);

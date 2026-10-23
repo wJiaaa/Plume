@@ -10,7 +10,7 @@
  */
 
 import type { AgentEvent, ApprovedPlan, SessionMeta } from "@plume/core";
-import { planSummary, planTitle, SUBMIT_PLAN_TOOL_NAME } from "@plume/core/plan-view";
+import { approvedPlanOf, planSummary, planTitle, SUBMIT_PLAN_TOOL_NAME } from "@plume/core/plan-view";
 import { nativeText } from "../i18n.ts";
 import { peerAddress } from "../peer/index.ts";
 
@@ -49,8 +49,7 @@ export function handOffApprovedPlans(deps: PlanHandoffDeps): { observe(sessionId
 	return {
 		observe(sessionId, event) {
 			if (event.type !== "tool_end" || event.toolName !== SUBMIT_PLAN_TOOL_NAME || event.isError) return;
-			const details = event.result.details as { kind?: string; plan?: ApprovedPlan } | undefined;
-			const plan = details?.kind === "plan" ? details.plan : undefined;
+			const plan = approvedPlanOf(event.result.details);
 			if (!plan?.handoff || !plan.file || started.has(event.toolCallId)) return;
 			const parent = deps.meta(sessionId);
 			if (!parent) return;

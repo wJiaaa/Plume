@@ -1,8 +1,8 @@
 /**
  * 计划模式里不碰 Node 的那一半：计划长什么样、会话历史里眼下是哪一份。
  *
- * 渲染进程经 `@plume/core/plan-view` 导入。`plan-mode.ts` 连着 `bash` 的只读判定，一路通到
- * `node:child_process`，浏览器从那里拿一个函数就是白屏，所以拆出这个只有类型依赖的文件。
+ * 渲染进程和主进程经 `@plume/core/plan-view` 导入。只放类型依赖的东西：`plan-tool.ts` 要读写
+ * `node:fs`，浏览器从那条链上拿一个函数就是白屏。
  */
 
 import type { ApprovedPlan, Message } from "../../types/message.ts";
@@ -16,6 +16,12 @@ export const SUBMIT_PLAN_TOOL_NAME = "submit_plan";
 export const PLAN_HANDOFF = "批准，在新会话里执行";
 
 export type PlanDraft = Omit<ApprovedPlan, "approvedAt">;
+
+/** 一条 `submit_plan` 结果里批准的那份计划；打回、没人回答的不算。调用方自己先认工具名和 `isError`。 */
+export function approvedPlanOf(details: unknown): ApprovedPlan | undefined {
+	const found = details as { kind?: string; plan?: ApprovedPlan } | undefined;
+	return found?.kind === "plan" && typeof found.plan?.plan === "string" ? found.plan : undefined;
+}
 
 /** 计划在转录、审批卡片、计划面板和压缩快照里长的样子。 */
 export function renderPlan(plan: PlanDraft): string {
@@ -80,10 +86,9 @@ export function currentPlan(messages: readonly Message[]): CurrentPlan | null {
 		const message = messages[i];
 		if (message.role === "toolResult") {
 			if (message.toolName !== SUBMIT_PLAN_TOOL_NAME) continue;
-			const kind = (message.details as { kind?: string } | undefined)?.kind;
-			results.set(message.toolCallId, message.isError ? "error" : kind === "plan" ? "approved" : "declined");
-			const approved = (message.details as { plan?: ApprovedPlan } | undefined)?.plan;
-			if (!message.isError && kind === "plan" && typeof approved?.plan === "string") {
+			const approved = message.isError ? undefined : approvedPlanOf(message.details);
+			results.set(message.toolCallId, message.isError ? "error" : approved ? "approved" : "declined");
+			if (approved) {
 				const { approvedAt: _approvedAt, ...plan } = approved;
 				approvedPlans.set(message.toolCallId, plan);
 			}

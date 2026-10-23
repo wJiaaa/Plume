@@ -29,45 +29,42 @@ import { join } from "node:path";
 export interface GatheredMemory {
 	/** `<user_memory>…</user_memory>`, or empty. */
 	memorySnippet: string;
-	/** The project's lessons and extracted memory, formatted, or empty. */
-	projectMemory: string;
+	/** The project's lessons and extracted memory, formatted, one part per file; empty when there is none. */
 	projectMemoryFiles: { path: string; content: string }[];
 }
 
 interface MemorySnapshot {
+	/** 读它时的目录和开关：换了项目或关掉记忆，同一个会话也要重读，不拿别处的快照。 */
+	readFor: string;
 	memory: GatheredMemory;
 	userKeys: string[];
 	projectKeys: string[];
 }
 
-/** 快照的键：会话之外还带上目录和开关，换了项目或关掉记忆都不会拿到别处的快照。 */
-function snapshotKey(scope: string, cwd: string, enabled: boolean, projectEnabled: boolean): string {
-	return `${scope}\0${cwd}\0${enabled}\0${projectEnabled}`;
-}
-
 /** 这个会话下一次组装提示词时重新读记忆。压缩、撤回、重新载入时由 `SessionLog` 调。 */
 export function refreshMemorySnapshot(scope: string): void {
-	for (const key of memorySnapshots.keys()) if (key.startsWith(`${scope}\0`)) memorySnapshots.delete(key);
+	memorySnapshots.delete(scope);
 }
 
 export async function gatherMemory(cwd: string, enabled: boolean, now = Date.now(), projectEnabled = enabled, recordInjection = true, scope?: string): Promise<GatheredMemory> {
-	if (!enabled && !projectEnabled) return { memorySnippet: "", projectMemory: "", projectMemoryFiles: [] };
-	const key = scope === undefined ? undefined : snapshotKey(scope, cwd, enabled, projectEnabled);
-	const snapshot = (key === undefined ? undefined : memorySnapshots.get(key) as MemorySnapshot | undefined) ?? await readSnapshot(cwd, enabled, projectEnabled);
-	if (key !== undefined) memorySnapshots.set(key, snapshot);
+	if (!enabled && !projectEnabled) return { memorySnippet: "", projectMemoryFiles: [] };
+	// 一个会话一条：换目录或开关时覆盖，而不是在旧的旁边再记一条。
+	const readFor = `${cwd}\0${enabled}\0${projectEnabled}`;
+	const held = scope === undefined ? undefined : memorySnapshots.get(scope) as MemorySnapshot | undefined;
+	const snapshot = held?.readFor === readFor ? held : await readSnapshot(readFor, cwd, enabled, projectEnabled);
+	if (scope !== undefined) memorySnapshots.set(scope, snapshot);
 	const { memory, userKeys, projectKeys } = snapshot;
 
 	// Recorded, not awaited for correctness: a failed timestamp must not cost the turn.
 	if (recordInjection) await Promise.all([
 		memory.memorySnippet ? markInjected(userInjectedPath(), userKeys, now).catch(() => false) : Promise.resolve(false),
-		memory.projectMemory ? markInjected(projectInjectedPath(cwd), projectKeys, now).catch(() => false) : Promise.resolve(false),
+		memory.projectMemoryFiles.length > 0 ? markInjected(projectInjectedPath(cwd), projectKeys, now).catch(() => false) : Promise.resolve(false),
 	]);
 
 	return memory;
 }
 
-async function readSnapshot(cwd: string, enabled: boolean, projectEnabled: boolean): Promise<MemorySnapshot> {
-
+async function readSnapshot(readFor: string, cwd: string, enabled: boolean, projectEnabled: boolean): Promise<MemorySnapshot> {
 	let memorySnippet = "";
 	let userKeys: string[] = [];
 	try {
@@ -83,7 +80,6 @@ async function readSnapshot(cwd: string, enabled: boolean, projectEnabled: boole
 	const projectMemoryFiles = formatProjectMemorySources(lessons, extracted).map(part => ({
 		path: join(projectMemoryDir(cwd), part.file), content: part.content,
 	}));
-	const projectMemory = projectMemoryFiles.map(file => file.content).join("");
 	const projectKeys = [...lessons.map((lesson) => lesson.text), ...(extracted.trim() ? [EXTRACTED_KEY] : [])];
-	return { memory: { memorySnippet, projectMemory, projectMemoryFiles }, userKeys, projectKeys };
+	return { readFor, memory: { memorySnippet, projectMemoryFiles }, userKeys, projectKeys };
 }

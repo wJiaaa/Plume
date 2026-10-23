@@ -20,8 +20,8 @@ import type { Message, SessionMeta, SubAgentSummary } from "@plume/core";
 import { isProjectLess } from "../lib/project-scope.ts";
 import { sessionProject } from "../lib/project-identity.ts";
 import { useApp, type AppState } from "../store/index.ts";
-import { type SubAgentState, useSubAgents } from "../store/subAgents.ts";
-import { worktreeWorkspace } from "../store/session-workspace.ts";
+import { delegating, type SubAgentState, useSubAgents } from "../store/subAgents.ts";
+import { unreadWorkspace, worktreeWorkspace } from "../store/session-workspace.ts";
 import { EMPTY_SLOT, type Cache, type CachedSessionState } from "../store/derive.ts";
 import type { ToolRun } from "../store/tool-run.ts";
 
@@ -128,15 +128,15 @@ export function useScopedRunning(): boolean {
 /**
  * 这场对话此刻有没有活在干：主会话这一轮在跑，或者它放到后台的子智能体还没跑完。
  *
- * 清单和「接着做」那一行看这个，而不是 `useScopedRunning`。人在主会话等子智能体时插了话，主会话
- * 回应完就收尾了——可活并没有停：后台那几个跑完，结果会送回来，主会话接着干。那时候清单说「停在
+ * 清单和「接着做」那一行看这个，而不是 `useScopedRunning`。子智能体派出即放手，派完那一轮主会话
+ * 就收尾了——可活并没有停：后台那几个跑完，结果会送回来，主会话接着干。那时候清单说「停在
  * 这一步」、再给一个 ▶，是请人把一件本来就在进行的事再启动一遍（按下去还会让它重派一遍）。
  *
  * 输入框不看这个：它问的是「现在说话会不会插进一轮」，而后台的子智能体不占着主会话。
  */
 export function useScopedWorking(): boolean {
 	const running = useScopedRunning();
-	const background = useScopedFromSubAgents((agents) => agents.some((one) => one.background && (one.status === "running" || one.status === "queued")));
+	const background = useScopedFromSubAgents(delegating);
 	return running || background;
 }
 
@@ -233,7 +233,7 @@ export function scopedSubAgents(state: SubAgentState, id: string | null): SubAge
 }
 
 /** 子智能体里的一样东西，变了才重画——见 `useScopedFromMessages`。名册随每个子智能体的进度换新。 */
-export function useScopedFromSubAgents<T>(read: (agents: SubAgentSummary[]) => T): T {
+function useScopedFromSubAgents<T>(read: (agents: SubAgentSummary[]) => T): T {
 	const id = useScopedSessionId();
 	return useSubAgents((s) => read(scopedSubAgents(s, id)));
 }
@@ -295,7 +295,7 @@ export function useScopedWorkspace(): { workspace: AppState["workspace"]; scratc
 	const scoped = useMemo(() => {
 		if (cwd === null) return null;
 		// Named at once from the conversation; the branch arrives with the read.
-		const base = asWorktree ?? { path: cwd, name: projectName ?? cwd, isGitRepo: false, branch: null, ...(worktreeOf ? { worktreeOf } : {}) };
+		const base = asWorktree ?? unreadWorkspace(cwd, projectName ?? cwd, worktreeOf);
 		return project ? { ...base, name: project.name, projectId: project.id } : base;
 	}, [asWorktree, cwd, projectName, worktreeOf, project]);
 	const unread = !live && cwd !== null && !projectLess && !known;

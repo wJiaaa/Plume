@@ -12,20 +12,18 @@
  */
 
 import { parseUnifiedDiff } from "./diff-parse.ts";
-import { nativeText } from "../i18n.ts";
 import type {
+	PullRequestCheck,
 	PullRequestDetail,
 	PullRequestSummary,
 	ReviewVerdict,
 	WorkspaceDiffFile,
 } from "@plume/contract";
-import type { Relation } from "./pr-summary.ts";
-import { DIFF_TIMEOUT_MS, json, text } from "./http.ts";
-import { ForgeError } from "./errors.ts";
+import { dedupe, PER_BUCKET, type Relation, summarizeChecks } from "./pr-summary.ts";
+import { DIFF_TIMEOUT_MS, identifyUser, json, text } from "./http.ts";
 import { splitRepo } from "./accounts.ts";
-import type { ForgeConnection, ForgeDriver, ForgeIdentity } from "./types.ts";
-
-const PER_BUCKET = 30;
+import { type RawComment, type RawCommit, toCommits, toThreads } from "./rest-v3.ts";
+import type { ForgeConnection, ForgeDriver } from "./types.ts";
 
 /** The three buckets, each a flag this search already has. */
 const BUCKETS: { relation: Relation; flag: string }[] = [
@@ -83,14 +81,34 @@ function repoOf(issue: RawIssue): string {
 	}
 }
 
+function toSummary(issue: RawIssue, repo: string, relation: Relation, accountId: string): PullRequestSummary {
+	return {
+		accountId,
+		repo,
+		number: issue.number,
+		title: issue.title,
+		author: issue.user?.login ?? "unknown",
+		avatarUrl: issue.user?.avatar_url ?? null,
+		state: (issue.state ?? "open").toUpperCase(),
+		isDraft: issue.pull_request?.draft === true,
+		url: issue.html_url,
+		createdAt: issue.created_at,
+		updatedAt: issue.updated_at,
+		comments: issue.comments ?? 0,
+		relation,
+		// The search answers about issues; a pull request's numbers arrive with the detail.
+		additions: null,
+		deletions: null,
+		headRefName: null,
+		checkState: null,
+		reviewDecision: null,
+	};
+}
+
 export const gitea: ForgeDriver = {
 	kind: "gitea",
 
-	async identify(conn: ForgeConnection): Promise<ForgeIdentity> {
-		const user = await json<{ login?: string; full_name?: string; avatar_url?: string }>(conn, "/user");
-		if (!user?.login) throw new ForgeError(nativeText("forge.noUserInfo"), 0);
-		return { login: user.login, name: user.full_name || user.login, avatarUrl: user.avatar_url ?? null };
-	},
+	identify: (conn) => identifyUser(conn, { login: "login", name: "full_name" }),
 
 	async list(conn: ForgeConnection): Promise<PullRequestSummary[]> {
 		const buckets = await Promise.all(
@@ -101,45 +119,15 @@ export const gitea: ForgeDriver = {
 			),
 		);
 
-		/*
-		 * First bucket wins, in the order they are declared.
-		 *
-		 * The three overlap by design — one you wrote can also be one you reviewed — and the order
-		 * is the order of urgency, so the relation a row keeps is the most demanding one it
-		 * qualifies for rather than whichever query happened to finish last.
-		 */
-		const seen = new Set<string>();
-		const rows: PullRequestSummary[] = [];
-		for (const { relation, list } of buckets) {
-			for (const issue of list) {
-				const repo = repoOf(issue);
-				const key = `${repo}#${issue.number}`;
-				if (!repo || seen.has(key)) continue;
-				seen.add(key);
-				rows.push({
-					accountId: conn.account.id,
-					repo,
-					number: issue.number,
-					title: issue.title,
-					author: issue.user?.login ?? "unknown",
-					avatarUrl: issue.user?.avatar_url ?? null,
-					state: (issue.state ?? "open").toUpperCase(),
-					isDraft: issue.pull_request?.draft === true,
-					url: issue.html_url,
-					createdAt: issue.created_at,
-					updatedAt: issue.updated_at,
-					comments: issue.comments ?? 0,
-					relation,
-					// The search answers about issues; a pull request's numbers arrive with the detail.
-					additions: null,
-					deletions: null,
-					headRefName: null,
-					checkState: null,
-					reviewDecision: null,
-				});
-			}
-		}
-		return rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+		// The first bucket to claim a pull request keeps it — the order is the order of urgency.
+		return dedupe(
+			buckets.map(({ relation, list }) =>
+				list.flatMap((issue) => {
+					const repo = repoOf(issue);
+					return repo ? [toSummary(issue, repo, relation, conn.account.id)] : [];
+				}),
+			),
+		);
 	},
 
 	async detail(conn: ForgeConnection, repo: string, number: number): Promise<PullRequestDetail> {
@@ -159,7 +147,6 @@ export const gitea: ForgeDriver = {
 		// A review with no verdict is a comment on the conversation, and Gitea files those here as
 		// well as under comments — counting both would double every reviewer who typed something.
 		const verdicts = (reviews ?? []).filter((review) => review.state && review.state !== "PENDING");
-		const checks = summarise(status);
 
 		return {
 			accountId: conn.account.id,
@@ -175,19 +162,15 @@ export const gitea: ForgeDriver = {
 			updatedAt: pull.updated_at,
 			relation: "authored",
 			reviewDecision: verdictOf(verdicts),
-			checkState: checks ? (checks.failed > 0 ? "fail" : checks.pending > 0 ? "pending" : "pass") : null,
+			...summarizeChecks((status?.statuses ?? []).map(toCheck)),
 			body: pull.body ?? "",
-			additions: pull.additions ?? 0,
-			deletions: pull.deletions ?? 0,
-			changedFiles: pull.changed_files ?? 0,
+			additions: pull.additions ?? null,
+			deletions: pull.deletions ?? null,
+			changedFiles: pull.changed_files ?? null,
 			headRefName: pull.head?.ref ?? "",
 			baseRefName: pull.base?.ref ?? "",
 			comments: comments?.length ?? pull.comments ?? 0,
-			threads: (comments ?? []).map((comment) => ({
-				author: comment.user?.login ?? "unknown",
-				body: comment.body ?? "",
-				createdAt: comment.created_at ?? "",
-			})),
+			threads: toThreads(comments ?? []),
 			reviews: verdicts.map((review) => ({
 				author: review.user?.login ?? "unknown",
 				state: review.state ?? "COMMENT",
@@ -198,15 +181,9 @@ export const gitea: ForgeDriver = {
 				...(pull.requested_reviewers ?? []).map((r) => ({ login: r?.login ?? "", state: "REQUESTED" })),
 				...verdicts.map((r) => ({ login: r.user?.login ?? "", state: r.state ?? "COMMENT" })),
 			].filter((r) => r.login),
-			checks,
 			mergeable: pull.merged ? "MERGED" : pull.mergeable === false ? "CONFLICTING" : "MERGEABLE",
 			labels: (pull.labels ?? []).map((l) => l.name ?? "").filter(Boolean),
-			commits: (commits ?? []).map((commit) => ({
-				sha: (commit.sha ?? "").slice(0, 7),
-				headline: (commit.commit?.message ?? "").split("\n")[0],
-				author: commit.author?.login || commit.commit?.author?.name || "",
-				at: commit.commit?.author?.date ?? "",
-			})),
+			commits: toCommits(commits ?? []),
 		};
 	},
 
@@ -244,30 +221,11 @@ function verdictOf(reviews: RawReview[]): string | null {
 	return null;
 }
 
-/** The commit status list, in the three outcomes a reviewer acts on. */
-function summarise(status: RawStatus | null): PullRequestDetail["checks"] {
-	const entries = status?.statuses ?? [];
-	if (entries.length === 0) return null;
-
-	const items = entries.map((entry) => {
-		const raw = (entry.status ?? "").toLowerCase();
-		const state = raw === "success" ? "pass" : raw === "failure" || raw === "error" ? "fail" : "pending";
-		return { name: entry.context?.trim() || "检查", state: state as "pass" | "fail" | "pending", ...(entry.target_url ? { url: entry.target_url } : {}) };
-	});
-
-	return {
-		total: items.length,
-		passed: items.filter((c) => c.state === "pass").length,
-		failed: items.filter((c) => c.state === "fail").length,
-		pending: items.filter((c) => c.state === "pending").length,
-		items,
-	};
-}
-
-interface RawComment {
-	body?: string;
-	created_at?: string;
-	user?: { login?: string } | null;
+/** One commit status, in the three outcomes a reviewer acts on. */
+function toCheck(entry: RawStatusEntry): PullRequestCheck {
+	const raw = (entry.status ?? "").toLowerCase();
+	const state = raw === "success" ? "pass" : raw === "failure" || raw === "error" ? "fail" : "pending";
+	return { name: entry.context?.trim() || "检查", state, ...(entry.target_url ? { url: entry.target_url } : {}) };
 }
 
 interface RawReview {
@@ -277,12 +235,12 @@ interface RawReview {
 	user?: { login?: string } | null;
 }
 
-interface RawCommit {
-	sha?: string;
-	author?: { login?: string } | null;
-	commit?: { message?: string; author?: { name?: string; date?: string } } | null;
+interface RawStatusEntry {
+	context?: string;
+	status?: string;
+	target_url?: string;
 }
 
 interface RawStatus {
-	statuses?: { context?: string; status?: string; target_url?: string }[];
+	statuses?: RawStatusEntry[];
 }

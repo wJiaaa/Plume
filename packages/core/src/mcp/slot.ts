@@ -140,16 +140,10 @@ export class Slot {
 		this.error = error instanceof Error ? error.message : String(error);
 		this.stderr = this.stderrOf?.() || undefined;
 		this.missing = error instanceof McpMissingValues ? error.missing : undefined;
-		const policy = this.pool.reconnectPolicy;
 		if (error instanceof McpNeedsLogin) this.state = "needs-login";
-		else if (this.attempt > 0 && !(error instanceof McpMissingValues) && this.attempt < policy.attempts) {
-			this.attempt += 1;
-			this.state = "reconnecting";
-			this.schedule();
-		} else {
-			if (this.attempt > 0) this.error = `Gave up after ${this.attempt} reconnect attempts: ${this.error}`;
-			this.state = "failed";
-		}
+		// 只有重连才再试：第一次就连不上、或者缺着要人填的值，再试一遍也是同样的结果。
+		else if (this.attempt > 0 && !(error instanceof McpMissingValues)) this.retryOrGiveUp(this.attempt + 1, this.error);
+		else this.state = "failed";
 		this.wake();
 		this.pool.changed(this);
 	}
@@ -157,17 +151,11 @@ export class Slot {
 	/** 连着的连接断了：进程退出，或者远端断线。 */
 	private dropped(): void {
 		const stable = Date.now() - this.connectedAt >= this.pool.reconnectPolicy.stableMs;
-		this.attempt = stable ? 1 : this.attempt + 1;
 		this.connection = undefined;
 		this.error = `The connection to "${this.declared.name}" was lost`;
 		this.stderr = this.stderrOf?.() || undefined;
-		if (this.attempt > this.pool.reconnectPolicy.attempts) {
-			this.state = "failed";
-			this.error = `Gave up after ${this.attempt - 1} reconnect attempts: it keeps disconnecting right after it connects`;
-		} else {
-			this.state = "reconnecting";
-			this.schedule();
-		}
+		// 连得够久才断的是一次新的断线，从第一次重连数起；刚连上就断的接着上一轮往下数。
+		this.retryOrGiveUp(stable ? 1 : this.attempt + 1, "it keeps disconnecting right after it connects");
 		this.wake();
 		this.pool.changed(this);
 		// stderr 比 close 晚一拍到，补一次；状态没变，只是原因写全了。
@@ -179,6 +167,18 @@ export class Slot {
 				this.pool.changed(this);
 			}
 		});
+	}
+
+	/** 排上第 `next` 次重连；超出 `attempts` 就放弃，`attempt` 停在已经试过的次数上。 */
+	private retryOrGiveUp(next: number, why: string): void {
+		if (next > this.pool.reconnectPolicy.attempts) {
+			this.state = "failed";
+			this.error = `Gave up after ${next - 1} reconnect attempts: ${why}`;
+			return;
+		}
+		this.attempt = next;
+		this.state = "reconnecting";
+		this.schedule();
 	}
 
 	private schedule(): void {

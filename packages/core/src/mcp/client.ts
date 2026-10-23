@@ -62,12 +62,20 @@ export class McpManager implements McpHolder {
 	private readonly handles = new WeakMap<Slot, McpToolHandle>();
 	/**
 	 * Bumped by every `closeAll`, so a replacement that was already under way when it ran can tell
-	 * that it must not start anything.
+	 * that it must not start anything. `closeAll` is not queued like the rest: it has to stop a
+	 * server that is still starting now, not after it finished connecting.
 	 */
 	private epoch = 0;
 	private disposed = false;
 	/** The replacement in progress; the next one starts after it. See `connectAll`. */
 	private replacing: Promise<unknown> = Promise.resolve();
+
+	/** Run `step` after whatever is already changing the leases, so two changes never interleave. */
+	private queued<T>(step: () => Promise<T>): Promise<T> {
+		const run = this.replacing.then(step);
+		this.replacing = run.catch(() => {});
+		return run;
+	}
 
 	constructor(options: McpManagerOptions = {}) {
 		this.pool = options.pool ?? new McpPool({ ...options, elicitation: Boolean(options.ask) });
@@ -94,9 +102,7 @@ export class McpManager implements McpHolder {
 	 * first's connection in the map without closing it, and that server ran until the app quit.
 	 */
 	connectAll(servers: McpServerConfig[], options: { wait?: number } = {}): Promise<McpServerStatus[]> {
-		const run = this.replacing.then(() => this.replaceAll(servers, options.wait ?? Number.POSITIVE_INFINITY));
-		this.replacing = run.catch(() => {});
-		return run;
+		return this.queued(() => this.replaceAll(servers, options.wait ?? Number.POSITIVE_INFINITY));
 	}
 
 	private async replaceAll(servers: McpServerConfig[], wait: number): Promise<McpServerStatus[]> {
@@ -141,26 +147,6 @@ export class McpManager implements McpHolder {
 	}
 
 	/**
-	 * Connect one server and wait for the answer; throws what stopped it.
-	 *
-	 * The low-level step under `connectAll`, also used directly where one server is all there is.
-	 */
-	async connect(declared: McpServerConfig): Promise<McpConnection> {
-		if (this.disposed) throw new Error(`MCP server "${declared.name}" was not started: its session has been closed`);
-		const previous = this.leases.get(declared.id);
-		if (previous) {
-			this.leases.delete(declared.id);
-			await this.pool.release(this, previous);
-		}
-		const lease = this.pool.acquire(this, declared);
-		this.leases.set(declared.id, lease);
-		await lease.slot.settle(Number.POSITIVE_INFINITY);
-		const slot = lease.slot;
-		if (slot.state === "connected" && slot.connection) return slot.connection;
-		throw slot.failure ?? new Error(slot.error ?? `MCP server "${declared.name}" did not connect`);
-	}
-
-	/**
 	 * 等还在第一次连的服务器，每台最多等到它开始连之后 `graceMs` 为止。
 	 *
 	 * 会话在每一轮开始前调它：刚打开的会话里，大多数服务器几百毫秒就连上了，第一句话应该用得上
@@ -176,13 +162,11 @@ export class McpManager implements McpHolder {
 	 * 宿主要把一台服务器的每一条连接都重来，用 `McpPool.reconnect`。
 	 */
 	reconnect(serverId: string): Promise<void> {
-		const run = this.replacing.then(async () => {
+		return this.queued(async () => {
 			const lease = this.leases.get(serverId);
 			if (!lease || this.disposed) return;
 			await this.pool.restart(lease);
 		});
-		this.replacing = run.catch(() => {});
-		return run;
 	}
 
 	/** 它借着的一个槽状态变了。`closeAll` 以后不再报：会话已经不在听了。 */
@@ -386,15 +370,13 @@ export class McpManager implements McpHolder {
 	 * this returned.
 	 */
 	disconnect(match: (server: McpServerConfig) => boolean): Promise<McpConnection[]> {
-		const run = this.replacing.then(async () => {
+		return this.queued(async () => {
 			const closing = [...this.leases.values()].filter((lease) => match(lease.slot.declared));
 			for (const lease of closing) this.leases.delete(lease.slot.declared.id);
 			this.declared = this.declared.filter((server) => !match(server));
 			await Promise.all(closing.map((lease) => this.pool.release(this, lease)));
 			return closing.flatMap((lease) => (lease.slot.connection ? [lease.slot.connection] : []));
 		});
-		this.replacing = run.catch(() => {});
-		return run;
 	}
 
 	/**

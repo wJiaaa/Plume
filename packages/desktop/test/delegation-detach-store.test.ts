@@ -1,7 +1,7 @@
 /**
  * 主智能体在等子智能体时，窗口这一头该做的几件事——都在 store 里，不用挂界面。
  *
- *   - 排着的话不再等：名单一说主会话在等子智能体，队首就送进去；
+ *   - 排着的话照常排：子智能体派出即放手，主会话不等它们；在等另一个会话时才把队首送进去；
  *   - 后台子智能体的授权卡活过一轮：主会话收尾时只收它自己的，那几张等核心说收场了再拿走；
  *   - 这一轮收尾，输入框上方那一行据此收起；
  *   - 转到后台的派发，登记簿里没有它了之后，靠转录里的送达知道怎么收场的。
@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { SubAgentSummary } from "@plume/core";
-import { useSubAgents, awaitingSubAgents } from "../src/store/subAgents.ts";
+import { useSubAgents } from "../src/store/subAgents.ts";
 import { outlivingTurn } from "../src/lib/approval-scope.ts";
 import { deliveredReports, joinDispatches } from "../src/lib/dispatches.ts";
 
@@ -54,11 +54,11 @@ function harness(over: Record<string, unknown> = {}) {
 	return { steered, dispatch, state: () => state };
 }
 
-test("主会话在等它派出去的子智能体：排着的队首送进去，只送一条", async () => {
+test("名单上有还在跑的子智能体：不动队伍——主会话派出即放手，从来不等它们", async () => {
 	const h = harness();
 	h.dispatch({ type: "subagents", agents: [summary({ id: "a" }), summary({ id: "b", status: "queued" })] });
 	await new Promise((resolve) => setTimeout(resolve, 0));
-	assert.deepEqual(h.steered, ["q1"]);
+	assert.deepEqual(h.steered, []);
 });
 
 test("主会话问了另一个会话、在等回答：排着的队首同样送进去；发通知不等，不动队伍", async () => {
@@ -69,16 +69,6 @@ test("主会话问了另一个会话、在等回答：排着的队首同样送�
 	await new Promise((resolve) => setTimeout(resolve, 0));
 	assert.deepEqual(asking.steered, ["q1"]);
 	assert.deepEqual(notifying.steered, []);
-});
-
-test("子智能体都转到后台了、或者主会话没在跑：不动队伍", async () => {
-	const background = harness();
-	background.dispatch({ type: "subagents", agents: [summary({ id: "a", background: true })] });
-	const idle = harness({ activity: {} });
-	idle.dispatch({ type: "subagents", agents: [summary({ id: "a" })] });
-	await new Promise((resolve) => setTimeout(resolve, 0));
-	assert.deepEqual([...background.steered, ...idle.steered], []);
-	assert.equal(awaitingSubAgents([summary({ id: "done", status: "done" })]), false);
 });
 
 test("主会话收尾时只收它自己的授权卡，后台子智能体的那张留着，核心说收场了再拿走", () => {
@@ -116,6 +106,6 @@ test("转到后台的派发：登记簿里没有它了，就看转录里的送�
 	assert.deepEqual(states, ["done", "failed", "stopped"]);
 
 	// 登记簿里还有它（正在后台跑）：照登记簿画——转圈，不是「做完了」。
-	const live = joinDispatches([call("c1", "sub:ok")], [summary({ id: "sub:ok", status: "running", background: true })], delivered);
+	const live = joinDispatches([call("c1", "sub:ok")], [summary({ id: "sub:ok", status: "running" })], delivered);
 	assert.equal(live[0].state, "working");
 });

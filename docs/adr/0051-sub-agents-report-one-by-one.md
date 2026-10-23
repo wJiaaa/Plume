@@ -8,6 +8,8 @@
   `runtime/session.ts`（`idle`、`submit`、`revert`）、`runtime/session-deliveries.ts`（`outstanding`）、
   `runtime/turn-config.ts`（`spawnSubAgent`）、`tools/task.ts`；cli `src/run.ts`；desktop
   `electron/app/notify.ts`、`electron/session/session-hub.ts`、`src/features/conversation/DeliveryRow.tsx`
+- 现状（2026-10-23）：`delegation-waits.ts` 现在是 `runtime/sub-agent/detached-dispatches.ts`；
+  `deliveryMessage` 在 `runtime/agent-session/delivery-message.ts`，`exit-cut.ts` 也挪到了 `agent-session/`
 
 ## 背景
 

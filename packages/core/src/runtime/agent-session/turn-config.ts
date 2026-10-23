@@ -32,7 +32,8 @@ import { textTokens, toolTokens } from "../../tokens.ts";
 import { toolTable } from "../../tools/mcp-search.ts";
 import { addressLookups, runSubAgent } from "../sub-agent/sub-agent.ts";
 import type { SubAgentRegistry } from "../sub-agent/sub-agents.ts";
-import type { DelegationWaits } from "../sub-agent/delegation-waits.ts";
+import type { DetachedDispatches } from "../sub-agent/detached-dispatches.ts";
+import type { SpokenWaits } from "./spoken-waits.ts";
 import { RepetitionWatch } from "../../agent/repetition.ts";
 import { sessionPruner } from "../../agent/aged-prune.ts";
 import { inheritedToolEnv } from "../policy/run-policy.ts";
@@ -52,18 +53,12 @@ export interface TurnConfigDeps {
 	tools: Tool[];
 	skills: Skill[];
 	agents: AgentDefinition[];
-	/**
-	 * Where dispatched sub-agents register, so they can be watched and steered while they run.
-	 *
-	 * Optional throughout: a host that only wants the answer passes nothing and delegation behaves
-	 * exactly as before. See `runtime/sub-agent/sub-agents.ts`.
-	 */
-	subAgents?: SubAgentRegistry;
-	/**
-	 * 派出即放手、跑完送回——见 `delegation-waits.ts`。会话给；直接拼这一轮的测试可以不给，
-	 * 不给就是 `task` 当场等到子代理跑完为止。
-	 */
-	delegations?: DelegationWaits;
+	/** Where dispatched sub-agents register, so they can be watched and steered while they run. See `runtime/sub-agent/sub-agents.ts`. */
+	subAgents: SubAgentRegistry;
+	/** 派出即放手、跑完送回——见 `detached-dispatches.ts`。 */
+	dispatches: DetachedDispatches;
+	/** 工具在等另一个会话时，有人找就放手——见 `spoken-waits.ts`。 */
+	spokenWaits: SpokenWaits;
 	signal?: AbortSignal;
 	streamFn?: StreamFn;
 	requestApproval(request: ApprovalRequest): Promise<ApprovalDecision>;
@@ -127,7 +122,7 @@ export function buildTurnConfig(
 	 * model does not read the queue as slowness and try harder.
 	 *
 	 * 排队发生在 `runSubAgent` 里面（`admission`）：它先上名单、说出自己在排队，再等名额。
-	 * 外面再包一层 `delegations.dispatch`——派出即放手，跑完了结果送回来，见 `delegation-waits.ts`。
+	 * 外面再包一层 `dispatches.dispatch`——派出即放手，跑完了结果送回来，见 `detached-dispatches.ts`。
 	 */
 	const spawnSubAgent: ToolEnvironment["spawnSubAgent"] = (input) => {
 		let registered: string | undefined;
@@ -145,8 +140,7 @@ export function buildTurnConfig(
 				streamFn: deps.streamFn,
 				requestApproval: (request) => deps.requestApproval(request),
 				emit: (event) => deps.emit(event),
-				// Where the run registers itself so it can be watched and steered. Absent for
-				// hosts that only want the answer — see `SubAgentOptions.registry`.
+				// Where the run registers itself so it can be watched and steered.
 				registry: deps.subAgents,
 				// So a delegated run compacts through the same model call this session does.
 				summaryStream: deps.summaryStream,
@@ -163,7 +157,7 @@ export function buildTurnConfig(
 			deps.liveModel?.current()?.provider ?? deps.provider,
 			deps.liveModel?.current()?.model ?? deps.model,
 		);
-		return deps.delegations ? deps.delegations.dispatch(run, () => registered) : run;
+		return deps.dispatches.dispatch(run, () => registered);
 	};
 	return {
 		session: {
@@ -226,7 +220,7 @@ export function buildTurnConfig(
 					transcript: deps.transcript,
 				}),
 				spawnSubAgent,
-				untilSpokenTo: deps.delegations ? (run) => deps.delegations!.until(run) : undefined,
+				untilSpokenTo: (run) => deps.spokenWaits.until(run),
 				resources: deps.resources,
 				scratchDir: deps.scratchDir,
 			},

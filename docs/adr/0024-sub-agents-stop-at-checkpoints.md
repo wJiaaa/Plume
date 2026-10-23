@@ -2,6 +2,8 @@
 
 - 状态：已采纳；第 2 条由 [ADR-0029](0029-parent-lets-go-when-spoken-to.md) 修订——没写清单就撞上检查点的，再给一段让它列出剩下的步骤
 - 日期：2026-09-24
+- 现状（2026-10-23）：第 6 条里 `task` 结果末尾那几句、`ToolContext.ifStopped` 和 `tool_left` 已删除。
+  ADR-0051 之后 `task` 当场交回「已派出」，结果另作消息送回，这几处再也走不到；续跑要的 id 在送达消息里
 - 相关：`packages/core/src/runtime/sub-agent/sub-agent.ts`、`runtime/sub-agent/sub-agents.ts`、`runtime/continuation.ts`、`tools/task.ts`、`agent/run-config.ts`（`AgentRunResult.view`）、`agents-builtin.ts`（`maxTurns`）、`capability/providers/native.ts`、desktop `features/subagents/SubAgentPanel.tsx`、`features/subagents/way-back.ts`
 
 ## 背景

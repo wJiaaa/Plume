@@ -996,7 +996,7 @@ export const zhCN = {
 	"worktrees.fetchFirst": "创建工作树前始终获取上游更新",
 	"worktrees.fetchFirstDetail": "通常会在常规 Git 操作中获取分支更新。此设置还会在创建每个新工作树前自动获取上游更新。",
 	"worktrees.autoPrune": "自动删除旧工作树",
-	"worktrees.autoPruneDetail": "推荐大多数用户启用。仅当你需要手动管理旧工作树和磁盘使用空间时，再关闭此功能。",
+	"worktrees.autoPruneDetail": "默认关闭。打开后，每建一个新的会话工作树，就清理超出下方数量的旧工作树；还有未提交改动的、对话还可能回来的不会删。",
 	"worktrees.keepLimit": "自动删除限制",
 	"worktrees.keepLimitDetail": "要保留的托管工作树数量；超过后，较旧的工作树会自动被清理。",
 	"worktrees.delete": "删除工作树",

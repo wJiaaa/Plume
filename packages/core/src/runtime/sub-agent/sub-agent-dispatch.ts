@@ -167,9 +167,9 @@ export async function dispatchSubAgent(
 	// 要排队的，先以「排队中」上名单——排着的时候也看得见、停得下。
 	const queued = options.admission !== undefined;
 	const ran = { provider: chosen.provider.id, model: chosen.model.modelId, thinking: chosen.thinking };
-	if (earlier) registry?.reopen(id, { abort: stopByUser, queued, model: ran });
+	if (earlier) registry.reopen(id, { abort: stopByUser, queued, model: ran });
 	else
-		registry?.start({
+		registry.start({
 			id,
 			agent: definition.name,
 			description: input.description,
@@ -178,8 +178,6 @@ export async function dispatchSubAgent(
 			queued,
 		});
 	options.onRegistered?.(id);
-	// 续跑的那一个，排着队被停也还留着上一段的上下文（见下面的 `keep`），从这里起就能再续。
-	if (earlier && registry) input.onResumable?.(id);
 	/*
 	 * What it was asked to do, as the first line of its transcript.
 	 *
@@ -190,7 +188,7 @@ export async function dispatchSubAgent(
 	 */
 	// 派它出去的那一方说的，不是看着面板的人——面板据此把它画成任务，而不是一个人发的气泡。
 	const opening: Message = { role: "user", content: [{ type: "text", text: input.prompt }], timestamp: Date.now(), origin: "parent" };
-	registry?.record(id, opening);
+	registry.record(id, opening);
 	/*
 	 * 续跑的这一句是转录中间新添的，要单独发出去。
 	 *
@@ -226,25 +224,23 @@ export async function dispatchSubAgent(
 		} catch (error) {
 			detach();
 			if (!(error instanceof DispatchCancelled)) {
-				registry?.finish(id, { status: "failed", error: error instanceof Error ? error.message : String(error) });
+				registry.finish(id, { status: "failed", error: error instanceof Error ? error.message : String(error) });
 				throw error;
 			}
-			registry?.finish(id, { status: "aborted" });
+			registry.finish(id, { status: "aborted" });
 			// 续跑的那一个还没动过：上一段留下的上下文原样放回去，以后照样能接着跑。
-			if (earlier) registry?.keep(id, earlier.conversation);
+			if (earlier) registry.keep(id, earlier.conversation);
 			await options.emit({ type: "subagent_done", id, steps: [], answer: "", status: "aborted" });
 			return {
 				stopped: {
 					text: "（它还在排队的时候就被停下了，一步都没做。）",
-					...(registry ? { id } : {}),
+					id,
 					...(controller.signal.reason === STOPPED_BY_USER ? { stoppedByUser: true } : {}),
 				},
 			};
 		}
-		registry?.admit(id);
+		registry.admit(id);
 	}
-	// 新派的拿到名额才有东西可留：从这里起，不管怎么停下，`finishSubAgent` 都会 `keep` 它的上下文。
-	if (!earlier && registry) input.onResumable?.(id);
 
 	return { earlier, definition, description: input.description, id, chosen, allowed, subState, resources, scratch, controller, detach, release, opening };
 }
@@ -255,7 +251,6 @@ export async function dispatchSubAgent(
  * 不能续的各给一句能据以行动的话——`task` 会把它原样交给模型。
  */
 function resumable(options: SubAgentOptions, wanted: string): { id: string; conversation: SubAgentConversation } {
-	if (!options.registry) throw new Error("这里不保留子代理的上下文，没法续跑；重新派一个，并把之前交回的结论写进 prompt。");
 	const found = options.registry.lookupResumable(wanted);
 	if ("refusal" in found) throw new Error(found.refusal);
 	return { id: found.id, conversation: found.conversation };

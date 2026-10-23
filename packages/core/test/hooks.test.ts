@@ -105,6 +105,15 @@ test("增删改和开关都落在对的那一组里", () => {
 	assert.equal(hooks.events.Stop, undefined);
 });
 
+test("同一个位置换了命令，旧 id 就不再指向它", () => {
+	const before: HooksConfig = { events: { PreToolUse: [{ hooks: [{ type: "command", command: "看过的" }] }] } };
+	const [seen] = hookEntries(before, "project");
+	const after: HooksConfig = { events: { PreToolUse: [{ hooks: [{ type: "command", command: "没看过的" }] }] } };
+	assert.notEqual(hookEntries(after, "project")[0].id, seen.id);
+	assert.deepEqual(removeHook(after, seen.id), after, "拿旧 id 删不到新的那条");
+	assert.deepEqual(setHookEnabled(after, seen.id, false), after);
+});
+
 test("项目钩子写回时只动 hooks 这个键，而且不参与设置合并", async () => {
 	const cwd = join(root, "project-write");
 	await mkdir(join(cwd, ".plume"), { recursive: true });
@@ -277,6 +286,16 @@ test("Stop 钩子要求接着干时给出原因，连续三次封顶", async () 
 	assert.equal(results.filter(Boolean).length, 3);
 	assert.match(JSON.stringify(results[0]?.content), /测试还没跑/);
 	assert.equal(results[0]?.role === "user" && results[0].synthetic, true, "模型看得见，界面不画");
+});
+
+test("Stop 上的 block 是「接着干」，记录里不算被拦下", async () => {
+	const runs: HookRun[] = [];
+	const hooks = config("Stop", [node("process.stderr.write('测试还没跑');process.exit(2)")]);
+	const runner = new HookRunner({ hooks: hookEntries(hooks, "user").map((entry) => ({ entry, trusted: true })), emit: (run) => void runs.push(run) });
+	const result = await runner.run({ hookEventName: "Stop", sessionId: "s", cwd: root, responseText: "做完了" });
+	assert.equal(result.continueStop, true);
+	assert.equal(result.decision, undefined);
+	assert.deepEqual(runs.map((run) => run.status), ["running", "success"]);
 });
 
 test("后台钩子不挡路，结局照样记下来", async () => {

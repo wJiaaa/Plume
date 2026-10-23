@@ -35,15 +35,18 @@ import { mcpFailureNotice, SessionCapabilities } from "../setup/session-capabili
 import type { McpPool } from "../../mcp/pool.ts";
 import { scratchDir, sessionFacts } from "../record/session-facts.ts";
 import { SessionLog } from "../record/session-log.ts";
+import { refreshMemorySnapshot } from "../memory/memory-inject.ts";
 import { PROJECT_MEMORY_ENABLED_KEY, projectMemoryEnabled } from "../memory/project-memory.ts";
 import { sessionPruner } from "../../agent/aged-prune.ts";
 import { driveTurn, modelHistory, SESSION_START_KEY } from "./session-turn.ts";
 import { loadHookRunner, runSessionEndHooks } from "../policy/hooks.ts";
 import { readSubAgents } from "./stored-sub-agents.ts";
-import { exitCutDelivery } from "../sub-agent/exit-cut.ts";
+import { exitCutDelivery } from "./exit-cut.ts";
 import { SubAgentRegistry, type SteerDisplay } from "../sub-agent/sub-agents.ts";
 import { describeSubAgentContext, SubAgentContexts } from "../sub-agent/sub-agent-context.ts";
-import { DelegationWaits, type FinishedSession } from "../sub-agent/delegation-waits.ts";
+import { DetachedDispatches } from "../sub-agent/detached-dispatches.ts";
+import type { FinishedSession } from "./delivery-message.ts";
+import { SpokenWaits } from "./spoken-waits.ts";
 import { backgroundJobs } from "../../tools/background-jobs.ts";
 import { SessionActivity, type CompactOutcome } from "./session-activity.ts";
 import { SessionDeliveries } from "./session-deliveries.ts";
@@ -177,12 +180,10 @@ export class AgentSession {
 	);
 	/** 子代理最近一次发出去的系统提示词和工具表，它的上下文用量按这个算。 */
 	private readonly subAgentContexts = new SubAgentContexts();
-	/** 主会话派出去的子代理：派出即放手，跑完一个送回一个。见 `delegation-waits.ts`。 */
-	private readonly delegations = new DelegationWaits({
-		spoken: () => this.inbox.spoken || (this.running && this.notices.length > 0),
-		detached: (id) => this.subAgents.background(id),
-		settled: (report) => this.deliveries.report(report),
-	});
+	/** 主会话派出去的子代理：派出即放手，跑完一个送回一个。见 `detached-dispatches.ts`。 */
+	private readonly dispatches = new DetachedDispatches((report) => this.deliveries.report(report));
+	/** 工具在等另一个会话做完时，有人找就放手。见 `spoken-waits.ts`。 */
+	private readonly spokenWaits = new SpokenWaits(() => this.inbox.spoken || (this.running && this.notices.length > 0));
 	/** 跑完了、还没送回主会话的后台结果；攒一小会儿再送。见 `session-deliveries.ts`。 */
 	private readonly deliveries: SessionDeliveries;
 	/** 剪枝器最后一次从日志放回视图时对着的那份历史；见 `preparePruner`。 */
@@ -272,7 +273,7 @@ export class AgentSession {
 			activity: this.activity,
 			jobs: () => backgroundJobs(this.can.state),
 			detail: (id) => this.subAgents.detail(id),
-			outstanding: () => this.subAgents.list().filter((one) => one.background && (one.status === "running" || one.status === "queued")),
+			outstanding: () => this.subAgents.list().filter((one) => this.dispatches.outstanding.has(one.id)),
 			submit: (message, deliver) => this.submit(message, { fromPerson: false, deliver }),
 			settled: () => this.checkIdle(),
 		});
@@ -332,7 +333,7 @@ export class AgentSession {
 	get idle(): boolean {
 		return (
 			!this.running &&
-			this.delegations.outstanding === 0 &&
+			this.dispatches.outstanding.size === 0 &&
 			this.deliveries.empty &&
 			!this.tasks.list().some((task) => task.status === "queued" || task.status === "running")
 		);
@@ -361,7 +362,7 @@ export class AgentSession {
 			return;
 		}
 		this.notices.push(letter);
-		if (this.running) this.delegations.release();
+		if (this.running) this.spokenWaits.release();
 	}
 
 	/** 攒着的通知，作为这一轮里的一条消息交出去；没有就是空的。 */
@@ -682,8 +683,8 @@ export class AgentSession {
 	}
 
 	/**
-	 * 进出计划模式。写进元数据，下一轮按它装工具表；状态图里的开关也同步，这样跑到一半关掉时
-	 * 包着的工具立刻放行。跑到一半打开则要等下一轮——这一轮的工具表没包过，开关对它没有作用。
+	 * 进出计划模式。写进元数据，下一轮从它起步；状态图里的开关也同步，跑到一半开、关都立刻生效——
+	 * 包着的工具每次调用都读这个开关。
 	 */
 	async setPlanMode(on: boolean): Promise<void> {
 		await recordPlanMode(this.log, on);
@@ -863,7 +864,7 @@ export class AgentSession {
 	 * 一条消息进会话：忙着就插话或排队，闲着就开一个回合。
 	 *
 	 * 人说的话和运行时替后台子代理递回来的结果都走这里，差别在 `fromPerson`。人开口、或另一个
-	 * 会话的信插进来时，父会话不再干等它派出去的子代理（见 `delegation-waits.ts`）；后台结果的
+	 * 会话的信插进来时，正在等另一个会话的工具当场放手（见 `spoken-waits.ts`）；后台结果的
 	 * 送达不是在找人，它只是排进去，不打断任何人。
 	 */
 	private async submit(
@@ -874,13 +875,13 @@ export class AgentSession {
 			const went = this.inbox.accept({ message, thinking: options.thinking }, options.deliver, this.activity.steerable);
 			if (went === "steer") {
 				/*
-				 * 有人找它了（人开口，或另一个会话插进来一封信），父会话别再干等子代理。
+				 * 有人找它了（人开口，或另一个会话插进来一封信），别再干等另一个会话。
 				 *
-				 * 插话只在两轮之间才有人取，而父会话正卡在一个 `task` 上的时候，「两轮之间」要等到
-				 * 子代理全部跑完——十几分钟。放手之后这一轮当场往下走，下一个回合开头就读到这句话；
-				 * 子代理留在后台接着跑，跑完的结果另外送回来。谁算「有人找」见 `addressed`。
+				 * 插话只在两轮之间才有人取，而工具正卡在 `ask_session` / `wait_for_session` 上的时候，
+				 * 「两轮之间」要等到那个会话做完。放手之后这一轮当场往下走，下一个回合开头就读到这句话。
+				 * 谁算「有人找」见 `addressed`。
 				 */
-				if (options.fromPerson || addressed(message)) this.delegations.release();
+				if (options.fromPerson || addressed(message)) this.spokenWaits.release();
 			}
 			return;
 		}
@@ -984,7 +985,8 @@ export class AgentSession {
 				emit: (event) => this.emit(event),
 				drainSteering: () => [...this.inbox.takeSteering(), ...this.takeNotices()],
 				subAgents: this.subAgents,
-				delegations: this.delegations,
+				dispatches: this.dispatches,
+				spokenWaits: this.spokenWaits,
 				liveModel: this.liveModel,
 				profile: parent ? SIDE_CHAT_PROFILE : undefined,
 				planMode: this.log.meta.planMode === true,
@@ -1058,7 +1060,7 @@ export class AgentSession {
 		this.subAgents.abortAll();
 		this.approvals.rejectAll();
 		// 放了手的、攒着没送的都不再送回来；后台命令照跑，只是结束时不再叫醒会话。见 `SessionDeliveries.clear`。
-		this.delegations.forget();
+		this.dispatches.forget();
 		this.deliveries.clear();
 		backgroundJobs(this.can.state).mute();
 		// Stop means stop. Letting the queue carry on after the button was pressed would be
@@ -1225,8 +1227,8 @@ export class AgentSession {
 	}
 
 	private rewindParts(): RewindParts {
-		const { log, deliveries, delegations, subAgents } = this;
-		return { log, state: this.can.state, deliveries, delegations, subAgents, emit: (event) => this.emit(event) };
+		const { log, deliveries, dispatches, subAgents } = this;
+		return { log, state: this.can.state, deliveries, dispatches, subAgents, emit: (event) => this.emit(event) };
 	}
 
 	/**
@@ -1273,6 +1275,8 @@ export class AgentSession {
 		// 没人关的 fs.watch 会一直拿着描述符，而一天里会开关几十个会话。
 		this.watcher?.close();
 		this.watcher = null;
+		// 记忆快照按会话 id 记在模块级表里，会话走了不收，开过的会话就一直各占一条。
+		refreshMemorySnapshot(this.log.meta.id);
 		await this.can.dispose();
 	}
 }

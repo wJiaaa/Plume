@@ -27,8 +27,11 @@ const zhCN = {
 	// The session database would not open at startup; `reason` is what SQLite or the version check said.
 	// A side chat was asked for beside a conversation that is gone (deleted while it was being opened).
 	"sessions.sideParentGone": "这个侧边聊天挂着的会话已经没有了。",
+	"sessions.notFound": "找不到这个会话。",
 	"mcp.promptNotFound": "没有连着的 MCP 服务器提供 /{name}。",
 	"revert.unrecorded": "有改动记录读不出来，文件没有动。",
+	// 设置页拿着的那条钩子在文件里已经变了或不在了（别处改过配置）。
+	"hooks.stale": "这条钩子在配置文件里已经被改过或删掉了。重新打开钩子设置，看过新内容再操作。",
 	// 计划审批卡上「在新会话里执行」开出来的会话，第一条消息就是这几行（`plan-handoff.ts`）。
 	"planHandoff.title": "按已批准的计划实施：{title}",
 	"planHandoff.file": "- 计划文件：{file}。以它为准，动手前完整读一遍。",
@@ -65,6 +68,8 @@ const zhCN = {
 	"provider.listUnavailable": "未实现模型获取",
 	// File operations: why the file tree could not do what it was asked to.
 	"files.outsideProject": "该路径不在已打开的项目内",
+	"git.notLinkedWorktree": "这个路径不是当前仓库的工作树",
+	"git.worktreeDirty": "这个工作树里还有 {count} 个未提交的改动，没有删除。",
 	"files.exists": "「{name}」已存在",
 	"files.moveIntoItself": "不能把文件夹移动到它自己里面",
 	"files.copyIntoItself": "不能把文件夹复制到它自己里面",
@@ -181,8 +186,10 @@ export const NATIVE_CATALOGS: Record<NativeLocale, NativeCatalog> = {
 		"update.installFailed": "The installation did not finish: {reason}",
 		"terminal.tab": "Terminal {n}",
 		"sessions.sideParentGone": "The conversation this side chat belongs to is gone.",
+		"sessions.notFound": "That conversation could not be found.",
 		"mcp.promptNotFound": "No connected MCP server offers /{name}.",
 		"revert.unrecorded": "Some change records could not be read, so no file was touched.",
+		"hooks.stale": "This hook was changed or removed in its config file. Reopen the hooks settings and review it before trying again.",
 		"planHandoff.title": "Carry out the approved plan: {title}",
 		"planHandoff.file": "- Plan file: {file}. It is the authority; read all of it before you start.",
 		"planHandoff.scope": "- Scope: change the code as the plan says and run the checks it lists. Anything it does not cover — committing, pushing, releasing, changing anything outside this machine — ask the person first.",
@@ -208,6 +215,8 @@ export const NATIVE_CATALOGS: Record<NativeLocale, NativeCatalog> = {
 		"provider.listFailed": "Could not fetch the model list",
 		"provider.listUnavailable": "Fetching models is not available",
 		"files.outsideProject": "That path is not inside an open project",
+		"git.notLinkedWorktree": "That path is not a worktree of this repository",
+		"git.worktreeDirty": "This worktree has {count} uncommitted changes, so it was left in place.",
 		"files.exists": "“{name}” already exists",
 		"files.moveIntoItself": "A folder cannot be moved into itself",
 		"files.copyIntoItself": "A folder cannot be copied into itself",

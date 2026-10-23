@@ -11,6 +11,7 @@
  */
 
 import type { PullRequestCheck, PullRequestDetail } from "@plume/contract";
+import { summarizeChecks } from "./pr-summary.ts";
 
 /**
  * Everything the detail pane draws, for one pull request.
@@ -108,35 +109,22 @@ interface RawContext {
 }
 
 /**
- * CI's answer, as a count and as the list behind it.
+ * One entry of the rollup, in the three outcomes rather than GitHub's dozen.
  *
- * Three outcomes, not GitHub's dozen. `NEUTRAL` and `SKIPPED` count as passing because neither
- * blocks anything, and a reviewer scanning for red does not want them drawing the eye. The list
- * matters the moment the answer is red: which check, and a link to go read it, rather than a trip
- * to the website to find out the name of the one that failed.
+ * `NEUTRAL` and `SKIPPED` count as passing because neither blocks anything, and a reviewer scanning
+ * for red does not want them drawing the eye. Each keeps its name and link: the moment the answer
+ * is red, which check and where to read it is the next question.
  */
-function summariseChecks(contexts: RawContext[] | undefined): PullRequestDetail["checks"] {
-	if (!contexts || contexts.length === 0) return null;
-
-	const items = contexts.map((check) => {
-		const raw = (check.conclusion || check.state || check.status || "").toUpperCase();
-		const state: PullRequestCheck["state"] =
-			raw === "SUCCESS" || raw === "NEUTRAL" || raw === "SKIPPED"
-				? "pass"
-				: raw === "FAILURE" || raw === "ERROR" || raw === "TIMED_OUT" || raw === "CANCELLED"
-					? "fail"
-					: "pending";
-		const url = check.detailsUrl || check.targetUrl;
-		return { name: (check.name || check.context || "").trim() || "检查", state, ...(url ? { url } : {}) };
-	});
-
-	return {
-		total: items.length,
-		passed: items.filter((c) => c.state === "pass").length,
-		failed: items.filter((c) => c.state === "fail").length,
-		pending: items.filter((c) => c.state === "pending").length,
-		items,
-	};
+function toCheck(check: RawContext): PullRequestCheck {
+	const raw = (check.conclusion || check.state || check.status || "").toUpperCase();
+	const state: PullRequestCheck["state"] =
+		raw === "SUCCESS" || raw === "NEUTRAL" || raw === "SKIPPED"
+			? "pass"
+			: raw === "FAILURE" || raw === "ERROR" || raw === "TIMED_OUT" || raw === "CANCELLED"
+				? "fail"
+				: "pending";
+	const url = check.detailsUrl || check.targetUrl;
+	return { name: (check.name || check.context || "").trim() || "检查", state, ...(url ? { url } : {}) };
 }
 
 /** One GraphQL node, as the detail pane's shape. */
@@ -147,7 +135,7 @@ export function toDetail(accountId: string, repo: string, node: DetailNode): Pul
 		body: review.body ?? "",
 		submittedAt: review.submittedAt ?? "",
 	}));
-	const checks = summariseChecks(node.checks?.nodes?.[0]?.commit?.statusCheckRollup?.contexts?.nodes);
+	const contexts = node.checks?.nodes?.[0]?.commit?.statusCheckRollup?.contexts?.nodes ?? [];
 
 	return {
 		accountId,
@@ -164,8 +152,7 @@ export function toDetail(accountId: string, repo: string, node: DetailNode): Pul
 		/** Meaningless for a single pull request; the list is where a relation decides anything. */
 		relation: "authored",
 		reviewDecision: node.reviewDecision || null,
-		// The same three outcomes the list draws, from the same numbers the section below reports.
-		checkState: checks ? (checks.failed > 0 ? "fail" : checks.pending > 0 ? "pending" : "pass") : null,
+		...summarizeChecks(contexts.map(toCheck)),
 		body: node.body ?? "",
 		additions: node.additions ?? 0,
 		deletions: node.deletions ?? 0,
@@ -192,7 +179,6 @@ export function toDetail(accountId: string, repo: string, node: DetailNode): Pul
 			})),
 			...reviews.map((r) => ({ login: r.author, state: r.state })),
 		].filter((r) => r.login),
-		checks,
 		/*
 		 * Commits, so the timeline can say what was pushed and not only what was said about it.
 		 *

@@ -53,7 +53,7 @@
 
 - `audit:sessions` 前后对照：审计读的是历史日志，两次输出没有可比的变化。要在新会话积累起来之后，对照
   派发会话的主会话请求数和第 10 节的缓存未命中再看一次。
-- 守卫：`delegation-waits.ts` 送达末尾点名还在等谁、不叫它收尾（`delegation-detach.test.ts`）；会话在
+- 守卫：`delivery-message.ts` 送达末尾点名还在等谁、不叫它收尾（`delegation-detach.test.ts`）；会话在
   后台子代理回来前不算闲（同上）；退出打断的在人下次开口时告诉主会话（`sub-agent-restart.test.ts`）。
 
 ## 2026-10-12 不是空回答的「空回答」，和该停的重试

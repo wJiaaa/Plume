@@ -19,8 +19,8 @@ import { sessionPruner } from "../../agent/aged-prune.ts";
 import { stripStaleHandles } from "../../agent/model-switch.ts";
 import type { Boundary, SessionRecord } from "../../session/types.ts";
 import { TODOS_KEY, todosFromLog } from "../../tools/todo.ts";
-import { addUsage, emptyUsage, type AssistantContent, type Message, type ToolResult } from "../../types.ts";
-import type { SubAgentConversation } from "./sub-agents.ts";
+import { addUsage, emptyUsage, type AssistantContent, type Message } from "../../types.ts";
+import { clearEnding, type SubAgentConversation } from "./sub-agents.ts";
 import type { SubAgentSummary } from "../../types/sub-agent.ts";
 
 type ToolCall = Extract<AssistantContent, { type: "toolCall" }>;
@@ -57,7 +57,6 @@ interface Draft {
 	boundary: Boundary | null;
 	/** Calls that got as far as `tool_start` — the ones that may have acted. */
 	started: Set<string>;
-	left: Map<string, ToolResult>;
 	hookRuns: Map<string, HookRun>;
 	lastSeen: number;
 }
@@ -100,13 +99,15 @@ export function restoreSubAgents(records: readonly SessionRecord[], rebuild?: Re
 				draft.summary.toolCalls += 1;
 				draft.summary.lastActivity = inner.summary;
 			}
-			if (inner.type === "tool_left") draft.left.set(inner.toolCallId, inner.result);
 			if (inner.type === "hook_run") draft.hookRuns.set(inner.run.id, inner.run);
 		} else {
 			draft.summary.status = event.status;
 			draft.summary.endedAt = record.ts;
 			if (event.answer) draft.summary.answer = event.answer;
 			if (event.error) draft.summary.error = event.error;
+			if (event.output) draft.summary.output = event.output;
+			if (event.warnings?.length) draft.summary.warnings = event.warnings;
+			if (event.incomplete) draft.summary.incomplete = true;
 		}
 	}
 
@@ -134,9 +135,7 @@ function dispatched(drafts: Map<string, Draft>, event: Event<"subagent">, at: nu
 	if (known) {
 		// A resume: same row, running again. Its opening line arrived as a `subagent_message` just before.
 		known.summary.status = "running";
-		known.summary.endedAt = undefined;
-		known.summary.answer = undefined;
-		known.summary.error = undefined;
+		clearEnding(known.summary);
 		known.summary.resumes = (known.summary.resumes ?? 0) + 1;
 		known.lastSeen = at;
 		known.summary.model = model ?? known.summary.model;
@@ -165,7 +164,6 @@ function dispatched(drafts: Map<string, Draft>, event: Event<"subagent">, at: nu
 		views: new Map(),
 		boundary: null,
 		started: new Set(),
-		left: new Map(),
 		hookRuns: new Map(),
 		lastSeen: at,
 	});
@@ -189,7 +187,7 @@ function untruncated(records: readonly SessionRecord[]): SessionRecord[] {
 
 function conversationOf(draft: Draft, target: NonNullable<ReturnType<Rebuild>>): SubAgentConversation {
 	const transcript = draft.switchedAt > 0 ? stripStaleHandles(draft.messages, draft.switchedAt) : draft.messages;
-	const ordered = paired(transcript, draft.started, draft.left, draft.lastSeen);
+	const ordered = paired(transcript, draft.started, draft.lastSeen);
 	// The boundary named a position in the transcript as written; find the same message in the reordered one.
 	const boundary = draft.boundary && {
 		...draft.boundary,
@@ -216,14 +214,14 @@ function conversationOf(draft: Draft, target: NonNullable<ReturnType<Rebuild>>):
  * either. Something said to it while a tool ran is written when it was said — between the call and
  * its result — while the loop only read it after the result; it goes back after the results. And a
  * call the process died during has no result at all; it gets the same "interrupted" the session's
- * own calls get on reopening, with whatever it said it leaves behind.
+ * own calls get on reopening.
  */
-function paired(messages: readonly Message[], started: Set<string>, left: Map<string, ToolResult>, at: number): Message[] {
+function paired(messages: readonly Message[], started: Set<string>, at: number): Message[] {
 	const out: Message[] = [];
 	let open: ToolCall[] = [];
 	let held: Message[] = [];
 	const close = () => {
-		for (const call of open) out.push(interruptedResult(call, started.has(call.id) ? { callId: call.id, phase: "running", output: null } : undefined, at, left.get(call.id)));
+		for (const call of open) out.push(interruptedResult(call, started.has(call.id) ? { callId: call.id, phase: "running", output: null } : undefined, at));
 		open = [];
 		out.push(...held);
 		held = [];

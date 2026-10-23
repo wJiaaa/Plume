@@ -2,7 +2,7 @@
  * The errors appended to `edit` and `write` results, against a fake language server.
  *
  * What must hold: a clean file adds nothing, only errors are shown and only so many, a server that
- * is not up yet is started but not waited for, and a slow one cannot hold the edit past the limit.
+ * needs a handshake is started but not waited for, and a slow one cannot hold the edit past the limit.
  */
 
 import assert from "node:assert/strict";
@@ -17,7 +17,7 @@ import { readTool } from "../src/tools/read.ts";
 import { writeTool } from "../src/tools/write.ts";
 import type { ToolContext, ToolResult } from "../src/types.ts";
 
-function fakeServer(options: { ready?: boolean; diagnostics?: () => Promise<Diagnostic[]> } = {}) {
+function fakeServer(options: { ready?: boolean; handshake?: boolean; diagnostics?: () => Promise<Diagnostic[]> } = {}) {
 	let ready = options.ready ?? true;
 	const calls = { start: 0, diagnostics: 0 };
 	const backend: CodeIntelBackend = {
@@ -26,6 +26,7 @@ function fakeServer(options: { ready?: boolean; diagnostics?: () => Promise<Diag
 		available: async () => true,
 		start: async () => {
 			calls.start++;
+			if (options.handshake) await new Promise((resolve) => setTimeout(resolve, 50));
 			ready = true;
 		},
 		ready: () => ready,
@@ -86,8 +87,16 @@ test("at most ten errors are listed, with a count of the rest", async (t) => {
 	assert.doesNotMatch(text, /11:1/);
 });
 
-test("a server that is not up yet is started, not waited for", async (t) => {
-	const { backend, calls } = fakeServer({ ready: false });
+test("a server that answers once spawned is asked on the first edit", async (t) => {
+	const { backend, calls } = fakeServer({ ready: false, diagnostics: async () => [error(1, "boom")] });
+	const { file, ctx } = await fixture(t, backend);
+	const res = await editTool.execute({ path: file, old_string: "1", new_string: "2" }, ctx);
+	assert.equal(calls.start, 1);
+	assert.equal(diagnosticsOf(res)?.errors, 1);
+});
+
+test("a server that needs a handshake is started, not waited for", async (t) => {
+	const { backend, calls } = fakeServer({ ready: false, handshake: true });
 	const { file, ctx } = await fixture(t, backend);
 	const res = await editTool.execute({ path: file, old_string: "1", new_string: "2" }, ctx);
 	assert.equal(calls.start, 1);

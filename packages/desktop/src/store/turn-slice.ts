@@ -17,7 +17,7 @@ import { bridge, withParkedPixels } from "../services/index.ts";
 import { draftFromUserMessage } from "../lib/revert-draft.ts";
 import { outlivingTurn } from "../lib/approval-scope.ts";
 import { dropHandoff, expectHandoff } from "./handoff.ts";
-import { sessionWorkspace } from "./session-workspace.ts";
+import { projectWorkspace, sessionWorkspace } from "./session-workspace.ts";
 import { sessionHome } from "../lib/session-home.ts";
 
 type Get = () => AppState;
@@ -135,9 +135,10 @@ export function turnSlice(set: Set, get: Get) {
 		 */
 		const draft = options.sessionId === null && get().activeSessionId !== null ? get().parkedDraft : null;
 		// A new conversation from inside a worktree starts in its project, never in another copy of the copy.
-		const cwd = draft ? (draft.workspace?.worktreeOf ?? draft.workspace?.path ?? draft.scratchCwd) : (workspace?.worktreeOf ?? workspace?.path ?? scratchCwd);
+		const from = draft ? draft.workspace : workspace;
+		const cwd = from ? projectWorkspace(from).path : draft ? draft.scratchCwd : scratchCwd;
 		// And in which project: the folder alone cannot say, since two projects can share it.
-		const project = (draft ? draft.workspace : workspace)?.projectId;
+		const project = from?.projectId;
 		if (!sessionId && !cwd) { await get().pickWorkspace(); return false; }
 		// A second submission in the same draft shares its identity, never its title as a key.
 		const inFlight = !sessionId ? creating.get(epoch) : undefined;

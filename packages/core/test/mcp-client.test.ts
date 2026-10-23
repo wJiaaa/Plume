@@ -18,7 +18,7 @@ import { test, type TestContext } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { DEFAULT_SETTINGS } from "../src/config/settings.ts";
-import { McpManager, qualifiedToolName, type McpStdioServer } from "../src/mcp/client.ts";
+import { McpManager, qualifiedToolName, type McpServerConfig, type McpStdioServer } from "../src/mcp/client.ts";
 import { SessionCapabilities } from "../src/runtime/setup/session-capabilities.ts";
 import { forgetCommandPath, primeCommandPath } from "../src/sandbox/login-path.ts";
 
@@ -130,6 +130,12 @@ async function until(condition: () => Promise<boolean>, ms = 3000): Promise<void
 	}
 }
 
+/** Connect one server and wait for its answer; rejects with why it did not connect. */
+async function connectOne(manager: McpManager, server: McpServerConfig): Promise<void> {
+	const [status] = await manager.connectAll([server]);
+	if (status?.state !== "connected") throw new Error(status?.error ?? `${server.name} did not connect`);
+}
+
 const dirs = (path: string | undefined) => (path ?? "").split(delimiter).filter(Boolean);
 
 /** Exactly what launchd hands a double-clicked app on macOS. */
@@ -142,7 +148,7 @@ test("a stdio server launched from an icon gets the repaired PATH, not launchd's
 	forgetCommandPath();
 	const manager = new McpManager();
 	try {
-		await manager.connect(fx.server({ FAKE_MCP_DUMP_ENV: "1" }));
+		await connectOne(manager, fx.server({ FAKE_MCP_DUMP_ENV: "1" }));
 		const [pid] = await fx.started();
 		const path = dirs((await fx.env(pid)).PATH);
 		/*
@@ -165,7 +171,7 @@ test("a server's own env still wins over the inherited environment", async (t) =
 	const fx = await fixture(t);
 	const manager = new McpManager();
 	try {
-		await manager.connect(fx.server({ FAKE_MCP_DUMP_ENV: "1", HOME: "/configured/home" }));
+		await connectOne(manager, fx.server({ FAKE_MCP_DUMP_ENV: "1", HOME: "/configured/home" }));
 		const [pid] = await fx.started();
 		assert.equal((await fx.env(pid)).HOME, "/configured/home");
 	} finally {
@@ -191,7 +197,7 @@ test("on Windows a server's own Path replaces the inherited PATH instead of sitt
 		 * and a child handed both reads whichever Node sorts first. The one the user configured has
 		 * to be the only one.
 		 */
-		await manager.connect(fx.server({ FAKE_MCP_DUMP_ENV: "1", Path: "C:\\configured" }));
+		await connectOne(manager, fx.server({ FAKE_MCP_DUMP_ENV: "1", Path: "C:\\configured" }));
 		const [pid] = await fx.started();
 		const env = await fx.env(pid);
 		const spellings = Object.keys(env).filter((key) => key.toUpperCase() === "PATH");
@@ -213,7 +219,7 @@ test("on Windows a server's own Path replaces the inherited PATH instead of sitt
 test("a server whose tool list fails is stopped, not left running", async (t) => {
 	const fx = await fixture(t);
 	const manager = new McpManager();
-	await assert.rejects(manager.connect(fx.server({ FAKE_MCP_FAIL_LIST: "1" })), /tools\/list is broken/);
+	await assert.rejects(connectOne(manager, fx.server({ FAKE_MCP_FAIL_LIST: "1" })), /tools\/list is broken/);
 	const [pid] = await fx.started();
 	assert.equal(await stopped(pid), true, "the server outlived its failed connection");
 	assert.deepEqual(manager.allTools(), []);
@@ -222,7 +228,7 @@ test("a server whose tool list fails is stopped, not left running", async (t) =>
 test("a server that answers after the deadline is stopped, not connected for nobody", async (t) => {
 	const fx = await fixture(t);
 	const manager = new McpManager({ timeoutMs: 300 });
-	await assert.rejects(manager.connect(fx.server({ FAKE_MCP_INIT_DELAY: "900" })), /timed out/i);
+	await assert.rejects(connectOne(manager, fx.server({ FAKE_MCP_INIT_DELAY: "900" })), /timed out/i);
 	const [pid] = await fx.started();
 	/*
 	 * Past the moment it answers. Plume gave up at its own deadline while the SDK's request, with a
@@ -320,7 +326,7 @@ test("on Windows closing a server stops its whole process tree, not only cmd.exe
 		syncBuiltinESMExports();
 	});
 	const manager = new McpManager();
-	await manager.connect(fx.server());
+	await connectOne(manager, fx.server());
 	const [pid] = await fx.started();
 	/*
 	 * Faked only for the close: the SDK starts `npx` through `cmd.exe /c` on Windows, and its own
@@ -365,8 +371,10 @@ test("disconnecting one bundle stops its servers and leaves the others running",
 	const fx = await fixture(t);
 	const manager = new McpManager();
 	try {
-		await manager.connect({ ...fx.server({ FAKE_MCP_DUMP_ENV: "1", WHICH: "a" }, "a"), origin: { bundle: "bundle-a" } });
-		await manager.connect({ ...fx.server({ FAKE_MCP_DUMP_ENV: "1", WHICH: "b" }, "b"), origin: { bundle: "bundle-b" } });
+		await manager.connectAll([
+			{ ...fx.server({ FAKE_MCP_DUMP_ENV: "1", WHICH: "a" }, "a"), origin: { bundle: "bundle-a" } },
+			{ ...fx.server({ FAKE_MCP_DUMP_ENV: "1", WHICH: "b" }, "b"), origin: { bundle: "bundle-b" } },
+		]);
 		/*
 		 * Told apart by what each one says it is, not by the order of its pid file. `started()` lists
 		 * them as `readdir` does — by name — and Windows hands out pids from a free list rather than

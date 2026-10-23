@@ -36,16 +36,8 @@ const SEEN_KEY = "plume.pull-requests.seen.v2";
  */
 const DETAIL_LIMIT = 24;
 
-/**
- * What identifies a row, now that rows arrive from more than one account.
- *
- * `owner/name` is not unique across hosts — a company's own GitHub Enterprise happily holds a
- * repository named the same as one on github.com — and the same pull request seen through two
- * accounts is two different sets of things you are allowed to do to it. Kept in step with the
- * main process's own `rowId`, which decides the same question when merging buckets.
- */
-export const rowId = (pr: { accountId: string; repo: string; number: number }) =>
-	`${pr.accountId}:${pr.repo}#${pr.number}`;
+// The cache and the read marks are keyed by the same id the main process merges buckets by.
+export { rowId } from "../../../shared/pull-request-id.ts";
 
 function read<T>(key: string): T | null {
 	try {

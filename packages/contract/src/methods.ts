@@ -344,7 +344,6 @@ export const METHODS = {
 	 * 于是域共用、动作带前缀。这条测试是在 `git push` 的钩子里抓到我的——它值这个位置。
 	 */
 	projectMemory: {
-		status: "memory:projectStatus",
 		extract: "memory:projectExtract",
 		list: "memory:projectList",
 		forget: "memory:projectForget",

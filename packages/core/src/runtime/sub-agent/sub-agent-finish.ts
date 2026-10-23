@@ -9,6 +9,7 @@ import type { Message } from "../../types.ts";
 import type { SubAgentAnswer, SubAgentOptions } from "./sub-agent-options.ts";
 import { STOPPED_BY_USER, type Dispatched } from "./sub-agent-dispatch.ts";
 import type { SubAgentRan } from "./sub-agent-run.ts";
+import type { SubAgentRegistry } from "./sub-agents.ts";
 import { renderYield, YIELD_KEY, type YieldOutcome } from "./yield-tool.ts";
 import { restated } from "../../reply-text.ts";
 
@@ -72,21 +73,22 @@ export async function finishSubAgent(
 	 * 只带东西，不带 `incomplete`。那个标记会让面板画上「没跑完，只是它手上的一部分」，而按停止
 	 * 这件事上面那段已经定过调子了：人按下的按钮不是一桩要报告的事故。带回他的东西，别给他一条
 	 * 警告。
+	 *
+	 * 落盘的 `subagent_done` 带的是同一份：重启之后名单从它读回来（`sub-agent-restore.ts`），少一项，
+	 * 结构化卡片就变回纯文本、跑到检查点的那种也没了「接着跑」。
 	 */
-	registry?.finish(
-		id,
-		aborted
-			? { status: "aborted", ...(delivered ? { answer, output: yielded?.value, warnings: yielded?.warnings } : {}) }
-			: {
-					status,
-					answer,
-					output: yielded?.value,
-					warnings: yielded?.warnings,
-					// Same fact the first line of `answer` states, in a form the pane can draw.
-					...(cutShort ? { incomplete: true } : {}),
-					...(result.error ? { error: result.error } : {}),
-				},
-	);
+	const outcome: Parameters<SubAgentRegistry["finish"]>[1] = aborted
+		? { status: "aborted", ...(delivered ? { answer, output: yielded?.value, warnings: yielded?.warnings } : {}) }
+		: {
+				status,
+				answer,
+				output: yielded?.value,
+				warnings: yielded?.warnings,
+				// Same fact the first line of `answer` states, in a form the pane can draw.
+				...(cutShort ? { incomplete: true } : {}),
+				...(result.error ? { error: result.error } : {}),
+			};
+	registry.finish(id, outcome);
 	/*
 	 * 不管怎么结束的，上下文都留着。
 	 *
@@ -94,21 +96,13 @@ export async function finishSubAgent(
 	 * 接着干完、换个方向、服务恢复后再试、追问一句它刚才说的东西。留着的代价是内存里多一份引用
 	 * （消息对象跟转录是同一批），扔掉的代价是下一个从零开始，把它读过的再读一遍。
 	 */
-	registry?.keep(id, { agent: definition.name, view, state: subState, envDate: ending.envDate, model: chosen.model.id });
-	await options.emit({
-		type: "subagent_done",
-		id,
-		steps,
-		answer,
-		status,
-		...(result.error ? { error: result.error } : {}),
-	});
+	registry.keep(id, { agent: definition.name, view, state: subState, envDate: ending.envDate, model: chosen.model.id });
+	await options.emit({ type: "subagent_done", id, steps, ...outcome, answer });
 	return {
 		text: answer,
 		output: yielded?.value,
 		warnings: yielded?.warnings,
-		// 没有登记簿就没有地方留上下文，给了 id 也续不上。
-		...(registry ? { id } : {}),
+		id,
 		...(cutShort ? { incomplete: true } : {}),
 		...(aborted && controller.signal.reason === STOPPED_BY_USER ? { stoppedByUser: true } : {}),
 	};
@@ -145,8 +139,8 @@ function lastProse(messages: Message[]): string {
  *
  * 从前这里对跑满的那种说「把任务拆小再派一次」。派它来的模型照做了：新派的那个从零开始，读
  * 同样的文件，又跑满，再派，还是跑满——反馈里「重开三个子代理、个个 60 步、最后主会话自己做了」
- * 就是这句话一手促成的。它的上下文明明还在，该说的是「它还在，可以接着跑」。具体怎么续由
- * `task` 在结果末尾交代（那是说给模型的话，面板上用不着）。
+ * 就是这句话一手促成的。它的上下文明明还在，该说的是「它还在，可以接着跑」。续跑要的 id 在
+ * 送达那条消息里（`delivery-message.ts`）。
  */
 function incompleteNote(reason: AgentRunResult["reason"], error: string | undefined, salvaged: boolean, rounds: number): string | null {
 	if (reason === "max_turns") {

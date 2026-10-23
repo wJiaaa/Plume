@@ -100,14 +100,6 @@ export interface SubAgentSummary {
 	resumable?: boolean;
 	/** 被续跑过几次。没有就是一次都没有。 */
 	resumes?: number;
-	/**
-	 * 派它来的那一方已经不等它了。
-	 *
-	 * 主会话在等子代理的时候，人插了一句话：父会话先去回应人，这个子代理留在后台接着跑，跑完后
-	 * 结果由运行时作为一条消息送回主会话（见 `delegation-waits.ts`）。界面据此不再把它算作
-	 * 「主会话正卡在它身上」——那正是决定人再说话时要不要等的那件事。
-	 */
-	background?: boolean;
 	/** 它正停在一次授权上，等人在主窗口里点。 */
 	awaitingApproval?: boolean;
 }

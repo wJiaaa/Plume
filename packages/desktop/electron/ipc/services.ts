@@ -103,7 +103,7 @@ export function registerServicesIpc(deps: ServicesIpcDeps): void {
 	});
 
 	ipcMain.handle("memory:add", async (_event, content: string) => {
-		return addMemoryEntry(content, "user");
+		return addMemoryEntry(content);
 	});
 
 	ipcMain.handle("memory:remove", async (_event, id: string) => {

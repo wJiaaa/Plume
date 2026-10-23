@@ -21,10 +21,13 @@ export function PullRequestMeta({ detail }: { detail: PullRequestDetail }) {
 				<span className="font-mono text-detail text-ink">{detail.headRefName}</span>
 				<span className="px-1.5 text-ink-faint">›</span>
 				<span className="font-mono text-detail text-ink-muted">{detail.baseRefName}</span>
-				<span className="pl-2 font-mono text-detail">
-					<span className="text-ok">+{detail.additions}</span> <span className="text-danger">−{detail.deletions}</span>
-				</span>
-				<span className="pl-2 text-detail text-ink-faint">{t("prMeta.files", { n: detail.changedFiles })}</span>
+				{/* A host that only knows these from the diff leaves them null; nothing beats a made-up zero. */}
+				{detail.additions !== null && detail.deletions !== null && (
+					<span className="pl-2 font-mono text-detail">
+						<span className="text-ok">+{detail.additions}</span> <span className="text-danger">−{detail.deletions}</span>
+					</span>
+				)}
+				{detail.changedFiles !== null && <span className="pl-2 text-detail text-ink-faint">{t("prMeta.files", { n: detail.changedFiles })}</span>}
 			</Row>
 
 			<Row icon={Users} label={t("prMeta.reviewers")}>

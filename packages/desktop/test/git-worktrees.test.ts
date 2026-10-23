@@ -14,10 +14,11 @@ import {
 	autoCreateSessionWorktree,
 	cleanOldWorktrees,
 	createWorktree,
-	removeWorktree,
 	resolveWorktreesRoot,
 } from "../electron/git/git-worktrees.ts";
+import { removeLinkedWorktree } from "../electron/git/worktree-lifecycle.ts";
 import { listWorktrees } from "../electron/git/git-repos.ts";
+import { nativeText } from "../electron/i18n.ts";
 import { canonicalPath } from "../electron/path-key.ts";
 import { DEFAULT_SETTINGS } from "@plume/core";
 
@@ -81,12 +82,12 @@ test("createWorktree creates a linked worktree and listWorktrees lists it", asyn
 	assert.equal(linked.branch, "feature/wt-1");
 });
 
-test("removeWorktree removes a linked worktree and cleans it up", async () => {
+test("removeLinkedWorktree removes a linked worktree and cleans it up", async () => {
 	const created = await createWorktree(dir, "feature/wt-to-remove", at("feature-wt-to-remove"));
 	assert.equal(created.ok, true);
 	assert.ok(created.path && existsSync(created.path));
 
-	const removed = await removeWorktree(dir, created.path);
+	const removed = await removeLinkedWorktree(dir, created.path);
 	assert.equal(removed.ok, true);
 	assert.equal(existsSync(created.path), false);
 
@@ -104,9 +105,9 @@ test("autoCreateSessionWorktree creates dedicated worktree under a configured ro
 	};
 
 	const res = await autoCreateSessionWorktree(dir, customSettings, "session-12345678");
-	assert.equal(res.worktreeCreated, true);
-	assert.equal(res.branch, "plume/session-session-");
-	assert.equal(res.base, "main", "the branch it was cut from, for merging back into");
+	assert.ok(res.worktree, res.error);
+	assert.equal(res.worktree?.branch, "plume/session-session-");
+	assert.equal(res.worktree?.base, "main", "the branch it was cut from, for merging back into");
 	assert.ok(res.cwd.includes("session-worktrees"));
 	assert.ok(existsSync(res.cwd));
 });
@@ -119,7 +120,7 @@ test("autoCreateSessionWorktree creates dedicated worktree under a configured ro
 test("会话要了工作树就建，不再回头问全局开关", async () => {
 	const off = { ...DEFAULT_SETTINGS, worktrees: { autoCreateOnNewSession: false, rootDir: join(root, "chosen-worktrees") } };
 	const res = await autoCreateSessionWorktree(dir, off, "chosen-0001");
-	assert.equal(res.worktreeCreated, true);
+	assert.ok(res.worktree, res.error);
 	assert.ok(res.cwd.startsWith(canonicalPath(join(root, "chosen-worktrees"))), res.cwd);
 });
 
@@ -130,13 +131,14 @@ test("项目是仓库里的一个子目录：会话落在工作树里的同一�
 	await git(["commit", "-m", "add a package"]);
 	const settings = { ...DEFAULT_SETTINGS, worktrees: { rootDir: join(root, "nested-worktrees") } };
 	const res = await autoCreateSessionWorktree(join(dir, "packages", "app"), settings, "nested-0003");
-	assert.equal(res.worktreeCreated, true);
+	assert.ok(res.worktree, res.error);
 	assert.equal(res.cwd, join(canonicalPath(join(root, "nested-worktrees", `${basename(dir)}-nested-0`)), "packages", "app"));
+	assert.equal(res.worktree?.root, canonicalPath(join(root, "nested-worktrees", `${basename(dir)}-nested-0`)), "the worktree's own top, recorded for when the folder is gone");
 	assert.ok(existsSync(join(res.cwd, "index.ts")));
 
 	await mkdir(join(dir, "scratchpad"), { recursive: true });
 	const loose = await autoCreateSessionWorktree(join(dir, "scratchpad"), settings, "loose-0004");
-	assert.equal(loose.worktreeCreated, true);
+	assert.ok(loose.worktree, loose.error);
 	assert.equal(loose.cwd, canonicalPath(join(root, "nested-worktrees", `${basename(dir)}-loose-00`)));
 });
 
@@ -144,7 +146,7 @@ test("不是 Git 仓库：不建，并带回原因好让会话说出来", async 
 	const plain = join(root, "plain");
 	await mkdir(plain, { recursive: true });
 	const res = await autoCreateSessionWorktree(plain, DEFAULT_SETTINGS, "plain-0005");
-	assert.equal(res.worktreeCreated, false);
+	assert.equal(res.worktree, undefined);
 	assert.equal(res.cwd, plain);
 	assert.ok(res.error);
 });
@@ -161,7 +163,7 @@ test("留空的根目录下，自动建的工作树落在守卫放行的目录�
 	try {
 		const settings = { ...DEFAULT_SETTINGS, worktrees: { autoCreateOnNewSession: true, rootDir: "" } };
 		const res = await autoCreateSessionWorktree(dir, settings, "blankroot-1234");
-		assert.equal(res.worktreeCreated, true);
+		assert.ok(res.worktree, res.error);
 		// 守卫比较前两边都取规范写法，这里照做：macOS 上临时目录一边是 /var，一边是 /private/var。
 		const allowed = canonicalPath(resolveWorktreesRoot(""));
 		assert.equal(relative(allowed, canonicalPath(res.cwd)), basename(res.cwd), `${res.cwd} 不在 ${allowed} 里`);
@@ -227,11 +229,11 @@ test("a worktree in use is protected however its path is spelled", async () => {
 });
 
 /*
- * 兜底的 `rm -rf` 只碰 git 自己认的工作树。
+ * 只删链接工作树，自己从不删目录。
  *
- * `removeWorktree` 在 `git worktree remove` 失败之后会兜底删目录，而「这根本不是一棵工作树」
- * 正是它最常见的失败原因——于是传进去一个普通目录，git 拒绝，兜底把它整个删掉。这个函数由
- * `git:removeWorktree` 直接暴露给渲染进程，也就是说一个任意路径就能触发一次递归删除。
+ * 删工作树曾在 `git worktree remove` 失败之后兜底删目录，而「这根本不是一棵工作树」正是最常见的
+ * 失败原因——于是传进去一个普通目录，git 拒绝，兜底把它整个删掉。这条路由 `git:removeWorktree`
+ * 直接暴露给渲染进程，也就是说一个任意路径就能触发一次递归删除。
  *
  * 目录里放东西，是因为空目录被删掉和没被删掉太像；有内容时「还在」才是个有力的断言。
  */
@@ -241,7 +243,7 @@ test("不是工作树的目录，删不掉", async () => {
 	await exec("mkdir", ["-p", bystander]);
 	await writeFile(join(bystander, "重要文件.txt"), "别删我\n");
 
-	const result = await removeWorktree(dir, bystander);
+	const result = await removeLinkedWorktree(dir, bystander);
 
 	assert.equal(result.ok, false, "它不是工作树，这次调用就该失败");
 	assert.equal(existsSync(bystander), true, "目录必须还在——这是这条测试的全部意义");
@@ -254,9 +256,52 @@ test("真的工作树照样删得掉", async () => {
 	assert.equal(made.ok, true, made.error);
 	assert.ok(made.path);
 
-	const result = await removeWorktree(dir, made.path);
+	const result = await removeLinkedWorktree(dir, made.path);
 	assert.equal(result.ok, true, result.error);
 	assert.equal(existsSync(made.path), false);
+});
+
+/*
+ * 主仓库不是链接工作树，无论从哪儿问。
+ *
+ * `git worktree list` 的第一条就是主仓库。从前「git 认得」就算数，于是传主仓库进来：git 拒绝删除
+ * 主工作树，兜底认得它，接着递归删掉整个主仓库。从子目录问也一样——那时只比对了调用方给的目录。
+ */
+test("主仓库删不掉，从子目录问也删不掉", async () => {
+	await mkdir(join(dir, "packages", "probe"), { recursive: true });
+	for (const cwd of [dir, join(dir, "packages", "probe")]) {
+		const result = await removeLinkedWorktree(cwd, dir, true);
+		assert.equal(result.ok, false, `asked from ${cwd}`);
+		assert.equal(existsSync(join(dir, "README.md")), true, "the main checkout is untouched");
+	}
+});
+
+test("有没提交的改动：不强删就不删，说清有几处没提交", async () => {
+	const made = await createWorktree(dir, "wt-dirty", at("wt-dirty"));
+	assert.ok(made.path);
+	await writeFile(join(made.path, "draft.txt"), "not committed\n");
+	const result = await removeLinkedWorktree(dir, made.path);
+	assert.equal(result.ok, false);
+	assert.equal(result.error, nativeText("git.worktreeDirty", { count: 1 }), "the refusal says why, in the interface's words");
+	assert.equal(existsSync(join(made.path, "draft.txt")), true);
+	assert.equal((await removeLinkedWorktree(dir, made.path, true)).ok, true, "forced, once someone agreed");
+});
+
+test("手动删掉的工作树：目录不在了，git 的登记也一并清掉", async () => {
+	const made = await createWorktree(dir, "wt-gone", at("wt-gone"));
+	assert.ok(made.path);
+	await rm(made.path, { recursive: true, force: true });
+	assert.equal((await removeLinkedWorktree(dir, made.path)).ok, true);
+	assert.ok(!(await listWorktrees(dir)).some((tree) => tree.path === made.path));
+});
+
+test("自动清理默认关着：没设过就不收", async () => {
+	const made = await createWorktree(dir, "plume/session-default1", at("plume-session-default1"));
+	assert.ok(made.path);
+	const settings = { ...DEFAULT_SETTINGS, worktrees: { keepLimit: 1 } };
+	assert.equal(await cleanOldWorktrees(dir, settings, new Set()), 0);
+	assert.equal(existsSync(made.path), true);
+	await removeLinkedWorktree(dir, made.path);
 });
 
 /*
@@ -279,5 +324,5 @@ test("自动清理：不碰人自己建的、不碰有没提交改动的；收�
 	assert.equal(existsSync(dirty.path), true, "uncommitted changes are never cleaned away");
 	assert.ok(!existsSync(idle.path) || !existsSync(idle2.path), "an idle, clean one of Plume's goes");
 	assert.ok((await git(["branch", "--list", "plume/session-idle01"])).includes("plume/session-idle01"), "its branch stays");
-	for (const tree of [mine, dirty, idle, idle2]) await removeWorktree(dir, tree.path!, true).catch(() => {});
+	for (const tree of [mine, dirty, idle, idle2]) await removeLinkedWorktree(dir, tree.path!, true).catch(() => {});
 });

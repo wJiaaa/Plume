@@ -86,14 +86,7 @@ export interface MemoryApi {
  * 由后台抽取从历史会话里读出来，存在项目自己的记忆目录。
  */
 export interface ProjectMemoryApi {
-	/**
-	 * 现在该不该跑一遍抽取。
-	 *
-	 * `never-asked` 不是「不跑」——它是**去问**的信号。窗口拿到这个才弹征询，
-	 * 而不是每次空闲都弹。
-	 */
-	status(cwd: string): Promise<{ run: boolean; reason?: string }>;
-	/** 跑一遍。返回写了什么、读了几个会话，或者为什么没跑。 */
+	/** 该跑就跑一遍：返回写了什么、读了几个会话；没开、还没到时候、没有模型时交回为什么没跑。 */
 	extract(cwd: string): Promise<{ memory: string; sessions: number; skipped?: string }>;
 	/** 这个项目记住的：`learn` 写的每一条，和抽取出来的那一份，各带写入时间与最后注入时间。 */
 	list(cwd: string): Promise<{

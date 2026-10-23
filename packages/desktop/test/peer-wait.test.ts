@@ -302,7 +302,7 @@ test("工具：问着的时候人开口了，当场交回，信留在对方那�
 	b.start();
 	let speak!: () => void;
 	const spoken = new Promise<null>((resolve) => { speak = () => resolve(null); });
-	// 和 `DelegationWaits.until` 一样：先到的赢。
+	// 和 `SpokenWaits.until` 一样：先到的赢。
 	const untilSpokenTo = <T,>(run: Promise<T>) => Promise.race([run, spoken]);
 	const result = ask.execute({ to: "bbbb", message: "版本号多少" }, ctxFor("aaaaaaaa-9", { untilSpokenTo }));
 	while (b.inbox.length === 0) await flush();

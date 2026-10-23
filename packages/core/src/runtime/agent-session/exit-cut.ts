@@ -1,7 +1,7 @@
 /**
  * 应用退出时还在后台跑的子代理：重开之后，人下一次开口时一起告诉主会话。
  *
- * 派出即放手以后（`delegation-waits.ts`），`task` 那条结果早就是「已派出」了。进程一没，它的结果
+ * 派出即放手以后（`detached-dispatches.ts`），`task` 那条结果早就是「已派出」了。进程一没，它的结果
  * 永远不会送回来，而主会话只知道自己在等——人说「继续」，模型要么接着空等，要么从零重派、把读过的
  * 再读一遍。从前 `task` 挂着等的时候，那条调用会被记成「Plume 退出时还在跑」（`live-calls.ts`），
  * 续跑的 id 就在里面；现在这句话得另外说。
@@ -10,8 +10,8 @@
  */
 
 import type { Message } from "../../types.ts";
-import { deliveryMessage } from "./delegation-waits.ts";
-import type { RestoredSubAgent } from "./sub-agent-restore.ts";
+import type { RestoredSubAgent } from "../sub-agent/sub-agent-restore.ts";
+import { deliveryMessage } from "./delivery-message.ts";
 
 /** 历史里派出去、还没送回过结果、又被退出打断的那些，合成一条送达；没有就是 `null`。 */
 export function exitCutDelivery(restored: readonly RestoredSubAgent[], history: readonly Message[]): Message | null {

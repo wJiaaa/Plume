@@ -77,21 +77,15 @@ after(async () => {
 // 该不该跑
 // ---------------------------------------------------------------------------
 
-test("从没问过，不是「不跑」，是「去问」", () => {
-	/*
-	 * 这就是 `undefined` 和 `false` 必须分开的全部理由。合成一个布尔，两条路里必然坏掉一条：
-	 * 要么永远不问，要么问过了还问。
-	 */
-	const verdict = shouldRunPass(settings({ memoryExtraction: undefined }), null);
-	assert.deepEqual(verdict, { run: false, reason: "never-asked" });
-});
-
-test("问过、拒绝了，就不再问", () => {
+test("没打开就不跑，没设过和关掉是一回事", () => {
+	assert.deepEqual(shouldRunPass(settings({ memoryExtraction: undefined }), null), { run: false, reason: "declined" });
 	assert.deepEqual(shouldRunPass(settings({ memoryExtraction: false }), null), { run: false, reason: "declined" });
 });
 
-test("答应了就跑", () => {
-	assert.deepEqual(shouldRunPass(settings(), null), { run: true });
+test("答应了就跑，并且带上解析好的模型", () => {
+	const verdict = shouldRunPass(settings(), null);
+	assert.equal(verdict.run, true);
+	assert.ok(verdict.run && verdict.provider && verdict.model);
 });
 
 test("一天之内不跑第二遍", () => {
@@ -100,7 +94,7 @@ test("一天之内不跑第二遍", () => {
 	 */
 	const now = Date.now();
 	assert.deepEqual(shouldRunPass(settings(), now - 1000, now), { run: false, reason: "too-soon" });
-	assert.deepEqual(shouldRunPass(settings(), now - PASS_INTERVAL_MS - 1000, now), { run: true });
+	assert.equal(shouldRunPass(settings(), now - PASS_INTERVAL_MS - 1000, now).run, true);
 });
 
 test("没有可用模型是单独一种原因", () => {

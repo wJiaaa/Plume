@@ -133,6 +133,16 @@ test("resumed after a restart, the first request is the one a resume without the
 	}
 });
 
+test("重启之后，结构化结果和「没做完」的标记跟着回来；续跑出去的那一段把它们清掉", () => {
+	const finished: AgentEvent = { type: "subagent_done", id: "s:sub:1", steps: [], answer: "⚠ 到了检查点", status: "done", output: { files: ["a.ts"] }, warnings: ["少了 summary"], incomplete: true };
+	const [stopped] = restoreSubAgents(log(dispatch(), finished), rebuild);
+	const { output, warnings, incomplete } = stopped!.summary;
+	assert.deepEqual({ output, warnings, incomplete }, { output: { files: ["a.ts"] }, warnings: ["少了 summary"], incomplete: true });
+
+	const [resumed] = restoreSubAgents(log(dispatch(), finished, message({ ...said("接着"), origin: "parent" }), dispatch("s:sub:1", { resumed: true })), rebuild);
+	assert.deepEqual([resumed!.summary.output, resumed!.summary.warnings, resumed!.summary.incomplete], [undefined, undefined, undefined], "they described the stretch before");
+});
+
 test("resumed on another model, what came before is stripped of the old provider's handles, as it was then", () => {
 	const seen: { provider?: string; model?: string }[] = [];
 	const [restored] = restoreSubAgents(
@@ -152,7 +162,7 @@ test("resumed on another model, what came before is stripped of the old provider
 	assert.ok(!text.includes("msg_old") && text.includes("msg_new"));
 });
 
-test("one the process died under is stopped, and a call it was running is answered as interrupted, with what that call left", () => {
+test("one the process died under is stopped, and a call it was running is answered as interrupted", () => {
 	const [restored] = restoreSubAgents(
 		log(
 			dispatch(),
@@ -164,7 +174,6 @@ test("one the process died under is stopped, and a call it was running is answer
 				{ type: "toolCall", id: "c", name: "read", arguments: {}, argumentsText: "{}" },
 			])),
 			nested({ type: "tool_start", toolCallId: "b", toolName: "task", args: {}, summary: "派" }),
-			nested({ type: "tool_left", toolCallId: "b", result: { content: [{ type: "text", text: '传 resume: "s:sub:2"' }], details: { subAgentId: "s:sub:2" } } }),
 		),
 		rebuild,
 	);
@@ -174,8 +183,6 @@ test("one the process died under is stopped, and a call it was running is answer
 	const [running, never] = view.slice(-2) as ToolResultMessage[];
 	assert.deepEqual([running!.toolCallId, never!.toolCallId], ["b", "c"], "every call answered, in order, right after the reply");
 	assert.match(textOf(running!), /Plume exited while this call was running/);
-	assert.match(textOf(running!), /resume: "s:sub:2"/, "with what it said it leaves behind");
-	assert.equal((running!.details as { subAgentId?: string }).subAgentId, "s:sub:2");
 	assert.match(textOf(never!), /before this call started/, "one that never started is said never to have run");
 });
 

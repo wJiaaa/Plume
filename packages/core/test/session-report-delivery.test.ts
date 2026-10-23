@@ -7,7 +7,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { deliveryMessage } from "../src/runtime/sub-agent/delegation-waits.ts";
+import { deliveryMessage } from "../src/runtime/agent-session/delivery-message.ts";
 import { SessionDeliveries } from "../src/runtime/agent-session/session-deliveries.ts";
 import type { Message } from "../src/types.ts";
 

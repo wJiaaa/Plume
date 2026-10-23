@@ -16,6 +16,7 @@ import { test } from "node:test";
 
 
 import { runSubAgent } from "../src/runtime/sub-agent/sub-agent.ts";
+import { SubAgentRegistry } from "../src/runtime/sub-agent/sub-agents.ts";
 import { inheritedToolEnv } from "../src/runtime/policy/run-policy.ts";
 import { toolPolicy } from "../src/runtime/policy/tool-policy.ts";
 import { buildTurnConfig } from "../src/runtime/agent-session/turn-config.ts";
@@ -83,6 +84,7 @@ async function contextGivenTo(settings: Partial<Settings>, allowedPaths?: Readon
 	let turn = 0;
 	await runSubAgent(
 		{
+			registry: new SubAgentRegistry(),
 			sessionId: "s1",
 			cwd: "/tmp",
 			settings: { thinking: "off", hooks: [], ...settings } as unknown as Settings,
@@ -154,6 +156,7 @@ test("configured hooks see a delegated tool call", async () => {
 
 	await runSubAgent(
 		{
+			registry: new SubAgentRegistry(),
 			sessionId: "s1",
 			cwd: "/tmp",
 			settings: { thinking: "off", hooks: [] } as unknown as Settings,
@@ -236,6 +239,7 @@ test("a hook that blocks a call in the main conversation blocks it one level dow
 
 	await runSubAgent(
 		{
+			registry: new SubAgentRegistry(),
 			sessionId: "s1",
 			cwd: "/tmp",
 			settings: { thinking: "off", hooks } as unknown as Settings,

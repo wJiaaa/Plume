@@ -90,6 +90,7 @@ test("项目是仓库里的子目录：收回之后按同一套算法找回工�
 	await reclaimWorktree(nested);
 	assert.equal(existsSync(tree), false);
 	assert.equal(await worktreeRootOf(nested), tree, "the package's folder, backwards to the worktree's");
+	assert.equal(await worktreeRootOf({ ...nested, worktree: { ...nested.worktree, root: tree } }), tree, "recorded, it is read rather than worked out");
 	assert.deepEqual(await restoreWorktree(nested), { ok: true, fresh: false });
 	assert.ok(existsSync(join(nested.cwd, "index.ts")));
 });

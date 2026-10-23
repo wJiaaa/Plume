@@ -314,6 +314,7 @@ test("a delegated run reads the parent's addresses, without `agent://`", async (
 
 	await runSubAgent(
 		{
+			registry: new SubAgentRegistry(),
 			sessionId: "s1",
 			cwd: "/tmp",
 			settings: { thinking: "off" } as unknown as Settings,

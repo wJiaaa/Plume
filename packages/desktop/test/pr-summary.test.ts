@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { checkStateOf, dedupe, parseSearch, type SearchNode, toSummary } from "../electron/forge/pr-summary.ts";
+import { checkStateOf, dedupe, newestFirst, parseSearch, type SearchNode, summarizeChecks, toSummary } from "../electron/forge/pr-summary.ts";
 import { pr } from "./pr-fixtures.ts";
 
 function node(over: Partial<SearchNode> = {}): SearchNode {
@@ -33,13 +33,11 @@ function node(over: Partial<SearchNode> = {}): SearchNode {
 	};
 }
 
-function answer(buckets: { reviewing?: unknown[]; authored?: unknown[]; reviewed?: unknown[] }): unknown {
+function answer(buckets: { reviewing?: unknown[]; authored?: unknown[]; reviewed?: unknown[] }): Parameters<typeof parseSearch>[0] {
 	return {
-		data: {
-			reviewing: { nodes: buckets.reviewing ?? [] },
-			authored: { nodes: buckets.authored ?? [] },
-			reviewed: { nodes: buckets.reviewed ?? [] },
-		},
+		reviewing: { nodes: (buckets.reviewing ?? []) as SearchNode[] },
+		authored: { nodes: (buckets.authored ?? []) as SearchNode[] },
+		reviewed: { nodes: (buckets.reviewed ?? []) as SearchNode[] },
 	};
 }
 
@@ -83,16 +81,8 @@ test("a search for issues that matched an issue drops it", () => {
 	);
 });
 
-test("an error delivered with a 200 is still an error", () => {
-	const body = {
-		data: { reviewing: { nodes: [] }, authored: { nodes: [] }, reviewed: { nodes: [] } },
-		errors: [{ message: "API rate limit exceeded" }],
-	};
-	assert.throws(() => parseSearch(body), /rate limit/, "reporting this as an empty list would be the worst of both");
-});
-
 test("a bucket the server left out is an empty bucket, not a crash", () => {
-	const parsed = parseSearch({ data: { authored: { nodes: [node()] } } });
+	const parsed = parseSearch({ authored: { nodes: [node()] } });
 	assert.equal(parsed.authored.length, 1);
 	assert.deepEqual(parsed.reviewing, []);
 	assert.deepEqual(parsed.reviewed, []);
@@ -112,7 +102,19 @@ test("the list is newest first", () => {
 	const newer = pr({ relation: "authored", number: 2, updatedAt: "2026-08-09T00:00:00Z" });
 
 	assert.deepEqual(
-		dedupe([[older, newer]]).map((row) => row.number),
+		newestFirst([older, newer]).map((row) => row.number),
 		[2, 1],
 	);
+});
+
+test("checks are counted once for every host, and red outranks running", () => {
+	assert.deepEqual(summarizeChecks([]), { checks: null, checkState: null }, "no checks at all is not checks that are pending");
+	const { checks, checkState } = summarizeChecks([
+		{ name: "lint", state: "pass" },
+		{ name: "test", state: "fail", url: "https://ci.example/1" },
+		{ name: "build", state: "pending" },
+	]);
+	assert.equal(checkState, "fail");
+	assert.deepEqual([checks?.total, checks?.passed, checks?.failed, checks?.pending], [3, 1, 1, 1]);
+	assert.equal(summarizeChecks([{ name: "build", state: "pending" }, { name: "lint", state: "pass" }]).checkState, "pending");
 });

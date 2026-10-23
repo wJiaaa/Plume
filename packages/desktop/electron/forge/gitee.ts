@@ -17,18 +17,17 @@
  */
 
 import { parseUnifiedDiff } from "./diff-parse.ts";
-import { nativeText } from "../i18n.ts";
 import type {
 	PullRequestDetail,
 	PullRequestSummary,
 	ReviewVerdict,
 	WorkspaceDiffFile,
 } from "@plume/contract";
-import { ForgeError } from "./errors.ts";
 import { assembleDiff, type PatchFile } from "./patch.ts";
-import { DIFF_TIMEOUT_MS, json, pooled } from "./http.ts";
+import { DIFF_TIMEOUT_MS, identifyUser, json, pooled } from "./http.ts";
 import { splitRepo } from "./accounts.ts";
-import type { ForgeConnection, ForgeDriver, ForgeIdentity } from "./types.ts";
+import { type RawComment, type RawCommit, toCommits, toThreads } from "./rest-v3.ts";
+import type { ForgeConnection, ForgeDriver } from "./types.ts";
 
 /**
  * How many repositories one refresh looks at.
@@ -110,11 +109,7 @@ function toSummary(pull: RawPull, repo: string, relation: PullRequestSummary["re
 export const gitee: ForgeDriver = {
 	kind: "gitee",
 
-	async identify(conn: ForgeConnection): Promise<ForgeIdentity> {
-		const user = await json<{ login?: string; name?: string; avatar_url?: string }>(conn, "/user");
-		if (!user?.login) throw new ForgeError(nativeText("forge.noUserInfo"), 0);
-		return { login: user.login, name: user.name || user.login, avatarUrl: user.avatar_url ?? null };
-	},
+	identify: (conn) => identifyUser(conn),
 
 	async list(conn: ForgeConnection): Promise<PullRequestSummary[]> {
 		const me = conn.account.login.toLowerCase();
@@ -142,7 +137,7 @@ export const gitee: ForgeDriver = {
 			});
 		});
 
-		return perRepo.flat().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+		return perRepo.flat();
 	},
 
 	async detail(conn: ForgeConnection, repo: string, number: number): Promise<PullRequestDetail> {
@@ -158,18 +153,13 @@ export const gitee: ForgeDriver = {
 		return {
 			...summary,
 			body: pull.body ?? "",
-			// Only `/files` knows, and that is the diff — loaded when the code tab is opened.
-			additions: 0,
-			deletions: 0,
-			changedFiles: 0,
+			// Only `/files` knows, and that is the diff — loaded when the code tab is opened. Null
+			// draws nothing; zero would claim `+0 −0 · 0 个文件` on a pull request that changes plenty.
+			changedFiles: null,
 			headRefName: pull.head?.ref ?? "",
 			baseRefName: pull.base?.ref ?? "",
 			comments: comments?.length ?? pull.comments ?? 0,
-			threads: (comments ?? []).map((comment) => ({
-				author: comment.user?.login ?? "unknown",
-				body: comment.body ?? "",
-				createdAt: comment.created_at ?? "",
-			})),
+			threads: toThreads(comments ?? []),
 			// Gitee records an approval as a state change on the pull request, not as a review with a
 			// body — so there is nothing to list here that the reviewer line does not already say.
 			reviews: [],
@@ -180,12 +170,7 @@ export const gitee: ForgeDriver = {
 			checks: null,
 			mergeable: pull.mergeable === false ? "CONFLICTING" : "MERGEABLE",
 			labels: (pull.labels ?? []).map((l) => l.name ?? "").filter(Boolean),
-			commits: (commits ?? []).map((commit) => ({
-				sha: (commit.sha ?? "").slice(0, 7),
-				headline: (commit.commit?.message ?? "").split("\n")[0],
-				author: commit.author?.login || commit.commit?.author?.name || "",
-				at: commit.commit?.author?.date ?? "",
-			})),
+			commits: toCommits(commits ?? []),
 		};
 	},
 
@@ -262,18 +247,6 @@ export function toPatchFiles(files: RawFile[]): PatchFile[] {
 			binary: patch?.too_large === true || (!body && !renamed),
 		};
 	});
-}
-
-interface RawComment {
-	body?: string;
-	created_at?: string;
-	user?: { login?: string } | null;
-}
-
-interface RawCommit {
-	sha?: string;
-	author?: { login?: string } | null;
-	commit?: { message?: string; author?: { name?: string; date?: string } } | null;
 }
 
 export interface RawFile {

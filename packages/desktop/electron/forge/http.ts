@@ -13,9 +13,9 @@
  */
 
 import { nativeText } from "../i18n.ts";
-import { apiRoot } from "./accounts.ts";
+import { apiRoot, hostOf } from "./accounts.ts";
 import { describeStatus, ForgeError, networkMessage } from "./errors.ts";
-import type { ForgeConnection } from "./types.ts";
+import type { ForgeConnection, ForgeIdentity } from "./types.ts";
 
 /**
  * A ceiling on any one call.
@@ -116,7 +116,7 @@ async function call(conn: ForgeConnection, path: string, options: CallOptions = 
 			signal: AbortSignal.timeout(options.timeoutMs ?? TIMEOUT_MS),
 		});
 	} catch (error) {
-		throw new ForgeError(networkMessage(error, conn.account.baseUrl), 0);
+		throw new ForgeError(networkMessage(error, hostOf(conn.account.baseUrl)), 0);
 	}
 
 	if (!response.ok) throw new ForgeError(describeStatus(response.status, await bodyMessage(response), conn.account.kind), response.status);
@@ -139,6 +139,17 @@ export async function json<T>(conn: ForgeConnection, path: string, options: Call
 
 export async function text(conn: ForgeConnection, path: string, options: CallOptions = {}): Promise<string> {
 	return (await call(conn, path, options)).text();
+}
+
+/**
+ * Who a token belongs to: `GET /user`, which all four answer with `avatar_url` and two fields
+ * whose names are their own — GitLab's login is `username`, Gitea's display name `full_name`.
+ */
+export async function identifyUser(conn: ForgeConnection, fields: { login: string; name: string } = { login: "login", name: "name" }): Promise<ForgeIdentity> {
+	const user = await json<Record<string, string | undefined> | undefined>(conn, "/user");
+	const login = user?.[fields.login];
+	if (!login) throw new ForgeError(nativeText("forge.noUserInfo"), 0);
+	return { login, name: user[fields.name] || login, avatarUrl: user.avatar_url ?? null };
 }
 
 /**

@@ -45,7 +45,7 @@ export async function subAgentRunConfig(options: SubAgentOptions, dispatched: Di
 		signal: controller.signal,
 		emit: async (event) => {
 			if (event.type !== "hook_run") return;
-			await options.emit({ type: "subagent_event", id, event: { ...event, run: registry?.hookRun(id, event.run) ?? event.run } });
+			await options.emit({ type: "subagent_event", id, event: { ...event, run: registry.hookRun(id, event.run) } });
 		},
 	});
 	return {
@@ -139,7 +139,7 @@ export async function subAgentRunConfig(options: SubAgentOptions, dispatched: Di
 			 * starting over. Nothing here knows where the message came from — the registry
 			 * queues it, the loop drains it, exactly as for the parent.
 			 */
-			drainSteering: registry ? () => registry.drainSteering(id) : undefined,
+			drainSteering: () => registry.drainSteering(id),
 			// Turn-level hooks stay with the conversation that owns the turn, see above.
 			onStop: undefined,
 			repetition: new RepetitionWatch(),
@@ -158,14 +158,14 @@ export async function subAgentRunConfig(options: SubAgentOptions, dispatched: Di
 function approvalFrom(options: SubAgentOptions, { id, definition, description }: Dispatched) {
 	const registry = options.registry;
 	return async (request: ApprovalRequest): Promise<ApprovalDecision> => {
-		registry?.awaitingApproval(id, true);
+		registry.awaitingApproval(id, true);
 		try {
 			return await options.requestApproval({
 				...request,
 				from: { subAgentId: id, agent: definition.name, description },
 			});
 		} finally {
-			registry?.awaitingApproval(id, false);
+			registry.awaitingApproval(id, false);
 		}
 	};
 }

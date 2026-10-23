@@ -13,7 +13,7 @@ import { test } from "node:test";
 import { DEFAULT_SETTINGS, type Settings } from "../src/config/settings.ts";
 import type { AgentEvent } from "../src/agent/events.ts";
 import { AgentSession } from "../src/runtime/agent-session/session.ts";
-import { deliveryMessage } from "../src/runtime/sub-agent/delegation-waits.ts";
+import { deliveryMessage } from "../src/runtime/agent-session/delivery-message.ts";
 import { SessionInbox } from "../src/runtime/agent-session/session-inbox.ts";
 import { AgedToolPruner } from "../src/agent/aged-prune.ts";
 import { FRESH_RESULT_MAX_CHARS, pruneToolResults } from "../src/agent/prune.ts";
@@ -141,7 +141,6 @@ test("派出即放手：这一轮当场收尾，子代理在后台跑完，结�
 		const dispatched = h.main[1].messages.find((message) => message.role === "toolResult");
 		assert.match(dispatched ? textOf(dispatched) : "", /已派出，在后台跑/, "父会话拿到的是「已派出」，不是结论");
 		assert.match(dispatched ? textOf(dispatched) : "", /不要重派或自己去做/);
-		assert.equal(h.session.subAgents.list()[0]?.background, true, "名单上标着它在后台");
 		assert.equal(h.session.subAgents.list()[0]?.status, "running");
 		assert.equal(h.session.running, false, "主会话这一轮收了尾，不挂着");
 		assert.equal(h.session.idle, false, "可活还没完：子代理回来还要接着做");

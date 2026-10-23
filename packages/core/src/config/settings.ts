@@ -366,7 +366,7 @@ export interface Settings {
 		autoCreateOnNewSession?: boolean;
 		/** Automatically fetch upstream remotes before creating a worktree. */
 		fetchUpstreamBeforeCreate?: boolean;
-		/** Auto clean unlinked or old worktrees exceeding limit or session deletion. */
+		/** Clean up the oldest of Plume's own worktrees past `keepLimit` each time one is made. Off unless set. */
 		autoCleanOld?: boolean;
 		/** Number of managed worktrees to retain before oldest are pruned. */
 		keepLimit?: number;
@@ -490,9 +490,6 @@ export interface Settings {
 	 * Off until somebody says yes. Extraction sends conversation content to a provider, and an app
 	 * that otherwise only talks to one when asked must not quietly start doing it on a timer — a
 	 * tool people run locally has to be conservative about exactly this.
-	 *
-	 * `undefined` is "never asked", which the host distinguishes from `false` ("asked, declined")
-	 * so it knows whether the prompt is still owed.
 	 */
 	memoryExtraction?: boolean;
 	/**
@@ -594,13 +591,7 @@ export const DEFAULT_SETTINGS: Settings = {
 	showThinking: false,
 	hideEmptiedProjects: false,
 	maxConcurrentSubAgents: 4,
-	/*
-	 * `memoryExtraction` is deliberately absent rather than `undefined`.
-	 *
-	 * Its whole point is that "never asked" is a third state, and an absent key is how that is
-	 * spelled. Written out as `undefined` it becomes a key that exists and holds nothing, which
-	 * reads to `Object.keys` as a field somebody deleted.
-	 */
+	memoryExtraction: false,
 	pluginRegistries: [DEFAULT_PLUGIN_REGISTRY],
 	skillRegistries: [DEFAULT_SKILL_REGISTRY],
 	alwaysAllow: [],
@@ -843,15 +834,7 @@ export function normalizeSettings(parsed: Partial<Settings>): Settings {
 			// Off unless asked for: a project disappearing from the sidebar is the worse surprise.
 			hideEmptiedProjects: parsed.hideEmptiedProjects === true,
 			maxConcurrentSubAgents: normalizeMaxConcurrentSubAgents(parsed.maxConcurrentSubAgents),
-			/*
-			 * Spread rather than assigned, so "never asked" is an absent key rather than a present
-			 * one holding `undefined`.
-			 *
-			 * The two are the same to every reader — `settings.memoryExtraction` is undefined either
-			 * way — and different to `Object.keys`, to which a key that is always there and always
-			 * undefined reads as a field somebody deleted.
-			 */
-			...(typeof parsed.memoryExtraction === "boolean" ? { memoryExtraction: parsed.memoryExtraction } : {}),
+			memoryExtraction: parsed.memoryExtraction === true,
 			subAgentProfiles: normalizeSubAgentProfiles(parsed.subAgentProfiles),
 			/*
 			 * A missing list gets the default; an empty one is left empty.

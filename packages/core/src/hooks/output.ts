@@ -33,16 +33,21 @@ export interface HookJSONOutput {
 	};
 }
 
+/**
+ * 几条钩子并起来的结论，按调用方要问的事各留一个字段。
+ *
+ * `decision` 是「拦 / 问 / 放」：PreToolUse、PermissionRequest 用它决定这次调用，UserPromptSubmit 的
+ * `deny` 是拦下这条消息，其余事件上的 `deny` 只进记录。Stop 不进 `decision`——它的 block 意思是「别停」，
+ * 放在 `continueStop`。
+ */
 export interface HookRunResult {
 	additionalContexts: string[];
-	blockRequested?: boolean;
-	preventContinuation?: boolean;
-	permissionBehavior?: HookPermissionDecision;
-	hookPermissionDecisionReason?: string;
-	permissionRequestResult?: PermissionRequestHookDecision;
-	stopShouldContinue?: boolean;
-	stopReason?: string;
+	decision?: HookPermissionDecision;
+	/** 胜出的那个 `decision` 的原因：被拦时说给人和模型听，放行或要确认时随审批一起交出。 */
+	reason?: string;
 	updatedInput?: unknown;
+	/** Stop：钩子要它接着干。 */
+	continueStop?: boolean;
 }
 
 export class HookOutputError extends Error {}
@@ -96,35 +101,22 @@ function isPermissionEvent(event: HookEventName): boolean {
 	return event === "PreToolUse" || event === "PermissionRequest";
 }
 
-function preventsContinuation(event: HookEventName): boolean {
-	return event === "PreToolUse" || event === "PermissionRequest" || event === "UserPromptSubmit";
-}
-
 export function processHookOutput(event: HookEventName, output: HookJSONOutput | undefined): HookRunResult {
 	const result: HookRunResult = { additionalContexts: [] };
 	if (!output) return result;
+	const decide = (decision: HookPermissionDecision, reason?: string) => mergeHookRunResult(result, { additionalContexts: [], decision, reason });
 
-	if (output.continue === false && event !== "Stop") {
-		result.blockRequested = true;
-		result.stopReason = output.stopReason ?? output.reason;
-		if (preventsContinuation(event)) result.preventContinuation = true;
-		if (isPermissionEvent(event)) result.permissionBehavior = "deny";
-	}
-	if (event === "Stop" && output.continue === true) {
-		result.stopShouldContinue = true;
-		result.stopReason = output.stopReason ?? output.reason;
-	}
-	if (output.decision === "approve" && isPermissionEvent(event)) result.permissionBehavior = "allow";
-	if (output.decision === "block") {
-		result.blockRequested = true;
-		result.stopReason = output.stopReason ?? output.reason ?? output.systemMessage;
-		if (isPermissionEvent(event)) result.permissionBehavior = "deny";
-		if (preventsContinuation(event)) result.preventContinuation = true;
-		if (event === "Stop") {
-			result.stopShouldContinue = true;
+	const said = output.stopReason ?? output.reason;
+	if (event === "Stop") {
+		if (output.continue === true || output.decision === "block") result.continueStop = true;
+		if (output.decision === "block") {
 			if (output.systemMessage) result.additionalContexts.push(output.systemMessage);
 			if (output.reason) result.additionalContexts.push(output.reason);
 		}
+	} else {
+		if (output.continue === false) decide("deny", said);
+		if (output.decision === "block") decide("deny", said ?? output.systemMessage);
+		if (output.decision === "approve" && isPermissionEvent(event)) decide("allow");
 	}
 	if (output.additionalContext) result.additionalContexts.push(output.additionalContext);
 	if (output.additional_context) result.additionalContexts.push(output.additional_context);
@@ -133,13 +125,12 @@ export function processHookOutput(event: HookEventName, output: HookJSONOutput |
 	if (!specific) return result;
 	if (specific.hookEventName !== event) throw new HookOutputError(`hookSpecificOutput is for ${specific.hookEventName}, not ${event}`);
 	if (event === "PreToolUse") {
-		if (specific.permissionDecision) {
-			result.permissionBehavior = specific.permissionDecision;
-			result.hookPermissionDecisionReason = specific.permissionDecisionReason;
-		}
+		if (specific.permissionDecision) decide(specific.permissionDecision, specific.permissionDecisionReason);
 		if (specific.updatedInput !== undefined) result.updatedInput = specific.updatedInput;
 	}
-	if (event === "PermissionRequest" && specific.decision) result.permissionRequestResult = specific.decision;
+	if (event === "PermissionRequest" && specific.decision) {
+		decide(specific.decision.behavior, specific.decision.behavior === "deny" ? specific.decision.message : undefined);
+	}
 	if (event !== "PermissionRequest" && specific.additionalContext) result.additionalContexts.push(specific.additionalContext);
 	return result;
 }
@@ -150,24 +141,17 @@ function strictest(current: HookPermissionDecision | undefined, next: HookPermis
 	return next;
 }
 
+/** 并进一条钩子的结论：决定取最严，原因跟着胜出的那个决定走——更严的换掉原因，同样严的后说的算。 */
 export function mergeHookRunResult(target: HookRunResult, next: HookRunResult): void {
 	target.additionalContexts.push(...next.additionalContexts);
-	if (next.blockRequested) {
-		target.blockRequested = true;
-		target.stopReason = next.stopReason ?? target.stopReason;
-	}
-	if (next.preventContinuation) {
-		target.preventContinuation = true;
-		target.stopReason = next.stopReason;
-	}
-	if (next.stopShouldContinue !== undefined) {
-		target.stopShouldContinue = next.stopShouldContinue;
-		target.stopReason = next.stopReason ?? target.stopReason;
+	if (next.decision) {
+		const merged = strictest(target.decision, next.decision);
+		if (merged !== target.decision) target.reason = next.reason;
+		else if (merged === next.decision && next.reason) target.reason = next.reason;
+		target.decision = merged;
 	}
 	if (next.updatedInput !== undefined) target.updatedInput = next.updatedInput;
-	if (next.permissionRequestResult) target.permissionRequestResult = next.permissionRequestResult;
-	if (next.hookPermissionDecisionReason) target.hookPermissionDecisionReason = next.hookPermissionDecisionReason;
-	if (next.permissionBehavior) target.permissionBehavior = strictest(target.permissionBehavior, next.permissionBehavior);
+	if (next.continueStop) target.continueStop = true;
 }
 
 /**

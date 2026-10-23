@@ -21,13 +21,10 @@ import type {
 } from "@plume/contract";
 import { parseUnifiedDiff } from "./diff-parse.ts";
 import { nativeText } from "../i18n.ts";
-import type { Relation } from "./pr-summary.ts";
+import { dedupe, PER_BUCKET, type Relation, summarizeChecks } from "./pr-summary.ts";
 import { assembleDiff } from "./patch.ts";
-import { DIFF_TIMEOUT_MS, json } from "./http.ts";
-import type { ForgeConnection, ForgeDriver, ForgeIdentity } from "./types.ts";
-
-/** Enough to see everything current without turning the list into an archive. */
-const PER_BUCKET = 30;
+import { DIFF_TIMEOUT_MS, identifyUser, json } from "./http.ts";
+import type { ForgeConnection, ForgeDriver } from "./types.ts";
 
 interface RawMr {
 	iid: number;
@@ -130,11 +127,7 @@ const BUCKETS: { relation: Relation; query: Record<string, string | number | str
 export const gitlab: ForgeDriver = {
 	kind: "gitlab",
 
-	async identify(conn: ForgeConnection): Promise<ForgeIdentity> {
-		const user = await json<{ username?: string; name?: string; avatar_url?: string }>(conn, "/user");
-		if (!user?.username) throw new Error(nativeText("forge.noUserInfo"));
-		return { login: user.username, name: user.name || user.username, avatarUrl: user.avatar_url ?? null };
-	},
+	identify: (conn) => identifyUser(conn, { login: "username", name: "name" }),
 
 	async list(conn: ForgeConnection): Promise<PullRequestSummary[]> {
 		const me = conn.account.login;
@@ -165,11 +158,7 @@ export const gitlab: ForgeDriver = {
 		const ok = results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
 		if (ok.length === 0) throw results.find((r) => r.status === "rejected")?.reason ?? new Error(nativeText("forge.noMergeRequests"));
 
-		const seen = new Set<string>();
-		return ok
-			.flat()
-			.filter((mr) => (seen.has(`${mr.repo}!${mr.number}`) ? false : seen.add(`${mr.repo}!${mr.number}`)))
-			.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+		return dedupe(ok);
 	},
 
 	async detail(conn: ForgeConnection, repo: string, number: number): Promise<PullRequestDetail> {
@@ -183,6 +172,7 @@ export const gitlab: ForgeDriver = {
 
 		const summary = toSummary(mr, "authored", conn.account.id);
 		const pipeline = mr.head_pipeline ?? mr.pipeline ?? null;
+		const pipelineCheck = pipelineState(pipeline?.status);
 		// Human notes only. GitLab writes an entry for every assignment, label and milestone change,
 		// and a conversation that is nine parts bookkeeping is one nobody reads.
 		const said = (notes ?? []).filter((note) => !note.system);
@@ -192,11 +182,9 @@ export const gitlab: ForgeDriver = {
 			...summary,
 			reviewDecision: approvals.approved ? "APPROVED" : (approvals.approvals_required ?? 0) > 0 ? "REVIEW_REQUIRED" : null,
 			body: mr.description ?? "",
-			additions: 0,
-			deletions: 0,
 			// `"1000+"` for anything past the cap, which `parseInt` reads as 1000 — the right answer
-			// for a number whose only job is to say "a lot".
-			changedFiles: Number.parseInt(mr.changes_count ?? "0", 10) || 0,
+			// for a number whose only job is to say "a lot". Missing is unknown, not zero.
+			changedFiles: mr.changes_count ? Number.parseInt(mr.changes_count, 10) || 0 : null,
 			headRefName: mr.source_branch ?? "",
 			baseRefName: mr.target_branch ?? "",
 			comments: said.length,
@@ -217,21 +205,11 @@ export const gitlab: ForgeDriver = {
 			 * summarises anyway — and the link goes to the page where the failing job is named,
 			 * which is where somebody is heading the moment it is red.
 			 */
-			checks: pipeline?.status
-				? {
-						total: 1,
-						passed: pipelineState(pipeline.status) === "pass" ? 1 : 0,
-						failed: pipelineState(pipeline.status) === "fail" ? 1 : 0,
-						pending: pipelineState(pipeline.status) === "pending" ? 1 : 0,
-						items: [
-							{
-								name: `流水线 · ${pipeline.status}`,
-								state: pipelineState(pipeline.status) ?? "pending",
-								...(pipeline.web_url ? { url: pipeline.web_url } : {}),
-							},
-						],
-					}
-				: null,
+			...summarizeChecks(
+				pipeline?.status && pipelineCheck
+					? [{ name: `流水线 · ${pipeline.status}`, state: pipelineCheck, ...(pipeline.web_url ? { url: pipeline.web_url } : {}) }]
+					: [],
+			),
 			mergeable: mr.has_conflicts ? "CONFLICTING" : mr.detailed_merge_status === "mergeable" || mr.merge_status === "can_be_merged" ? "MERGEABLE" : "UNKNOWN",
 			labels: mr.labels ?? [],
 			commits: (commits ?? []).map((commit) => ({

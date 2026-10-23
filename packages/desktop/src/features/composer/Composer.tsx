@@ -41,8 +41,7 @@ import type { DraftAttachment } from "./attachments/read.ts";
 import { useComposerAttachments } from "./useComposerAttachments.tsx";
 import { useDraft } from "./useDraft.ts";
 import { useApp } from "../../store/index.ts";
-import { focusScreenOf, useScopedFromMessages, useScopedFromMeta, useScopedFromToolRuns, useScopedMeta, useScopedRunning, useScopedSessionId, useScopedStopped, useScopedFromSubAgents, useScopedTodos, useScopedUserMessages, useScopedWorking, useScopedWorkspace } from "../../app/session-scope.tsx";
-import { awaitingSubAgents } from "../../store/subAgents.ts";
+import { focusScreenOf, useScopedFromMessages, useScopedFromMeta, useScopedFromToolRuns, useScopedMeta, useScopedRunning, useScopedSessionId, useScopedStopped, useScopedTodos, useScopedUserMessages, useScopedWorking, useScopedWorkspace } from "../../app/session-scope.tsx";
 import { awaitingSession } from "../../store/tool-run.ts";
 import { carryOnPrompt } from "../../store/derive.ts";
 import { takePageStates } from "../../store/page-state.ts";
@@ -138,14 +137,12 @@ export const Composer = memo(function Composer({ centered = false }: {
 	/** 排着几条。只要不是零，新说的这句就得排到它们后面，不然先后就乱了。 */
 	const queuedCount = useApp((s) => (activeSessionId ? s.queued[activeSessionId]?.length ?? 0 : 0));
 	/*
-	 * 主会话此刻只是在等它派出去的子智能体。
+	 * 主会话此刻只是在等另一个会话做完（`ask_session` / `wait_for_session`）。
 	 *
-	 * 这时候说的话直接送进去，不排队：排队等的是「这一轮做完」，而这一轮在等子智能体，可能是十几
-	 * 分钟。送进去之后运行时让主会话放手、先回应人，子智能体留在后台跑完（`delegation-waits.ts`）。
-	 * 在等另一个会话做完（`ask_session` / `wait_for_session`）也一样。
+	 * 这时候说的话直接送进去，不排队：排队等的是「这一轮做完」，而这一轮在等别人，可能是十几分钟。
+	 * 送进去之后运行时让那个等待放手、先回应人（`spoken-waits.ts`）。
 	 */
-	const waitingOnSession = useScopedFromToolRuns(awaitingSession);
-	const parked = (useScopedFromSubAgents(awaitingSubAgents) || waitingOnSession) && running;
+	const parked = useScopedFromToolRuns(awaitingSession) && running;
 	const { compact, dismissNav } = useLayout();
 	const column = useRef<HTMLDivElement>(null);
 	useLayoutEffect(() => {

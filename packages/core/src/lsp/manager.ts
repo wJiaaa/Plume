@@ -40,7 +40,8 @@ export const IDLE_MS = 10 * 60 * 1000;
 
 export class CodeIntelManager {
 	private readonly backends: CodeIntelBackend[];
-	private readonly starting = new Map<string, Promise<void>>();
+	/** 正在起的，按后端去重；起完（成没成都算）就拿掉，失败的下次再问会重新起。 */
+	private readonly starting = new Map<CodeIntelBackend, Promise<void>>();
 	private readonly idleMs: number;
 	private idleTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -84,8 +85,12 @@ export class CodeIntelManager {
 	 * Null covers three different situations on purpose — no backend for this language, the binary
 	 * is not installed, and it is still starting — because the caller does the same thing in all
 	 * three, and distinguishing them would only move the branching one level up.
+	 *
+	 * `waitMs` is how long this call may wait on a startup. Edits pass 0: tsserver is up the moment
+	 * it is spawned and still answers, while a server that needs a handshake is started and left to
+	 * the next edit instead of holding this one.
 	 */
-	async acquire(file: string, root: string): Promise<CodeIntelBackend | null> {
+	async acquire(file: string, root: string, { waitMs = READY_WAIT_MS }: { waitMs?: number } = {}): Promise<CodeIntelBackend | null> {
 		const backend = this.backendFor(file);
 		if (!backend) return null;
 		if (!(await backend.available())) return null;
@@ -95,11 +100,13 @@ export class CodeIntelManager {
 			return backend;
 		}
 
-		const key = `${backend.name}:${root}`;
-		let pending = this.starting.get(key);
+		let pending = this.starting.get(backend);
 		if (!pending) {
-			pending = backend.start(root).catch(() => {});
-			this.starting.set(key, pending);
+			pending = backend
+				.start(root)
+				.catch(() => {})
+				.finally(() => this.starting.delete(backend));
+			this.starting.set(backend, pending);
 		}
 
 		/*
@@ -109,7 +116,7 @@ export class CodeIntelManager {
 		 * ready. What must not happen is the first call blocking for the fifteen seconds a cold
 		 * `tsserver` can take on a large project.
 		 */
-		const won = await Promise.race([pending.then(() => true), delay(READY_WAIT_MS).then(() => false)]);
+		const won = await Promise.race([pending.then(() => true), delay(waitMs).then(() => false)]);
 		// 起来了就开始计时——起不来的不计，它没占着什么。
 		if (backend.ready()) this.touch();
 		return won && backend.ready() ? backend : null;

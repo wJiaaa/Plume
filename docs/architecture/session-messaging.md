@@ -99,7 +99,7 @@ ask_session 发完就地等 / wait_for_session 接着等（electron/peer/peer-ru
 - 没有没拿到回答的信就 `wait_for_session`：照 t3code，闲着立刻返回它最后那句，忙着就等手上这一次。
 - 默认等 600 秒，最多 1,800 秒。到点只是不等了，对方照常干。
 - **人对发件方开口就不再等**：插话只在两次请求之间才有人读，等待会把人说的话压到对方做完为止。
-  工具经 `ctx.untilSpokenTo`（core 的 `DelegationWaits.until`，和 ADR-0029 等子代理是同一套）
+  工具经 `ctx.untilSpokenTo`（core 的 `SpokenWaits.until`，`runtime/agent-session/spoken-waits.ts`）
   当场交回；渲染进程看到主会话在 `ask_session` / `wait_for_session` 上时，人说的话直接插进去而不是
   排队（`awaitingSession`）。别的会话的通知落进来也一样放手（core 的 `AgentSession.receive`）。
 - 发件方这一轮被人停下，`ctx.signal` 让等待立刻返回。对方在等待中被卸载，答「已关闭」。

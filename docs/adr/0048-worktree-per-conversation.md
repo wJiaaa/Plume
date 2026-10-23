@@ -30,7 +30,8 @@
 **一、按会话选，设置只是默认。** 新会话（还没发第一条、项目是 Git 仓库）的输入框上，项目和分支后面有一个开关
 （`WorktreeToggle`，⑂ 加「工作树」，开着是强调色，样子照计划模式那颗）。它从 `worktrees.autoCreateOnNewSession`
 起步，选的结果随首条消息走 `initial.worktree`（`initialPrompt` 白名单收它），`createStoredSession` 按它打标记。
-`autoCreateSessionWorktree` 不再问设置：标记就是决定。定时任务没有输入框，`getOrCreateSession` 那条路按设置决定。
+`autoCreateSessionWorktree` 不再问设置：标记就是决定。定时任务没有输入框，`getOrCreateSession` 同样经
+`createStoredSession` 落盘、按设置打标记，再和其他会话一样在激活时建工作树。
 
 开关挂在草稿上（`draftKey`）：换一个新会话、或者这个新会话换了项目，就回到设置的默认值。会话跑起来以后开关消失
 ——那时已经挪不进副本了。

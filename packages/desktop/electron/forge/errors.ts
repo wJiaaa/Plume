@@ -74,8 +74,8 @@ export function describeStatus(status: number, detail: string, kind: ForgeKind):
  * somebody guessing which of them is the one that is unreachable — and the answer is usually the
  * self-hosted one behind a VPN that is not connected.
  */
-export function networkMessage(error: unknown, baseUrl: string): string {
-	const host = hostLabel(baseUrl);
+export function networkMessage(error: unknown, hostName: string): string {
+	const host = hostName || nativeText("forge.theServer");
 	const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
 
 	if (/TimeoutError|AbortError|timed? ?out/i.test(message)) return nativeText("forge.timeout", { host });
@@ -83,14 +83,6 @@ export function networkMessage(error: unknown, baseUrl: string): string {
 	if (/ECONNREFUSED|CONNECTION_REFUSED/i.test(message)) return nativeText("forge.refused", { host });
 	if (/CERT|certificate|SSL|TLS/i.test(message)) return nativeText("forge.certificate", { host });
 	return nativeText("forge.unreachable", { host });
-}
-
-function hostLabel(baseUrl: string): string {
-	try {
-		return new URL(baseUrl).host;
-	} catch {
-		return baseUrl || nativeText("forge.theServer");
-	}
 }
 
 /**

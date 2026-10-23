@@ -324,16 +324,10 @@ test("排队的也在名单上：派出去那一刻登记，轮到它才开跑�
 	assert.equal(registry.dismiss("q2"), "stopping", "还没收场的不直接抹掉");
 });
 
-test("父会话放了手：名单上标出它在后台，只标一次", () => {
-	let changes = 0;
-	const registry = new SubAgentRegistry(() => (changes += 1));
+test("还在跑的被要求续跑：说清楚它在后台、结果会自己回来", () => {
+	const registry = new SubAgentRegistry();
 	registry.start({ id: "b1", agent: "general", description: "改一处", abort: () => {} });
-	const before = changes;
-	registry.background("b1");
-	registry.background("b1");
-	assert.equal(registry.list()[0].background, true);
-	assert.equal(changes, before + 1, "重复标不重复广播");
-	assert.match((registry.lookupResumable("b1") as { refusal: string }).refusal, /后台/, "续跑被拒时说清楚它在后台、结果会自己回来");
+	assert.match((registry.lookupResumable("b1") as { refusal: string }).refusal, /后台/);
 });
 
 test("等授权时名单上说得出来，收场时一并清掉，并且告诉宿主它停了", () => {

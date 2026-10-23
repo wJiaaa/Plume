@@ -138,9 +138,12 @@ interface PullRequestComment {
 /** Everything the detail pane shows, which is one request for the row that was opened. */
 export interface PullRequestDetail extends PullRequestSummary {
 	body: string;
-	additions: number;
-	deletions: number;
-	changedFiles: number;
+	/**
+	 * Null, like `additions` and `deletions` above, when the host only knows it from the diff that
+	 * loads with the code tab (Gitee for all three, GitLab for the line counts). Zero there would
+	 * draw `+0 −0 · 0 files` on a pull request that changes plenty.
+	 */
+	changedFiles: number | null;
 	headRefName: string;
 	baseRefName: string;
 	threads: PullRequestComment[];

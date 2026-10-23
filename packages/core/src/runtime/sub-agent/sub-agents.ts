@@ -18,9 +18,9 @@
  * carries on rather than starting over. It is deliberately not a second conversation running
  * alongside — one agent, one thread, one thing being asked of it at a time.
  *
- * What this is *not*: a scheduler. `runSubAgent` still owns running the thing, and the parent's
- * `task` call still waits for the answer. This only makes what happens in between visible and
- * reachable.
+ * What this is *not*: a scheduler. `runSubAgent` owns running the thing, and the parent's `task`
+ * call returns as soon as it is dispatched (`detached-dispatches.ts`). This only makes what happens
+ * in between visible and reachable.
  *
  * 登记从派出去的那一刻开始，不是从开跑的那一刻：闸门后面排着的那几个也在名单上（`queued`）。
  * 从前它们要等轮到自己才登记，于是一次派四个、闸门只放一个的时候，名单上只有一个——界面只好
@@ -35,6 +35,21 @@ import type { SubAgentStatus, SubAgentSummary } from "../../types/sub-agent.ts";
 /** 还没完：排着或者在跑。停它、清名单、挤掉旧记录时，这两种是一样的。 */
 function isActive(status: SubAgentStatus): boolean {
 	return status === "queued" || status === "running";
+}
+
+/**
+ * 上一段怎么结束的那几项：`finish` 写下，`reopen` 清掉。
+ *
+ * 从日志回放名单（`sub-agent-restore.ts`）走的是同一组字段——两边各列一遍的时候，回放漏掉过
+ * 结构化结果和「没做完」的标记，重启之后卡片变回纯文本、「接着跑」也没了。
+ */
+export function clearEnding(summary: SubAgentSummary): void {
+	summary.endedAt = undefined;
+	summary.answer = undefined;
+	summary.output = undefined;
+	summary.warnings = undefined;
+	summary.error = undefined;
+	summary.incomplete = undefined;
 }
 
 /** 操控框里说的那句话，给人看的那一份——见 `SubAgentRegistry.steer`。 */
@@ -151,13 +166,7 @@ export class SubAgentRegistry {
 					"要继续那件事，只能重新派一个——在 prompt 里把它之前交回来的结论带上，别让新的从零查起。",
 			};
 		}
-		if (isActive(found.status)) {
-			return {
-				refusal: found.background
-					? `子代理 \`${found.id}\` 还在后台跑，跑完后结果会自动送到你这里，不需要续跑。`
-					: `子代理 \`${found.id}\` 还在跑，不需要续跑。等它交回结果，或者在面板里直接对它说话。`,
-			};
-		}
+		if (isActive(found.status)) return { refusal: `子代理 \`${found.id}\` 还在后台跑，跑完后结果会自动送到你这里，不需要续跑。` };
 		if (!found.conversation) {
 			return { refusal: `子代理 \`${found.id}\` 的上下文已经不在了（应用重启过，或它没能留下），没法续跑。要继续，重新派一个并把它交回的结论带上。` };
 		}
@@ -191,14 +200,8 @@ export class SubAgentRegistry {
 		found.status = input.queued ? "queued" : "running";
 		// 续跑时按此刻的设置重选过：说的是这一段在用的，不是第一段的。
 		if (input.model) found.model = input.model;
-		found.background = undefined;
+		clearEnding(found);
 		found.awaitingApproval = undefined;
-		found.endedAt = undefined;
-		found.answer = undefined;
-		found.output = undefined;
-		found.warnings = undefined;
-		found.error = undefined;
-		found.incomplete = undefined;
 		found.retrying = undefined;
 		found.conversation = undefined;
 		found.steering = [];
@@ -252,14 +255,6 @@ export class SubAgentRegistry {
 		if (!found || found.status !== "queued") return;
 		found.status = "running";
 		found.startedAt = Date.now();
-		this.onChange();
-	}
-
-	/** 父会话不再等它了——见 `SubAgentSummary.background`。 */
-	background(id: string): void {
-		const found = this.records.get(id);
-		if (!found || found.background || !isActive(found.status)) return;
-		found.background = true;
 		this.onChange();
 	}
 

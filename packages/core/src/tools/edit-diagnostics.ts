@@ -29,18 +29,10 @@ const MAX_SHOWN = 10;
 
 export async function withDiagnostics(ctx: ToolContext, file: string, result: ToolResult): Promise<ToolResult> {
 	const manager = codeIntelFor(ctx.state, ctx.cwd);
-	const backend = manager.backendFor(file);
-	if (!backend || !(await backend.available().catch(() => false))) return result;
-	if (!backend.ready()) {
-		// A server that needs a handshake is not waited for: it starts now, and the next edit has it.
-		void manager.acquire(file, ctx.cwd).catch(() => {});
-		return result;
-	}
-
 	const started = Date.now();
 	// Caught on the request itself: after a timeout it still settles, and a rejection then would be unhandled.
 	const request = manager
-		.acquire(file, ctx.cwd)
+		.acquire(file, ctx.cwd, { waitMs: 0 })
 		.then((ready) => (ready ? ready.diagnostics(file) : null))
 		.catch(() => null);
 	let timer: ReturnType<typeof setTimeout> | undefined;

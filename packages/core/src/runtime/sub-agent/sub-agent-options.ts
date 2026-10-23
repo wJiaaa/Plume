@@ -12,31 +12,15 @@ import type { streamAssistant } from "../../ai/index.ts";
 import type { Settings } from "../../config/settings.ts";
 import type { Skill } from "../../skills/loader.ts";
 import type { AgentDefinition } from "../../tools/task.ts";
-import type { ApprovalDecision, ApprovalRequest, Message, Tool } from "../../types.ts";
+import type { ApprovalDecision, ApprovalRequest, Message, SubAgentInput, Tool } from "../../types.ts";
 import type { SubAgentRegistry } from "./sub-agents.ts";
 
 /**
- * What a delegated run hands back.
- *
- * `text` is what goes in the transcript and what the parent model reads. `output` is the same
- * answer as data, present only when the agent declared a schema and yielded against it — the
- * parent tool puts it in `details` so the UI can render it and `agent://<id>/<field>` can index
- * into it without the parent re-reading anything.
+ * What a delegated run hands back: `text` is what the parent model reads; `output` is the same
+ * answer as data when the agent declared a schema and yielded against it. The one shape tools see
+ * too — see `types/tool.ts`.
  */
-export interface SubAgentAnswer {
-	text: string;
-	output?: Record<string, unknown>;
-	/** Schema problems that were accepted rather than rejected. */
-	warnings?: string[];
-	/** 登记簿里的 id，续跑用。没有登记簿的宿主不给。 */
-	id?: string;
-	/** 没做完就停下了——`text` 开头那句话说了为什么。上下文还在，可以续跑。 */
-	incomplete?: boolean;
-	/** 人在面板上把它按停的。派它来的那一方不该自作主张地让它接着跑。 */
-	stoppedByUser?: boolean;
-	/** 父会话没等它跑完就放手了：它在后台接着跑，结果由运行时另外送回。见 `delegation-waits.ts`。 */
-	detached?: boolean;
-}
+export type { SubAgentAnswer } from "../../types.ts";
 
 export interface SubAgentOptions {
 	sessionId: string;
@@ -57,17 +41,17 @@ export interface SubAgentOptions {
 	 * The session's stream override in the shape compaction expects, passed down so a delegated run
 	 * summarises through the same model call the parent does.
 	 *
-	 * Optional like `registry`: left off, compaction still runs — it falls back to a real provider
+	 * Optional: left off, compaction still runs — it falls back to a real provider
 	 * call, exactly as the parent's does when nothing is overriding it.
 	 */
 	summaryStream?: typeof streamAssistant;
 	/**
-	 * Where this run registers itself, so it can be watched and steered while it happens.
+	 * Where this run registers itself, so it can be watched, steered, stopped and resumed.
 	 *
-	 * Optional: a host that only wants the answer — the CLI, a test — passes nothing and gets the
-	 * old behaviour exactly. Delegation works the same either way; the registry only adds a window.
+	 * Required: every host dispatches through `AgentSession`, which always has one, and a run that
+	 * is not on a roster has no id — nothing could resume it or route its result back.
 	 */
-	registry?: SubAgentRegistry;
+	registry: SubAgentRegistry;
 	/** Passed through to the subagent; see `ToolContext.allowedPaths`. */
 	allowedPaths?: ReadonlySet<string>;
 	/** The dispatching conversation's messages, which is what `recall` searches from inside a delegation; see `ToolContext.transcript`. */
@@ -92,17 +76,10 @@ export interface SubAgentOptions {
 	/**
 	 * 登记好了、有了 id——在它开始排队之前就会叫到。
 	 *
-	 * 给派它的那一方用：人插话时父会话要放手，放手时得说得出放下的是哪一个（见
-	 * `delegation-waits.ts`）。
+	 * 给派它的那一方用：派出即放手，结果送回来时得说得出是哪一个（见 `detached-dispatches.ts`）。
 	 */
 	onRegistered?: (id: string) => void;
 }
 
 /** 派一个子代理时说的话。`resume` 给了，就是续跑它派出去过的那一个，见 `dispatchSubAgent`。 */
-export interface SubAgentRequest {
-	description: string;
-	prompt: string;
-	agentType?: string;
-	resume?: string;
-	onResumable?: (id: string) => void;
-}
+export type SubAgentRequest = SubAgentInput;

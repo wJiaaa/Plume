@@ -186,14 +186,11 @@ function cancelled(signal: AbortSignal | undefined, result: () => ToolResult): {
  * started, and telling the model it "may have taken effect" sent it off to check for effects that
  * could not exist.
  */
-function cancelledResult(waitingForApproval = false, left?: ToolResult): ToolResult {
+function cancelledResult(waitingForApproval = false): ToolResult {
 	const text = waitingForApproval
 		? "Tool call was stopped while it waited for approval, so it never ran."
 		: "Tool execution was cancelled. Anything it had already done may have taken effect.";
-	if (!left) return { ...errorResult(text), details: { cancelled: true } };
-	// What the tool said it leaves behind (`ToolContext.ifStopped`), after the stop itself.
-	const details = typeof left.details === "object" && left.details !== null ? left.details : {};
-	return { content: [...errorResult(text).content, ...left.content], isError: true, details: { ...details, cancelled: true } };
+	return { ...errorResult(text), details: { cancelled: true } };
 }
 
 async function executeOne(
@@ -237,7 +234,6 @@ async function executeOne(
 	 * as a call that never ran (`live-calls.ts`), and read by a stop for the same reason.
 	 */
 	let waiting = false;
-	let left: ToolResult | undefined;
 	const awaitingPerson = async <T>(answer: () => Promise<T>): Promise<T> => {
 		waiting = true;
 		await emit({ type: "tool_phase", toolCallId: call.id, phase: "approval" });
@@ -272,10 +268,6 @@ async function executeOne(
 			})
 			: undefined,
 		onProgress: (partial) => void emit({ type: "tool_update", toolCallId: call.id, partial }),
-		ifStopped: (result) => {
-			left = result;
-			void emit({ type: "tool_left", toolCallId: call.id, result });
-		},
 	};
 
 	if (tools.beforeToolCall) {
@@ -336,7 +328,7 @@ async function executeOne(
 	}
 
 	let result: ToolResult;
-	const stop = cancelled(signal, () => cancelledResult(waiting, left));
+	const stop = cancelled(signal, () => cancelledResult(waiting));
 	try {
 		/*
 		 * Stop must not depend on the tool agreeing to stop.
@@ -352,7 +344,7 @@ async function executeOne(
 		 */
 		result = await Promise.race([runnable.execute(runArgs, ctx), stop.stopped]);
 	} catch (error) {
-		if (signal?.aborted) return cancelledResult(waiting, left);
+		if (signal?.aborted) return cancelledResult(waiting);
 		return errorResult(error instanceof Error ? error.message : String(error));
 	} finally {
 		stop.release();

@@ -70,6 +70,10 @@ export interface HooksConfig {
 
 /** 摊平之后的一条。`id` 是位置，任何一次改动之后都要重新读。 */
 export interface HookEntry {
+	/**
+	 * 位置加指纹：`scope:事件:组:条:指纹前缀`。只有位置的话，设置页拿着它去改、去信任时，文件若已被
+	 * 别处改过（拉下来一个提交），同一个位置上可能是另一条命令——信任的就成了人没看过的那条。
+	 */
 	id: string;
 	scope: HookScope;
 	event: HookEventName;
@@ -180,13 +184,14 @@ export function hookEntries(config: HooksConfig, scope: HookScope): HookEntry[] 
 	for (const event of HOOK_EVENTS) {
 		for (const [groupIndex, group] of (config.events[event] ?? []).entries()) {
 			for (const [hookIndex, definition] of group.hooks.entries()) {
+				const digest = hookDigest(event, group.matcher, definition);
 				entries.push({
-					id: `${scope}:${event}:${groupIndex}:${hookIndex}`,
+					id: `${scope}:${event}:${groupIndex}:${hookIndex}:${digest.slice(0, ID_DIGEST_CHARS)}`,
 					scope,
 					event,
 					...(group.matcher ? { matcher: group.matcher } : {}),
 					definition,
-					digest: hookDigest(event, group.matcher, definition),
+					digest,
 				});
 			}
 		}
@@ -194,11 +199,16 @@ export function hookEntries(config: HooksConfig, scope: HookScope): HookEntry[] 
 	return entries;
 }
 
+const ID_DIGEST_CHARS = 16;
+
+/** `id` 指的那条还在原处、内容也没变；对不上就是 null，调用方当它不存在。 */
 function locate(config: HooksConfig, id: string): { event: HookEventName; group: number; hook: number } | null {
-	const [, event, group, hook] = id.split(":");
+	const [, event, group, hook, digest] = id.split(":");
 	if (!(HOOK_EVENTS as readonly string[]).includes(event)) return null;
 	const at = { event: event as HookEventName, group: Number(group), hook: Number(hook) };
-	return config.events[at.event]?.[at.group]?.hooks[at.hook] ? at : null;
+	const found = config.events[at.event]?.[at.group];
+	const definition = found?.hooks[at.hook];
+	return definition && digest && hookDigest(at.event, found.matcher, definition).startsWith(digest) ? at : null;
 }
 
 function definitionFromDraft(draft: HookDraft): HookDefinition {

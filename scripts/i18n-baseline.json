@@ -18,7 +18,7 @@
 	"electron/git/git-history.ts": 6,
 	"electron/git/git-probe.ts": 3,
 	"electron/git/git-release.ts": 5,
-	"electron/git/git-worktrees.ts": 4,
+	"electron/git/git-worktrees.ts": 3,
 	"electron/git/git.ts": 1,
 	"electron/ipc/agent-definitions.ts": 3,
 	"electron/ipc/browser.ts": 2,

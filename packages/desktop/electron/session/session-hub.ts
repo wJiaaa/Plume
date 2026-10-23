@@ -326,7 +326,7 @@ export function broadcast(sessionId: string, event: AgentEvent): void {
 	const wire = patcher.wire(sessionId, event);
 	eachAppWindow((win) => win.webContents.send("agent:event", { sessionId, event: wire }));
 	const session = sessions.get(sessionId);
-	const working = session?.subAgents.list().some((one) => one.background && (one.status === "running" || one.status === "queued")) ?? false;
+	const working = session?.subAgents.list().some((one) => one.status === "running" || one.status === "queued") ?? false;
 	if (!side) notifyAgentEvent(sessionId, event, session?.meta.title, working);
 	// After the windows have the event: they hear the turn end before they hear it was archived.
 	archives.observe(sessionId, event);
@@ -334,60 +334,29 @@ export function broadcast(sessionId: string, event: AgentEvent): void {
 	planHandoffs.observe(sessionId, event);
 }
 
-export async function getOrCreateSession(cwd: string, _modelId: string, project?: string): Promise<AgentSession> {
-	// A project-less conversation runs in a directory under the app's home, and that directory can
-	// be gone — swept by a version of this app that used to, or removed by hand. Put it back before
-	// a session is built around a working directory that is not there.
-	await ensureSessionWorkspace(cwd).catch(() => false);
-
-	const appSettings = deps.settings();
-	// Generate a temporary session id prefix for potential worktree naming
-	const tempId = Math.random().toString(36).slice(2, 10);
-	/*
-	 * A scheduled run has no composer to choose in, so the setting decides. Asked here rather than in
-	 * `autoCreateSessionWorktree`, which only makes what it is asked for: a conversation's own choice
-	 * reaches it through `workspaceSetup`, and must not be overruled by the setting on the way.
-	 */
-	const worktreeResult: { cwd: string; worktreeCreated: boolean; branch?: string; base?: string } = appSettings.worktrees?.autoCreateOnNewSession
-		? await autoCreateSessionWorktree(cwd, appSettings, tempId).catch(() => ({ cwd, worktreeCreated: false }))
-		: { cwd, worktreeCreated: false };
-	const sessionCwd = worktreeResult.cwd;
-
-	const browser = createBrowserTools();
-	// `emit` closes over `session`, which is only ever invoked after `initialize()` has
-	// assigned `meta`, so the self-reference is safe — but it needs an explicit type.
-	const session: AgentSession = new AgentSession({
-		cwd: sessionCwd,
-		settings: appSettings,
-		store: deps.store(),
-		extraTools: [...browser.tools, ...peerTools, ...sessionOps],
-		emit: (event: AgentEvent) => broadcast(session.meta.id, event),
-		// 一轮收尾、缓存还热时先压掉越线的历史；侧边聊天和命令行不开，见 `AgentSessionOptions.compactWhenIdle`。
-		compactWhenIdle: true,
-		suggestFollowups: true,
-	});
-	await session.initialize();
-	// Filed under the project it ran for, not under a folder of its own (`SessionMeta.worktree`, `SessionMeta.project`).
-	const worktree = worktreeResult.worktreeCreated && worktreeResult.branch
-		? { worktree: { project: cwd, branch: worktreeResult.branch, ...(worktreeResult.base ? { base: worktreeResult.base } : {}) } }
-		: {};
-	if (project || "worktree" in worktree) {
-		await session.log.append({ type: "meta", meta: { ...session.meta, ...worktree, ...(project ? { project } : {}) } });
-	}
-	sessions.set(session.meta.id, session);
-	ready.add(session.meta.id);
-	browsers.set(session.meta.id, browser.dispose);
-
-	// Trigger async cleanup if enabled in settings
-	if (appSettings.worktrees?.autoCleanOld) {
-		// Every conversation that may come back to its worktree, not only the ones running now.
-		void deps.store().listSessions().then((all) => {
-			const inUse = new Set([...Array.from(sessions.values()).map((s) => s.cwd), ...all.filter((meta) => !meta.archived).map((meta) => meta.cwd)]);
-			return cleanOldWorktrees(cwd, appSettings, inUse);
-		}).catch(() => {});
-	}
-
+/**
+ * A scheduled run's conversation, started the way every conversation is.
+ *
+ * Stored first and activated like any other (`startStoredSession`), so a scheduled run gets the same
+ * worktree, the same shared MCP servers and the same reason on record when its worktree could not be
+ * made. It has no composer to choose in, so `createStoredSession` takes the setting as the choice.
+ */
+export async function getOrCreateSession(cwd: string, modelId: string, project?: string): Promise<AgentSession> {
+	const saved = await createStoredSession(deps.store(), deps.settings(), cwd, modelId, undefined, project);
+	const session = await ensureLiveSession(saved.meta.id);
+	if (!session) throw new Error(nativeText("sessions.notFound"));
 	return session;
+}
+
+/**
+ * Make room among a project's conversation worktrees once one more was made (`cleanOldWorktrees`).
+ * Every conversation that may come back to its worktree counts as using it, not only the ones running now.
+ */
+function cleanOldWorktreesAfter(project: string): void {
+	void deps.store().listSessions().then((all) => {
+		const inUse = new Set([...Array.from(sessions.values()).map((s) => s.cwd), ...all.filter((meta) => !meta.archived).map((meta) => meta.cwd)]);
+		return cleanOldWorktrees(project, deps.settings(), inUse);
+	}).catch(() => {});
 }
 
 /**
@@ -510,10 +479,11 @@ async function startStoredSession(sessionId: string): Promise<AgentSession | nul
 				...session.meta,
 				cwd: prepared.cwd,
 				workspaceSetup: undefined,
-				...(prepared.worktreeCreated && prepared.branch
-					? { worktree: { project, branch: prepared.branch, ...(prepared.base ? { base: prepared.base } : {}) }, worktreeError: undefined }
+				...(prepared.worktree
+					? { worktree: prepared.worktree, worktreeError: undefined }
 					: { worktreeError: prepared.error || "git worktree add" }),
 			} });
+			if (prepared.worktree) cleanOldWorktreesAfter(project);
 		} else {
 			/*
 			 * Its worktree was taken back — archived, or cleaned up — and it is in use again

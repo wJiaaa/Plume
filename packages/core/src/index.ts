@@ -221,7 +221,7 @@ export {
 	thinkingOptionsFor,
 	THINKING_LEVELS,
 } from "./ai/thinking-options.ts";
-export { lastPassAt, runMemoryPass, shouldRunPass } from "./runtime/memory/memory-pass.ts";
+export { runMemoryPass } from "./runtime/memory/memory-pass.ts";
 export { resolveModelRef } from "./config/model-choice.ts";
 export { isImageModel } from "./config/image-models.ts";
 export { generateImages } from "./images/generate.ts";

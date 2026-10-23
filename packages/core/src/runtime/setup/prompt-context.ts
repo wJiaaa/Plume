@@ -70,14 +70,13 @@ export async function loadPromptContext(input: Pick<SystemPromptInput, "cwd" | "
 		customInstructions: [sharedInstructions, settings.personalization?.customInstructions].filter(Boolean).join("\n\n"),
 		tone: settings.personalization?.tone,
 		memorySnippet: memory.memorySnippet,
-		projectMemory: memory.projectMemory,
 		projectMemoryFiles: memory.projectMemoryFiles,
 		platform: platform(),
 		shell: commandShell(sandboxModeFor(settings.permissionMode)),
 	});
 }
 
-const NO_MEMORY = { memorySnippet: "", projectMemory: "", projectMemoryFiles: [] };
+const NO_MEMORY = { memorySnippet: "", projectMemoryFiles: [] };
 
 interface PromptCapabilitiesInput {
 	settings: Settings;

@@ -18,6 +18,7 @@ import { test } from "node:test";
 
 import { HANDOFF_SCHEMA, runSubAgent, SUB_AGENT_CHECKPOINT_TURNS } from "../src/runtime/sub-agent/sub-agent.ts";
 import { SubAgentRegistry } from "../src/runtime/sub-agent/sub-agents.ts";
+import { DetachedDispatches } from "../src/runtime/sub-agent/detached-dispatches.ts";
 import { useCompaction } from "../src/runtime/compaction/compaction.ts";
 import { taskTool } from "../src/tools/task.ts";
 import { runTools } from "../src/agent/tool-run.ts";
@@ -28,7 +29,7 @@ import type { AgentDefinition } from "../src/agents-builtin.ts";
 import type { AgentEvent } from "../src/agent/events.ts";
 import type { Settings } from "../src/config/settings.ts";
 import type { ToolEnvironment } from "../src/agent/run-config.ts";
-import type { AssistantMessage, LlmContext, Message, ModelConfig, ProviderConfig, SubAgentAnswer, SubAgentInput, Tool, ToolContext } from "../src/types.ts";
+import type { AssistantMessage, LlmContext, Message, ModelConfig, ProviderConfig, Tool, ToolContext } from "../src/types.ts";
 import { emptyUsage } from "../src/types.ts";
 
 const MODEL: ModelConfig = {
@@ -127,7 +128,7 @@ interface Harness {
 	/** 每一次请求：发了哪些消息、桌上有哪些工具（`schemas` 是它们原样序列化的定义）。 */
 	requests: { messages: Message[]; tools: string[]; schemas: string }[];
 	run(
-		input: { prompt: string; resume?: string; agentType?: string; onResumable?: (id: string) => void },
+		input: { prompt: string; resume?: string; agentType?: string },
 		reply: (turn: number, context: LlmContext) => AssistantMessage | Promise<AssistantMessage>,
 		options?: { signal?: AbortSignal; admission?: (signal: AbortSignal) => Promise<() => void> },
 	): ReturnType<typeof runSubAgent>;
@@ -407,26 +408,8 @@ test("resuming is refused, with a sentence to act on, when it cannot work", asyn
 		return says("看完了");
 	});
 	await gate.promise;
-	await assert.rejects(resume!, /还在跑/);
+	await assert.rejects(resume!, /还在后台跑/);
 	await running;
-
-	const orphan = await runSubAgent(
-		{
-			sessionId: "s2",
-			cwd: "/tmp",
-			settings: { thinking: "off" } as unknown as Settings,
-			tools: [read],
-			skills: [],
-			agents: [GENERAL],
-			requestApproval: async () => "once",
-			emit: async () => {},
-			streamFn: async () => says("好"),
-		},
-		{ description: "d", prompt: "p" },
-		PROVIDER,
-		MODEL,
-	);
-	assert.equal(orphan.id, undefined, "a host with no registry keeps nothing, so it hands out no id to resume by");
 });
 
 test("the short tail of an id is enough to resume by", async () => {
@@ -452,59 +435,33 @@ function taskContext(registry: SubAgentRegistry, spawn: ToolContext["spawnSubAge
 	} as unknown as ToolContext;
 }
 
-test("the parent is told the sub-agent is still there and how to continue it — not to split the task and dispatch again", async () => {
-	const registry = new SubAgentRegistry();
-	const result = await taskTool.execute(
-		{ description: "梳理", prompt: "梳理登录流程" },
-		taskContext(registry, async () => ({ text: "⚠ 到了检查点……\n\n入口在 auth.ts:42", id: "s1:sub:abcd1234", incomplete: true })),
-	);
-	const said = text({ role: "user", content: result.content } as unknown as Message);
-
-	assert.match(said, /resume: "s1:sub:abcd1234"/, "the exact call to make");
-	assert.match(said, /\*\*不要\*\*重新派一个/, "and the one not to make");
-	assert.doesNotMatch(said, /拆小/);
-	assert.equal((result.details as { subAgentId?: string }).subAgentId, "s1:sub:abcd1234");
-});
-
-test("a finished sub-agent's id is handed over too, for a follow-up question", async () => {
+test("dispatching hands the parent the id at once, without pointing it at resume", async () => {
+	const dispatches = new DetachedDispatches(() => {});
 	const result = await taskTool.execute(
 		{ description: "找", prompt: "找登录入口" },
-		taskContext(new SubAgentRegistry(), async () => ({ text: "在 auth.ts:42", id: "s1:sub:abcd1234" })),
+		taskContext(new SubAgentRegistry(), async () => dispatches.dispatch(new Promise(() => {}), () => "s1:sub:abcd1234")),
 	);
 	const said = text({ role: "user", content: result.content } as unknown as Message);
-	assert.ok(said.startsWith("在 auth.ts:42"), "the answer first");
+	assert.match(said, /已派出/);
 	assert.match(said, /s1:sub:abcd1234/);
-	assert.doesNotMatch(said, /不要/, "a clean finish carries no warning");
-});
-
-test("one the user stopped from the pane is not to be resumed on the model's own initiative", async () => {
-	const result = await taskTool.execute(
-		{ description: "找", prompt: "找" },
-		taskContext(new SubAgentRegistry(), async () => ({ text: "读到一半", id: "s1:sub:abcd1234", stoppedByUser: true })),
-	);
-	const said = text({ role: "user", content: result.content } as unknown as Message);
-	assert.match(said, /用户在面板上手动停下的/);
-	assert.doesNotMatch(said, /resume: "/);
+	assert.doesNotMatch(said, /resume: "/, "its result comes back by itself; a resume here is a second dispatch");
+	assert.deepEqual(result.details, { kind: "task", description: "找", subAgentId: "s1:sub:abcd1234", agentType: "general", detached: true });
 });
 
 test("task routes a resume to the same sub-agent, and turns a refusal into the refusal itself", async () => {
 	const h = harness();
 	const first = await h.run({ prompt: "看" }, () => says("看完了"));
-	let routed: unknown;
 	const ok = await taskTool.execute(
 		{ description: "接着", prompt: "再看看", resume: first.id!, subagent_type: "explore" },
-		taskContext(h.registry, async (input) => {
-			routed = input;
-			return { text: "好", id: first.id };
-		}),
+		taskContext(h.registry, (input) => h.run(input, () => says("还是那样"))),
 	);
-	const { onResumable: _onResumable, ...asked } = routed as SubAgentInput;
-	assert.deepEqual(asked, { description: "接着", prompt: "再看看", agentType: "general", resume: first.id }, "it is general because that is what it was dispatched as");
 	assert.equal(ok.isError, undefined);
+	assert.equal(h.registry.list().length, 1, "the same row, not a second one");
+	assert.equal(h.registry.list()[0]!.agent, "general", "it is general because that is what it was dispatched as");
 
 	const refused = await taskTool.execute(
 		{ description: "接着", prompt: "再看看", resume: "s1:sub:gone0000" },
-		taskContext(h.registry, async () => assert.fail("a resume that cannot work must not dispatch anything")),
+		taskContext(h.registry, (input) => h.run(input, () => assert.fail("a resume that cannot work must not run anything"))),
 	);
 	assert.equal(refused.isError, true);
 	const said = text({ role: "user", content: refused.content } as unknown as Message);
@@ -513,14 +470,8 @@ test("task routes a resume to the same sub-agent, and turns a refusal into the r
 });
 
 // ---------------------------------------------------------------------------
-// 5. 整轮被停：「已取消」里要带着能续跑的那一个
+// 5. 整轮被停
 // ---------------------------------------------------------------------------
-
-/*
- * 真实会话（2026-10-03）：主会话在一个 explore 跑到第 19 秒时被停下，`task` 的结果只剩一句通用的
- * 「Tool execution was cancelled」——停止和调用赛跑，赢的那一方不知道子代理是谁。用户说「继续」，
- * 模型的原话是「上一个子代理被取消了，我需要重新派它」，同一件事从零又花了 61.6k。
- */
 
 const taskCall = (args: Record<string, unknown>) => ({ type: "toolCall" as const, id: "t1", name: "task", arguments: args, argumentsText: JSON.stringify(args) });
 
@@ -539,50 +490,6 @@ function stoppableTurn(registry: SubAgentRegistry, spawn: ToolContext["spawnSubA
 		async () => {},
 	);
 }
-
-test("a turn stopped mid-dispatch still tells the model which sub-agent to resume, and resuming it works", async () => {
-	const h = harness();
-	const stop = new AbortController();
-	let running: Promise<SubAgentAnswer> | undefined;
-	const [message] = await stoppableTurn(
-		h.registry,
-		(input) =>
-			(running = h.run(
-				input,
-				(turn) => {
-					if (turn === 0) return reads(0);
-					// 第二次请求的时候人按了停止：供应商那边的流随之断开。
-					stop.abort();
-					return assistant([], "aborted");
-				},
-				{ signal: stop.signal },
-			)),
-		stop.signal,
-	);
-	const [row] = h.registry.list();
-	const said = text(message as Message);
-
-	assert.match(said, /^Tool execution was cancelled/, "it is still a stop, said first");
-	assert.match(said, new RegExp(`resume: "${row!.id}"`), "with the call that continues it");
-	assert.match(said, /\*\*不要\*\*重新派一个/);
-	assert.equal(message!.isError, true);
-	assert.deepEqual(
-		{ cancelled: (message!.details as { cancelled?: boolean }).cancelled, subAgentId: (message!.details as { subAgentId?: string }).subAgentId },
-		{ cancelled: true, subAgentId: row!.id },
-		"the card still reads as stopped, and can find its row by id",
-	);
-
-	// 停止那一刻它还在收尾；收完了，上下文留着。
-	await running;
-	const resumedFrom = h.requests.length;
-	const answer = await taskTool.execute(
-		{ description: "接着", prompt: "接着梳理", resume: row!.id },
-		taskContext(h.registry, (input) => h.run(input, () => says("登录在 auth.ts:42"))),
-	);
-	assert.equal(answer.isError, undefined);
-	assert.equal(h.registry.list().length, 1, "the same row, not a second one");
-	assert.match(text(h.requests[resumedFrom]!.messages.find((one) => one.role === "toolResult")), /内容：src\/file-0\.ts/, "what it read before the stop is still in its context");
-});
 
 test("one stopped while still queued has nothing to resume, so the stop says only that it was stopped", async () => {
 	const h = harness();

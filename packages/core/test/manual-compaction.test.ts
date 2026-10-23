@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { DEFAULT_SETTINGS } from "../src/config/settings.ts";
-import type { SettledDispatch } from "../src/runtime/sub-agent/delegation-waits.ts";
+import type { SettledDispatch } from "../src/runtime/sub-agent/detached-dispatches.ts";
 import { AgentSession } from "../src/runtime/agent-session/session.ts";
 import { SessionStore } from "../src/session/store.ts";
 import { emptyUsage, type AssistantMessage, type Message, type ModelConfig, type ProviderConfig } from "../src/types.ts";

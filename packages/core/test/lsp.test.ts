@@ -174,6 +174,33 @@ test("a backend that throws on start degrades rather than propagating", async ()
 	assert.equal(await manager.acquire(join(root, "src", "core.ts"), root), null, "a broken server is the same as no server");
 });
 
+test("a backend that failed to start is tried again on the next call", async () => {
+	let starts = 0;
+	let ready = false;
+	const flaky: CodeIntelBackend = {
+		name: "flaky",
+		extensions: [".ts"],
+		available: async () => true,
+		start: async () => {
+			starts += 1;
+			if (starts === 1) throw new Error("boom");
+			ready = true;
+		},
+		ready: () => ready,
+		references: async () => [],
+		definition: async () => [],
+		diagnostics: async () => [],
+		rename: async () => [],
+		dispose: async () => {},
+	};
+	const manager = new CodeIntelManager([flaky]);
+	const file = join(root, "src", "core.ts");
+	assert.equal(await manager.acquire(file, root), null);
+	assert.equal(await manager.acquire(file, root), flaky, "one failed start must not switch the server off for the session");
+	assert.equal(starts, 2);
+	await manager.dispose();
+});
+
 test("dispose reaches every backend", async () => {
 	let disposed = 0;
 	const backend = (ext: string): CodeIntelBackend => ({

@@ -6,14 +6,14 @@
  */
 
 import { existsSync } from "node:fs";
-import { mkdir, rm, stat } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
-import type { Settings } from "@plume/core";
+import type { SessionMeta, Settings } from "@plume/core";
 import { git } from "./git-exec.ts";
 import { gitBranch, isGitRepo, worktreeRecords } from "./git-probe.ts";
 import { canonicalPath } from "../path-key.ts";
-import { repoRoot, uncommittedFiles } from "./worktree-lifecycle.ts";
+import { removeLinkedWorktree, repoRoot } from "./worktree-lifecycle.ts";
 
 export interface WorktreeCreateOptions {
 	/**
@@ -25,8 +25,6 @@ export interface WorktreeCreateOptions {
 	targetDir: string;
 	/** Whether to fetch upstream before creating */
 	fetchUpstream?: boolean;
-	/** Base ref/commit/branch to start from, e.g. "HEAD" or "main" */
-	baseRef?: string;
 }
 
 export interface WorktreeResult {
@@ -86,11 +84,7 @@ export async function createWorktree(
 		// Ensure parent directory exists
 		await mkdir(join(target, ".."), { recursive: true });
 		// `-B` so re-running with the same name resets or creates branch cleanly
-		const args = ["worktree", "add", "-B", safe, target];
-		if (options.baseRef) {
-			args.push(options.baseRef);
-		}
-		await git(cwd, args);
+		await git(cwd, ["worktree", "add", "-B", safe, target]);
 		/*
 		 * The canonical spelling, not the one that was passed in.
 		 *
@@ -107,62 +101,6 @@ export async function createWorktree(
 }
 
 /**
- * 这个路径是不是 git 自己认的一棵工作树。
- *
- * 问 `git worktree list` 而不是看目录长什么样：只有 git 说它是，删掉它才是「移除一棵工作树」，
- * 否则就只是删一个目录。比对走 canonical 形式，因为 git 印的是解析过的长名，而调用方手上那个
- * 往往是拼出来的——`创建` 那一侧的注释说过同一件事。
- */
-async function isKnownWorktree(cwd: string, target: string): Promise<boolean> {
-	const want = canonicalPath(target);
-	return (await worktreeRecords(cwd)).some((tree) => canonicalPath(tree.path) === want);
-}
-
-/**
- * Removes a git worktree and prunes git metadata.
- */
-export async function removeWorktree(
-	cwd: string,
-	worktreePath: string,
-	force = true,
-): Promise<{ ok: boolean; error?: string }> {
-	try {
-		const args = ["worktree", "remove"];
-		if (force) args.push("--force");
-		args.push(worktreePath);
-		await git(cwd, args);
-		await git(cwd, ["worktree", "prune"]);
-		return { ok: true };
-	} catch (cause) {
-		/*
-		 * 兜底那一步会 `rm -rf`，所以先问清楚删的是什么。
-		 *
-		 * 原来这里是「git 那条命令失败了 → 如果路径存在就递归删掉」。失败的原因有很多种，「这
-		 * 根本不是一棵工作树」是其中最常见的一种——于是传进来一个普通目录，git 拒绝，兜底把它整
-		 * 个删了。这个函数由 `git:removeWorktree` 这个 IPC 直接暴露给渲染进程，也就是说渲染进程
-		 * 拿着一个任意路径就能触发一次递归删除。
-		 *
-		 * 现在只删 `git worktree list` 里确实有的那条。那也正是这个兜底原本要救的场景：目录被人
-		 * 手动删过、git 的元数据还挂着，此时 `remove` 会失败而 `list` 仍然认得它。
-		 */
-		try {
-			if (!(await isKnownWorktree(cwd, worktreePath))) {
-				const why = cause instanceof Error && "stderr" in cause ? String(cause.stderr) : String(cause);
-				return { ok: false, error: why.trim() || "这个路径不是当前仓库的工作树" };
-			}
-			if (existsSync(worktreePath)) {
-				await rm(worktreePath, { recursive: true, force: true });
-			}
-			await git(cwd, ["worktree", "prune"]);
-			return { ok: true };
-		} catch (fallbackError) {
-			const message = cause instanceof Error && "stderr" in cause ? String(cause.stderr) : String(cause);
-			return { ok: false, error: message.trim() || String(fallbackError) };
-		}
-	}
-}
-
-/**
  * A worktree of its own, for a conversation that asked for one (`SessionMeta.workspaceSetup`).
  *
  * The marker is the decision. It is made per conversation — in the composer, starting from
@@ -170,16 +108,17 @@ export async function removeWorktree(
  * what used to make a choice in the composer impossible: off in settings meant never, whatever the
  * conversation had been told.
  *
- * `error` says why when there is no worktree, for the conversation to be told: it then runs in the
- * project itself, and the person who asked for a separate copy has to know it did not get one.
+ * `worktree` is what the conversation's meta records once it has one. `error` says why when there is
+ * none, for the conversation to be told: it then runs in the project itself, and the person who asked
+ * for a separate copy has to know it did not get one.
  */
 export async function autoCreateSessionWorktree(
 	projectCwd: string,
 	settings: Settings,
 	sessionId: string,
-): Promise<{ cwd: string; worktreeCreated: boolean; branch?: string; base?: string; error?: string }> {
+): Promise<{ cwd: string; worktree?: NonNullable<SessionMeta["worktree"]>; error?: string }> {
 	if (!(await isGitRepo(projectCwd))) {
-		return { cwd: projectCwd, worktreeCreated: false, error: "not a git repository" };
+		return { cwd: projectCwd, error: "not a git repository" };
 	}
 
 	const branchName = `plume/session-${sessionId.slice(0, 8)}`;
@@ -194,14 +133,17 @@ export async function autoCreateSessionWorktree(
 		targetDir,
 		fetchUpstream: settings.worktrees?.fetchUpstreamBeforeCreate ?? false,
 	});
-	if (!result.ok || !result.path) return { cwd: projectCwd, worktreeCreated: false, error: result.error };
+	if (!result.ok || !result.path) return { cwd: projectCwd, error: result.error };
 	/*
 	 * The same folder inside the copy: a project that is one package of a repository keeps running in
 	 * that package. Only if the copy has it — a folder never committed is not checked out there.
 	 */
 	const inside = relative(canonicalPath(root), canonicalPath(projectCwd));
 	const nested = inside && !inside.startsWith("..") && !isAbsolute(inside) ? join(result.path, inside) : null;
-	return { cwd: nested && existsSync(nested) ? nested : result.path, worktreeCreated: true, branch: branchName, ...(base ? { base } : {}) };
+	return {
+		cwd: nested && existsSync(nested) ? nested : result.path,
+		worktree: { project: projectCwd, root: result.path, branch: branchName, ...(base ? { base } : {}) },
+	};
 }
 
 /**
@@ -249,10 +191,8 @@ export async function cleanOldWorktrees(
 	let cleaned = 0;
 	for (const tree of aged) {
 		if (cleaned >= ours.length - keepLimit) break;
-		if (held(tree.path) || (await uncommittedFiles(tree.path)).length > 0) continue;
-		const removed = await git(repoCwd, ["worktree", "remove", tree.path]).then(() => true, () => false);
-		if (removed) cleaned++;
+		// Not forced, so git itself refuses one holding uncommitted changes.
+		if (!held(tree.path) && (await removeLinkedWorktree(repoCwd, tree.path)).ok) cleaned++;
 	}
-	if (cleaned > 0) await git(repoCwd, ["worktree", "prune"]).catch(() => "");
 	return cleaned;
 }

@@ -45,11 +45,12 @@ import type { PromptContext } from "../../prompt/context.ts";
 import { currentSections, diffSections, promptSections, promptUpdateMessage } from "../../prompt/update.ts";
 import { buildTurnConfig } from "./turn-config.ts";
 import { PLAN_MODE_KEY, planModeTools, unsubmittedPlanCheck } from "../plan/plan-mode.ts";
-import { SUBMIT_PLAN_TOOL_NAME } from "../plan/plan-view.ts";
+import { approvedPlanOf, SUBMIT_PLAN_TOOL_NAME } from "../plan/plan-view.ts";
 import { submitPlanTool } from "../plan/plan-tool.ts";
 import { recordPlanMode } from "./session-model.ts";
 import type { SubAgentRegistry } from "../sub-agent/sub-agents.ts";
-import type { DelegationWaits } from "../sub-agent/delegation-waits.ts";
+import type { DetachedDispatches } from "../sub-agent/detached-dispatches.ts";
+import type { SpokenWaits } from "./spoken-waits.ts";
 
 export interface TurnInputs {
 	cwd: string;
@@ -68,9 +69,10 @@ export interface TurnInputs {
 	emit: (event: AgentEvent) => Promise<void>;
 	drainSteering: () => Message[];
 	/** Where sub-agents dispatched by this turn register — see `runtime/sub-agent/sub-agents.ts`. */
-	subAgents?: SubAgentRegistry;
-	/** 这一轮派出去的子代理：派出即放手、跑完送回——见 `delegation-waits.ts`。 */
-	delegations?: DelegationWaits;
+	subAgents: SubAgentRegistry;
+	/** 这一轮派出去的子代理：派出即放手、跑完送回——见 `detached-dispatches.ts`。 */
+	dispatches: DetachedDispatches;
+	spokenWaits: SpokenWaits;
 	/** 这场对话此刻设定的模型——一轮之内也会变。见 `AgentModelContext.liveModel`。 */
 	liveModel?: LiveModel;
 	/** 侧边聊天：自己的身份和准则、一小组工具。见 `side-session.ts` 和 `PromptProfile`。 */
@@ -161,15 +163,15 @@ async function runPromptHooks(input: TurnInputs, hooks: TurnHooks): Promise<bool
 	const text = prompt.displayText || prompt.content.map((part) => (part.type === "text" ? part.text : "")).join("");
 	const attachments = prompt.attachments?.map((attachment, at) => `${at + 1}:${attachment.name}`).join("\n");
 	const submitted = await runUserPromptSubmitHooks(hooks, text, attachments);
-	if (submitted.preventContinuation) {
+	if (submitted.decision === "deny") {
 		if (await log.truncateFrom(index)) await input.emit({ type: "rewound", messageCount: log.messages.length });
 		// 刚注入的 SessionStart 上下文排在这句后面，跟着一起截掉了；不重置，这个会话就再也拿不到它。
 		if (startedNow) can.state.delete(SESSION_START_KEY);
 		await input.emit({
 			type: "notice",
 			level: "warn",
-			message: `UserPromptSubmit 钩子拦下了这条消息：${submitted.stopReason ?? "未说明原因"}`,
-			...(submitted.stopReason ? { code: "prompt-blocked", params: { reason: submitted.stopReason } } : { code: "prompt-blocked-silent" }),
+			message: `UserPromptSubmit 钩子拦下了这条消息：${submitted.reason ?? "未说明原因"}`,
+			...(submitted.reason ? { code: "prompt-blocked", params: { reason: submitted.reason } } : { code: "prompt-blocked-silent" }),
 		});
 		await input.emit({ type: "agent_end", reason: "done" });
 		return false;
@@ -230,7 +232,7 @@ async function recordTurnEvent(log: SessionLog, event: AgentEvent): Promise<void
 /** 一条 `submit_plan` 的结果，而且是批准的那种。 */
 function approvedPlan(message: Message): boolean {
 	if (message.role !== "toolResult" || message.toolName !== SUBMIT_PLAN_TOOL_NAME || message.isError) return false;
-	return (message.details as { kind?: string } | undefined)?.kind === "plan";
+	return approvedPlanOf(message.details) !== undefined;
 }
 
 /**
@@ -305,22 +307,20 @@ async function assembleTurn(input: TurnInputs, hooks: TurnHooks): Promise<{ conf
 	const allowed = profile ? offered.filter((tool) => profile.tools.has(tool.name)) : offered;
 	const { tools: bare, dispatchLimits } = promptCapabilities({ settings, tools: allowed });
 	/*
-	 * 计划模式按每轮开始时的会话元数据定，开关写进状态图：这一轮里批准计划就是把它关掉，包着的
-	 * 工具从此放行，不用换表。
+	 * 计划模式的开关在状态图里，每轮开始按会话元数据写入。工具一律包一层：包的只是 `execute`、
+	 * 定义逐字节不变，开关是运行时读的——跑到一半打开、批准计划关掉，都在下一次调用就生效。
 	 */
 	const planMode = input.planMode === true;
 	can.state.set(PLAN_MODE_KEY, planMode);
-	const tools = planMode ? planModeTools(bare, can.state) : bare;
+	const tools = planModeTools(bare, can.state);
 
 	/*
 	 * Where `agent://` finds the sub-agents this session dispatched.
 	 *
 	 * Put in the state map rather than handed to the router, because the router is built once per
-	 * session while the registry arrives per turn — and a session with no registry (the CLI, a
-	 * test) should leave `agent://` resolving to "this session has no sub-agents" rather than to
-	 * a stale one.
+	 * session while the registry arrives per turn.
 	 */
-	if (input.subAgents) can.state.set(SUBAGENTS_KEY, input.subAgents);
+	can.state.set(SUBAGENTS_KEY, input.subAgents);
 
 	const prompt = await settlePrompt(input, await loadPromptContext({
 		cwd, settings, tools, skills: can.skills, agents: can.agents,
@@ -370,7 +370,8 @@ async function assembleTurn(input: TurnInputs, hooks: TurnHooks): Promise<{ conf
 			transcript: () => log.transcript(),
 			// Where anything this turn delegates registers itself, so it can be watched and steered.
 			subAgents: input.subAgents,
-			delegations: input.delegations,
+			dispatches: input.dispatches,
+			spokenWaits: input.spokenWaits,
 			liveModel: input.liveModel,
 			signal: input.signal,
 			streamFn: input.streamFn,

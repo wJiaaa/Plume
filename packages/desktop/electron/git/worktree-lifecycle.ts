@@ -15,6 +15,7 @@ import { git, run } from "./git-exec.ts";
 import { parseStatusZ } from "./git-parse.ts";
 import { worktreeRecords } from "./git-probe.ts";
 import type { WorktreeState } from "@plume/contract";
+import { nativeText } from "../i18n.ts";
 import { canonicalPath, samePath } from "../path-key.ts";
 
 export type Owned = Pick<SessionMeta, "cwd" | "worktree">;
@@ -29,12 +30,15 @@ export async function repoRoot(dir: string): Promise<string | null> {
 }
 
 /**
- * The worktree's own top folder. `cwd` is that folder — or, for a project that is one package of a
- * repository, the package inside it (`autoCreateSessionWorktree`): the same arithmetic, run backwards
- * when the folder is not there to ask.
+ * The worktree's own top folder, as recorded when it was made (`worktree.root`).
+ *
+ * One made before that was recorded has only `cwd`: that folder, or — for a project that is one
+ * package of a repository — the package inside it (`autoCreateSessionWorktree`), and the same
+ * arithmetic is run backwards when the folder is not there to ask.
  */
 export async function worktreeRootOf(meta: Owned): Promise<string | null> {
 	if (!meta.worktree) return null;
+	if (meta.worktree.root) return meta.worktree.root;
 	if (existsSync(meta.cwd)) return repoRoot(meta.cwd);
 	const repo = await repoRoot(meta.worktree.project);
 	if (!repo) return null;
@@ -101,10 +105,35 @@ export async function worktreeState(meta: Owned): Promise<WorktreeState | null> 
 	};
 }
 
-/** Whether `root` is one of `repo`'s linked worktrees — asked of git, never inferred from the folder's name. */
+/**
+ * Whether `root` is one of `repo`'s linked worktrees — asked of git, never inferred from the folder's name.
+ *
+ * Never the main checkout: `git worktree list` names it first, and `repo` may be a folder inside it
+ * rather than its top, so comparing with `repo` alone let the main checkout through.
+ */
 async function isWorktreeOf(repo: string, root: string): Promise<boolean> {
 	if (samePath(repo, root)) return false;
-	return (await worktreeRecords(repo)).some((tree) => samePath(tree.path, root));
+	return (await worktreeRecords(repo)).slice(1).some((tree) => samePath(tree.path, root));
+}
+
+/**
+ * Remove one of `repo`'s linked worktrees — the one way any of them is removed.
+ *
+ * Without `force` git refuses one holding changes, and its refusal is what comes back: `force` is only
+ * for what a person agreed to lose. A folder deleted by hand fails `remove` while git still lists it,
+ * and `prune` clears that. Nothing here deletes a folder itself: the `rm -rf` fallback that once did
+ * ran on whatever git refused, and the main checkout was among what it would refuse.
+ */
+export async function removeLinkedWorktree(repo: string, root: string, force = false): Promise<{ ok: boolean; error?: string }> {
+	if (!(await isWorktreeOf(repo, root))) return { ok: false, error: nativeText("git.notLinkedWorktree") };
+	const removed = await run(repo, ["worktree", "remove", ...(force ? ["--force"] : []), root]);
+	if (!removed.ok && existsSync(root)) {
+		// The usual refusal, said in the interface's language rather than git's.
+		const changes = force ? [] : await uncommittedFiles(root);
+		return changes.length > 0 ? { ok: false, error: nativeText("git.worktreeDirty", { count: changes.length }) } : removed;
+	}
+	await run(repo, ["worktree", "prune"]);
+	return { ok: true };
 }
 
 export interface Reclaimed {
@@ -135,10 +164,8 @@ export async function reclaimWorktree(meta: Owned, options: { discardUncommitted
 		if (!(await isWorktreeOf(repo, root))) return { removed: false };
 		const dirty = (await uncommittedFiles(root)).length > 0 || (await isMerging(root));
 		if (dirty && !options.discardUncommitted) return { removed: false, kept: "uncommitted" };
-		// `--force` only for what was agreed to: plain `remove` refuses a worktree with anything in it.
-		removed = (await run(repo, ["worktree", "remove", ...(dirty ? ["--force"] : []), root])).ok;
+		removed = (await removeLinkedWorktree(repo, root, dirty)).ok;
 		if (!removed) return { removed: false };
-		await run(repo, ["worktree", "prune"]);
 	}
 	let branchDropped = false;
 	const { branch } = meta.worktree;

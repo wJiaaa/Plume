@@ -19,6 +19,9 @@ import { annotateInjected, EXTRACTED_KEY, markInjected, projectInjectedPath, rea
 import { addMemoryEntry, loadMemory, memoryPath } from "../src/runtime/memory/memory.ts";
 import { projectMemoryDir, recordLesson } from "../src/runtime/memory/project-memory.ts";
 
+/** 项目记忆注入进提示词的全文：各文件的片段按顺序接起来。 */
+const projectText = (memory: { projectMemoryFiles: { content: string }[] }) => memory.projectMemoryFiles.map((file) => file.content).join("");
+
 let home: string;
 let project: string;
 
@@ -34,7 +37,7 @@ after(async () => {
 });
 
 test("marking writes the sidecar and leaves memory.json byte-for-byte alone", async () => {
-	const entry = await addMemoryEntry("用 pnpm", "user");
+	const entry = await addMemoryEntry("用 pnpm");
 	const before = await readFile(memoryPath(), "utf8");
 
 	const wrote = await markInjected(userInjectedPath(), [entry.id], 1_000_000, 0);
@@ -64,7 +67,7 @@ test("a corrupt or missing sidecar reads as empty rather than throwing", async (
 });
 
 test("接线：一轮的 gatherMemory 把两边都盖上今天的戳", async () => {
-	await addMemoryEntry("回答用中文", "user");
+	await addMemoryEntry("回答用中文");
 	await recordLesson(project, { text: "这个仓库的测试要用 node --test" });
 	await mkdir(projectMemoryDir(project), { recursive: true });
 	await writeFile(join(projectMemoryDir(project), "MEMORY.md"), "# 记忆\n\n- 抽取出来的一条。\n", "utf8");
@@ -72,8 +75,8 @@ test("接线：一轮的 gatherMemory 把两边都盖上今天的戳", async () 
 	const now = 5_000_000;
 	const gathered = await gatherMemory(project, true, now);
 	assert.match(gathered.memorySnippet, /回答用中文/);
-	assert.match(gathered.projectMemory, /node --test/);
-	assert.match(gathered.projectMemory, /抽取出来的一条/);
+	assert.match(projectText(gathered), /node --test/);
+	assert.match(projectText(gathered), /抽取出来的一条/);
 
 	const user = await readInjected(userInjectedPath());
 	const ids = (await loadMemory()).entries.map((e) => e.id);
@@ -83,7 +86,7 @@ test("接线：一轮的 gatherMemory 把两边都盖上今天的戳", async () 
 	assert.equal(proj[EXTRACTED_KEY], now, "and the extracted file as one item");
 
 	const off = await gatherMemory(project, false, now + 1);
-	assert.deepEqual(off, { memorySnippet: "", projectMemory: "", projectMemoryFiles: [] }, "switched off: nothing gathered");
+	assert.deepEqual(off, { memorySnippet: "", projectMemoryFiles: [] }, "switched off: nothing gathered");
 	assert.equal((await readInjected(userInjectedPath()))[ids[0]], now, "and nothing stamped");
 });
 
@@ -91,9 +94,9 @@ test("project memory has an independent switch and inspecting usage never record
 	const before = await readInjected(projectInjectedPath(project));
 	const personalOnly = await gatherMemory(project, true, 90_000_000, false, false);
 	assert.ok(personalOnly.memorySnippet);
-	assert.equal(personalOnly.projectMemory, "");
+	assert.equal(projectText(personalOnly), "");
 	const projectOnly = await gatherMemory(project, false, 90_000_000, true, false);
 	assert.equal(projectOnly.memorySnippet, "");
-	assert.match(projectOnly.projectMemory, /node --test/);
+	assert.match(projectText(projectOnly), /node --test/);
 	assert.deepEqual(await readInjected(projectInjectedPath(project)), before);
 });

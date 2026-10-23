@@ -205,24 +205,11 @@ export function isActive(one: Pick<SubAgentSummary, "status">): boolean {
 /**
  * 这个会话派出去的还有没交差的。
  *
- * 子代理派出即放手（`delegation-waits.ts`）：派完那一轮当场收尾，活其实才开始，结果回来还会再开
+ * 子代理派出即放手（`detached-dispatches.ts`）：派完那一轮当场收尾，活其实才开始，结果回来还会再开
  * 一轮。只看主回合，会话行在它们跑的那十几分钟里不是「已完成」就是什么都没有。
  */
 export function delegating(roster: readonly SubAgentSummary[] | undefined): boolean {
 	return roster?.some(isActive) ?? false;
-}
-
-/**
- * 主会话此刻卡在它派出去的子代理上。
- *
- * 人这时候说的话不该排在它们后面：主会话不是在干活，是在等——等的那十几分钟里，排着的消息一句都
- * 发不出去（2026-09-26 的真实会话）。人一开口，运行时就让主会话放手（`delegation-waits.ts`），
- * 所以这时候消息应当直接送进去，而不是在输入框上方排队。
- *
- * 转到后台的那些不算：主会话已经不等它们了。
- */
-export function awaitingSubAgents(roster: readonly SubAgentSummary[]): boolean {
-	return roster.some((one) => isActive(one) && !one.background);
 }
 
 /** What a sub-agent has spent, in the two numbers a person reads: tokens, and dollars when priced. */

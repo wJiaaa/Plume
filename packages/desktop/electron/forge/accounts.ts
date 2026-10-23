@@ -176,19 +176,24 @@ function isKind(value: unknown): value is ForgeKind {
 }
 
 /**
- * A list with one account replaced or appended, in one operation.
+ * The account a sign-in becomes, given who is already signed in.
  *
- * One function rather than an add and an update because the caller never actually knows which it
- * is doing — "sign in to this host as this person" is the same intent whether or not a tab for
- * them already exists, and the answer must be one tab either way.
+ * "Sign in to this host as this person" is the same intent whether or not a tab for them already
+ * exists, and the answer must be one tab either way: re-adding is nearly always a replaced token.
+ * So the same identity keeps its id — the old token is filed under it and is overwritten rather
+ * than orphaned — and keeps the name somebody gave it unless a new one was typed.
  */
-export function upsert(accounts: ForgeAccount[], next: ForgeAccount): ForgeAccount[] {
-	const at = accounts.findIndex((a) => a.id === next.id || sameIdentity(a, next));
-	if (at < 0) return [...accounts, next];
-	const merged = [...accounts];
-	// The existing id wins, so the token already filed under it stays reachable.
-	merged[at] = { ...next, id: accounts[at].id };
-	return merged;
+export function signedIn(accounts: ForgeAccount[], draft: ForgeAccount, identity: ForgeIdentity): ForgeAccount {
+	const existing = accounts.find((a) => sameIdentity(a, { ...draft, login: identity.login }));
+	return {
+		...draft,
+		id: existing?.id ?? draft.id,
+		login: identity.login,
+		avatarUrl: identity.avatarUrl,
+		label: draft.label || existing?.label || defaultLabel(identity),
+		enabled: true,
+		lastError: "",
+	};
 }
 
 /** `owner/name`, refused rather than guessed at — every driver's request path interpolates both halves. */

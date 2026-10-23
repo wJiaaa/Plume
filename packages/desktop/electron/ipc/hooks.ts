@@ -1,8 +1,9 @@
 /**
  * 设置页的钩子：用户级的在设置文件里，项目级的在 `<cwd>/.plume/config.json` 里。
  *
- * 每个写操作都回一份新的完整列表，因为 `id` 是位置——删掉一条，后面的全都挪了。项目钩子另带
- * 一个 `trusted`：没被信任的在会话里不会运行，设置页据此给出「信任」按钮。
+ * 每个写操作都回一份新的完整列表，因为 `id` 里有位置——删掉一条，后面的全都挪了。`id` 也带着指纹：
+ * 文件在设置页打开期间被别处改过，拿旧 `id` 来的改动和信任一律拒绝，不落到人没看过的那条上。
+ * 项目钩子另带一个 `trusted`：没被信任的在会话里不会运行，设置页据此给出「信任」按钮。
  */
 
 import { ipcMain } from "electron";
@@ -23,6 +24,7 @@ import {
 } from "@plume/core";
 import { applySettings, settings } from "../app-settings.ts";
 import type { HookView, HooksView } from "@plume/contract";
+import { nativeText } from "../i18n.ts";
 
 const KNOWN = new Set(["type", "command", "args", "async", "shell", "statusMessage", "timeout", "timeoutMs", "enabled"]);
 
@@ -62,14 +64,22 @@ async function list(cwd: string | null): Promise<HooksView> {
 	};
 }
 
-async function change(scope: HookScope, cwd: string | null, edit: (config: HooksConfig) => HooksConfig): Promise<HooksView> {
+/** 设置页拿着的这几条还是文件里的那几条。 */
+function current(config: HooksConfig, scope: HookScope, ids: readonly string[]): void {
+	const known = new Set(hookEntries(config, scope).map((entry) => entry.id));
+	if (ids.some((id) => !known.has(id))) throw new Error(nativeText("hooks.stale"));
+}
+
+async function change(scope: HookScope, cwd: string | null, id: string | null, edit: (config: HooksConfig) => HooksConfig): Promise<HooksView> {
 	if (scope === "user") {
+		current(settings().hooks, scope, id ? [id] : []);
 		await applySettings({ ...settings(), hooks: edit(settings().hooks) });
 		return list(cwd);
 	}
 	if (!cwd) throw new Error("没有打开项目，无法修改项目钩子。");
 	const project = await readProjectHooks(cwd);
 	if (project.error) throw new Error(project.error);
+	current(project.config, scope, id ? [id] : []);
 	const before = new Set(hookEntries(project.config, "project").map((entry) => entry.digest));
 	const next = edit(project.config);
 	await writeProjectHooks(cwd, next);
@@ -86,14 +96,15 @@ async function change(scope: HookScope, cwd: string | null, edit: (config: Hooks
 export function registerHooksIpc(): void {
 	ipcMain.handle("hooks:list", async (_event, cwd: string | null) => list(cwd));
 	ipcMain.handle("hooks:save", async (_event, scope: HookScope, cwd: string | null, id: string | null, draft: HookDraft) =>
-		change(scope, cwd, (config) => (id ? updateHook(config, id, draft) : addHook(config, draft))),
+		change(scope, cwd, id, (config) => (id ? updateHook(config, id, draft) : addHook(config, draft))),
 	);
-	ipcMain.handle("hooks:remove", async (_event, scope: HookScope, cwd: string | null, id: string) => change(scope, cwd, (config) => removeHook(config, id)));
+	ipcMain.handle("hooks:remove", async (_event, scope: HookScope, cwd: string | null, id: string) => change(scope, cwd, id, (config) => removeHook(config, id)));
 	ipcMain.handle("hooks:setEnabled", async (_event, scope: HookScope, cwd: string | null, id: string, enabled: boolean) =>
-		change(scope, cwd, (config) => setHookEnabled(config, id, enabled)),
+		change(scope, cwd, id, (config) => setHookEnabled(config, id, enabled)),
 	);
 	ipcMain.handle("hooks:trust", async (_event, cwd: string, ids: string[]) => {
 		const project = await readProjectHooks(cwd);
+		current(project.config, "project", ids);
 		const entries = hookEntries(project.config, "project");
 		const wanted = new Set(ids);
 		await trustHookDigests(cwd, entries.filter((entry) => wanted.has(entry.id)).map((entry) => entry.digest), entries.map((entry) => entry.digest));

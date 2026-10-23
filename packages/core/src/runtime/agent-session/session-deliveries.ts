@@ -1,7 +1,7 @@
 /**
  * Results that finish in the background, carried back into the conversation.
  *
- * Three sources: sub-agents the parent stopped waiting for (`delegation-waits.ts`), background
+ * Three sources: sub-agents dispatched in the background (`detached-dispatches.ts`), background
  * commands that ended (`tools/background-jobs.ts`), and conversations started from this one's
  * suggestion that were asked to report back (`FinishedSession`). All are gathered for a moment and
  * handed to the session as one message — mid-turn it is spliced in, idle it starts a turn. Requests
@@ -13,7 +13,8 @@
  * know whether a stop happened meanwhile.
  */
 
-import { deliveryMessage, type FinishedJob, type FinishedSession, type SettledDispatch } from "../sub-agent/delegation-waits.ts";
+import type { SettledDispatch } from "../sub-agent/detached-dispatches.ts";
+import { deliveryMessage, type FinishedJob, type FinishedSession } from "./delivery-message.ts";
 import type { SessionActivity } from "./session-activity.ts";
 import type { SubAgentSummary } from "../../types/sub-agent.ts";
 import type { BackgroundJob, BackgroundJobs } from "../../tools/background-jobs.ts";

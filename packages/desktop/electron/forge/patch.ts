@@ -73,24 +73,3 @@ export function assembleDiff(files: PatchFile[]): string {
 
 	return out.length ? `${out.join("\n")}\n` : "";
 }
-
-/**
- * How many lines a fragment adds and removes.
- *
- * Needed because the two hosts that return fragments do not return totals, and a review pane that
- * cannot say `+42 −8` is missing the one number people read first. Counted from the fragment
- * rather than trusted from the host, so it agrees with what is actually on screen.
- *
- * The `+++`/`---` guard matters: those lines start with the same characters as content and would
- * otherwise be counted as one added and one removed line in every file.
- */
-export function countLines(patch: string): { added: number; removed: number } {
-	let added = 0;
-	let removed = 0;
-	for (const line of patch.split("\n")) {
-		if (line.startsWith("+++") || line.startsWith("---")) continue;
-		if (line.startsWith("+")) added++;
-		else if (line.startsWith("-")) removed++;
-	}
-	return { added, removed };
-}

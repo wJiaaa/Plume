@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { apiRoot, defaultLabel, hostOf, normalizeServer, parseAccounts, sameIdentity, upsert } from "../electron/forge/accounts.ts";
+import { apiRoot, defaultLabel, hostOf, normalizeServer, parseAccounts, sameIdentity, signedIn } from "../electron/forge/accounts.ts";
 import type { ForgeAccount } from "@plume/contract";
 
 function account(over: Partial<ForgeAccount> = {}): ForgeAccount {
@@ -76,19 +76,21 @@ test("the same person on the same host is one account, however it was spelled", 
 	);
 });
 
-test("signing in again replaces the account rather than adding a second tab", () => {
-	const existing = [account()];
-	const again = account({ id: "fresh-uuid", label: "重新登录" });
+const identity = { login: "kittors", name: "Kittors", avatarUrl: "https://avatars.example/k.png" };
+const draft = (over: Partial<ForgeAccount> = {}) => account({ id: "fresh-uuid", label: "", login: "", ...over });
 
-	const merged = upsert(existing, again);
-	assert.equal(merged.length, 1);
-	assert.equal(merged[0].label, "重新登录");
-	assert.equal(merged[0].id, "a1", "the old id wins, so the token already filed under it stays reachable");
+test("signing in again replaces the account rather than adding a second tab", () => {
+	const again = signedIn([account({ label: "工作" })], draft(), identity);
+	assert.equal(again.id, "a1", "the old id wins, so the token is saved over the old one instead of beside it");
+	assert.equal(again.label, "工作", "the name somebody gave it survives a replaced token");
+	assert.equal(again.avatarUrl, identity.avatarUrl);
+	assert.equal(signedIn([account()], draft({ label: "重新登录" }), identity).label, "重新登录", "a typed name still wins");
 });
 
-test("a genuinely different account is appended", () => {
-	const merged = upsert([account()], account({ id: "b2", kind: "gitlab", baseUrl: "https://gitlab.com", login: "kittors" }));
-	assert.equal(merged.length, 2);
+test("a genuinely different account gets its own id", () => {
+	const other = signedIn([account()], draft({ kind: "gitlab", baseUrl: "https://gitlab.com" }), identity);
+	assert.equal(other.id, "fresh-uuid");
+	assert.equal(other.label, "kittors");
 });
 
 test("a stored entry missing something essential is dropped, not defaulted", () => {

@@ -177,6 +177,16 @@ test("one run: a write is refused, the plan is approved, the same tool table the
 	assert.equal(inPlanMode(state), false);
 });
 
+test("turning plan mode on mid-run refuses the next write through the same tool table", async () => {
+	const state = new Map<string, unknown>([[PLAN_MODE_KEY, false]]);
+	const edit = fake("edit", { mutating: true });
+	const [wrapped] = planModeTools([edit.tool], state);
+	assert.equal((await wrapped.execute({ path: "a" }, ctxWith(state))).isError, undefined);
+	state.set(PLAN_MODE_KEY, true);
+	assert.equal((await wrapped.execute({ path: "a" }, ctxWith(state))).isError, true);
+	assert.equal(edit.calls.length, 1);
+});
+
 test("the approved plan survives compaction beside the task list; feedback does not", async () => {
 	const model: ModelConfig = { ...LOOP_MODEL, contextWindow: 20_000, maxOutputTokens: 2000 };
 	const provider: ProviderConfig = { ...LOOP_PROVIDER, models: [model] };

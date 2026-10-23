@@ -70,8 +70,12 @@ export interface SessionMeta {
 	 * `base` is the branch the worktree was cut from — what "merge back" merges into and "sync" brings
 	 * in. Absent on a worktree made before it was recorded, or cut from a detached HEAD; those use the
 	 * repository's default branch.
+	 *
+	 * `root` is the worktree's top folder — `cwd` itself, or the folder above it when the project is a
+	 * package inside the repository. Recorded because once the folder is taken back there is nothing
+	 * left to ask; absent on one made before it was, which works it out backwards from `cwd`.
 	 */
-	worktree?: { project: string; branch: string; base?: string };
+	worktree?: { project: string; branch: string; base?: string; root?: string };
 	/**
 	 * Why this conversation runs in the project although it asked for a worktree of its own — the one
 	 * it asked for could not be made, or one taken back could not be checked out again. Said where the

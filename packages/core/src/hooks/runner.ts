@@ -11,7 +11,7 @@
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { devNull, tmpdir } from "node:os";
 import { join } from "node:path";
 import { systemShell } from "../platform.ts";
 import { commandEnv } from "../sandbox/login-path.ts";
@@ -113,20 +113,26 @@ interface ProcessResult {
 	stderr: string;
 }
 
-function expandVariables(value: string, input: HookInput): string {
-	const replacements: Record<string, string> = {
+/** 钩子命令里 `${名字}` 能展开的变量，同一份也放进子进程的环境。Claude Code 的名字照搬，另加 Plume 自己的。 */
+function hookVariables(input: HookInput): Record<string, string> {
+	return {
 		CLAUDE_PROJECT_DIR: input.cwd,
 		PLUME_PROJECT_DIR: input.cwd,
 		CLAUDE_SESSION_ID: input.sessionId,
 		CLAUDE_CODE_SESSION_ID: input.sessionId,
 		PLUME_SESSION_ID: input.sessionId,
 	};
-	return value.replace(/\$\{(CLAUDE_PROJECT_DIR|PLUME_PROJECT_DIR|CLAUDE_SESSION_ID|CLAUDE_CODE_SESSION_ID|PLUME_SESSION_ID)\}/gu, (_match, key: string) => replacements[key]);
+}
+
+function expandVariables(value: string, input: HookInput): string {
+	const variables = hookVariables(input);
+	return value.replace(/\$\{([A-Z_]+)\}/gu, (match, key: string) => variables[key] ?? match);
 }
 
 /**
  * stdin：Plume 自己的 camelCase 字段，加上 Claude Code 脚本认的 snake_case 别名。`transcript_path`
- * 指向一份临时文件，只装着这次事件涉及的那条消息。
+ * 指向一份临时文件，只装着这次事件涉及的那条消息——只有 Stop（最后一条回复）和 UserPromptSubmit
+ * （刚发的那句）有这条消息；其余事件指向空设备，读到的和一份空文件一样，不必每次工具调用都建一个目录。
  */
 async function compatibleStdin(input: HookInput): Promise<{ value: string; cleanup: () => Promise<void> }> {
 	const compatible: Record<string, unknown> = {
@@ -153,17 +159,19 @@ async function compatibleStdin(input: HookInput): Promise<{ value: string; clean
 		compatible.stop_hook_active = input.stopHookActive;
 	}
 	if (input.hookEventName === "StopFailure" && input.responseText !== undefined) compatible.last_assistant_message = input.responseText;
-	const dir = await mkdtemp(join(tmpdir(), "plume-hook-"));
-	const transcriptPath = join(dir, "transcript.jsonl");
 	const line = (role: "user" | "assistant", text: unknown) => `${JSON.stringify({ message: { role, content: [{ type: "text", text: String(text ?? "") }] } })}\n`;
-	await writeFile(
-		transcriptPath,
-		input.hookEventName === "Stop" ? line("assistant", input.responseText) : input.hookEventName === "UserPromptSubmit" ? line("user", input.prompt) : "",
-		"utf8",
-	);
+	const content = input.hookEventName === "Stop" ? line("assistant", input.responseText) : input.hookEventName === "UserPromptSubmit" ? line("user", input.prompt) : null;
+	let transcriptPath = devNull;
+	let cleanup = async () => {};
+	if (content !== null) {
+		const dir = await mkdtemp(join(tmpdir(), "plume-hook-"));
+		transcriptPath = join(dir, "transcript.jsonl");
+		await writeFile(transcriptPath, content, "utf8");
+		cleanup = () => rm(dir, { recursive: true, force: true });
+	}
 	compatible.transcript_path = transcriptPath;
 	compatible.transcriptPath = transcriptPath;
-	return { value: `${JSON.stringify(compatible)}\n`, cleanup: () => rm(dir, { recursive: true, force: true }) };
+	return { value: `${JSON.stringify(compatible)}\n`, cleanup };
 }
 
 function spawnArgs(entry: HookEntry, input: HookInput): { file: string; args: string[] } {
@@ -194,14 +202,7 @@ function execute(entry: HookEntry, input: HookInput, stdin: string, timeoutMs: n
 			// 自己一个进程组，超时时能把钩子派生出来的进程一起收掉。
 			detached: process.platform !== "win32",
 			windowsHide: true,
-			env: {
-				...commandEnv(process.env),
-				CLAUDE_PROJECT_DIR: input.cwd,
-				PLUME_PROJECT_DIR: input.cwd,
-				CLAUDE_SESSION_ID: input.sessionId,
-				CLAUDE_CODE_SESSION_ID: input.sessionId,
-				PLUME_SESSION_ID: input.sessionId,
-			},
+			env: { ...commandEnv(process.env), ...hookVariables(input) },
 		});
 		const killTree = () => {
 			if (!child.pid || child.exitCode !== null || child.signalCode !== null) return;
@@ -339,17 +340,9 @@ export class HookRunner {
 				const output = await runOne(entry, input, timeoutMs, this.maxOutputBytes, options.signal);
 				const processed = processHookOutput(input.hookEventName, output);
 				mergeHookRunResult(result, processed);
-				const blocked =
-					processed.permissionBehavior === "deny" ||
-					processed.permissionRequestResult?.behavior === "deny" ||
-					processed.preventContinuation === true ||
-					processed.blockRequested === true;
-				const reason = blocked
-					? processed.stopReason ??
-						processed.hookPermissionDecisionReason ??
-						(processed.permissionRequestResult?.behavior === "deny" ? processed.permissionRequestResult.message : undefined) ??
-						"Hook blocked execution"
-					: undefined;
+				// Stop 的 block 是「接着干」，不在 `decision` 里，记成成功。
+				const blocked = processed.decision === "deny";
+				const reason = blocked ? processed.reason ?? "Hook blocked execution" : undefined;
 				await this.report({
 					...base,
 					status: blocked ? "blocked" : "success",

@@ -20,14 +20,15 @@ import type {
 	ReviewVerdict,
 	WorkspaceDiffFile,
 } from "@plume/contract";
-import { defaultLabel, hostOf, normalizeServer, sameIdentity } from "./accounts.ts";
+import { defaultLabel, hostOf, normalizeServer, signedIn } from "./accounts.ts";
 import { describe } from "./errors.ts";
 import { gitea } from "./gitea.ts";
 import { gitee } from "./gitee.ts";
 import { github } from "./github.ts";
 import { gitlab } from "./gitlab.ts";
+import { newestFirst } from "./pr-summary.ts";
 import type { ForgeConnection, ForgeDriver } from "./types.ts";
-import { accountById, listAccounts, removeAccount, saveAccount, tokenFor, updateAccount } from "./vault.ts";
+import { accountById, listAccounts, saveAccount, tokenFor, updateAccount } from "./vault.ts";
 
 /*
  * Besides the list below, what another domain may use: publishing a release (`git/git-release.ts`)
@@ -36,6 +37,7 @@ import { accountById, listAccounts, removeAccount, saveAccount, tokenFor, update
  */
 export { json } from "./http.ts";
 export type { ForgeConnection } from "./types.ts";
+export { listAccounts, removeAccount as signOut } from "./vault.ts";
 
 const DRIVERS: Record<ForgeKind, ForgeDriver> = { github, gitlab, gitee, gitea };
 
@@ -74,8 +76,6 @@ export async function connectByHost(kind: ForgeKind, host: string): Promise<Forg
 	return account && token ? { account, token } : null;
 }
 
-const driverFor = (kind: ForgeKind): ForgeDriver => DRIVERS[kind];
-
 /**
  * The one search in flight, handed to everyone who asks while it is running.
  *
@@ -105,7 +105,7 @@ async function collect(): Promise<ListResult> {
 		accounts.map(async (account) => {
 			try {
 				const conn = await connect(account.id);
-				return { account, rows: await driverFor(account.kind).list(conn), error: null as string | null };
+				return { account, rows: await DRIVERS[account.kind].list(conn), error: null as string | null };
 			} catch (error) {
 				return { account, rows: [] as PullRequestSummary[], error: describe(error) };
 			}
@@ -116,7 +116,8 @@ async function collect(): Promise<ListResult> {
 	for (const result of results) {
 		if (result.error) errors[result.account.id] = result.error;
 		/*
-		 * The last outcome is remembered, so a tab can explain itself before anything is fetched.
+		 * The last outcome is remembered, so the settings page can say which account is broken
+		 * without fetching anything itself. The tabs read `errors` from this answer instead.
 		 *
 		 * Written only when it changed. This runs every 45 seconds, and rewriting a file holding
 		 * every one of the user's tokens on a timer, to record that nothing happened, is not a thing
@@ -127,7 +128,7 @@ async function collect(): Promise<ListResult> {
 		}
 	}
 
-	const pullRequests = results.flatMap((result) => result.rows).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+	const pullRequests = newestFirst(results.flatMap((result) => result.rows));
 	// Every account failing is one message, not four identical ones under an empty list.
 	const allFailed = results.every((result) => result.error);
 	return {
@@ -137,46 +138,31 @@ async function collect(): Promise<ListResult> {
 	};
 }
 
-export async function pullRequestDetail(
-	accountId: string,
-	repo: string,
-	number: number,
-): Promise<{ detail?: PullRequestDetail; error?: string }> {
+/** Run `work` against an account's host; any failure becomes the one line the pane shows. */
+async function withConn<T extends object>(accountId: string, work: (driver: ForgeDriver, conn: ForgeConnection) => Promise<T>): Promise<T | { error: string }> {
 	try {
 		const conn = await connect(accountId);
-		return { detail: await driverFor(conn.account.kind).detail(conn, repo, number) };
+		return await work(DRIVERS[conn.account.kind], conn);
 	} catch (error) {
 		return { error: describe(error) };
 	}
 }
 
-export async function pullRequestDiff(
-	accountId: string,
-	repo: string,
-	number: number,
-): Promise<{ files: WorkspaceDiffFile[]; error?: string }> {
-	try {
-		const conn = await connect(accountId);
-		return { files: await driverFor(conn.account.kind).diff(conn, repo, number) };
-	} catch (error) {
-		return { files: [], error: describe(error) };
-	}
+export function pullRequestDetail(accountId: string, repo: string, number: number): Promise<{ detail?: PullRequestDetail; error?: string }> {
+	return withConn(accountId, async (driver, conn) => ({ detail: await driver.detail(conn, repo, number) }));
 }
 
-export async function commentOnPullRequest(
-	accountId: string,
-	repo: string,
-	number: number,
-	body: string,
-): Promise<{ error?: string }> {
+export async function pullRequestDiff(accountId: string, repo: string, number: number): Promise<{ files: WorkspaceDiffFile[]; error?: string }> {
+	const result = await withConn(accountId, async (driver, conn) => ({ files: await driver.diff(conn, repo, number) }));
+	return "error" in result ? { files: [], error: result.error } : result;
+}
+
+export async function commentOnPullRequest(accountId: string, repo: string, number: number, body: string): Promise<{ error?: string }> {
 	if (!body.trim()) return { error: nativeText("forge.emptyComment") };
-	try {
-		const conn = await connect(accountId);
-		await driverFor(conn.account.kind).comment(conn, repo, number, body);
+	return withConn(accountId, async (driver, conn) => {
+		await driver.comment(conn, repo, number, body);
 		return {};
-	} catch (error) {
-		return { error: describe(error) };
-	}
+	});
 }
 
 export async function reviewPullRequest(
@@ -189,13 +175,10 @@ export async function reviewPullRequest(
 	// Every host refuses a change request with no explanation, and the errors they return for it
 	// are opaque. Answering here costs a round trip nobody has to think about.
 	if (verdict === "request-changes" && !body.trim()) return { error: nativeText("forge.changesNeedReason") };
-	try {
-		const conn = await connect(accountId);
-		await driverFor(conn.account.kind).review(conn, repo, number, verdict, body);
+	return withConn(accountId, async (driver, conn) => {
+		await driver.review(conn, repo, number, verdict, body);
 		return {};
-	} catch (error) {
-		return { error: describe(error) };
-	}
+	});
 }
 
 /**
@@ -227,28 +210,13 @@ export async function signIn(input: {
 	};
 
 	try {
-		const identity = await driverFor(input.kind).identify({ account: draft, token: input.token.trim() });
-		// Re-adding an account is nearly always a replaced token, and answering that with a second
-		// tab for the same person is how a list of accounts becomes a list of attempts.
-		const existing = (await listAccounts()).find((a) => sameIdentity(a, { ...draft, login: identity.login }));
-		const account: ForgeAccount = {
-			...draft,
-			id: existing?.id ?? draft.id,
-			login: identity.login,
-			avatarUrl: identity.avatarUrl,
-			label: draft.label || existing?.label || defaultLabel(identity),
-			enabled: true,
-			lastError: "",
-		};
+		const identity = await DRIVERS[input.kind].identify({ account: draft, token: input.token.trim() });
+		const account = signedIn(await listAccounts(), draft, identity);
 		await saveAccount(account, input.token.trim());
 		return { account };
 	} catch (error) {
 		return { error: describe(error) };
 	}
-}
-
-export async function accounts(): Promise<ForgeAccount[]> {
-	return listAccounts();
 }
 
 export async function setAccountEnabled(id: string, enabled: boolean): Promise<ForgeAccount | null> {
@@ -260,8 +228,4 @@ export async function renameAccount(id: string, label: string): Promise<ForgeAcc
 	const account = await accountById(id);
 	if (!account) return null;
 	return updateAccount(id, { label: trimmed || defaultLabel({ login: account.login, name: account.login, avatarUrl: null }) });
-}
-
-export async function signOut(id: string): Promise<void> {
-	await removeAccount(id);
 }

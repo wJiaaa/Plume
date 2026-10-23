@@ -25,7 +25,8 @@ export function WorktreesSettings() {
 	const rootDir = settings?.worktrees?.rootDir ?? "";
 	const autoCreate = settings?.worktrees?.autoCreateOnNewSession ?? false;
 	const fetchUpstream = settings?.worktrees?.fetchUpstreamBeforeCreate ?? false;
-	const autoClean = settings?.worktrees?.autoCleanOld ?? true;
+	// Off unless turned on, as the main process reads it (`cleanOldWorktrees`): shown on, it never ran.
+	const autoClean = settings?.worktrees?.autoCleanOld ?? false;
 	const keepLimit = settings?.worktrees?.keepLimit ?? 15;
 
 	const update = (patch: Partial<NonNullable<typeof settings>["worktrees"]>) => {

@@ -8,6 +8,9 @@ import { forgetLesson, readLessons, recordLesson } from "../src/runtime/memory/p
 import { SessionLog } from "../src/runtime/record/session-log.ts";
 import { SessionStore } from "../src/session/store.ts";
 
+/** 项目记忆注入进提示词的全文：各文件的片段按顺序接起来。 */
+const projectText = (memory: { projectMemoryFiles: { content: string }[] }) => memory.projectMemoryFiles.map((file) => file.content).join("");
+
 let home: string;
 let project: string;
 before(async () => {
@@ -27,20 +30,20 @@ test("learning mid-session leaves the prompt's memory untouched until the sessio
 	const scope = log.meta.id;
 	await recordLesson(project, { text: "用 pnpm 不用 npm" });
 	const first = await gatherMemory(project, true, 0, true, false, scope);
-	assert.match(first.projectMemory, /pnpm/);
+	assert.match(projectText(first), /pnpm/);
 
 	// The learn call and its result are in the history; the system prompt keeps its bytes.
 	await recordLesson(project, { text: "测试用 node:test" });
-	assert.equal((await gatherMemory(project, true, 0, true, false, scope)).projectMemory, first.projectMemory);
-	assert.match((await gatherMemory(project, true, 0, true, false)).projectMemory, /node:test/, "callers without a session read fresh");
+	assert.equal(projectText(await gatherMemory(project, true, 0, true, false, scope)), projectText(first));
+	assert.match(projectText(await gatherMemory(project, true, 0, true, false)), /node:test/, "callers without a session read fresh");
 
 	// A summary may have folded the learn call away; the refreshed memory carries it instead.
 	await log.emit({ type: "compacted", before: 10, after: 4, kept: 2, summary: "s" });
 	const refreshed = await gatherMemory(project, true, 0, true, false, scope);
-	assert.match(refreshed.projectMemory, /node:test/);
+	assert.match(projectText(refreshed), /node:test/);
 
 	// A person deleting a wrong lesson wants it gone now, not after the next compaction.
 	const [wrong] = await readLessons(project);
 	await forgetLesson(project, wrong.at);
-	assert.doesNotMatch((await gatherMemory(project, true, 0, true, false, scope)).projectMemory, /node:test/);
+	assert.doesNotMatch(projectText(await gatherMemory(project, true, 0, true, false, scope)), /node:test/);
 });

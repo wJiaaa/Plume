@@ -21,9 +21,12 @@ export async function sessionWorkspace(meta: Pick<SessionMeta, "cwd" | "worktree
 	 * again. It is still this project's conversation, so it is named as one rather than shown in no
 	 * project at all; with nothing checked out there is no branch to show and nothing to list.
 	 */
-	return workspace
-		? worktreeWorkspace(workspace, meta.worktree.project)
-		: { path: meta.cwd, name: baseName(meta.worktree.project), isGitRepo: false, branch: null, worktreeOf: meta.worktree.project };
+	return workspace ? worktreeWorkspace(workspace, meta.worktree.project) : unreadWorkspace(meta.cwd, baseName(meta.worktree.project), meta.worktree.project);
+}
+
+/** A conversation's folder named before git was asked about it, or with nothing there to ask: no branch, nothing to list. */
+export function unreadWorkspace(path: string, name: string, worktreeOf?: string): WorkspaceInfo {
+	return { path, name, isGitRepo: false, branch: null, ...(worktreeOf ? { worktreeOf } : {}) };
 }
 
 /** What git says about a worktree's folder, named for the project it belongs to. */

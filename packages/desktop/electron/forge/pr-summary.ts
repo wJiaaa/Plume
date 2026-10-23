@@ -7,7 +7,8 @@
  * exercised by reaching GitHub is a rule nobody tests.
  */
 
-import type { PullRequestCheck, PullRequestSummary } from "@plume/contract";
+import type { PullRequestCheck, PullRequestDetail, PullRequestSummary } from "@plume/contract";
+import { rowId } from "../../shared/pull-request-id.ts";
 
 /** Enough to see everything current without turning the list into an archive. */
 export const PER_BUCKET = 30;
@@ -90,23 +91,16 @@ export interface SearchNode {
 }
 
 /**
- * The three buckets out of one response body.
+ * The three buckets out of the search's `data`.
  *
- * A GraphQL error arrives with a 200 and an `errors` array, so it has to be looked for rather than
- * caught. Rate limiting is exactly that shape — the failure this query exists to avoid — and
- * reporting it as an empty list would be the worst of both.
+ * Errors are not looked for here: `graphql()` in `github.ts` has already turned an `errors` array
+ * delivered with a 200 into a thrown error before there is any `data` to read.
  */
-export function parseSearch(response: unknown): Record<Relation, SearchNode[]> {
-	const body = (response ?? {}) as {
-		data?: Record<string, { nodes?: (SearchNode | null)[] } | null>;
-		errors?: { message?: string }[];
-	};
-	if (body.errors?.length) throw new Error(body.errors.map((e) => e.message).filter(Boolean).join("; "));
-
+export function parseSearch(data: Record<string, { nodes?: (SearchNode | null)[] } | null> | undefined): Record<Relation, SearchNode[]> {
 	const out = {} as Record<Relation, SearchNode[]>;
 	for (const { relation } of BUCKETS) {
 		// `type: ISSUE` also matches issues, which come back as empty nodes and are dropped.
-		out[relation] = (body.data?.[relation]?.nodes ?? []).filter(
+		out[relation] = (data?.[relation]?.nodes ?? []).filter(
 			(node): node is SearchNode => Boolean(node && typeof node.number === "number"),
 		);
 	}
@@ -154,21 +148,11 @@ export function toSummary(node: SearchNode, relation: Relation, accountId: strin
 }
 
 /**
- * What makes a row unique, now that rows arrive from more than one account.
- *
- * The account is part of it because `owner/name` is not unique across hosts — a company's own
- * GitHub Enterprise happily holds a repository with the same name as one on github.com — and
- * because the same pull request seen through two accounts is two different sets of things you are
- * allowed to do to it.
- */
-const rowId = (pr: { accountId: string; repo: string; number: number }) => `${pr.accountId}:${pr.repo}#${pr.number}`;
-
-/**
- * One row per pull request, newest first.
+ * One row per pull request.
  *
  * The buckets overlap by design — your own can also be one you reviewed — so the first bucket to
  * claim a pull request keeps it, which is what makes `BUCKETS` order meaningful rather than
- * incidental.
+ * incidental. Every host with more than one bucket goes through here.
  */
 export function dedupe(buckets: PullRequestSummary[][]): PullRequestSummary[] {
 	const seen = new Map<string, PullRequestSummary>();
@@ -178,5 +162,28 @@ export function dedupe(buckets: PullRequestSummary[][]): PullRequestSummary[] {
 			if (!seen.has(key)) seen.set(key, pr);
 		}
 	}
-	return [...seen.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+	return [...seen.values()];
+}
+
+/** The order the list is drawn in, across every account: by when each one last moved. */
+export function newestFirst(rows: PullRequestSummary[]): PullRequestSummary[] {
+	return rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+/**
+ * A host's checks, as the detail pane's counts and the one mark a row draws.
+ *
+ * Which raw state means pass, fail or pending is each host's own table and stays in its driver;
+ * counting the three and picking the mark is the same everywhere. No checks at all is null, which
+ * is a different thing from "none have finished".
+ */
+export function summarizeChecks(items: PullRequestCheck[]): Pick<PullRequestDetail, "checks" | "checkState"> {
+	if (items.length === 0) return { checks: null, checkState: null };
+	const count = (state: PullRequestCheck["state"]) => items.filter((check) => check.state === state).length;
+	const failed = count("fail");
+	const pending = count("pending");
+	return {
+		checks: { total: items.length, passed: count("pass"), failed, pending, items },
+		checkState: failed > 0 ? "fail" : pending > 0 ? "pending" : "pass",
+	};
 }

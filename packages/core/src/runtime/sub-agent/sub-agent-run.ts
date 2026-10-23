@@ -52,13 +52,13 @@ export async function runDispatched(
 	/** Everything on its way out of the loop: the pane, the roster, and the step list. */
 	const relay: AgentEventSink = async (event) => {
 		// `notice` 也转：拒收恢复、超长压缩后重试这类说明是它自己的事，进它自己的面板。
-		if (event.type === "tool_start" || event.type === "tool_left" || event.type === "request" || event.type === "retry" || event.type === "retry_settled" || event.type === "agent_end" || event.type === "turn_start" || event.type === "compacted" || event.type === "command_status" || event.type === "notice") {
+		if (event.type === "tool_start" || event.type === "request" || event.type === "retry" || event.type === "retry_settled" || event.type === "agent_end" || event.type === "turn_start" || event.type === "compacted" || event.type === "command_status" || event.type === "notice") {
 			await options.emit({ type: "subagent_event", id, event });
 		}
 		// Record activity in registry for live sub-agent status line without toast spamming
 		if (event.type === "tool_start") {
 			steps.push(event.summary);
-			registry?.activity(id, event.summary);
+			registry.activity(id, event.summary);
 		}
 		/*
 		 * 卡在重连上也是一种状态，而且是最该说出口的那种。
@@ -68,8 +68,8 @@ export async function runDispatched(
 		 * 正在安静干活的子代理长得一模一样——派它来的人只看见一个一直转的 task，没有任何线索说明
 		 * 它在等什么、等了多少次。
 		 */
-		if (event.type === "retry") registry?.retrying(id, { attempt: event.attempt, reason: event.reason });
-		if (event.type === "retry_settled") registry?.retrying(id, undefined);
+		if (event.type === "retry") registry.retrying(id, { attempt: event.attempt, reason: event.reason });
+		if (event.type === "retry_settled") registry.retrying(id, undefined);
 		/*
 		 * The transcript, as it is written.
 		 *
@@ -79,7 +79,7 @@ export async function runDispatched(
 		 */
 		if (event.type === "message_end") {
 			// A steered message was announced when it was said (`steerSubAgent`); once is enough.
-			if (registry?.record(id, event.message) === false) return;
+			if (!registry.record(id, event.message)) return;
 			await options.emit({ type: "subagent_message", id, message: event.message });
 		}
 	};
@@ -155,7 +155,7 @@ export async function runDispatched(
 		 * 跟跑到一半时插话是同一条路。停在检查点的也一样：人开了口，是否接着干不该由清单替他决定。
 		 * 主会话的同一件事由 `AgentSession.drainPending` 兜着。
 		 */
-		const heardMore = () => !controller.signal.aborted && registry?.hasSteering(id) === true;
+		const heardMore = () => !controller.signal.aborted && registry.hasSteering(id);
 		while ((result.reason === "done" || result.reason === "max_turns") && heardMore()) {
 			result = await continueWhileWorkRemains(await segment(view), checkpoints);
 		}
@@ -241,7 +241,7 @@ export async function runDispatched(
 		 * The throw is re-raised: `task` turns it into a tool error for the parent, which is how
 		 * the model finds out. This only makes sure the record agrees with what happened.
 		 */
-		registry?.finish(id, { status: "failed", error: error instanceof Error ? error.message : String(error) });
+		registry.finish(id, { status: "failed", error: error instanceof Error ? error.message : String(error) });
 		await options.emit({ type: "subagent_done", id, steps, answer: "", status: "failed", error: error instanceof Error ? error.message : String(error) });
 		throw error;
 	} finally {

@@ -55,12 +55,12 @@ test("HTML and empty bodies add nothing rather than adding noise", () => {
 test("a connection that went nowhere says which host it was", () => {
 	// With several accounts, "连不上" alone leaves somebody guessing which one — and the answer is
 	// usually the self-hosted instance behind a VPN that is not connected.
-	assert.match(networkMessage(new Error("getaddrinfo ENOTFOUND git.corp.example"), "https://git.corp.example"), /git\.corp\.example/);
-	assert.match(networkMessage(new Error("getaddrinfo ENOTFOUND x"), "https://git.corp.example"), /解析不到/);
-	assert.match(networkMessage(new Error("connect ECONNREFUSED 127.0.0.1:3000"), "http://git.internal:3000"), /拒绝连接/);
-	assert.match(networkMessage(Object.assign(new Error("The operation timed out"), { name: "TimeoutError" }), "https://gitlab.com"), /超时/);
-	assert.match(networkMessage(new Error("unable to verify the first certificate"), "https://git.internal"), /证书/);
-	assert.match(networkMessage(new Error("something else entirely"), "https://gitee.com"), /连不上 gitee\.com/);
+	assert.match(networkMessage(new Error("getaddrinfo ENOTFOUND git.corp.example"), "git.corp.example"), /git\.corp\.example/);
+	assert.match(networkMessage(new Error("getaddrinfo ENOTFOUND x"), "git.corp.example"), /解析不到/);
+	assert.match(networkMessage(new Error("connect ECONNREFUSED 127.0.0.1:3000"), "git.internal:3000"), /拒绝连接/);
+	assert.match(networkMessage(Object.assign(new Error("The operation timed out"), { name: "TimeoutError" }), "gitlab.com"), /超时/);
+	assert.match(networkMessage(new Error("unable to verify the first certificate"), "git.internal"), /证书/);
+	assert.match(networkMessage(new Error("something else entirely"), "gitee.com"), /连不上 gitee\.com/);
 });
 
 test("an already-described failure passes through untouched", () => {
@@ -87,7 +87,7 @@ test("a failure is told in the interface language, joined with that language's p
 		assert.equal(describeStatus(403, "", "github"), "No permission to do this — check the token's scopes");
 		assert.equal(describeStatus(500, "", "gitea"), "The host's service ran into an error (500)");
 		assert.equal(
-			networkMessage(new Error("getaddrinfo ENOTFOUND git.corp.example"), "https://git.corp.example"),
+			networkMessage(new Error("getaddrinfo ENOTFOUND git.corp.example"), "git.corp.example"),
 			"Could not resolve git.corp.example — check the address or the network",
 		);
 		assert.equal(networkMessage(new Error("something else entirely"), ""), "Could not reach the server");

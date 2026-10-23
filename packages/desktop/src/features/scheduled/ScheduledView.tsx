@@ -23,6 +23,7 @@ import { useTaskStatus } from "./useTaskStatus.ts";
 import { useI18n } from "../../i18n/index.ts";
 import { activeLocale, translate } from "../../i18n/translate.ts";
 import { useApp } from "../../store/index.ts";
+import { projectWorkspace } from "../../store/session-workspace.ts";
 import { Segmented, Toggle } from "../settings/index.ts";
 import { sessionTitle } from "../../lib/session-title.ts";
 import { bridge } from "../../services/index.ts";
@@ -67,7 +68,7 @@ export function ScheduledView() {
 					id,
 					name: t("scheduled.newTask"),
 					// The project's folder, not the worktree one conversation was given: that copy goes away.
-					cwd: workspace?.worktreeOf ?? workspace?.path ?? "",
+					cwd: workspace ? projectWorkspace(workspace).path : "",
 					...(workspace?.projectId ? { project: workspace.projectId } : {}),
 					prompt: t("scheduled.samplePrompt"),
 					schedule: { kind: "daily", time: "09:00" },

@@ -16,7 +16,7 @@ import { homedir, uptime } from "node:os";
 import { basename, join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import type { CommandRun, HookRun } from "../agent/events.ts";
-import type { AssistantMessage, Message, ToolResult, Usage } from "../types.ts";
+import type { AssistantMessage, Message, Usage } from "../types.ts";
 import { addUsage, emptyUsage } from "../types.ts";
 import { applyRecord, persistedPayload, recordKind } from "./apply-record.ts";
 import { beforeSessionDbClose, closeSessionDb, sessionDb, transaction } from "./db.ts";
@@ -300,8 +300,8 @@ export class SessionStore implements SessionStorage {
 	 * What the session's sub-agents left in the log, in order: enough to list them again and to
 	 * continue one after the process that ran them is gone (`runtime/sub-agent/sub-agent-restore.ts`).
 	 *
-	 * Of their nested events only the three that shape their history — where they compacted, which
-	 * calls started, and what a call left behind — and the hooks they ran, for their pane. The rest
+	 * Of their nested events only the two that shape their history — where they compacted and which
+	 * calls started — and the hooks they ran, for their pane. The rest
 	 * (requests, contexts) are the bulk of the log and say nothing a resume or the pane needs.
 	 */
 	async subAgentRecords(sessionId: string): Promise<SessionRecord[]> {
@@ -309,7 +309,7 @@ export class SessionStore implements SessionStorage {
 		const rows = this.db
 			.prepare(
 				`SELECT body FROM records WHERE session_id = ? AND (kind IN ('subagent', 'subagent_message', 'subagent_done', 'subagent_views', 'subagent_dismissed', 'truncate')
-					OR (kind = 'subagent_event' AND json_extract(body, '$.event.event.type') IN ('compacted', 'tool_start', 'tool_left', 'hook_run'))) ORDER BY seq`,
+					OR (kind = 'subagent_event' AND json_extract(body, '$.event.event.type') IN ('compacted', 'tool_start', 'hook_run'))) ORDER BY seq`,
 			)
 			.all(sessionId) as { body: string }[];
 		return rows.map((row) => JSON.parse(row.body) as SessionRecord);
@@ -609,12 +609,9 @@ export class SessionStore implements SessionStorage {
 			// A round these rows are not from has moved on; they describe nothing left to answer.
 			if (round && calls.some((call) => live.has(call.id))) {
 				const at = Math.max(...rows.map((row) => row.updated_at), this.metaOf(sessionId)?.updatedAt ?? 0);
-				const leftBy = db.prepare("SELECT body FROM records WHERE session_id = ? AND kind = 'tool_left' AND json_extract(body, '$.event.toolCallId') = ? ORDER BY seq DESC LIMIT 1");
 				for (const call of calls) {
 					if (round.answered.has(call.id)) continue;
-					const row = leftBy.get(sessionId, call.id) as { body: string } | undefined;
-					const left = row ? (JSON.parse(row.body) as { event: { result: ToolResult } }).event.result : undefined;
-					this.write(sessionId, { type: "message", message: interruptedResult(call, live.get(call.id), at, left) }, false, at);
+					this.write(sessionId, { type: "message", message: interruptedResult(call, live.get(call.id), at) }, false, at);
 				}
 			}
 			db.prepare("DELETE FROM live_calls WHERE session_id = ?").run(sessionId);

@@ -23,9 +23,7 @@ export function useMemoryPass(): void {
 		let cancelled = false;
 
 		const timer = window.setTimeout(async () => {
-			const status = await bridge.projectMemory.status(cwd).catch(() => null);
-			if (cancelled || !status?.run) return;
-
+			// 节流和开关由主进程那一侧判断，没到时候它交回 `skipped`，这里不必先问一次。
 			const result = await bridge.projectMemory.extract(cwd).catch(() => null);
 			/*
 			 * 只有真的写了东西才说话。

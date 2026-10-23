@@ -130,14 +130,17 @@ test("缺任何一段的提案都不算数", async () => {
 	/*
 	 * 一个缺了步骤的技能会以一个人不知道的方式改变 agent 的行为，而「少一个候选」没有任何代价。
 	 */
-	assert.equal(parseSkillProposal("（没有）"), null);
-	assert.equal(parseSkillProposal("NAME: x-y\nDESCRIPTION: 有说明"), null, "缺正文");
-	assert.equal(parseSkillProposal("NAME: x-y\nBODY:\n步骤"), null, "缺说明");
-	assert.equal(parseSkillProposal("DESCRIPTION: 有\nBODY:\n步骤"), null, "缺名字");
-	assert.equal(parseSkillProposal("NAME: Bad Name\nDESCRIPTION: 有\nBODY:\n步骤"), null, "名字不合规");
+	const ids = ["first", "second"];
+	const full = "NAME: run-checks\nDESCRIPTION: 改完 core 之后\nSCOPE: project\nSOURCES: first,second\nBODY:\n## 适用范围\na\n## 输入与前置检查\nb\n## 执行步骤\nc\n## 验证与失败处理\nd";
+	assert.equal(parseSkillProposal("（没有）", ids), null);
+	assert.equal(parseSkillProposal(full.replace(/BODY:[\s\S]*/, ""), ids), null, "缺正文");
+	assert.equal(parseSkillProposal(full.replace(/^DESCRIPTION:.*\n/m, ""), ids), null, "缺说明");
+	assert.equal(parseSkillProposal(full.replace(/^NAME:.*\n/m, ""), ids), null, "缺名字");
+	assert.equal(parseSkillProposal(full.replace("run-checks", "Bad Name"), ids), null, "名字不合规");
 
-	const good = parseSkillProposal("NAME: run-checks\nDESCRIPTION: 改完 core 之后\nBODY:\n1. pnpm arch\n");
-	assert.deepEqual(good, { name: "run-checks", description: "改完 core 之后", body: "1. pnpm arch" });
+	assert.deepEqual(parseSkillProposal(full, ids), {
+		name: "run-checks", description: "改完 core 之后", body: full.split("BODY:\n")[1], scope: "project", sourceSessions: ["first", "second"],
+	});
 });
 
 test("待确认区不是一个技能目录", async () => {

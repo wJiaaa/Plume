@@ -21,15 +21,12 @@ import { BUCKETS, dedupe, parseSearch, PER_BUCKET, SEARCH_QUERY, toSummary } fro
 import { nativeText } from "../i18n.ts";
 import { ForgeError } from "./errors.ts";
 import { DETAIL_QUERY, type DetailNode, toDetail } from "./github-gql.ts";
-import { DIFF_TIMEOUT_MS, json, text } from "./http.ts";
-import { splitRepo } from "./accounts.ts";
-import type { ForgeConnection, ForgeDriver, ForgeIdentity } from "./types.ts";
+import { DIFF_TIMEOUT_MS, identifyUser, json, text } from "./http.ts";
+import { apiRoot, splitRepo } from "./accounts.ts";
+import type { ForgeConnection, ForgeDriver } from "./types.ts";
 
-/** Where this instance answers GraphQL, which is not under the REST root on Enterprise. */
-function graphqlRoot(conn: ForgeConnection): string {
-	const base = conn.account.baseUrl.replace(/\/+$/, "");
-	return base === "https://github.com" ? "https://api.github.com" : `${base}/api`;
-}
+/** Where this instance answers GraphQL: beside the REST root on Enterprise (`/api/v3` → `/api`), the same host on github.com. */
+const graphqlRoot = (conn: ForgeConnection) => apiRoot(conn.account).replace(/\/v3$/, "");
 
 /**
  * One GraphQL request, with its errors treated as errors.
@@ -56,11 +53,7 @@ async function graphql<T>(conn: ForgeConnection, query: string, variables: Recor
 export const github: ForgeDriver = {
 	kind: "github",
 
-	async identify(conn: ForgeConnection): Promise<ForgeIdentity> {
-		const user = await json<{ login?: string; name?: string; avatar_url?: string }>(conn, "/user");
-		if (!user?.login) throw new ForgeError(nativeText("forge.noUserInfo"), 0);
-		return { login: user.login, name: user.name || user.login, avatarUrl: user.avatar_url ?? null };
-	},
+	identify: (conn) => identifyUser(conn),
 
 	/**
 	 * The three buckets in one request.
@@ -71,11 +64,11 @@ export const github: ForgeDriver = {
 	 * five thousand an hour that GraphQL charges against.
 	 */
 	async list(conn: ForgeConnection): Promise<PullRequestSummary[]> {
-		const data = await graphql<Record<string, unknown>>(conn, SEARCH_QUERY, {
+		const data = await graphql<Parameters<typeof parseSearch>[0]>(conn, SEARCH_QUERY, {
 			...Object.fromEntries(BUCKETS.map(({ relation, query }) => [relation, query])),
 			n: PER_BUCKET,
 		});
-		const found = parseSearch({ data });
+		const found = parseSearch(data);
 		return dedupe(BUCKETS.map(({ relation }) => found[relation].map((node) => toSummary(node, relation, conn.account.id))));
 	},
 

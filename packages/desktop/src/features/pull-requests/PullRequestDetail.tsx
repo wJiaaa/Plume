@@ -61,11 +61,7 @@ export function PullRequestDetail({
 	 * 侧边栏之后那颗开关就压在 PR 标题上。算在 `PullRequestsView` 里——只有那里知道列表滑走了没有。
 	 */
 	inset?: number;
-	/**
-	 * Lifted, because the review bar below this belongs to two of these tabs and not the third.
-	 * 摘要 and 代码 are things you form an opinion about; 聊天 has a field of its own, and stacking
-	 * two composers is not a layout, it is a question about which one you meant.
-	 */
+	/** Lifted so it survives the remount when the view switches between its narrow and wide layouts. */
 	tab: PrTab;
 	onTab: (tab: PrTab) => void;
 }) {

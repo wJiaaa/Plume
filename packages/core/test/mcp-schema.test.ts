@@ -115,7 +115,7 @@ test("tools from a real stdio server carry the filled schema", async (t) => {
 		await rm(dir, { recursive: true, force: true });
 	});
 
-	await manager.connect({ id: "batch", name: "batch", transport: "stdio", command: process.execPath, args: [script], enabled: true });
+	await manager.connectAll([{ id: "batch", name: "batch", transport: "stdio", command: process.execPath, args: [script], enabled: true }]);
 	const tool = manager.allTools().find((candidate) => candidate.name === "mcp__batch__batch_run");
 	assert.ok(tool, "the server's tool was not exposed");
 	assert.deepEqual(tool.parameters.properties?.machineIds, { type: "array", description: "Target machines", items: {} });

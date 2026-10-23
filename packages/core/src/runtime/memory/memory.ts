@@ -37,7 +37,7 @@ export async function loadMemory(): Promise<MemoryStore> {
 }
 
 /**
- * 会话内冻结的记忆注入快照，键由 `memory-inject.ts` 决定。
+ * 会话内冻结的记忆注入快照，按会话 id 一条，内容由 `memory-inject.ts` 决定。
  *
  * 放在这里而不是 `memory-inject.ts`：人手动改记忆的几条路（这里的 `saveMemory`、
  * `project-memory.ts` 的几个 forget）要作废快照，而 `memory-inject.ts` 反过来依赖它们，
@@ -63,7 +63,8 @@ async function saveMemory(store: MemoryStore): Promise<void> {
 	invalidateMemorySnapshots();
 }
 
-export async function addMemoryEntry(content: string, source: "user" | "auto" | "session" = "user", sessionId?: string): Promise<MemoryEntry> {
+/** 人在设置页里加的一条。`source` 里另外两种只出现在旧版本写下的数据里。 */
+export async function addMemoryEntry(content: string): Promise<MemoryEntry> {
 	const trimmed = content.trim();
 	if (!trimmed) throw new Error("Memory content cannot be empty");
 	const store = await loadMemory();
@@ -72,8 +73,7 @@ export async function addMemoryEntry(content: string, source: "user" | "auto" | 
 		content: trimmed,
 		createdAt: Date.now(),
 		updatedAt: Date.now(),
-		source,
-		sessionId,
+		source: "user",
 	};
 	store.entries.unshift(entry);
 	await saveMemory(store);

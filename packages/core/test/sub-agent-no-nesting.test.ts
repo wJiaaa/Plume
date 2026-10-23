@@ -8,6 +8,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { runSubAgent } from "../src/runtime/sub-agent/sub-agent.ts";
+import { SubAgentRegistry } from "../src/runtime/sub-agent/sub-agents.ts";
 import { buildTurnConfig } from "../src/runtime/agent-session/turn-config.ts";
 import { taskTool, type AgentDefinition } from "../src/tools/task.ts";
 import type { AssistantMessage, ModelConfig, ProviderConfig, Settings, Tool, ToolContext } from "../src/types.ts";
@@ -70,6 +71,7 @@ test("子代理的工具表里没有 task，也拿不到往下派的入口——
 
 	await runSubAgent(
 		{
+			registry: new SubAgentRegistry(),
 			sessionId: "s1",
 			cwd: "/tmp",
 			settings: SETTINGS,

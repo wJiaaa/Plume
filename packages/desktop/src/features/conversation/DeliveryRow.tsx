@@ -2,7 +2,7 @@
  * 子智能体的结果送回来了——对话里的一行说明，不是一个人发的气泡。
  *
  * 主智能体派出子智能体就不再等它，子智能体在后台跑；跑完之后，运行时把结果作为一条消息交回
- * 主智能体，主智能体接着干（`core/runtime/sub-agent/delegation-waits.ts`）。
+ * 主智能体，主智能体接着干（`core/runtime/sub-agent/detached-dispatches.ts`）。
  * 那条消息是写给模型的：报告原文套着标签。原样画出来，读的人会看见一大段自己没说过的话落在自己
  * 那一侧；什么都不画，主智能体又会像是自己突然动了起来。
  *
@@ -123,7 +123,7 @@ function JobDelivery({ jobs }: { jobs: DeliveredReport[] }) {
 /**
  * 子智能体的结果到了：主智能体接下来那段话的题注——「消息来自 @谁」。
  *
- * 派出即放手以后（`core/runtime/sub-agent/delegation-waits.ts`），每回来一个，主智能体就就着它说
+ * 派出即放手以后（`core/runtime/sub-agent/detached-dispatches.ts`），每回来一个，主智能体就就着它说
  * 一段。这一行说的是「下面这段话是因为谁回来了」，所以和来信、后台命令同一个骨架，不是一颗按钮：
  * 从前它是一颗带底色的胶囊，一轮里回来三个就是三颗，比主智能体自己的话还显眼。
  */

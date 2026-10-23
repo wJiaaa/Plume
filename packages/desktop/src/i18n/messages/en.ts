@@ -819,7 +819,7 @@ export const en = {
 	"worktrees.fetchFirst": "Always fetch before creating a worktree",
 	"worktrees.fetchFirstDetail": "Branch updates usually arrive with ordinary Git work. This also fetches from upstream before each new worktree.",
 	"worktrees.autoPrune": "Clean up old worktrees",
-	"worktrees.autoPruneDetail": "Worth leaving on. Turn it off only if you would rather manage old worktrees and disk use by hand.",
+	"worktrees.autoPruneDetail": "Off by default. When on, each new conversation worktree clears the oldest ones past the limit below. Worktrees with uncommitted changes, or whose conversation may come back to them, are kept.",
 	"worktrees.keepLimit": "How many to keep",
 	"worktrees.keepLimitDetail": "How many managed worktrees to keep. Past that, the oldest are cleaned up.",
 	"worktrees.delete": "Delete the worktree",
