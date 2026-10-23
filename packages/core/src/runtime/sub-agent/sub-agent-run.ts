@@ -12,6 +12,7 @@ import type { AgentRunResult } from "../../agent/run-config.ts";
 import { runTurn } from "../../agent/runner.ts";
 import { releaseCodeIntel } from "../../lsp/manager.ts";
 import type { PromptContext } from "../../prompt/context.ts";
+import { backgroundJobs } from "../../tools/background-jobs.ts";
 import { errorResult } from "../../tools/result.ts";
 import { toolTable } from "../../tools/mcp-search.ts";
 import { TODOS_KEY, type TodoItem } from "../../tools/todo.ts";
@@ -248,6 +249,12 @@ export async function runDispatched(
 		// 模型那部分跑完了，名额先还：后面只剩记账，排着的下一个不该等它记完。
 		release?.();
 		detach();
+		/*
+		 * 后台进程同理，而且更糟：父会话的 `dispose`、环境卡片、任务面板读的都是会话自己那份，
+		 * 留下来就是一个谁也看不见、谁也停不了的进程，活到应用退出。续跑虽然接着用这份 state，
+		 * 但两段之间没人读它的输出，续跑要用就再起一个。杀不掉的不该把这次交付变成失败。
+		 */
+		try { backgroundJobs(subState).dispose(); } catch { /* 同上：结果比一个杀不掉的进程要紧 */ }
 		/*
 		 * A delegated run has its own state map, so what it borrowed is its own to give back.
 		 *

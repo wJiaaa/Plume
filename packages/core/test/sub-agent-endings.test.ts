@@ -20,6 +20,7 @@ import { SUB_AGENT_CHECKPOINT_TURNS, runSubAgent } from "../src/runtime/sub-agen
 import { SubAgentRegistry } from "../src/runtime/sub-agent/sub-agents.ts";
 import type { AgentDefinition } from "../src/agents-builtin.ts";
 import type { AgentEvent } from "../src/agent/events.ts";
+import { backgroundJobs } from "../src/tools/background-jobs.ts";
 import { todoTool } from "../src/tools/todo.ts";
 import type { AssistantMessage, LlmContext, Message, ModelConfig, ProviderConfig, Settings, Tool } from "../src/types.ts";
 import { emptyUsage } from "../src/types.ts";
@@ -452,4 +453,30 @@ test("按停止的那个，它说过的话留在面板上", async () => {
 	assert.ok(answer.text.includes("没有入口"), `返回值里一直都有：${answer.text}`);
 	assert.ok(record.answer?.includes("没有入口"), `面板上现在也有了：${record.answer}`);
 	assert.equal(record.incomplete, undefined, "带回他的东西，别给他一条警告——理由见上一条");
+});
+
+test("收工时它起的后台进程一并停掉：父会话和界面都够不着它的那一份", async () => {
+	const killed: string[] = [];
+	const serve: Tool = {
+		name: "serve",
+		snippet: "serve",
+		description: "serve",
+		parameters: { type: "object", properties: {}, required: [], additionalProperties: false },
+		summarize: () => "起了一个服务",
+		async execute(_args, ctx) {
+			backgroundJobs(ctx.state).add(
+				{ id: "dev", command: "pnpm dev", startedAt: 1, exitCode: null, output: "", status: "running" },
+				{ onOutput() {}, onExit() {}, onError() {}, kill: (signal) => void killed.push(signal ?? "SIGTERM") },
+			);
+			return { content: [{ type: "text", text: "started" }] };
+		},
+	};
+	const { record } = await dispatch({
+		agentType: "general",
+		tools: [serve],
+		reply: (turn) => (turn === 0 ? assistant([{ type: "toolCall", id: "s0", name: "serve", arguments: {}, argumentsText: "{}" }]) : says("起好了")),
+	});
+
+	assert.equal(record.status, "done");
+	assert.deepEqual(killed, ["SIGKILL"]);
 });
