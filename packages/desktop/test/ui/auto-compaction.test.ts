@@ -16,6 +16,11 @@ test("automatic fallback stays visible without inventing a user command or a run
 		assert.match(view.text(), /fallback|本地/);
 		assert.equal(view.all(".ly-glide").length, 0);
 		assert.equal(view.find("[data-command-status]").getAttribute("data-command-status"), "done");
+		// 完成是上下文的分界，和换模型同一种分隔线；重试过几次也不能因为换了样式就丢掉
+		assert.equal(view.all("[data-auto-compaction] .bg-line-soft").length, 2);
+		assert.match(view.text(), /retries|重试/);
+		await view.rerender(h(CommandRunRow, { command: { ...command, status: "failed" } }));
+		assert.equal(view.all("[data-auto-compaction] .bg-line-soft").length, 0);
 	} finally { await view.unmount(); }
 });
 

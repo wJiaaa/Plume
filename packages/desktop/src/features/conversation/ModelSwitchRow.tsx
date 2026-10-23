@@ -3,6 +3,7 @@ import { useI18n } from "../../i18n/index.ts";
 import { useApp } from "../../store/index.ts";
 import { ArrowRightLeft } from "../../ui/icons/index.ts";
 import type { ModelUsed } from "./grouping.ts";
+import { DividerRow } from "./DividerRow.tsx";
 
 /**
  * 「服务商/模型」，用设置里起的名字。
@@ -15,19 +16,10 @@ function modelLabel(settings: Settings | null, used: ModelUsed): string {
 	return `${provider?.name ?? used.provider}/${model?.name ?? used.model}`;
 }
 
-/** 转录里换了模型的地方：一条横线，当中写从哪个换到哪个。 */
+/** 转录里换了模型的地方：分隔线当中写从哪个换到哪个。 */
 export function ModelSwitchRow({ from, to }: { from: ModelUsed; to: ModelUsed }) {
 	const { t } = useI18n();
 	const settings = useApp((s) => s.settings);
 	const text = t("conversation.modelSwitched", { from: modelLabel(settings, from), to: modelLabel(settings, to) });
-	return (
-		<div data-ly-model-switch className="flex items-center gap-3 py-1 text-caption text-ink-faint">
-			<span aria-hidden className="h-px min-w-6 flex-1 bg-line-soft" />
-			<span className="flex min-w-0 items-center gap-1.5" data-ly-tip={text}>
-				<ArrowRightLeft size={12} strokeWidth={1.8} aria-hidden className="shrink-0" />
-				<span className="truncate">{text}</span>
-			</span>
-			<span aria-hidden className="h-px min-w-6 flex-1 bg-line-soft" />
-		</div>
-	);
+	return <DividerRow data-ly-model-switch icon={<ArrowRightLeft size={12} strokeWidth={1.8} aria-hidden className="shrink-0" />} text={text} />;
 }

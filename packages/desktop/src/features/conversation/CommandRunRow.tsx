@@ -1,6 +1,7 @@
 import { useI18n } from "../../i18n/index.ts";
 import type { CommandRun } from "@plume/core";
-import { Check, CircleAlert, Minus, Terminal } from "../../ui/icons/index.ts";
+import { Check, CircleAlert, FoldVertical, Minus, Terminal } from "../../ui/icons/index.ts";
+import { DividerRow } from "./DividerRow.tsx";
 import { FlowRow } from "./FlowRow.tsx";
 import { MessageActions } from "./MessageActions.tsx";
 import { compactText } from "../../lib/notice-text.ts";
@@ -20,7 +21,14 @@ export function CommandRunRow({ command }: { command: CommandRun }) {
 	const Icon = running ? Terminal : command.status === "done" ? Check : command.status === "failed" ? CircleAlert : Minus;
 	if (command.automatic) {
 		const auto = command.automatic;
-		const key = command.status === "done" ? (auto.outcome === "fallback" ? "compact.autoFallbackDone" : "compact.autoDone") : command.status === "cancelled" ? "compact.autoInterrupted" : command.status === "failed" ? "compact.autoFailed" : auto.phase === "retrying" ? "compact.autoRetrying" : auto.phase === "fallback" ? "compact.autoFallback" : "compact.autoSummarizing";
+		if (command.status === "done") {
+			// 压缩完成是上下文的一个分界，和换模型一样画成分隔线；进行中要扫光、失败要红字，留在行里
+			const text = t(auto.outcome === "fallback" ? "compact.autoFallbackDone" : "compact.autoDone", { before: auto.before ?? 0, after: auto.after ?? 0 });
+			return <DividerRow data-command-run={command.id} data-command-status={command.status} data-auto-compaction={auto.phase}
+				icon={<FoldVertical size={12} strokeWidth={1.8} aria-hidden className="shrink-0" />}
+				text={auto.retries > 0 ? `${text} · ${t("compact.autoRetries", { n: auto.retries })}` : text} />;
+		}
+		const key = command.status === "cancelled" ? "compact.autoInterrupted" : command.status === "failed" ? "compact.autoFailed" : auto.phase === "retrying" ? "compact.autoRetrying" : auto.phase === "fallback" ? "compact.autoFallback" : "compact.autoSummarizing";
 		return <div data-command-run={command.id} data-command-status={command.status} data-auto-compaction={auto.phase}>
 			<FlowRow icon={<Icon size={13} strokeWidth={1.8} />} title={t("compact.autoTitle")}
 				summary={t(key, { before: auto.before ?? 0, after: auto.after ?? 0, count: auto.retries })}
