@@ -34,7 +34,6 @@
     "audit:prune": "node --experimental-strip-types scripts/session-prune-audit.ts",
     "audit:interface": "node --experimental-strip-types scripts/interface-audit.ts",
     "dump:session": "node --experimental-strip-types scripts/session-dump.ts",
-    "probe:parallel": "node --experimental-strip-types scripts/probe-parallel-calls.ts",
     "probe:prune": "node --experimental-strip-types scripts/probe-prune-accuracy.ts",
     "catalog:update": "node --experimental-strip-types scripts/update-model-catalog.ts",
     "release": "node scripts/release.mjs",
