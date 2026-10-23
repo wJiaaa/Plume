@@ -248,6 +248,7 @@ export const bashTool: Tool<BashArgs> = {
 	description:
 		"Run a shell command. Prefer the dedicated tools: read over `cat`/`head`/`tail`, edit over `sed`, glob over `find`, grep over shell `grep`. " +
 		"Every call starts fresh in the workspace root — `cd`, variables and functions do not carry over — so chain dependent steps (`cd sub && make`). " +
+		"Commands that do not need each other's output (`git status`, `git diff`, `git log`) go out as separate calls in one reply; read-only ones run in parallel. " +
 		"Quote paths that may contain spaces. Use `run_in_background: true` for dev servers and slow commands you need not wait on, and keep working; " +
 		"the result says whether its exit will be reported to you, otherwise read it with `bash_output`. " +
 		"Before your final answer, kill the jobs you started that nobody needs any more; leave a server running only when the user is meant to use it.",

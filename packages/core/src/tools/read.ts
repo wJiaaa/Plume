@@ -48,7 +48,8 @@ export const readTool: Tool<ReadArgs> = {
 		"Read a file. Text comes back under a `[path]` header as 1-indexed lines, `NNNN→content`; the `NNNN→` prefix is not part of the file. " +
 		"A long source file read without `offset`/`limit` comes back as its STRUCTURE: declarations and doc comments, each body folded to " +
 		"`⋯ N lines (from-to)`. Read that range to see a body — never guess at it. Short files, data files and `offset`/`limit` windows are verbatim. " +
-		"A line over 2000 characters comes back as a window; continue it with `char_offset`. Images come back as images.",
+		"A line over 2000 characters comes back as a window; continue it with `char_offset`. Images come back as images. " +
+		"When you already know several files you need, read them all in one reply: calls sent together run in parallel.",
 	parameters: {
 		type: "object",
 		properties: {

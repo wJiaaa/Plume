@@ -29,7 +29,8 @@ export const globTool: Tool<GlobArgs> = {
 	description:
 		"Find files by name, newest first; to search contents, use grep. Supports `*`, `?`, `**` and `{a,b}`, e.g. `src/**/*.{ts,tsx}`. " +
 		"Skips files git ignores (outside a git repository: build and dependency directories). " +
-		"Files that share a directory come under one line ending in `/`, indented by their names alone: the path of each is that line plus the name.",
+		"Files that share a directory come under one line ending in `/`, indented by their names alone: the path of each is that line plus the name. " +
+		"Several patterns worth trying go out together in one reply.",
 	parameters: {
 		type: "object",
 		properties: {

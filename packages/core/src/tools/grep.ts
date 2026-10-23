@@ -69,7 +69,8 @@ export const grepTool: Tool<GrepArgs> = {
 	approvalKind: "read",
 	description:
 		"Search file contents with a regular expression. A matching line over 2000 characters comes back as a window around the hit, " +
-		"with the `char_offset` that lets `read` open more of it.",
+		"with the `char_offset` that lets `read` open more of it. " +
+		"Send the searches that do not depend on each other's results in one reply, instead of one search per reply.",
 	parameters: {
 		type: "object",
 		properties: {
