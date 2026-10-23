@@ -24,15 +24,36 @@ export async function readFileChange(sessionId: string, id: string): Promise<Rec
 	return { id, path: value.path, before: value.before, after: value.after, source: "source" in value && value.source === "command" ? "command" : "tool", timestamp: value.timestamp };
 }
 
+/** Why a file's changes cannot be written back; the preview shows it, the undo refuses on it. */
+export type UndoProblem = "command" | "interleaved" | "outside" | "modified";
+class UndoRefused extends Error {
+	readonly problem: UndoProblem;
+	constructor(problem: UndoProblem, message: string) { super(message); this.problem = problem; }
+}
+
 async function prepareUndo(cwd: string, changes: RecordedChange[]) {
 	if (!changes.length) throw new Error("没有可撤销的变更");
 	const first = changes[0], last = changes[changes.length - 1];
-	if (changes.some((change) => change.source === "command")) throw new Error("命令执行期间观测到的变更需要手动审阅，不能归因后自动撤销");
-	if (!changes.every((change, index) => change.path === first.path && (!index || change.before === changes[index - 1].after))) throw new Error("文件在本轮操作之间存在其他修改，不能自动撤销");
+	if (changes.some((change) => change.source === "command")) throw new UndoRefused("command", "命令执行期间观测到的变更需要手动审阅，不能归因后自动撤销");
+	if (!changes.every((change, index) => change.path === first.path && (!index || change.before === changes[index - 1].after))) throw new UndoRefused("interleaved", "文件在本轮操作之间存在其他修改，不能自动撤销");
 	const root = await realpath(cwd), path = await realpath(first.path);
-	if (!withinOrIs(root, path) || (await lstat(first.path)).isSymbolicLink()) throw new Error("只能撤销当前项目内的普通文件");
-	if (await readFile(path, "utf8") !== last.after) throw new Error("文件已有后续修改，已保留；请在差异视图中手动处理");
+	if (!withinOrIs(root, path) || (await lstat(first.path)).isSymbolicLink()) throw new UndoRefused("outside", "只能撤销当前项目内的普通文件");
+	if (await readFile(path, "utf8") !== last.after) throw new UndoRefused("modified", "文件已有后续修改，已保留；请在差异视图中手动处理");
 	return { path, before: first.before, after: last.after, mode: (await lstat(path)).mode };
+}
+
+/**
+ * What `undoFileChangeBatches` would refuse, per batch, without writing anything.
+ *
+ * The same checks rather than a copy of them, so a preview that says a file can go back is the undo's
+ * own answer at that moment. A file gone since (realpath fails) counts as modified: someone else
+ * removed what the agent wrote.
+ */
+export async function undoProblems(cwd: string, batches: RecordedChange[][]): Promise<(UndoProblem | null)[]> {
+	return Promise.all(batches.map(async (changes) => {
+		try { await prepareUndo(cwd, changes); return null; }
+		catch (error) { return error instanceof UndoRefused ? error.problem : "modified"; }
+	}));
 }
 
 let undoing = false;

@@ -236,7 +236,7 @@ export { readExtractedMemory } from "./runtime/memory/memory-extract.ts";
 export { projectMemoryDir } from "./runtime/memory/project-memory.ts";
 export { computeDiff } from "./tools/diff.ts";
 
-export { readFileChange, undoFileChangeBatches, type RecordedChange } from "./tools/file-changes.ts";
+export { readFileChange, undoFileChangeBatches, undoProblems, type RecordedChange, type UndoProblem } from "./tools/file-changes.ts";
 export { AgentDefinitionStore } from "./agents/definition-store.ts";
 export type { AgentDraft, AgentDefinitionRecord, AgentDefinitionSave } from "./agents/definition-document.ts";
 

@@ -48,6 +48,7 @@ export type {
 	ThinkingLevel,
 	TrajectoryChanges,
 	TrajectoryEntry,
+	UndoProblem,
 	UsageReplayRow,
 	UserContent,
 } from "./index.ts";

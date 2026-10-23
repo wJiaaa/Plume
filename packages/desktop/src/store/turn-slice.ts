@@ -357,7 +357,7 @@ export function turnSlice(set: Set, get: Get) {
   async editMessage(
     index: number,
     content: UserContent[],
-    meta: { displayText?: string; attachments?: MessageAttachment[] } = {},
+    meta: { displayText?: string; attachments?: MessageAttachment[]; files?: boolean } = {},
     target?: string,
   ) {
     if (aside(target)) return editAside(target, index, content, meta);
@@ -423,7 +423,7 @@ export function turnSlice(set: Set, get: Get) {
 		}
   },
 
-  async revertMessage(index: number, target?: string) {
+  async revertMessage(index: number, target?: string, options?: { files?: boolean }) {
     // A conversation on another screen is brought on stage first; see `onStage`.
     if (target && target !== get().activeSessionId && !(await onStage(target))) return;
     const sessionId = get().activeSessionId;
@@ -466,7 +466,7 @@ export function turnSlice(set: Set, get: Get) {
       sessionCache: without(get().sessionCache, sessionId),
     });
     try {
-      await bridge.agent.revertMessage(sessionId, index);
+      await bridge.agent.revertMessage(sessionId, index, options?.files ? { files: true } : undefined);
       if (get().activeSessionId !== sessionId) return;
       const draft = draftFromUserMessage(message as UserMessage);
       const attachments = await withParkedPixels(draft.attachments);

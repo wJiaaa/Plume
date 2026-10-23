@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, afterEach, test } from "node:test";
 import { execFileSync } from "node:child_process";
-import { recordFileChange, readFileChange, undoFileChangeBatches } from "../src/tools/file-changes.ts";
+import { recordFileChange, readFileChange, undoFileChangeBatches, undoProblems } from "../src/tools/file-changes.ts";
 import { beforeCommand, afterCommand } from "../src/tools/command-changes.ts";
 import { computeDiff } from "../src/tools/diff.ts";
 import type { ToolContext } from "../src/types.ts";
@@ -244,4 +244,15 @@ test("a read-only command takes no snapshot, so it records nothing and pays for 
 		assert.deepEqual((await run("git log --oneline -5")).changeIds, []);
 		assert.equal((await run("touch a.ts")).changeIds.length, 1, "会写的命令照旧记下改动");
 	} finally { useSandbox(null); }
+});
+
+test("undoProblems answers per file with the undo's own checks, and writes nothing", async () => {
+	const clean = join(cwd, "clean.ts"), touched = join(cwd, "touched.ts");
+	const a = await readFileChange(ctx.sessionId, (await recordFileChange(ctx, clean, "one", "two"))!); await writeFile(clean, "two");
+	const b = await readFileChange(ctx.sessionId, (await recordFileChange(ctx, touched, "one", "two"))!); await writeFile(touched, "another session");
+	const gone = await readFileChange(ctx.sessionId, (await recordFileChange(ctx, join(cwd, "gone.ts"), null, "made"))!);
+	const command = { ...a, source: "command" as const };
+	assert.deepEqual(await undoProblems(cwd, [[a], [b], [gone], [command], [a, { ...a, before: "unrelated" }]]), [null, "modified", "modified", "command", "interleaved"]);
+	assert.equal(await readFile(clean, "utf8"), "two");
+	assert.equal(await readFile(touched, "utf8"), "another session");
 });

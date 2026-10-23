@@ -14,10 +14,18 @@ import type {
 	SubAgentDetail,
 	SubAgentSummary,
 	ThinkingLevel,
+	UndoProblem,
 	UserContent,
 } from "@plume/core/contract-types";
 
 export interface DeliveryFile { path: string; added: number; removed: number; hunks: DiffHunk[]; changeIds: string[]; canUndo: boolean }
+/**
+ * 撤回能一并拿回的文件：被截掉的那几轮改过的每一个，和它为什么不能安全写回。
+ *
+ * 全有或全无：有一个 `problem`，或者有记录读不出来（`unrecorded`），这次撤回就只撤对话——只拿回一部分，
+ * 代码会停在一个从没存在过的中间状态。
+ */
+export interface RevertPlan { files: { path: string; added: number; removed: number; problem: UndoProblem | null }[]; unrecorded: boolean }
 export interface TurnDelivery { files: DeliveryFile[]; commands: { command: string; status: string; output: string }[]; serviceJobIds: string[]; warnings: string[]; reportPath: string | null }
 
 export interface ServiceEndpoint { address: string; port: number; pid: number; url?: string }
@@ -87,10 +95,18 @@ export interface AgentApi {
 	 *
 	 * `options` 是这条消息除措辞之外的那部分——编辑改的是措辞，别的应当原样留着。不带它的
 	 * 那一版等于每编辑一次就把附件从界面上抹掉一次，并把附件正文重新铺回气泡里。
+	 *
+	 * `files` 和撤回的一样：先把被截掉那几轮改过的文件写回去，全部成功才截断重发。
 	 */
-	editMessage(sessionId: string, messageIndex: number, content: UserContent[], options?: { displayText?: string; attachments?: MessageAttachment[] }): Promise<void>;
-	/** Cut from this user message and stop. The wording goes back to the composer, not the model. */
-	revertMessage(sessionId: string, messageIndex: number): Promise<void>;
+	editMessage(sessionId: string, messageIndex: number, content: UserContent[], options?: { displayText?: string; attachments?: MessageAttachment[]; files?: boolean }): Promise<void>;
+	/**
+	 * Cut from this user message and stop. The wording goes back to the composer, not the model.
+	 *
+	 * `files` 先把被截掉那几轮改过的文件写回去，全部成功才截对话；有一个不能安全写回就整件不做。
+	 */
+	revertMessage(sessionId: string, messageIndex: number, options?: { files?: boolean }): Promise<void>;
+	/** 撤回到这条消息会碰到哪些文件，只演算不写盘，给确认框用。 */
+	revertPlan(sessionId: string, messageIndex: number): Promise<RevertPlan>;
 	abort(sessionId: string): Promise<void>;
 	approve(sessionId: string, requestId: string, decision: ApprovalDecision): Promise<void>;
 	setModel(sessionId: string, modelId: string): Promise<void>;

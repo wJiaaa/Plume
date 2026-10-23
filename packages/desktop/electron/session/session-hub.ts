@@ -28,6 +28,7 @@ import { archiveAfterTurn, createSessionOpsTools } from "./session-ops.ts";
 import { reportBackAfterFirstTurn } from "./session-report-back.ts";
 import { handOffApprovedPlans } from "./plan-handoff.ts";
 import { MessagePatcher } from "../../shared/message-patch.ts";
+import { restoreRevertedFiles } from "./revert-files.ts";
 
 export interface HubDeps {
 	store(): SessionStorage;
@@ -267,8 +268,11 @@ export async function editSessionMessage(
 		const session = await ensureLiveSession(sessionId);
 		if (!session) throw new Error("找不到这个会话。");
 		if (session.running) throw new Error("请先停止当前回复，再编辑消息。");
+		const { files, ...message } = options;
+		// 同撤回：文件先写回去，写不回去就整件不做，对话不截、也不重发。等它写完才确认收到。
+		if (files) await restoreRevertedFiles(session, index);
 		// Acknowledge submission immediately; the rerun and any failure arrive on the shared stream.
-		void session.editAndResend(index, content, options).catch((error: unknown) => {
+		void session.editAndResend(index, content, message).catch((error: unknown) => {
 			const message = error instanceof Error ? error.message : String(error);
 			broadcast(sessionId, { type: "notice", level: "error", message });
 			broadcast(sessionId, { type: "agent_end", reason: "error", error: message });
@@ -279,12 +283,14 @@ export async function editSessionMessage(
 	}
 }
 
-export async function revertSessionMessage(sessionId: string, index: number): Promise<void> {
+export async function revertSessionMessage(sessionId: string, index: number, options: { files?: boolean } = {}): Promise<void> {
 	const release = holdSessionOperation(sessionId);
 	try {
 		const session = await ensureLiveSession(sessionId);
 		if (!session) throw new Error("找不到这个会话。");
 		if (session.running) throw new Error("回合进行中，无法撤销");
+		// 先文件后对话：文件写不回去，对话也别截，人看到的还是撤回之前的样子。
+		if (options.files) await restoreRevertedFiles(session, index);
 		await session.revert(index);
 		// 整个撤空的话，旁边那几场对话就没有了依附的对象，跟着一起收掉。面板留着，下一问是新的一段。
 		if (session.messages.length > 0) return;

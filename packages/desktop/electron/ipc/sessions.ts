@@ -26,6 +26,7 @@ import { exportTrajectory, type TrajectoryExportFormat } from "../session/trajec
 import { readTrajectoryChanges } from "../session/trajectory-changes.ts";
 import { ipcMain } from "electron";
 import { resolveSessionApproval } from "../session/approval-response.ts";
+import { revertPlan } from "../session/revert-files.ts";
 import type { AgentCapabilities, PlumeApi } from "@plume/contract";
 import {
 	editSessionMessage,
@@ -383,14 +384,20 @@ export function registerSessionsIpc({
 			sessionId: string,
 			messageIndex: number,
 			content: UserContent[],
-			options?: { displayText?: string; attachments?: MessageAttachment[] },
+			options?: { displayText?: string; attachments?: MessageAttachment[]; files?: boolean },
 		) => {
-			await editSessionMessage(sessionId, messageIndex, content, options);
+			await editSessionMessage(sessionId, messageIndex, content, { ...options, files: options?.files === true });
 		},
 	);
 
-	ipcMain.handle("agent:revertMessage", async (_event, sessionId: string, messageIndex: number) => {
-		await revertSessionMessage(sessionId, messageIndex);
+	ipcMain.handle("agent:revertMessage", async (_event, sessionId: string, messageIndex: number, options?: { files?: boolean }) => {
+		await revertSessionMessage(sessionId, messageIndex, { files: options?.files === true });
+	});
+
+	ipcMain.handle("agent:revertPlan", async (_event, sessionId: string, messageIndex: number) => {
+		const session = await ensureLiveSession(sessionId);
+		// 找不到就没有文件可退；撤回本身会把「找不到这个会话」报出来。
+		return session ? revertPlan(session, messageIndex) : { files: [], unrecorded: false };
 	});
 
 	ipcMain.handle("agent:abort", async (_event, sessionId: string) => {

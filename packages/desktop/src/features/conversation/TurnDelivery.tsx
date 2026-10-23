@@ -63,7 +63,7 @@ export function TurnDeliveryCard({ timestamp }: { timestamp: number }) {
 	return <Delivery key={sessionId + ":" + timestamp} sessionId={sessionId} timestamp={timestamp} />;
 }
 
-function Counts({ added, removed }: { added: number; removed: number }) {
+export function Counts({ added, removed }: { added: number; removed: number }) {
 	return <span className="flex shrink-0 items-center gap-1.5 tabular-nums"><span className="text-ok">+{added}</span><span className="text-danger">−{removed}</span></span>;
 }
 

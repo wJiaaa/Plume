@@ -544,17 +544,19 @@ export interface AppState extends QueueSlice {
    * Replace a message and re-run from there; everything after it is discarded.
    *
    * `meta` 是这条消息除措辞之外的样子——附了哪几个文件，气泡里该显示哪一份文本。编辑改的是
-   * 措辞，这两样得原样带过去，否则每编辑一次就把附件从界面上抹掉一次。
+   * 措辞，这两样得原样带过去，否则每编辑一次就把附件从界面上抹掉一次。`files` 同撤回，见 `RevertPlan`。
    */
-  editMessage(index: number, content: UserContent[], meta?: { displayText?: string; attachments?: MessageAttachment[] }, sessionId?: string): Promise<void>;
+  editMessage(index: number, content: UserContent[], meta?: { displayText?: string; attachments?: MessageAttachment[]; files?: boolean }, sessionId?: string): Promise<void>;
   /**
    * Take a user message back: cut it and everything after, then put the wording in the composer.
    * Does not start another turn.
    *
    * Both act on the live conversation. Given `sessionId`, on that one, which is made the live one
    * first if it is not already — a split's other screen names its own.
+   *
+   * `files`：被截掉那几轮改过的文件一起写回去，见 `RevertPlan`。
    */
-  revertMessage(index: number, sessionId?: string): Promise<void>;
+  revertMessage(index: number, sessionId?: string, options?: { files?: boolean }): Promise<void>;
   /**
    * A new conversation from a message, opened in this one's screen; this conversation is left exactly
    * as it is. From a user message it is 撤回 done to a copy: everything before it, with its wording back

@@ -28,6 +28,7 @@ const zhCN = {
 	// A side chat was asked for beside a conversation that is gone (deleted while it was being opened).
 	"sessions.sideParentGone": "这个侧边聊天挂着的会话已经没有了。",
 	"mcp.promptNotFound": "没有连着的 MCP 服务器提供 /{name}。",
+	"revert.unrecorded": "有改动记录读不出来，文件没有动。",
 	// 计划审批卡上「在新会话里执行」开出来的会话，第一条消息就是这几行（`plan-handoff.ts`）。
 	"planHandoff.title": "按已批准的计划实施：{title}",
 	"planHandoff.file": "- 计划文件：{file}。以它为准，动手前完整读一遍。",
@@ -181,6 +182,7 @@ export const NATIVE_CATALOGS: Record<NativeLocale, NativeCatalog> = {
 		"terminal.tab": "Terminal {n}",
 		"sessions.sideParentGone": "The conversation this side chat belongs to is gone.",
 		"mcp.promptNotFound": "No connected MCP server offers /{name}.",
+		"revert.unrecorded": "Some change records could not be read, so no file was touched.",
 		"planHandoff.title": "Carry out the approved plan: {title}",
 		"planHandoff.file": "- Plan file: {file}. It is the authority; read all of it before you start.",
 		"planHandoff.scope": "- Scope: change the code as the plan says and run the checks it lists. Anything it does not cover — committing, pushing, releasing, changing anything outside this machine — ask the person first.",

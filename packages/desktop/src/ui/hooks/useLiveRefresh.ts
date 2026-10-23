@@ -12,13 +12,26 @@
  * list of "tools that write" is a guess that goes stale the next time a tool is added.
  *
  * Refreshes once on mount and once more when the turn settles, so the final state is never a
- * poll's width out of date.
+ * poll's width out of date — and on `touchWorkingTree`, for what changes the tree between turns.
  */
 
 import { useEffect } from "react";
 
 /** How often to re-read while a turn is running. Fast enough to read as live, cheap enough to keep. */
 const LIVE_POLL_MS = 1500;
+
+/** Every surface mounted now, each as a single re-read. */
+const mounted = new Set<() => void>();
+
+/**
+ * The working tree was just changed by something that is not a turn — a revert putting files back.
+ *
+ * Nothing polls while idle, so without this the change counter kept the count from before the files
+ * went back until the next turn ended.
+ */
+export function touchWorkingTree(): void {
+	for (const reread of mounted) reread();
+}
 
 export function useLiveRefresh(refresh: () => void | Promise<void>, running: boolean, ms = LIVE_POLL_MS): void {
 	/*
@@ -56,14 +69,18 @@ export function useLiveRefresh(refresh: () => void | Promise<void>, running: boo
 			}
 		};
 
+		const reread = () => void tick();
+		mounted.add(reread);
 		void tick();
 		if (!running) return () => {
 			alive = false;
+			mounted.delete(reread);
 		};
 
 		const timer = setInterval(() => void tick(), ms);
 		return () => {
 			alive = false;
+			mounted.delete(reread);
 			clearInterval(timer);
 		};
 	}, [refresh, running, ms]);

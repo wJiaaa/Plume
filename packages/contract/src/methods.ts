@@ -113,6 +113,7 @@ export const METHODS = {
 		prompt: "agent:prompt",
 		editMessage: "agent:editMessage",
 		revertMessage: "agent:revertMessage",
+		revertPlan: "agent:revertPlan",
 		abort: "agent:abort",
 		approve: "agent:approve",
 		setModel: "agent:setModel",

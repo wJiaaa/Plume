@@ -174,7 +174,9 @@ export function useConfirmer() {
 					setPending(null);
 					pending.onCancel?.();
 				}}
-			/>
+			>
+				{pending.children}
+			</Confirm>
 		) : null,
 	};
 }

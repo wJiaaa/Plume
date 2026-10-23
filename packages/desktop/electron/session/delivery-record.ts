@@ -13,21 +13,31 @@ export function deliveryMessages(messages: Message[], timestamp: number): Messag
 	}
 	return messages.slice(Math.max(0, start), end + 1);
 }
+/** The recorded file changes in these messages, per path in the order they were made. */
+export async function recordedChanges(sessionId: string, messages: Message[]): Promise<{ groups: Map<string, RecordedChange[]>; warnings: string[] }> {
+	const groups = new Map<string, RecordedChange[]>(), warnings: string[] = [];
+	for (const message of messages) {
+		if (message.role !== "toolResult") continue;
+		const detail = message.details;
+		if (!detail || typeof detail !== "object") continue;
+		const ids = "changeIds" in detail && Array.isArray(detail.changeIds) ? detail.changeIds.filter((id): id is string => typeof id === "string") : [];
+		if (!message.isError && "changeId" in detail && typeof detail.changeId === "string") ids.push(detail.changeId);
+		for (const id of ids) {
+			try { const change = await readFileChange(sessionId, id); const group = groups.get(change.path) ?? []; group.push(change); groups.set(change.path, group); }
+			catch (error) { warnings.push(`变更快照不可用：${String(error)}`); }
+		}
+		if ("changeWarning" in detail && typeof detail.changeWarning === "string") warnings.push(detail.changeWarning);
+	}
+	return { groups, warnings };
+}
 export async function collectDelivery(sessionId: string, cwd: string, messages: Message[], timestamp: number): Promise<TurnDelivery> {
-	const value: TurnDelivery = { files: [], commands: [], serviceJobIds: [], warnings: [], reportPath: null };
-	const groups = new Map<string, RecordedChange[]>();
+	const { groups, warnings } = await recordedChanges(sessionId, messages);
+	const value: TurnDelivery = { files: [], commands: [], serviceJobIds: [], warnings, reportPath: null };
 	for (const message of messages) {
 		if (message.role !== "toolResult") continue;
 		const detail = message.details;
 		if (!detail || typeof detail !== "object") continue;
 		if (!message.isError && "kind" in detail && detail.kind === "bash_background" && "id" in detail && typeof detail.id === "string") value.serviceJobIds.push(detail.id);
-		const ids = "changeIds" in detail && Array.isArray(detail.changeIds) ? detail.changeIds.filter((id): id is string => typeof id === "string") : [];
-		if (!message.isError && "changeId" in detail && typeof detail.changeId === "string") ids.push(detail.changeId);
-		for (const id of ids) {
-			try { const change = await readFileChange(sessionId, id); const group = groups.get(change.path) ?? []; group.push(change); groups.set(change.path, group); }
-			catch (error) { value.warnings.push(`变更快照不可用：${String(error)}`); }
-		}
-		if ("changeWarning" in detail && typeof detail.changeWarning === "string") value.warnings.push(detail.changeWarning);
 		if ("command" in detail && typeof detail.command === "string") {
 			const status = "exitCode" in detail && typeof detail.exitCode === "number" ? `exit ${detail.exitCode}` : message.isError ? "失败或中断" : "已启动";
 			value.commands.push({ command: detail.command, status, output: message.content.flatMap((part) => part.type === "text" ? [part.text] : []).join("\n") });

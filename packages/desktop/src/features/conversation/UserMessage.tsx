@@ -1,6 +1,6 @@
 import { translate } from "../../i18n/translate.ts";
 import type { SkillEntry, UserContent, UserMessage as UserMessageType } from "@plume/core";
-import { MessageSquarePlus, Pencil, Boxes, MessagesSquare, Undo2 } from "../../ui/icons/index.ts";
+import { MessageSquarePlus, Pencil, Boxes, MessagesSquare } from "../../ui/icons/index.ts";
 import { attachToComposer, openFromEvent, openViewer } from "../image/index.ts";
 import { AttachmentMenu, AttachmentStrip, displayName, KIND_LABEL, previewableInPanel, sentKind, type FileKind, type StripFile } from "../composer/index.ts";
 import { useAttachmentActions } from "../composer/index.ts";
@@ -12,12 +12,13 @@ import { BubbleText } from "./BubbleText.tsx";
 import { jumpToSession } from "./jump-to-session.ts";
 import { MessageActions } from "./MessageActions.tsx";
 import { ForkAction } from "./ForkAction.tsx";
+import { RevertAction } from "./RevertAction.tsx";
+import { filesBackPlan, useFilesBack } from "./files-back.tsx";
 import { MessageEditor } from "./message/MessageEditor.tsx";
 import { useApp } from "../../store/index.ts";
 import { useDockScope, useScopedFromMessages, useScopedFromMeta, useScopedRunning, useScopedSessionId } from "../../app/session-scope.tsx";
 import { bridge } from "../../services/index.ts";
 import { useI18n } from "../../i18n/index.ts";
-import { useConfirmer } from "../../ui/overlay/Confirm.tsx";
 import { lastUserMessageIndex } from "../../lib/revert-draft.ts";
 import { SESSION_THUMB_EDGE } from "../../../shared/session-image.ts";
 import { imageBlockSrc } from "./image-block.ts";
@@ -180,9 +181,7 @@ export function UserMessage({
 	 */
 	const aside = useScopedFromMeta((meta) => meta?.parentId !== undefined);
 	const editMessage = useApp((s) => s.editMessage);
-	const revertMessage = useApp((s) => s.revertMessage);
 	const lastUser = useScopedFromMessages(lastUserMessageIndex);
-	const confirm = useConfirmer();
   const attachmentActions = useAttachmentActions();
   /** 这条消息自己的元素：分屏时另一屏同一序号的消息也在文档里。 */
   const root = useRef<HTMLDivElement>(null);
@@ -317,9 +316,11 @@ export function UserMessage({
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(text);
-  function submit() {
+  const filesBack = useFilesBack();
+  // 演算还没回来时再按一次回车，会弹两个框、发两遍。
+  const checking = useRef(false);
+  async function submit() {
     const trimmed = draft.trim();
-    setEditing(false);
     /*
      * Unchanged text still sends.
      *
@@ -328,7 +329,10 @@ export function UserMessage({
      * on a dropped connection — and pressing 发送 and having nothing at all happen reads as a
      * broken button, not as a considerate no-op. Cancel is right there for changing your mind.
      */
-    if (!trimmed) return;
+    if (!trimmed) {
+      setEditing(false);
+      return;
+    }
     /*
      * Everything that was attached is carried over: the edit is to the wording, not to the files.
      *
@@ -349,10 +353,28 @@ export function UserMessage({
      * 读得到，只有人看不见了。而 `displayText` 一旦没有，气泡就退回原文，附件正文重新整个铺进
      * 自己发出的那条消息里，那正是 `displayText` 存在的全部理由。
      */
-    void editMessage(index, [...images, ...bodies, { type: "text", text: trimmed }], {
-      displayText: trimmed,
-      ...(message.attachments?.length ? { attachments: message.attachments } : {}),
-    }, sessionId ?? undefined);
+    const content: UserContent[] = [...images, ...bodies, { type: "text", text: trimmed }];
+    const meta = { displayText: trimmed, ...(message.attachments?.length ? { attachments: message.attachments } : {}) };
+    const send = (files: boolean) => {
+      setEditing(false);
+      void editMessage(index, content, files ? { ...meta, files: true } : meta, sessionId ?? undefined);
+    };
+    // 侧边聊天改不了主对话的文件，它截的也不是那几轮。
+    if (aside) return send(false);
+    if (checking.current) return;
+    checking.current = true;
+    const plan = await filesBackPlan(sessionId, index).finally(() => {
+      checking.current = false;
+    });
+    if (!plan) return send(false);
+    // 取消就回到编辑框，改好的字还在。
+    filesBack.ask(plan, {
+      title: t("revert.editTitle"),
+      detail: t("revert.editDetail", { n: plan.files.length }),
+      blocked: t("revert.editBlocked"),
+      withFiles: t("revert.editWithFiles"),
+      without: t("revert.editOnly"),
+    }, send);
   }
 
   if (editing) {
@@ -361,7 +383,7 @@ export function UserMessage({
         <MessageEditor
           value={draft}
           onChange={setDraft}
-          onSubmit={submit}
+          onSubmit={() => void submit()}
           onCancel={() => {
             setEditing(false);
             setDraft(text);
@@ -369,6 +391,7 @@ export function UserMessage({
           // 侧边面板只有两三百像素宽，320 会把它吞掉；按钮也照侧边聊天一直的说法叫「重新提问」。
           {...(aside ? { confirmLabel: t("sideMessage.reask"), maxHeight: 220 } : {})}
         />
+        {filesBack.element}
       </div>
     );
   }
@@ -572,33 +595,18 @@ export function UserMessage({
         text={text}
         className="mt-1 pr-1"
       >
-        {!aside && <IconButton
-          data-message-undo=""
-          label={running ? t("userMessage.undoRunning") : t("userMessage.undo")}
-          ariaLabel={t("userMessage.undo")}
-          explainDisabled
-          disabled={running}
-          onClick={() => {
-            if (running) return;
-            const run = () => void revertMessage(index, sessionId ?? undefined);
-            if (index === lastUser) {
-              run();
-              return;
-            }
-            confirm.ask({
-              title: t("userMessage.undoConfirmTitle"),
-              detail: t("userMessage.undoConfirmDetail"),
-              confirmLabel: t("userMessage.undoConfirm"),
-              onConfirm: run,
-            });
-          }}
-          icon={<Undo2 size={12.5} strokeWidth={1.8} />}
-        />}
+        {!aside && <RevertAction index={index} sessionId={sessionId} running={running} last={index === lastUser} />}
+        {/*
+          * 只有最后一条能编辑，同 ZCode：改一条更早的话，等于把它之后几轮连同那几轮改过的文件一起作废，
+          * 这件事交给撤回去做，它会先问清楚。按钮留着、置灰并说明，不因为位置不同而时有时无。
+          */}
         <IconButton
-          label={running ? t(aside ? "sideMessage.busy" : "userMessage.turnRunning") : t(aside ? "sideMessage.editAndReask" : "userMessage.editResend")}
+          label={running ? t(aside ? "sideMessage.busy" : "userMessage.turnRunning") : index !== lastUser ? t("userMessage.editNotLast") : t(aside ? "sideMessage.editAndReask" : "userMessage.editResend")}
+          ariaLabel={t(aside ? "sideMessage.editAndReask" : "userMessage.editResend")}
           explainDisabled
-          disabled={running}
+          disabled={running || index !== lastUser}
           onClick={() => {
+            if (running || index !== lastUser) return;
             setDraft(text);
             setEditing(true);
           }}
@@ -612,7 +620,6 @@ export function UserMessage({
           */}
         {sessionId && !aside && <ForkAction index={index} message={message} sessionId={sessionId} />}
       </MessageActions>
-      {confirm.element}
     </div>
   );
 }
