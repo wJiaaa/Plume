@@ -89,7 +89,7 @@ export function useFilesBack() {
 function RevertFileName({ path }: { path: string }) {
 	const split = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1;
 	return (
-		<span className="flex min-w-0 flex-1" title={path}>
+		<span className="flex min-w-0 flex-1" data-ly-tip={path}>
 			<span className="min-w-0 truncate text-ink-muted">{path.slice(0, split)}</span>
 			<span className="shrink-0 text-ink">{path.slice(split)}</span>
 		</span>
