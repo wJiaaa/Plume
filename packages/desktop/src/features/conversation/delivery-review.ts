@@ -10,12 +10,12 @@
  * undo on 乙's card rewrote whatever review was on show. Keyed by the conversation, each screen's
  * pane reads its own, the way ADR-0023 has containers belong to their conversation.
  *
- * An undo made on either surface reaches the other, and other windows, through `delivery-undo.ts`.
+ * The turn's delivery itself is not kept here: both surfaces read it from `delivery-cache.ts`, which
+ * every undo, in any window, keeps current.
  */
 
 import { useEffect } from "react";
 import { create } from "zustand";
-import type { TurnDelivery } from "@plume/contract";
 
 interface DeliveryTarget {
 	sessionId: string;
@@ -24,18 +24,12 @@ interface DeliveryTarget {
 	path: string | null;
 }
 
-interface DeliveryReview {
-	target: DeliveryTarget;
-	data: TurnDelivery | null;
-}
-
 interface DeliveryReviewState {
 	/** By conversation. */
-	reviews: Readonly<Record<string, DeliveryReview>>;
-	open(target: DeliveryTarget, data?: TurnDelivery | null): void;
+	reviews: Readonly<Record<string, { target: DeliveryTarget }>>;
+	open(target: DeliveryTarget): void;
 	/** Take a target another window chose, without writing it back. */
 	adopt(target: DeliveryTarget): void;
-	setData(sessionId: string, data: TurnDelivery | null): void;
 	close(sessionId: string): void;
 }
 
@@ -78,21 +72,11 @@ function rememberedTarget(sessionId: string): DeliveryTarget | null {
 
 export const useDeliveryReview = create<DeliveryReviewState>((set) => ({
 	reviews: {},
-	open: (target, data) => {
+	open: (target) => {
 		remember(target);
-		set((state) => ({
-			reviews: { ...state.reviews, [target.sessionId]: { target, data: data ?? null } },
-		}));
+		set((state) => ({ reviews: { ...state.reviews, [target.sessionId]: { target } } }));
 	},
-	adopt: (target) =>
-		set((state) => ({
-			reviews: { ...state.reviews, [target.sessionId]: { target, data: null } },
-		})),
-	setData: (sessionId, data) =>
-		set((state) => {
-			const review = state.reviews[sessionId];
-			return review ? { reviews: { ...state.reviews, [sessionId]: { ...review, data } } } : {};
-		}),
+	adopt: (target) => set((state) => ({ reviews: { ...state.reviews, [target.sessionId]: { target } } })),
 	close: (sessionId) => {
 		forget(sessionId);
 		set((state) => {

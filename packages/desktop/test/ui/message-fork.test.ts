@@ -51,7 +51,7 @@ beforeEach(() => {
 		value: {
 			agent: { revertMessage: async () => void reverted++ },
 			// A reply that ended draws its delivery card, which asks for what the turn changed: nothing.
-			delivery: { get: async () => null },
+			delivery: { onChanged: () => () => {}, get: async () => null },
 			sessions: {
 				forkBefore: async (sessionId: string, index: number, timestamp: number, title?: string) => {
 					forks.push([sessionId, index, timestamp, title]);

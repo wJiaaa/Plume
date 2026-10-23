@@ -5,7 +5,7 @@ import { clearDeliveryCache, peekDelivery, rememberDelivery } from "../src/featu
 const empty = () => ({ files: [], commands: [], serviceJobIds: [], warnings: [], reportPath: null });
 const card = (n: number) => ({
 	files: Array.from({ length: n }, (_, i) => ({
-		path: `/tmp/f${i}.ts`, added: 1, removed: 0, hunks: [], changeIds: [] as string[], canUndo: false,
+		path: `/tmp/f${i}.ts`, added: 1, removed: 0, hunks: [], canUndo: false,
 	})),
 	commands: [], serviceJobIds: [], warnings: [], reportPath: null,
 });

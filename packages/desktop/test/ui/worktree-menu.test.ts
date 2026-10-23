@@ -91,7 +91,7 @@ beforeEach(() => {
 			},
 			subAgents: { list: async () => [] },
 			commands: { list: async () => ({ commands: [], skills: [], agents: [] }) },
-			delivery: { get: async () => null },
+			delivery: { onChanged: () => () => {}, get: async () => null },
 		},
 	});
 	useApp.setState({

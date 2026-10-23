@@ -68,7 +68,7 @@ beforeEach(async () => {
 			subAgents: { list: async () => [] },
 			commands: { list: async () => ({ commands: [], skills: [], agents: [] }) },
 			git: { generalScratch: async () => "/scratch", stat: async () => ({ added: 0, removed: 0, files: 0 }) },
-			delivery: { get: async () => null },
+			delivery: { onChanged: () => () => {}, get: async () => null },
 			// 对话顶上的钩子信任提示会读当前项目的钩子。
 			hooks: { list: async () => ({ project: [] }) },
 		},

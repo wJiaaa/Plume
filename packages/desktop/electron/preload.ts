@@ -154,6 +154,13 @@ const extras = {
 			return () => ipcRenderer.removeListener("plugins:changed", listener);
 		},
 	},
+	delivery: {
+		onChanged: (handler) => {
+			const listener = (_event: Electron.IpcRendererEvent, change: Parameters<typeof handler>[0]) => handler(change);
+			ipcRenderer.on("delivery:changed", listener);
+			return () => ipcRenderer.removeListener("delivery:changed", listener);
+		},
+	},
 	sessions: {
 		onChanged: (handler) => {
 			const listener = (_event: Electron.IpcRendererEvent, change: Parameters<typeof handler>[0]) => handler(change);

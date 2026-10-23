@@ -2,21 +2,18 @@ import { translate } from "../../i18n/translate.ts";
 import { FileDiff, Files, FileText, Undo2 } from "../../ui/icons/index.ts";
 import { Caret } from "../../ui/primitives/Caret.tsx";
 import { useEffect, useRef, useState } from "react";
-import type { DeliveryFile, TurnDelivery } from "@plume/contract";
-import { bridge } from "../../services/index.ts";
+import type { DeliveryFile } from "@plume/contract";
 import { relativeTo } from "../../lib/paths.ts";
-import { useApp } from "../../store/index.ts";
 import { Button } from "../../ui/primitives/Button.tsx";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import { Popover } from "../../ui/overlay/Popover.tsx";
-import { useConfirmer } from "../../ui/overlay/Confirm.tsx";
 import { closeNow, openFilePane, openScopedPanel } from "../dock/index.ts";
 import { useDockScope, useScopedFromMessages, useScopedProjectPath, useScopedRunning, useScopedSessionId } from "../../app/session-scope.tsx";
 import { DiffView } from "../git/index.ts";
 import { latestDeliveryTimestamp } from "./delivery-state.ts";
-import { peekDelivery, rememberDelivery } from "./delivery-cache.ts";
+import { useTurnDelivery } from "./delivery-cache.ts";
 import { useDeliveryReview } from "./delivery-review.ts";
-import { announceUndo, useDeliveryUndos } from "./delivery-undo.ts";
+import { useDeliveryUndo } from "./delivery-undo.ts";
 import { usePathMenu } from "../markdown/index.ts";
 import { useI18n } from "../../i18n/index.ts";
 
@@ -83,29 +80,21 @@ function Delivery({ sessionId, timestamp }: { sessionId: string; timestamp: numb
 	const screen = useDockScope();
 	// Right-click on a file row: open it, in which application, show it in the file manager, copy its path.
 	const pathMenu = usePathMenu(workspace);
-	const [data, setData] = useState<TurnDelivery | null>(() => peekDelivery(sessionId, timestamp) ?? null);
+	/*
+	 * What can still be undone changes after mount: an undo in the review beside this card, in a pane
+	 * popped out into its own window, or on this card in another window. The cache hears all of them.
+	 */
+	const data = useTurnDelivery(sessionId, timestamp);
 	const [expanded, setExpanded] = useState(false);
-	const [undoing, setUndoing] = useState(false);
 	/** The row being previewed, and the file it stands for — the preview hangs off that row. */
 	const [hover, setHover] = useState<{ anchor: HTMLElement; file: DeliveryFile } | null>(null);
 	const hoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-	const live = useRef(true);
-	const undoLock = useRef(false);
-	const confirm = useConfirmer();
-	useEffect(() => {
-		live.current = true;
-		void bridge.delivery.get(sessionId, timestamp).then((value) => {
-			rememberDelivery(sessionId, timestamp, value);
-			if (live.current) setData(value);
-		}).catch((error: unknown) => { if (live.current) useApp.getState().notify(String(error), "error"); });
-		return () => { live.current = false; clearTimeout(hoverTimer.current); };
-	}, [sessionId, timestamp]);
-	/*
-	 * What can still be undone changes after mount: an undo in the review beside this card, in a pane
-	 * popped out into its own window, or on this card in another window. Missing those, the card went
-	 * on offering 「撤销」 for a turn the main process would no longer undo.
-	 */
-	useDeliveryUndos(sessionId, timestamp, setData);
+	useEffect(() => () => clearTimeout(hoverTimer.current), []);
+	const { undoing, ask, element: confirmElement } = useDeliveryUndo(sessionId, timestamp, (value) => {
+		// This conversation's review, and only while it shows this turn: another turn's is not this undo's to touch.
+		const showing = useDeliveryReview.getState().reviews[sessionId]?.target.timestamp === timestamp;
+		if (showing && !value.files.length) closeNow(sessionId, "delivery");
+	});
 	// Opening, switching and closing are the same decision made three ways, so they share one timer:
 	// whichever happened last is the one that gets to land.
 	type Hovered = { anchor: HTMLElement; file: DeliveryFile } | null;
@@ -125,29 +114,12 @@ function Delivery({ sessionId, timestamp }: { sessionId: string; timestamp: numb
 	};
 	/** Gone now, and no pending intent left to bring it back a moment later. */
 	const hideHover = () => { clearTimeout(hoverTimer.current); setHover(null); };
-	const undo = async (path?: string) => {
-		if (undoLock.current) return;
-		undoLock.current = true; setUndoing(true);
-		try {
-			await bridge.delivery.undo(sessionId, timestamp, path);
-			const value = await bridge.delivery.get(sessionId, timestamp);
-			// To this card and everything else showing the turn — the review beside it, a popped-out one.
-			announceUndo(sessionId, timestamp, value);
-			useApp.getState().notify(t("delivery.reverted"), "info");
-			// This conversation's review, and only while it shows this turn: another turn's is not this undo's to touch.
-			const showing = useDeliveryReview.getState().reviews[sessionId]?.target.timestamp === timestamp;
-			if (showing && !value.files.length) {
-				closeNow(sessionId, "delivery");
-			}
-		} catch (error) { useApp.getState().notify(String(error), "error"); }
-		finally { undoLock.current = false; if (live.current) setUndoing(false); }
-	};
 	const askUndo = (file?: DeliveryFile) => {
 		hideHover();
-		confirm.ask({ title: file ? t("delivery.revertFileConfirm") : t("delivery.revertAllConfirm"), detail: t("delivery.revertDetail"), confirmLabel: t("delivery.revertChanges"), onConfirm: () => undo(file?.path) });
+		ask(file?.path);
 	};
 	// No slot while we wait: a 0→height reveal reads as the card unfolding from the top.
-	if (!data?.files.length) return confirm.element;
+	if (!data?.files.length) return confirmElement;
 	const files = data.files;
 	const added = files.reduce((sum, file) => sum + file.added, 0);
 	const removed = files.reduce((sum, file) => sum + file.removed, 0);
@@ -167,7 +139,7 @@ function Delivery({ sessionId, timestamp }: { sessionId: string; timestamp: numb
 	};
 	const openTurn = (path?: string) => {
 		hideHover();
-		useDeliveryReview.getState().open({ sessionId, timestamp, path: path ?? null }, data);
+		useDeliveryReview.getState().open({ sessionId, timestamp, path: path ?? null });
 		openScopedPanel("delivery", screen ?? undefined);
 	};
 	const remaining = files.length - PREVIEW_FILES;
@@ -305,7 +277,7 @@ function Delivery({ sessionId, timestamp }: { sessionId: string; timestamp: numb
 			header={<div className="flex min-w-0 items-center gap-3 px-3 py-2 text-label"><FileName path={relative(hover.file.path)} /><Counts added={hover.file.added} removed={hover.file.removed} /><IconButton size="sm" icon={<Undo2 size={14} />} label={hover.file.canUndo ? t("delivery.revertOne") : t("delivery.cannotRevert")} explainDisabled disabled={!hover.file.canUndo || undoing} onClick={() => askUndo(hover.file)} /></div>}>
 			<DiffView path={hover.file.path} hunks={hover.file.hunks} maxLines={Infinity} />
 		</Popover>}
-		{confirm.element}
+		{confirmElement}
 		{pathMenu.element}
 	</>;
 }

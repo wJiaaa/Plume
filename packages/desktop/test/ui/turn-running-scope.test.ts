@@ -60,7 +60,7 @@ beforeEach(() => {
 				},
 			},
 			// A reply row asks whether its turn left a delivery; none did.
-			delivery: { get: async () => null },
+			delivery: { onChanged: () => () => {}, get: async () => null },
 		},
 	});
 	useApp.setState({

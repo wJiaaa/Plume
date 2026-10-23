@@ -14,7 +14,6 @@
  */
 
 import { Bot, FileDiff, FileText, Folder, GitCompare, Globe, History, ListOrdered, ListTodo, MessageCirclePlus, SquareTerminal, Undo2 } from "../ui/icons/index.ts";
-import { useEffect, useRef, useState } from "react";
 
 import { BrowserPanel, BrowserTabTitle, browserResidentsOf, closeBrowser, newBrowserPage, subscribeBrowserResidents } from "../features/browser/index.ts";
 import { FileBrowser } from "../features/files/index.ts";
@@ -26,14 +25,10 @@ import { DiffView, GitPanel } from "../features/git/index.ts";
 import { SideChat, SideChatTitle, closeSideChat, confirmCloseSideChat } from "../features/sidechat/index.ts";
 import { TaskPanel } from "../features/task/TaskPanel.tsx";
 import { TerminalPane, TerminalTitle, closeTerminal, confirmCloseTerminal } from "../features/terminal/index.ts";
-import { announceUndo, TrajectoryPanel, useDeliveryReview, useDeliveryUndos, useSharedDeliveryTarget } from "../features/conversation/index.ts";
+import { TrajectoryPanel, useDeliveryReview, useDeliveryUndo, useSharedDeliveryTarget, useTurnDelivery } from "../features/conversation/index.ts";
 import { usePathMenu } from "../features/markdown/index.ts";
-import type { DeliveryFile, TurnDelivery } from "@plume/contract";
 import { useI18n } from "../i18n/index.ts";
 import { relativeTo } from "../lib/paths.ts";
-import { bridge } from "../services/index.ts";
-import { useApp } from "../store/index.ts";
-import { useConfirmer } from "../ui/overlay/Confirm.tsx";
 import { PanelEmpty } from "../ui/layout/PanelEmpty.tsx";
 import { IconButton } from "../ui/primitives/IconButton.tsx";
 import { Scroller } from "../ui/scroll/Scroller.tsx";
@@ -87,67 +82,18 @@ function DeliveryPanel() {
 	const pathMenu = usePathMenu(workspace);
 	// That conversation's own review: one opened under another screen is that screen's, and leaves this one be.
 	const target = useDeliveryReview((state) => (owner ? (state.reviews[owner]?.target ?? null) : null));
-	const cached = useDeliveryReview((state) => (owner ? (state.reviews[owner]?.data ?? null) : null));
-	const [data, setData] = useState<TurnDelivery | null>(cached);
-	const [undoing, setUndoing] = useState(false);
-	const undoLock = useRef(false);
-	const confirm = useConfirmer();
-
-	useEffect(() => {
-		if (!target) {
-			setData(null);
-			return;
-		}
-		const fromStore = useDeliveryReview.getState().reviews[target.sessionId]?.data;
-		if (fromStore) setData(fromStore);
-		let live = true;
-		void bridge.delivery.get(target.sessionId, target.timestamp).then((value) => {
-			if (live) {
-				setData(value);
-				useDeliveryReview.getState().setData(target.sessionId, value);
-			}
-		}).catch((error: unknown) => {
-			if (live) useApp.getState().notify(String(error), "error");
-		});
-		return () => { live = false; };
-	}, [target]);
-	// Undos made on the turn's card, or in another window, change which of these files can still be undone.
-	useDeliveryUndos(target?.sessionId ?? null, target?.timestamp ?? null, setData);
-
-	const undo = async (path?: string) => {
-		if (!target || undoLock.current) return;
-		undoLock.current = true;
-		setUndoing(true);
-		try {
-			await bridge.delivery.undo(target.sessionId, target.timestamp, path);
-			const value = await bridge.delivery.get(target.sessionId, target.timestamp);
-			// To this pane and everything else showing the turn — its card, in this window or the one it popped out of.
-			announceUndo(target.sessionId, target.timestamp, value);
-			useApp.getState().notify(t("delivery.reverted"), "info");
-			if (!value.files.length) {
-				if (scope) closeNow(scope, "delivery");
-				else useDeliveryReview.getState().close(target.sessionId);
-			}
-		} catch (error) {
-			useApp.getState().notify(String(error), "error");
-		} finally {
-			undoLock.current = false;
-			setUndoing(false);
-		}
-	};
+	// The same entry the turn's card reads, so an undo on either — or in another window — shows on both.
+	const data = useTurnDelivery(target?.sessionId ?? null, target?.timestamp ?? null);
+	const { undoing, ask, element: confirmElement } = useDeliveryUndo(target?.sessionId ?? null, target?.timestamp ?? null, (value) => {
+		if (value.files.length || !target) return;
+		if (scope) closeNow(scope, "delivery");
+		else useDeliveryReview.getState().close(target.sessionId);
+	});
 
 	if (!target) return <PanelEmpty icon={FileDiff} title={t("delivery.fileChanges")} />;
 	const files = (data?.files ?? []).filter((file) => !target.path || file.path === target.path);
 	if (!files.length) return <PanelEmpty icon={FileDiff} title={t("delivery.fileChanges")} />;
 	const relative = (path: string) => workspace ? relativeTo(workspace, path) : path;
-	const askUndo = (file: DeliveryFile) => {
-		confirm.ask({
-			title: t("delivery.revertFileConfirm"),
-			detail: t("delivery.revertDetail"),
-			confirmLabel: t("delivery.revertChanges"),
-			onConfirm: () => undo(file.path),
-		});
-	};
 
 	return <>
 		{/* No top fade: a file's header is always pinned at the top once scrolled, so the fade would only dissolve the header itself. */}
@@ -164,7 +110,7 @@ function DeliveryPanel() {
 								label={file.canUndo ? t("delivery.revertOne") : t("delivery.cannotRevert")}
 								explainDisabled
 								disabled={!file.canUndo || undoing}
-								onClick={() => askUndo(file)}
+								onClick={() => ask(file.path)}
 							/>
 						</div>
 					</div>
@@ -172,7 +118,7 @@ function DeliveryPanel() {
 				</section>
 			))}
 		</Scroller>
-		{confirm.element}
+		{confirmElement}
 		{pathMenu.element}
 	</>;
 }

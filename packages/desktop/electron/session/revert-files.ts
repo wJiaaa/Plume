@@ -6,26 +6,22 @@
  * 不覆盖、不合并，交给人。
  */
 
-import { computeDiff, undoFileChangeBatches, undoProblems, type AgentSession, type RecordedChange } from "@plume/core";
+import { undoFileChangeBatches, undoProblems, type AgentSession } from "@plume/core";
 import type { RevertPlan } from "@plume/contract";
 import { nativeText } from "../i18n.ts";
-import { recordedChanges } from "./delivery-record.ts";
+import { changedFiles, recordedChanges } from "./delivery-record.ts";
 
-/** 截掉的那段里每个文件的改动；改了又改回原样的不算，交付卡片也不列它们。 */
-async function cutChanges(session: AgentSession, index: number): Promise<{ batches: RecordedChange[][]; unrecorded: boolean }> {
+/** 截掉的那段里每个文件的改动；改了又改回原样的不算，和交付卡片按同一个判断（`changedFiles`）。 */
+async function cutChanges(session: AgentSession, index: number): Promise<{ files: ReturnType<typeof changedFiles>; unrecorded: boolean }> {
 	const { groups, warnings } = await recordedChanges(session.meta.id, session.messages.slice(index));
-	const batches = [...groups.values()].filter((changes) => changes[0].before !== changes[changes.length - 1].after);
-	return { batches, unrecorded: warnings.length > 0 };
+	return { files: changedFiles(groups), unrecorded: warnings.length > 0 };
 }
 
 export async function revertPlan(session: AgentSession, index: number): Promise<RevertPlan> {
-	const { batches, unrecorded } = await cutChanges(session, index);
-	const problems = await undoProblems(session.meta.cwd, batches);
+	const { files, unrecorded } = await cutChanges(session, index);
+	const problems = await undoProblems(session.meta.cwd, files.map((file) => file.changes));
 	return {
-		files: batches.map((changes, i) => {
-			const diff = computeDiff(changes[0].before ?? "", changes[changes.length - 1].after ?? "");
-			return { path: changes[0].path, added: diff.added, removed: diff.removed, problem: problems[i] };
-		}),
+		files: files.map(({ path, diff }, i) => ({ path, added: diff.added, removed: diff.removed, problem: problems[i] })),
 		unrecorded,
 	};
 }
@@ -37,7 +33,7 @@ export async function revertPlan(session: AgentSession, index: number): Promise<
  * 自己再查一遍，写到一半失败会把已写的退回去。
  */
 export async function restoreRevertedFiles(session: AgentSession, index: number): Promise<void> {
-	const { batches, unrecorded } = await cutChanges(session, index);
+	const { files, unrecorded } = await cutChanges(session, index);
 	if (unrecorded) throw new Error(nativeText("revert.unrecorded"));
-	if (batches.length) await undoFileChangeBatches(session.meta.cwd, batches);
+	if (files.length) await undoFileChangeBatches(session.meta.cwd, files.map((file) => file.changes));
 }

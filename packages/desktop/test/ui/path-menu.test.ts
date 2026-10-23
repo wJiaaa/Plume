@@ -30,7 +30,7 @@ const SAID: Message[] = [
 	{ role: "assistant", content: [{ type: "text", text: "写好了" }], api: "anthropic-messages", provider: "t", model: "t", usage, stopReason: "stop", timestamp: 2 },
 ];
 const DELIVERY: TurnDelivery = {
-	files: [PRD, LIB].map((path) => ({ path, added: 3, removed: 1, hunks: [], changeIds: ["c1"], canUndo: true })),
+	files: [PRD, LIB].map((path) => ({ path, added: 3, removed: 1, hunks: [], canUndo: true })),
 	commands: [], serviceJobIds: [], warnings: [], reportPath: "",
 };
 
@@ -66,7 +66,7 @@ beforeEach(() => {
 					calls.push(["default", path]);
 				},
 			},
-			delivery: { get: async () => DELIVERY },
+			delivery: { onChanged: () => () => {}, get: async () => DELIVERY },
 			clipboard: { write: async (text: string) => void copied.push(text) },
 			commands: { list: async () => ({ commands: [], skills: [], agents: [] }) },
 		},

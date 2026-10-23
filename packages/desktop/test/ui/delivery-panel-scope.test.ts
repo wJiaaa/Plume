@@ -44,7 +44,7 @@ const A = meta("a", ALPHA.path, ALPHA.name);
 const B = meta("b", BETA.path, BETA.name);
 
 function delivery(path: string): TurnDelivery {
-	return { files: [{ path, added: 3, removed: 1, hunks: [], changeIds: ["c1"], canUndo: true }], commands: [], serviceJobIds: [], warnings: [], reportPath: "" };
+	return { files: [{ path, added: 3, removed: 1, hunks: [], canUndo: true }], commands: [], serviceJobIds: [], warnings: [], reportPath: "" };
 }
 const DELIVERIES: Record<string, TurnDelivery> = { a: delivery("/work/alpha/src/app.ts"), b: delivery("/work/beta/src/lib.ts") };
 
@@ -53,7 +53,7 @@ let view: Mounted | undefined;
 
 beforeEach(() => {
 	previous = { app: useApp.getState(), review: useDeliveryReview.getState() };
-	Object.defineProperty(window, "plume", { configurable: true, value: { delivery: { get: async (sessionId: string) => DELIVERIES[sessionId] } } });
+	Object.defineProperty(window, "plume", { configurable: true, value: { delivery: { onChanged: () => () => {}, get: async (sessionId: string) => DELIVERIES[sessionId] } } });
 	// 甲 holds the live slot in alpha; 乙, beside it, is parked in beta.
 	useApp.setState({
 		activeSessionId: "a", pendingSessionId: null, meta: A, messages: said("a"), toolRuns: {}, running: false,
@@ -100,7 +100,7 @@ function named(id: string): string[] {
 /** What a turn's 「审核」 does: the review of that conversation's turn, in its screen's dock. */
 async function review(id: string): Promise<void> {
 	await act(async () => {
-		useDeliveryReview.getState().open({ sessionId: id, timestamp: 2, path: null }, DELIVERIES[id]);
+		useDeliveryReview.getState().open({ sessionId: id, timestamp: 2, path: null });
 		usePaneDock.getState().open(id, "delivery");
 	});
 	await settle();

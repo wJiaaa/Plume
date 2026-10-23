@@ -5,8 +5,9 @@
  * they were; what changes is whether each file can still be undone. The card read that once, on
  * mount: an undo made in the review beside it left the card offering 「撤销」 for the whole turn, and
  * the main process refused it. A popped-out pane is another renderer and heard nothing of an undo
- * made on the card. These mount the card and the pane the way a screen and a panel window do, and
- * stand in for another window with the `storage` event its undo raises here.
+ * made on the card. Now the main process pushes the turn's new state to every window after an undo.
+ * These mount the card and the pane the way a screen and a panel window do, and stand in for another
+ * window's undo with the push it causes here.
  */
 
 import assert from "node:assert/strict";
@@ -43,10 +44,12 @@ let undoable: Record<string, boolean>;
 let reads: number;
 /** Holds a read until the test lets it answer, with the state it was asked in. */
 let held: Array<() => void> | null;
+/** This window's `delivery:changed` listeners. */
+let listeners: Set<(change: { sessionId: string; timestamp: number; delivery: TurnDelivery }) => void>;
 
 function delivery(): TurnDelivery {
 	return {
-		files: [APP, LIB].map((path) => ({ path, added: 3, removed: 1, hunks: [], changeIds: ["c1"], canUndo: undoable[path] })),
+		files: [APP, LIB].map((path) => ({ path, added: 3, removed: 1, hunks: [], canUndo: undoable[path] })),
 		commands: [],
 		serviceJobIds: [],
 		warnings: [],
@@ -61,6 +64,7 @@ beforeEach(() => {
 	undoable = { [APP]: true, [LIB]: true };
 	reads = 0;
 	held = null;
+	listeners = new Set();
 	previous = { app: useApp.getState(), review: useDeliveryReview.getState() };
 	clearDeliveryCache();
 	localStorage.clear();
@@ -74,8 +78,16 @@ beforeEach(() => {
 					if (held) await new Promise<void>((resolve) => held!.push(resolve));
 					return value;
 				},
-				undo: async (_sessionId: string, _timestamp: number, path?: string) => {
+				undo: async (sessionId: string, timestamp: number, path?: string) => {
 					for (const one of path ? [path] : Object.keys(undoable)) undoable[one] = false;
+					const value = delivery();
+					// The main process tells every window, this one included.
+					for (const listener of listeners) listener({ sessionId, timestamp, delivery: value });
+					return value;
+				},
+				onChanged: (listener: (change: { sessionId: string; timestamp: number; delivery: TurnDelivery }) => void) => {
+					listeners.add(listener);
+					return () => listeners.delete(listener);
 				},
 			},
 		},
@@ -149,15 +161,15 @@ async function review(path: string | null): Promise<void> {
 	await settle();
 }
 
-/** Another window's undo, as this one hears it. The DOM shim has no StorageEvent constructor. */
+/** Another window's undo, as this one hears it: the main process's push. */
 async function undoneElsewhere(sessionId: string, timestamp: number): Promise<void> {
 	await act(async () => {
-		window.dispatchEvent(Object.assign(new Event("storage"), { key: `ly:delivery-undone:${sessionId}`, newValue: JSON.stringify({ timestamp, at: `${Date.now()}` }) }));
+		for (const listener of listeners) listener({ sessionId, timestamp, delivery: delivery() });
 	});
 	await settle();
 }
 
-test("an undo in the review beside the card reaches the card, which reads nothing itself", async () => {
+test("an undo in the review beside the card reaches the card, with no read after it", async () => {
 	view = await screen(h(TurnDeliveryCard, { timestamp: TURN }), h(DeliveryPanel));
 	await settle();
 	await review(APP);
@@ -167,10 +179,10 @@ test("an undo in the review beside the card reaches the card, which reads nothin
 	await confirm();
 	assert.equal(paneUndo(APP).disabled, true, "the pane took its own undo");
 	assert.ok(!offersUndo(), "the card went on offering 「撤销」 for the whole turn after the review undid one of its files");
-	assert.equal(reads - before, 1, "the pane's own read after its undo is the only one: every other surface takes what it read");
+	assert.equal(reads - before, 0, "the undo answers with the turn's new state: nothing reads it again");
 });
 
-test("an undo on the card reaches the review beside it without the review reading again", async () => {
+test("an undo on the card reaches the review beside it", async () => {
 	view = await screen(h(TurnDeliveryCard, { timestamp: TURN }), h(DeliveryPanel));
 	await settle();
 	await review(null);
@@ -179,10 +191,10 @@ test("an undo on the card reaches the review beside it without the review readin
 	await confirm();
 	assert.equal(paneUndo(APP).disabled, true);
 	assert.equal(paneUndo(LIB).disabled, true);
-	assert.equal(reads - before, 1, "the card's own read is the only one");
+	assert.equal(reads - before, 0);
 });
 
-test("an undo made in another window reaches the card, with one read", async () => {
+test("an undo made in another window reaches the card", async () => {
 	view = await screen(h(TurnDeliveryCard, { timestamp: TURN }));
 	await settle();
 	assert.ok(offersUndo());
@@ -190,7 +202,7 @@ test("an undo made in another window reaches the card, with one read", async () 
 	const before = reads;
 	await undoneElsewhere("a", TURN);
 	assert.ok(!offersUndo(), "an undo made in the popped-out pane left this window's card offering 「撤销」");
-	assert.equal(reads - before, 1);
+	assert.equal(reads - before, 0);
 });
 
 test("an undo made on the card in another window reaches a popped-out pane", async () => {
@@ -206,40 +218,26 @@ test("an undo made on the card in another window reaches a popped-out pane", asy
 	assert.equal(paneUndo(APP).disabled, false);
 });
 
-test("undos of another conversation or another turn cost this window no read", async () => {
+test("undos of another conversation or another turn leave this one alone", async () => {
 	view = await screen(h(TurnDeliveryCard, { timestamp: TURN }));
 	await settle();
-	const before = reads;
+	undoable = { [APP]: false, [LIB]: false };
 	await undoneElsewhere("b", TURN);
 	await undoneElsewhere("a", TURN + 1);
-	await act(async () => {
-		window.dispatchEvent(Object.assign(new Event("storage"), { key: "ly:delivery-undone:a", newValue: null }));
-		window.dispatchEvent(Object.assign(new Event("storage"), { key: "ly:delivery-undone:a", newValue: "{not json" }));
-	});
-	await settle();
-	assert.equal(reads, before, "a window read a turn it does not show");
 	assert.ok(offersUndo());
 });
 
-test("undos heard while a read is out cost one more read, not one each, and the last state wins", async () => {
-	view = await screen(h(TurnDeliveryCard, { timestamp: TURN }), h(DeliveryPanel));
-	await settle();
-	await review(null);
+test("a read that went out before an undo does not paint over it", async () => {
 	held = [];
-	const before = reads;
-	undoable[APP] = false;
-	await undoneElsewhere("a", TURN);
-	// Two more undos land while that read is out; the answer it brings back predates them.
-	undoable[LIB] = false;
-	await undoneElsewhere("a", TURN);
-	await undoneElsewhere("a", TURN);
-	assert.equal(reads - before, 1, "one read at a time per turn");
-	const first = held;
-	held = null;
-	for (const release of first) release();
+	view = await screen(h(TurnDeliveryCard, { timestamp: TURN }));
 	await settle();
-	assert.equal(reads - before, 2, "the undos heard meanwhile cost exactly one more read");
-	assert.equal(paneUndo(APP).disabled, true);
-	assert.equal(paneUndo(LIB).disabled, true, "the read that predates the later undos had the last word");
-	assert.ok(!offersUndo());
+	// The read is out with every file undoable; an undo lands before it answers.
+	undoable = { [APP]: false, [LIB]: true };
+	await undoneElsewhere("a", TURN);
+	const out = held;
+	held = null;
+	for (const release of out) release();
+	await settle();
+	assert.ok(document.querySelector("[data-turn-delivery]"), "the card shows the turn");
+	assert.ok(!offersUndo(), "the read that predates the undo had the last word");
 });

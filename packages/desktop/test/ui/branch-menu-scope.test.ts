@@ -77,7 +77,7 @@ beforeEach(() => {
 			},
 			subAgents: { list: async () => [] },
 			commands: { list: async () => ({ commands: [], skills: [], agents: [] }) },
-			delivery: { get: async () => null },
+			delivery: { onChanged: () => () => {}, get: async () => null },
 		},
 	});
 	// 甲 holds the live slot in alpha; 乙, beside it, is named from what beta was when it left the slot.

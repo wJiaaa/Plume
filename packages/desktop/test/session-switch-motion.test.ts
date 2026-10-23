@@ -22,7 +22,7 @@ test("the file-change card does not unfold its height on arrival", async () => {
 	const source = await readFile(new URL("../src/features/conversation/TurnDelivery.tsx", import.meta.url), "utf8");
 	assert.ok(!/data-ly-delivery-slot/.test(source), "a reserved 0-height slot is the top-down unfold");
 	assert.ok(!/ly-reveal mt-3/.test(source), "ly-reveal on the card is the accordion the screenshot showed");
-	assert.match(source, /peekDelivery/, "coming back must paint the card at its real height");
+	assert.match(source, /useTurnDelivery/, "coming back must paint the card at its real height");
 });
 
 test("file-change clicks open this turn's diff pane, not Git or a modal", async () => {

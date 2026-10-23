@@ -1,6 +1,6 @@
-import { mkdir, writeFile, readFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
-import { computeDiff, formatDiff, plumeHome, readFileChange, type Message, type RecordedChange } from "@plume/core";
+import { computeDiff, formatDiff, plumeHome, readFileChange, undoProblems, type Message, type RecordedChange } from "@plume/core";
 import type { TurnDelivery } from "@plume/contract";
 export function deliveryMessages(messages: Message[], timestamp: number): Message[] {
 	const end = messages.findIndex((message) => message.role === "assistant" && message.timestamp === timestamp);
@@ -30,6 +30,10 @@ export async function recordedChanges(sessionId: string, messages: Message[]): P
 	}
 	return { groups, warnings };
 }
+/** The files these changes leave different, with that difference; one changed and changed back is not listed or undone anywhere. */
+export function changedFiles(groups: Map<string, RecordedChange[]>): { path: string; changes: RecordedChange[]; diff: ReturnType<typeof computeDiff> }[] {
+	return [...groups].map(([path, changes]) => ({ path, changes, diff: computeDiff(changes[0].before ?? "", changes[changes.length - 1].after ?? "") })).filter(({ diff }) => diff.added || diff.removed);
+}
 export async function collectDelivery(sessionId: string, cwd: string, messages: Message[], timestamp: number): Promise<TurnDelivery> {
 	const { groups, warnings } = await recordedChanges(sessionId, messages);
 	const value: TurnDelivery = { files: [], commands: [], serviceJobIds: [], warnings, reportPath: null };
@@ -43,15 +47,10 @@ export async function collectDelivery(sessionId: string, cwd: string, messages: 
 			value.commands.push({ command: detail.command, status, output: message.content.flatMap((part) => part.type === "text" ? [part.text] : []).join("\n") });
 		}
 	}
-	for (const [path, changes] of groups) {
-		const first = changes[0], last = changes[changes.length - 1];
-		const diff = computeDiff(first.before ?? "", last.after ?? "");
-		if (!diff.added && !diff.removed) continue;
-		const contiguous = changes.every((change, index) => (!index || change.before === changes[index - 1].after) && change.source !== "command");
-		let canUndo = false;
-		if (contiguous) { try { canUndo = await readFile(path, "utf8") === last.after; } catch { canUndo = false; } }
-		value.files.push({ path, added: diff.added, removed: diff.removed, hunks: diff.hunks, changeIds: changes.map((change) => change.id), canUndo });
-	}
+	const shown = changedFiles(groups);
+	// The undo's own checks, so the button shows exactly when the undo would go through.
+	const problems = await undoProblems(cwd, shown.map(({ changes }) => changes));
+	shown.forEach(({ path, diff }, index) => value.files.push({ path, added: diff.added, removed: diff.removed, hunks: diff.hunks, canUndo: problems[index] === null }));
 	const engineering = value.files.length > 0 || value.warnings.length > 0 || value.commands.some((entry) => /(?:^|[\s/])(?:test|check|lint|typecheck|pytest|jest|vitest|cargo|go)(?:[\s:]|$)/i.test(entry.command));
 	if (!engineering) return value;
 	const request = messages.filter((message) => message.role === "user" && !message.synthetic).flatMap((message) => message.content.flatMap((part) => part.type === "text" ? [part.text] : [])).join("\n\n");

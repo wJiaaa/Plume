@@ -13,6 +13,7 @@ export const handlers = new Map();
 export const registered = new Set();
 export const ipcMain = { handle: (name, handler) => handlers.set(name, handler) };
 export const isAppWindowContents = contents => registered.has(contents);
+export const eachAppWindow = () => {};
 export const grantArtifactRead = () => {};
 export const sessionDelivery = async () => ({ files: [] });
 export const undoDeliveryFile = async () => ({ ok: true });

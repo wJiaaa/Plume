@@ -18,7 +18,7 @@ import type {
 	UserContent,
 } from "@plume/core/contract-types";
 
-export interface DeliveryFile { path: string; added: number; removed: number; hunks: DiffHunk[]; changeIds: string[]; canUndo: boolean }
+export interface DeliveryFile { path: string; added: number; removed: number; hunks: DiffHunk[]; canUndo: boolean }
 /**
  * 撤回能一并拿回的文件：被截掉的那几轮改过的每一个，和它为什么不能安全写回。
  *
@@ -200,7 +200,10 @@ export interface TasksApi {
 
 export interface DeliveryApi {
 	get(sessionId: string, timestamp: number): Promise<TurnDelivery>;
-	undo(sessionId: string, timestamp: number, path?: string): Promise<void>;
+	/** Answers with the turn as it stands after the undo, which every window also hears through `onChanged`. */
+	undo(sessionId: string, timestamp: number, path?: string): Promise<TurnDelivery>;
+	/** A turn's delivery changed — an undo, made in any window. */
+	onChanged(handler: (change: { sessionId: string; timestamp: number; delivery: TurnDelivery }) => void): () => void;
 }
 
 export interface ServicesApi {

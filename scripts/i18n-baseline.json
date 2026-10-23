@@ -38,5 +38,5 @@
 	"electron/session/service-listeners.ts": 3,
 	"electron/session/session-hub.ts": 4,
 	"electron/session/trajectory-export.ts": 7,
-	"electron/session/turn-delivery.ts": 4
+	"electron/session/turn-delivery.ts": 3
 }
