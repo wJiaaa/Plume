@@ -106,13 +106,13 @@ function attachmentsOf(
       name: file.name,
       kind,
       /*
-       * 正文里那枚标记写的名字：有真名就是真名，没有（粘贴进来的图）才是「图片 1」。
+       * 正文里那枚标记写的名字：图片和没有真名的是「图片 1」，其余是真名。
        *
        * 存下来的优先，没存的按**和输入框同一套规则**现算（见 `Composer` 的 `relabel`）。这条规则错
        * 开过两次，两次的表现是一样的：气泡里那些标记配不上任何一份附件，整句话的标签退化成一串方
        * 括号。两处必须是同一条。
        */
-      label: file.label ?? displayName({ name: file.name, kindLabel: label(kind), kindIndex }, regionShot),
+      label: file.label ?? displayName({ name: file.name, kind, kindLabel: label(kind), kindIndex }, regionShot),
       tip: `${file.name}\n${label(kind)}`,
       ...(refs.src ? { src: refs.src } : {}),
       ...(refs.full ? { full: refs.full } : {}),

@@ -61,6 +61,13 @@ test("没有真名的图片，按它在同门类里的序号称呼", () => {
 	);
 });
 
+test("图片不管叫什么都按序号称呼，文档照旧用真名", () => {
+	// 相机和聊天软件起的名字摆进句子里只是一行噪声；图片靠缩略图认，真名照旧进提示词。
+	assert.equal(displayName({ name: "dji_mimo_20250517_141038_photo.JPG", kind: "image", kindLabel: "图片", kindIndex: 2 }), "图片 2");
+	assert.equal(displayName({ name: "838d4eb806427cd7ce50ee10adee01ce.png", kind: "image", kindLabel: "图片", kindIndex: 1 }), "图片 1");
+	assert.equal(displayName({ name: "report.pdf", kind: "pdf", kindLabel: "PDF", kindIndex: 1 }), "report.pdf");
+});
+
 test("扩展名单独摘出来，省略号吃不到它", () => {
 	assert.deepEqual(nameParts("陈列道具导入模板(花园里店).xlsx"), { stem: "陈列道具导入模板(花园里店)", ext: "xlsx" });
 	assert.deepEqual(nameParts("archive.tar.gz"), { stem: "archive.tar", ext: "gz" });

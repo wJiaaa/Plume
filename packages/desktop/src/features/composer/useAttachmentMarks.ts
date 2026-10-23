@@ -86,12 +86,12 @@ export function useAttachmentMarks<F extends MarkableFile>({
 				const kindIndex = (seen.get(kind) ?? 0) + 1;
 				seen.set(kind, kindIndex);
 				/*
-				 * 有名字就叫名字，没有才叫「图片 1」。
+				 * 图片和没名字的叫「图片 1」，其余有名字就叫名字，规则见 `displayName`。
 				 *
 				 * 和附件条上那一格写的是同一个字符串（`displayName` 是纯函数，两处算得出同一个结果）
 				 * ——两边差一个字，正文里那枚标记就配不上任何一份附件。
 				 */
-				return { ...file, label: displayName({ name: file.name, kindLabel: t(KIND_LABEL[kind]), kindIndex }, t("composer.regionShot")) };
+				return { ...file, label: displayName({ name: file.name, kind, kindLabel: t(KIND_LABEL[kind]), kindIndex }, t("composer.regionShot")) };
 			});
 		},
 		[t],
@@ -120,7 +120,12 @@ export function useAttachmentMarks<F extends MarkableFile>({
 		(added: F[], caret: number) => {
 			if (added.length === 0) return;
 			const before = live.current;
-			const grown = relabel([...before, ...added]);
+			/*
+			 * 已有的那些名字原样留着，只给新来的起名。正文里它们的标记是照旧名字写的，这里改了名而不改
+			 * 正文，下一次改字它们就被当成孤儿连附件一起卸掉——撤回一条旧消息，里面的图片标记写的还是
+			 * 文件名，再拖一张图进来，旧的那张就没了。重新编号只在 `unload` 和换语言时做，那两处连正文一起改。
+			 */
+			const grown = [...before, ...relabel([...before, ...added]).slice(before.length)];
 			setAttachments(grown);
 
 			/*

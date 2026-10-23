@@ -23,6 +23,7 @@ import { isReadableAsText, type FileKind } from "./file-kind.ts";
  * 截图」才是人真正会说的话，所以这一类让位给序号。
  *
  * 拖进来和选进来的文件不在此列：`report.pdf` 是人自己起的名字，换成「PDF 1」是把信息换成了废话。
+ * 图片是例外，但例外在 `displayName` 那一层，不在这里——附件条要靠这一问决定格子上写不写全名。
  *
  * `regionShot` 由调用方传进来，因为它是**翻译过的**——窗口语言换一种，那个名字就换一种，写死
  * 在这里的任何一份清单都会在新增的语言上漏掉。
@@ -65,9 +66,14 @@ export function nameParts(name: string): { stem: string; ext: string } {
  * `kindIndex` 是它在**同门类里**的序号，和提示词里 `image 2 of 3` 数的是同一个数——见
  * `attachment-placeholders.ts`。两边必须是同一个数，否则人说的「图片 2」和模型看到的「图片 2」
  * 不是同一张，而这种错没有任何外在迹象。
+ *
+ * 图片不管叫什么都按序号称呼。`report.pdf` 的名字是它唯一的辨认方式，图片不是：附件条上画的是
+ * 缩略图，名字只在悬停时出现。而图片的文件名多半是机器起的——相机的 `DSC_0042.JPG`、聊天软件导出
+ * 的一串哈希——摆进句子里就是一整行噪声，「照着 【图片 1】 改」读得通，照着一串哈希改读不通。
+ * 真名照旧进提示词，见 `attachmentImageLabel`。
  */
-export function displayName(file: { name: string; kindLabel: string; kindIndex: number }, regionShot?: string): string {
-	return isPlaceholderName(file.name, regionShot) ? `${file.kindLabel} ${file.kindIndex}` : file.name;
+export function displayName(file: { name: string; kind?: FileKind; kindLabel: string; kindIndex: number }, regionShot?: string): string {
+	return file.kind === "image" || isPlaceholderName(file.name, regionShot) ? `${file.kindLabel} ${file.kindIndex}` : file.name;
 }
 
 /** 一份附件在这台机器上能被怎么处置。 */
