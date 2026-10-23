@@ -29,7 +29,11 @@ export class BackgroundJobs {
 	 */
 	private readonly quiet = new Set<string>();
 	private listener: ((job: BackgroundJob) => void) | null = null;
-	add(info: BackgroundJob, process: SandboxProcess): void { this.entries.set(info.id, { info, process }); }
+	private runningListener: ((monitors: number) => void) | null = null;
+	add(info: BackgroundJob, process: SandboxProcess): void {
+		this.entries.set(info.id, { info, process });
+		if (info.kind === "monitor") this.runningListener?.(this.runningMonitors());
+	}
 	get(id: string): BackgroundJob | undefined { return this.entries.get(id)?.info; }
 	list(): BackgroundJob[] { return [...this.entries.values()].map(({ info }) => ({ ...info })); }
 	/**
@@ -39,9 +43,20 @@ export class BackgroundJobs {
 	onFinished(listener: (job: BackgroundJob) => void): void { this.listener = listener; }
 	/** Whether a job started here will be reported when it ends, so the model knows not to poll. */
 	get reportsExit(): boolean { return this.listener !== null; }
+	/**
+	 * Who hears the number of running monitors change. A monitor wakes the session on its own, so the
+	 * window marks it even with the environment card closed; a plain background job does not.
+	 */
+	onMonitorsChanged(listener: (monitors: number) => void): void { this.runningListener = listener; }
+	runningMonitors(): number {
+		let count = 0;
+		for (const { info } of this.entries.values()) if (info.kind === "monitor" && info.finishedAt === undefined) count += 1;
+		return count;
+	}
 	/** Called by whatever follows the process once it is gone. */
 	finished(job: BackgroundJob): void {
 		if (!this.quiet.has(job.id)) this.listener?.(job);
+		if (job.kind === "monitor") this.runningListener?.(this.runningMonitors());
 	}
 	/** The model has read this job's final state; its end is no longer news. */
 	observed(id: string): void {

@@ -37,6 +37,7 @@ import { bridge } from "../services/index.ts";
 import { sessionTitle } from "../lib/session-title.ts";
 import { completionNotice } from "../lib/session-notifications.ts";
 import { dropHandoff, takeHandoff } from "./handoff.ts";
+import { setMonitors } from "./session-monitors.ts";
 
 type Get = () => AppState;
 type Set = (partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)) => void;
@@ -52,6 +53,10 @@ const RECONNECTED = new Set<AgentEvent["type"]>([
 ]);
 
 export function applyAgentEvent(sessionId: string, event: AgentEvent, set: Set, get: Get): void {
+	if (event.type === "monitors") {
+		setMonitors(sessionId, event.running);
+		return;
+	}
 	/*
 	 * 派完子智能体的那一轮干净收尾时，活还没完：结果回来会再开一轮，那一轮收尾才算做完。此刻记成
 	 * 「已完成」、报一声做完了都是假的——主进程的系统通知同理（`notifyAgentEvent` 的 `working`）。

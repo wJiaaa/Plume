@@ -40,6 +40,8 @@ interface SessionService {
 	finishedAt?: number;
 	status: "running" | "stopping" | "exited" | "failed";
 	error?: string;
+	/** Started by `monitor`: its output wakes the agent while it runs, not once at the end. */
+	kind?: "monitor";
 	endpoints: ServiceEndpoint[];
 }
 export interface SessionServices { jobs: SessionService[]; discoveryError?: string }

@@ -278,6 +278,7 @@ export class AgentSession {
 			settled: () => this.checkIdle(),
 		});
 		backgroundJobs(this.can.state).onFinished((job) => this.deliveries.jobFinished(job));
+		backgroundJobs(this.can.state).onMonitorsChanged((running) => void this.emit({ type: "monitors", running }).catch(() => {}));
 		this.approvals = sessionApprovalGate({
 			mode: () => this.settings.permissionMode,
 			cwd: () => this.cwd,

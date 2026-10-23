@@ -22,6 +22,21 @@ test("a session can stop only its own process handle, and a terminated job canno
 	info.finishedAt=2;info.status="exited";assert.equal(a.stop("owned",true),false);assert.equal(signals.length,1);
 });
 
+test("在跑的 monitor 数一变就报给会话，普通后台命令不报", () => {
+	const jobs = new BackgroundJobs(), counts: number[] = [];
+	jobs.onMonitorsChanged((running) => counts.push(running));
+	const process: SandboxProcess = { onOutput() {}, onExit() {}, onError() {}, kill() {} };
+	const watch: BackgroundJob = { id: "watch", command: "tail -f log", startedAt: 1, exitCode: null, output: "", status: "running", kind: "monitor" };
+	const server: BackgroundJob = { id: "dev", command: "pnpm dev", startedAt: 1, exitCode: null, output: "", status: "running" };
+	jobs.add(watch, process);
+	jobs.add(server, process);
+	server.finishedAt = 2;
+	jobs.finished(server);
+	assert.deepEqual(counts, [1], "dev server 起停都不算");
+	watch.finishedAt = 3;
+	jobs.finished(watch);
+	assert.deepEqual(counts, [1, 0]);
+});
 test("one unkillable background process cannot leak the other processes and session resources", async () => {
 	const capabilities = new SessionCapabilities();
 	const jobs = backgroundJobs(capabilities.state);

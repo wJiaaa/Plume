@@ -77,9 +77,15 @@ export function JobsSection({ sessionId }: { sessionId: string }) {
 				const port = job.endpoints[0]?.port;
 				return (
 					<div key={job.id} data-ly-environment-job={job.id} className="group/job relative">
-						<button type="button" className={ROW} data-ly-tip={job.command} onClick={() => reveal(job)}>
+						<button type="button" className={ROW} data-ly-tip={job.kind === "monitor" ? `${t("environment.monitorTip")}\n${job.command}` : job.command} onClick={() => reveal(job)}>
 							<span className={`h-1.5 w-1.5 shrink-0 rounded-full ${job.status === "stopping" ? "bg-ink-faint" : "bg-ok/70"}`} aria-hidden />
 							<span className="min-w-0 flex-1 truncate font-mono text-detail">{job.description || job.command}</span>
+							{/* 和普通后台命令分开：它每送一批输出就是一轮，人得认得出哪一行在持续花钱。悬停时让给停止按钮，说明放在整行的提示里。 */}
+							{job.kind === "monitor" && (
+								<span data-ly-environment-monitor className="shrink-0 text-caption text-ink-muted group-hover/job:opacity-0">
+									{t("environment.monitorTag")}
+								</span>
+							)}
 							{port !== undefined && <span className="shrink-0 text-caption tabular-nums text-ink-faint group-hover/job:opacity-0">:{port}</span>}
 						</button>
 						<div className="absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity group-hover/job:opacity-100 group-focus-within/job:opacity-100">

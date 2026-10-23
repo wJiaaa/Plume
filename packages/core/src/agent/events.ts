@@ -329,7 +329,9 @@ export type AgentEvent =
 	 * client that missed one event would otherwise hold a queue that is quietly wrong — the
 	 * one thing a "what is it going to do next" list must never be.
 	 */
-	| { type: "tasks"; tasks: QueuedTask[] };
+	| { type: "tasks"; tasks: QueuedTask[] }
+	/** 这个会话里还在跑的 `monitor` 有几个变了。它会自己叫醒会话，窗口据此在环境按钮上亮点。 */
+	| { type: "monitors"; running: number };
 
 /**
  * Work handed to a session from somewhere other than its own composer.
