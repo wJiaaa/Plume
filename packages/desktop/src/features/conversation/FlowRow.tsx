@@ -131,7 +131,7 @@ export function FlowRow({
 function FlowTrail({ children, from }: { children?: ReactNode; from?: number }) {
 	const outer = useRef<HTMLSpanElement>(null);
 	const inner = useRef<HTMLSpanElement>(null);
-	// 只在挂上时读一次：之后变了也不该重新起步。
+	// 只在头一次挂上时用一次：之后变了也不该重新起步。
 	const start = useRef(from);
 	useLayoutEffect(() => {
 		const box = outer.current;
@@ -141,11 +141,16 @@ function FlowTrail({ children, from }: { children?: ReactNode; from?: number }) 
 		/*
 		 * 接替原地另一行时从它的行尾宽度起步（见 `WorkStep`）。在这里就钉上，不等观察者第一次回调：那一次
 		 * 回调和这一帧的绘制谁先谁后说不准，晚了就有一帧画的是没钉住的全宽。
+		 *
+		 * 用过就清掉：会话页被 `RetainedViews` 收进 `Activity` 再放出来时，这个 effect 会重跑而 ref 还在，
+		 * 不清的话每次切回会话，行尾都从接替那一刻的宽度（多半是 0）重新长一遍。
 		 */
-		if (start.current !== undefined && !motionReduced()) {
+		const pinned = start.current;
+		start.current = undefined;
+		if (pinned !== undefined && !motionReduced()) {
 			last = content.offsetWidth;
-			if (last !== start.current) {
-				box.style.width = `${start.current}px`;
+			if (last !== pinned) {
+				box.style.width = `${pinned}px`;
 				void box.offsetWidth;
 				box.style.width = `${last}px`;
 			}
