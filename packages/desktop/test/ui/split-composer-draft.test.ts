@@ -162,7 +162,7 @@ test("a picture handed to a composer gets its mark in the sentence, and survives
 	view = await mount(only("b"));
 	await act(async () => useApp.getState().setComposerDraft("", { sessionId: "b", attachments: [picture] }));
 	await act(async () => {});
-	assert.ok(fieldOf("b").includes("【标注图.png】"), `no mark for the picture in ${JSON.stringify(fieldOf("b"))}`);
+	assert.ok(fieldOf("b").includes("【图片 1】"), `no mark for the picture in ${JSON.stringify(fieldOf("b"))}`);
 	await typeInto("b", "照这个改");
 	assert.equal(tilesOf("b"), 1, "typing a word unloaded the picture it was about");
 	assert.equal(useApp.getState().drafts.b?.attachments?.length, 1);
