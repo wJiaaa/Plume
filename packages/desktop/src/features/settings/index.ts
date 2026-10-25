@@ -12,7 +12,6 @@ export { CODE_DEFAULTS } from "./appearance-defaults.ts";
 export { formatCost } from "./usage-format.ts";
 export { Segmented, Toggle } from "./controls.tsx";
 export { TextInput, SecretInput } from "./inputs.tsx";
-export { newMcpServer } from "./mcp-defaults.ts";
 export { NumberField, Slider, TimeField } from "./pickers.tsx";
 export { ColorField } from "./appearance-controls.tsx";
 export { applyAppearance, onAppearanceApplied, watchSystemTheme } from "./theme.ts";

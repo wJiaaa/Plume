@@ -130,17 +130,6 @@ export function ExtensionsSettings() {
 						>
 							{t("market.addRegistry")}
 						</MenuItem>
-						{/* Adds one and lands on it, rather than only switching tab — the label says 添加,
-						    and a menu item that navigates instead of doing the thing it names is a lie. */}
-						<MenuItem
-							icon={<Cable size={14} strokeWidth={1.8} />}
-							onClick={() => {
-								add.close();
-								addServer("stdio");
-							}}
-						>
-							{t("market.addMcpServer")}
-						</MenuItem>
 					</MenuBody>
 				</Popover>
 			)}

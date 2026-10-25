@@ -1308,7 +1308,6 @@ export const en = {
 	"readme.done": "Done",
 	"readme.todo": "Not done",
 	"readme.details": "Details",
-	"market.addMcpServer": "Add an MCP server",
 	"market.unreadable": { one: "{n} plugin has problems — see Settings", other: "{n} plugins have problems — see Settings" },
 	"common.install": "Install",
 	"common.done": "Done",

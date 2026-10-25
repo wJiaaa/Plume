@@ -24,7 +24,7 @@
  * never on the row.
  */
 
-import { ArrowUp, CircleAlert, Info, MoreHorizontal, Plus, RefreshCw, Settings2, Store, X } from "../../ui/icons/index.ts";
+import { ArrowUp, CircleAlert, Info, MoreHorizontal, RefreshCw, Settings2, Store, X } from "../../ui/icons/index.ts";
 import { useMemo, useState } from "react";
 
 import { formatList, useI18n } from "../../i18n/index.ts";
@@ -37,7 +37,6 @@ import { SearchField } from "../../ui/inputs/SearchField.tsx";
 import { Button } from "../../ui/primitives/Button.tsx";
 import { GitHubMark } from "../../ui/primitives/GitHubMark.tsx";
 import { TabStrip } from "../../ui/primitives/TabStrip.tsx";
-import { newMcpServer } from "../settings/index.ts";
 import { CatalogCard } from "./CatalogCard.tsx";
 import { missingOf, useEnvironment } from "./McpKeys.tsx";
 import { PluginDetail } from "./PluginDetail.tsx";
@@ -213,16 +212,6 @@ export function PluginsView() {
 							}}
 						>
 							{t("market.sources")}
-						</MenuItem>
-						<MenuItem
-							icon={<Plus size={14} strokeWidth={1.9} />}
-							onClick={() => {
-								more.close();
-								if (settings) void saveSettings({ ...settings, mcpServers: [...settings.mcpServers, newMcpServer("stdio")] });
-								openExtensions("mcp");
-							}}
-						>
-							{t("market.addMcpServer")}
 						</MenuItem>
 						<MenuSeparator />
 						<MenuItem

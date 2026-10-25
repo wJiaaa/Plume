@@ -1485,7 +1485,6 @@ export const zhCN = {
 	"readme.done": "已完成",
 	"readme.todo": "未完成",
 	"readme.details": "详情",
-	"market.addMcpServer": "添加 MCP 服务器",
 	"market.unreadable": "{n} 个插件有问题，去设置里看看",
 	"common.install": "安装",
 	"common.done": "完成",
