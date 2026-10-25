@@ -2,6 +2,49 @@
 
 这个文件由 `pnpm release` 生成，条目来自提交信息。写得含糊的提交在这里也含糊，所以值得在提交时就写清楚。
 
+## [0.9.53](https://github.com/wJiaaa/Plume/releases/tag/v0.9.53) - 2026-10-25
+
+<!-- plume:notes en -->
+
+### New
+
+- **Adding something in Settings opens a dialog, and nothing is saved until it is filled in.** This covers commands, code hosting, hooks, MCP servers, model providers and subagents. Before, some of these opened a form inside the page, and others saved an empty entry first for you to edit: an MCP server running `npx` that could not connect, or a provider named "New provider" with the address `https://`. Leave halfway and the empty entry stayed in the list. Hooks and subagents are also edited in the same dialog now.
+- **Add a provider starts from a template**: OpenAI, Anthropic, DeepSeek, OpenRouter, Moonshot, SiliconFlow, Ollama, or Custom. The template fills in the Base URL and the API format, which is the field people most often get wrong and whose error is the hardest to read. You paste the key. "Fetch the model list after adding" is on by default.
+- **Adding an MCP server by hand is in one place**: the ⋯ menu on the MCP tab, which has both a stdio and an HTTP option. The **Add** button at the top of Settings and the ⋯ menu in the marketplace could only add stdio servers, and both are gone.
+- **Fewer one-call round trips.** The read, search, glob and shell tools now tell the model to send calls that don't depend on each other in one go. In 110 local sessions, 67% of tool turns made a single call, and 14.8% of those could have gone out with the turn before.
+
+### Fixes
+
+- **The main agent wrote its answer before its sub-agents came back.** In 7 local runs that wrapped up while sub-agents were still working, 3 wrote a conclusion anyway. The longest wrote 10,500 characters, then rewrote 5,765 of them when the sub-agents returned two and a half minutes later. Now it waits, and every 4 tool requests it is reminded which sub-agents are still out.
+- **A sub-agent's result could be taken as your answer.** If it arrived right after the agent asked "shall I continue?", the agent read it as you saying yes and carried on. Results delivered in the background now start by saying they are not from you and do not answer any question.
+- **Pipelines showed "No runs yet" for GitHub Enterprise on a non-standard port** such as `:8443`. The port was dropped from the remote address, so it did not match your signed-in account and the request went out without it.
+- **A page that sends you to an app link as soon as it opens** (a `lark://…` redirect, for example) sometimes left a blank tab with no explanation, about one time in four. It now always shows "This page wants to open an app" with **Open in system browser**.
+- **A hook matcher on UserPromptSubmit or Stop meant the hook never ran.** These events don't use a matcher, so the field is now disabled and nothing in it is saved. For the other events, the dialog explains what the matcher is compared against.
+- **In the subagent editor**, the shuffle button on the avatar no longer cuts a square notch out of its frame. Cancelling with unsaved changes asks "There are unsaved changes" in the footer, next to the button you pressed, instead of at the top of the dialog.
+
+<!-- plume:notes zh-CN -->
+
+<details>
+<summary>中文（简体）</summary>
+
+### 新功能
+
+- **设置里新建东西，一律在弹窗里填，填齐了才存。** 涉及命令、代码托管、钩子、MCP 服务、模型供应商、智能体。原来有的在页面里就地展开表单，有的先存一个空壳让你去改：MCP 是一台命令为 `npx`、一开就连不上的服务，供应商是一个地址只有 `https://` 的「新供应商」。改到一半切走，空壳就留在列表里。钩子和智能体的编辑现在也在同一个弹窗里。
+- **添加供应商先挑模板**：OpenAI、Anthropic、DeepSeek、OpenRouter、Moonshot、SiliconFlow、Ollama，或者自定义。地址和 API 格式由模板填好。API 格式最容易选错，选错了报错又最看不懂。你只管贴 Key。「添加后拉取模型列表」默认开着。
+- **手动添加 MCP 服务只留一个入口**：MCP 标签的 ⋯ 菜单，stdio 和 HTTP 两种都在。设置页右上角的「添加」和插件市场的 ⋯ 都只能建 stdio 服务，这两个入口去掉了。
+- **少一些一次只发一个调用的来回。** 读文件、搜索、glob、bash 这几个工具的说明里写明了：互不依赖的调用一次发出去。本机 110 个会话里，67% 的工具回合只发了一个调用，其中 14.8% 本可以和上一回合一起发。
+
+### 修复
+
+- **子 Agent 还没回来，主 agent 就先交了结论。** 本机 7 次在子 Agent 还在干活时收尾的运行里，有 3 次照样写了结论。最长的一次先写了 10500 字，两分半后子 Agent 回来，又重写了 5765 字。现在它会等，每隔 4 次工具请求还会提醒它在等哪几个。
+- **子 Agent 的结果会被当成你的回答。** agent 刚问完「要不要继续」，结果正好送到，它就当你说了「要」，接着往下做。后台送来的结果现在开头先说明：这不是你说的话，也不算对任何提问的回答。
+- **非标准端口（比如 `:8443`）的 GitHub Enterprise，流水线页显示「暂无运行记录」。** 远端地址里的端口被丢掉了，对不上你登录的账号，请求就没带上它。
+- **网页一打开就跳去唤起应用**（比如 302 到 `lark://…`）时，大约四次里有一次会停在一张白页上，什么也不说。现在每次都会盖上「这个网页要打开一个应用」，并给出「在系统浏览器中打开」。
+- **UserPromptSubmit、Stop 两种钩子填了匹配器，就一次也不会跑。** 这两种事件不看匹配器，现在框置灰，填了也不存。其余事件，弹窗里写明了匹配器比的是什么。
+- **智能体编辑器里**，头像角上换脸的骰子不再把头像框切出一个方缺口。有未保存的修改时按取消，「尚有未保存的修改」出现在底栏、就在你按的那颗按钮旁边，不再跑到弹窗顶上。
+
+</details>
+
 ## [0.9.52](https://github.com/wJiaaa/Plume/releases/tag/v0.9.52) - 2026-10-23
 
 <!-- plume:notes en -->
