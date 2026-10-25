@@ -13,7 +13,7 @@ import { Select } from "../../ui/inputs/Select.tsx";
 import { Dialog, DialogAction } from "../../ui/overlay/Dialog.tsx";
 import type { Dismiss } from "../../ui/overlay/Overlay.tsx";
 import { Segmented, Toggle } from "./controls.tsx";
-import { DialogField } from "./dialog-form.tsx";
+import { DialogField, EnterSubmits } from "./dialog-form.tsx";
 import { matcherSubject, type MatcherSubject } from "./hook-matcher.ts";
 import { TextInput } from "./inputs.tsx";
 
@@ -216,7 +216,7 @@ export function HookForm({
 							</DialogField>
 						</div>
 					</details>
-					<button type="submit" className="hidden" tabIndex={-1} aria-hidden />
+					<EnterSubmits />
 				</form>
 			)}
 		</Dialog>

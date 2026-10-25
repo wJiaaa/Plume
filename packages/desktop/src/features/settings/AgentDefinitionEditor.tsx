@@ -2,7 +2,6 @@ import { Check, Shuffle } from "../../ui/icons/index.ts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AgentDefinitionRecord, AgentDefinitionSave, AgentDraft } from "@plume/core";
 import { TextArea } from "../../ui/inputs/TextArea.tsx";
-import { Button } from "../../ui/primitives/Button.tsx";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import { Disclosure } from "../../ui/layout/Disclosure.tsx";
 import { AgentAvatar } from "../../ui/avatar/AgentAvatar.tsx";
@@ -59,7 +58,6 @@ export function AgentDefinitionEditor({ record, copy, projectId, projectName, de
 	// Esc 和点遮罩照常关掉：没存的字留在 `drafts` 里，下次打开还在。只有「取消」先问一句，因为它读起来像「扔掉」。
 	const discard = () => { drafts.delete(draftKey); onClose(); };
 	const form = useRef<HTMLFormElement>(null);
-	const dismissRef = useRef<Dismiss | null>(null);
 	const patch = (next: Partial<AgentDraft>) => setDraft(current => ({ ...current, ...next }));
 	const face = parseAvatar(draft.avatar) ?? parseAvatar(initialAvatar) ?? freshAvatar(taken.map(other => other.avatar));
 	// 谁在用哪张：选脸的格子据此把别人的那张标出来、不让选，提示里说是谁。
@@ -80,18 +78,17 @@ export function AgentDefinitionEditor({ record, copy, projectId, projectName, de
 	return <Dialog onClose={onClose} width={640} label={title} title={title}
 		detail={record?.scope === "builtin" && !copy ? t("agentEditor.saveAsCustom") : t("agentEditor.intro")}
 		bodyClassName="max-h-[min(620px,66dvh)]"
-		status={leaving || error ? <div className="mb-1 space-y-2">
-			{leaving && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line px-3.5 py-2.5 text-detail text-ink">
-				{t("agentEditor.unsaved")}
-				<div className="flex items-center gap-2">
-					<Button variant="subtle" size="sm" onClick={() => setLeaving(false)}>{t("agentEditor.keepEditing")}</Button>
-					<Button variant="danger" size="sm" onClick={() => dismissRef.current?.(discard)} data-agent-discard="">{t("agentEditor.discard")}</Button>
-				</div>
-			</div>}
-			{error && <p role="alert" className="text-detail text-danger">{error}</p>}
-		</div> : undefined}
+		status={error ? <p role="alert" className="mb-1 text-detail text-danger">{error}</p> : undefined}
 		actions={dismiss => {
-			dismissRef.current = dismiss;
+			/*
+			 * 「还有没存的改动」就问在按下取消的那一排：底栏原地换成这句话和两个去处。放在弹窗顶上时，
+			 * 人的视线还在右下角，看见的只是取消没反应。
+			 */
+			if (leaving) return <>
+				<span role="alert" className="min-w-0 flex-1 truncate text-detail text-ink">{t("agentEditor.unsaved")}</span>
+				<DialogAction autoFocus onClick={() => setLeaving(false)}>{t("agentEditor.keepEditing")}</DialogAction>
+				<DialogAction tone="danger" onClick={() => dismiss(discard)} data-agent-discard="">{t("agentEditor.discard")}</DialogAction>
+			</>;
 			return <>
 				{onDelete && <DialogAction tone="danger" disabled={busy} onClick={onDelete}>{t("common.delete")}</DialogAction>}
 				<div className="flex-1" />
@@ -107,13 +104,20 @@ export function AgentDefinitionEditor({ record, copy, projectId, projectName, de
 					 * 脸是一块能点的底：点它挑，角上那颗骰子直接换一张没人用的。两颗按钮叠在一块底上而不是
 					 * 套在一起——按钮里不能再有按钮。
 					 */}
-					<div className="relative grid h-[56px] w-[56px] shrink-0 place-items-center rounded-2xl border border-[var(--ly-agent-line)] transition-colors duration-[var(--ly-t-quick)] hover:bg-[var(--ly-agent-hover)]" data-ly-avatar-host="">
+					<div className="relative grid h-[56px] w-[56px] shrink-0 place-items-center rounded-2xl bg-[var(--ly-agent-hover)] transition-colors duration-[var(--ly-t-quick)] hover:bg-[var(--ly-agent-line)]" data-ly-avatar-host="">
 						<button type="button" aria-label={t("agentEditor.pickAvatar")} data-ly-tip={`${t("agentEditor.pickAvatar")} · ${avatarName(face, t)}`} aria-haspopup="dialog" aria-expanded={picker.open}
 							data-agent-avatar={formatAvatar(face)} onClick={picker.toggle} className="absolute inset-0 rounded-2xl" />
 						<AgentAvatar avatar={face} size={38} seed={draft.name || "new"} host="[data-ly-avatar-host]" cheer={rolls || null} className="pointer-events-none" />
-						<IconButton size="sm" label={t("agentEditor.shuffleAvatar")} data-agent-shuffle=""
-							onClick={() => { patch({ avatar: formatAvatar(freshAvatar([...taken.map(other => other.avatar), face])) }); setRolls(n => n + 1); }}
-							className="absolute -right-2 -bottom-2 bg-float" icon={<Shuffle size={12} strokeWidth={2} aria-hidden />} />
+						{/*
+						 * 骰子是贴在角上的一枚圆章，自带一圈线和一点影子：从前是一块方底的图标按钮压在底座的
+						 * 边线上，把边线切出一个方缺口，悬停时又冒出一块灰方片，看上去像贴歪了的补丁。
+						 * 圆由外面这层裁出来，按钮自己的方形悬停底色也就跟着是圆的。
+						 */}
+						<span className="absolute -right-1 -bottom-1 grid overflow-hidden rounded-full bg-float shadow-knob ring-1 ring-[var(--ly-agent-line)]">
+							<IconButton size="sm" label={t("agentEditor.shuffleAvatar")} data-agent-shuffle=""
+								onClick={() => { patch({ avatar: formatAvatar(freshAvatar([...taken.map(other => other.avatar), face])) }); setRolls(n => n + 1); }}
+								icon={<Shuffle size={11} strokeWidth={2.2} aria-hidden />} />
+						</span>
 					</div>
 					<div className="min-w-0 flex-1">
 						<DialogField label={t("agentEditor.nameLabel")} htmlFor="ly-agent-name">

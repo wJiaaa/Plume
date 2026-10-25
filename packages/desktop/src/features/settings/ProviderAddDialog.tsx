@@ -14,7 +14,7 @@ import { Dialog, DialogAction } from "../../ui/overlay/Dialog.tsx";
 import type { Dismiss } from "../../ui/overlay/Overlay.tsx";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import { SecretInput, Segmented, TextInput, Toggle } from "./controls.tsx";
-import { DialogField } from "./dialog-form.tsx";
+import { ChoiceTile, DialogField, EnterSubmits } from "./dialog-form.tsx";
 import { API_OPTIONS } from "./ProviderEditor.tsx";
 import { ProviderAvatar } from "./ProviderAvatar.tsx";
 import { uniqueProviderName } from "./provider-transfer.ts";
@@ -124,19 +124,14 @@ export function ProviderAddDialog({ taken, onClose, onAdd }: {
 				!template ? (
 					<div className="grid grid-cols-4 gap-2" data-ly-provider-templates="">
 						{[...TEMPLATES, CUSTOM].map((one) => (
-							<button
+							<ChoiceTile
 								key={one.id}
-								type="button"
 								data-ly-provider-template={one.id}
 								onClick={() => pick(one)}
-								className="flex flex-col items-center gap-2 rounded-lg px-1.5 pt-4 pb-3 ring-1 ring-line ring-inset transition-colors duration-[var(--ly-t-quick)] hover:bg-card-hover"
-							>
-								{one === CUSTOM ? <CustomMark /> : <ProviderAvatar name={one.name} size="lg" />}
-								<span className="text-detail font-medium text-ink">{one === CUSTOM ? t("providerAdd.custom") : one.name}</span>
-								{(one.local || one === CUSTOM) && (
-									<span className="-mt-1.5 text-caption text-ink-faint">{one.local ? t("providerAdd.local") : t("providerAdd.customDetail")}</span>
-								)}
-							</button>
+								icon={one === CUSTOM ? <CustomMark /> : <ProviderAvatar name={one.name} size="lg" />}
+								title={one === CUSTOM ? t("providerAdd.custom") : one.name}
+								caption={one.local ? t("providerAdd.local") : one === CUSTOM ? t("providerAdd.customDetail") : undefined}
+							/>
 						))}
 					</div>
 				) : (
@@ -170,7 +165,7 @@ export function ProviderAddDialog({ taken, onClose, onAdd }: {
 							</div>
 							<Toggle checked={fetch} onChange={setFetch} ariaLabel={t("providerAdd.fetch")} />
 						</div>
-						<button type="submit" className="hidden" tabIndex={-1} aria-hidden />
+						<EnterSubmits />
 					</form>
 				)
 			}

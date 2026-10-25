@@ -23,7 +23,7 @@ import { SecretInput, TextInput } from "./controls.tsx";
 import { bridge } from "../../services/index.ts";
 import { useI18n } from "../../i18n/index.ts";
 import { Dialog, DialogAction } from "../../ui/overlay/Dialog.tsx";
-import { DialogField } from "./dialog-form.tsx";
+import { ChoiceTile, DialogField, EnterSubmits } from "./dialog-form.tsx";
 import { ForgeBrandIcon } from "./ForgeBrandIcon.tsx";
 
 /**
@@ -155,20 +155,14 @@ export function ForgeSignIn({ kinds, onClose }: { kinds: ForgeKindInfo[]; onClos
 							{kinds.map((entry) => {
 								const on = entry.kind === kind;
 								return (
-									<button
+									<ChoiceTile
 										key={entry.kind}
-										type="button"
-										role="radio"
-										aria-checked={on}
+										selected={on}
 										data-ly-forge-kind={entry.kind}
 										onClick={() => choose(entry.kind)}
-										className={`flex flex-col items-center gap-2 rounded-lg px-2 pt-3.5 pb-3 ring-inset transition-[box-shadow,background-color] duration-[var(--ly-t-quick)] ${
-											on ? "ring-[1.5px] ring-ink/80" : "ring-1 ring-line hover:bg-card-hover"
-										}`}
-									>
-										<span className="grid size-6 place-items-center"><ForgeBrandIcon kind={entry.kind} size={20} /></span>
-										<span className="text-label font-medium text-ink">{entry.name}</span>
-									</button>
+										icon={<span className="grid size-6 place-items-center"><ForgeBrandIcon kind={entry.kind} size={20} /></span>}
+										title={entry.name}
+									/>
 								);
 							})}
 						</div>
@@ -185,14 +179,17 @@ export function ForgeSignIn({ kinds, onClose }: { kinds: ForgeKindInfo[]; onClos
 							<>
 								{t("forge.token")}
 								{help && (
-									<button
-										type="button"
-										onClick={() => void bridge.system.openExternal(help)}
+									<a
+										href={help}
+										onClick={(event) => {
+											event.preventDefault();
+											void bridge.system.openExternal(help);
+										}}
 										className="ml-auto inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-caption font-normal text-accent hover:underline"
 									>
 										{t("forgeSignIn.createToken")}
 										<ExternalLink size={11} strokeWidth={2} aria-hidden />
-									</button>
+									</a>
 								)}
 							</>
 						)}
@@ -218,7 +215,7 @@ export function ForgeSignIn({ kinds, onClose }: { kinds: ForgeKindInfo[]; onClos
 						<TextInput id="ly-forge-label" value={label} onChange={setLabel} placeholder={t("forge.nicknamePlaceholder")} />
 					</DialogField>
 
-					<button type="submit" className="hidden" tabIndex={-1} aria-hidden />
+					<EnterSubmits />
 				</form>
 			)}
 		</Dialog>

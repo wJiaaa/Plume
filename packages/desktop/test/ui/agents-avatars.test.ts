@@ -34,6 +34,23 @@ const records: AgentDefinitionRecord[] = [
 	record({ name: "docs-writer", description: "整理文档", systemPrompt: "Docs", tools: ["read"], source: "user", avatar: "ghost-plum" }),
 ];
 
+/** 编辑器在弹窗里，弹窗挂在 body 上，不在挂载的那个容器里。 */
+function inDialog<T extends Element = HTMLElement>(selector: string): T {
+	const found = document.querySelector<T>(`[data-ly-modal] ${selector}`);
+	assert.ok(found, `no element matched ${selector} in the dialog`);
+	return found;
+}
+
+/** 按取消关掉编辑器。退场动画在这里不会自己放完，替它发一次 `animationend`。 */
+async function closeEditor() {
+	const cancel = [...document.querySelectorAll<HTMLButtonElement>("[data-ly-dialog-actions] button")].find((each) => each.textContent === "取消");
+	assert.ok(cancel, "the editor has a cancel button");
+	await click(cancel);
+	const card = document.querySelector("[data-ly-modal]");
+	if (card) await fire(card, new Event("animationend", { bubbles: true }));
+	assert.ok(!document.querySelector("[data-ly-modal]"), "the editor closed");
+}
+
 async function open(save: (input: AgentDefinitionSave) => Promise<{ warning?: string }> = async () => ({})): Promise<Mounted> {
 	const settings: Settings = { ...DEFAULT_SETTINGS };
 	useApp.setState({ activeSessionId: null, meta: null, settings, capabilities: null, workspace: null });
@@ -92,18 +109,18 @@ test("the whole row opens the editor, and the editor shows the face the row show
 		// 整行铺着一层「编辑」按钮；行里的复制按钮先接住自己的点击，进的是复制，不是编辑。
 		await click(view.find('[aria-label="编辑 docs-writer"]'));
 		await new Promise((resolve) => setTimeout(resolve, 0));
-		assert.equal(view.find("[data-agent-avatar]").dataset.agentAvatar, faces["docs-writer"]);
-		await click(view.find('[aria-label="返回智能体"]'));
+		assert.equal(inDialog("[data-agent-avatar]").dataset.agentAvatar, faces["docs-writer"]);
+		await closeEditor();
 		await click(view.find('[aria-label="编辑 boss"]'));
 		await new Promise((resolve) => setTimeout(resolve, 0));
-		assert.equal(view.find("[data-agent-avatar]").dataset.agentAvatar, faces.boss);
-		await click(view.find('[aria-label="返回智能体"]'));
+		assert.equal(inDialog("[data-agent-avatar]").dataset.agentAvatar, faces.boss);
+		await closeEditor();
 		// 复制出来的是另一个人：换一张没人用的脸。
 		await click(view.find('[aria-label="将 docs-writer 复制为新智能体"]'));
 		await new Promise((resolve) => setTimeout(resolve, 0));
-		const copied = view.find("[data-agent-avatar]").dataset.agentAvatar ?? "";
+		const copied = inDialog("[data-agent-avatar]").dataset.agentAvatar ?? "";
 		assert.ok(copied && !Object.values(faces).includes(copied), `the copy wears ${copied}, not one of ${Object.values(faces)}`);
-		await click(view.find('[aria-label="返回智能体"]'));
+		await closeEditor();
 	} finally { await view.unmount(); }
 });
 
@@ -113,16 +130,16 @@ test("a new agent arrives with a face nobody has; shuffling gives another; someb
 	try {
 		const taken = new Set(Object.values(facesOf(view)));
 		await click(newButton(view));
-		const shown = () => view.find("[data-agent-avatar]").dataset.agentAvatar ?? "";
+		const shown = () => inDialog("[data-agent-avatar]").dataset.agentAvatar ?? "";
 		const first = shown();
 		assert.ok(first && !taken.has(first), `fresh face ${first} is not one of ${[...taken]}`);
 
-		await click(view.find("[data-agent-shuffle]"));
+		await click(inDialog("[data-agent-shuffle]"));
 		const second = shown();
 		assert.ok(second !== first && !taken.has(second), `shuffled to ${second}`);
 
 		// 挑脸：docs-writer 的那张（幽灵·梅紫）挑不走。先把形状换成幽灵，再去点梅紫。
-		await click(view.find('[aria-label="换个形象"]'));
+		await click(inDialog('[aria-label="换个形象"]'));
 		const ghost = document.querySelector<HTMLElement>('[data-avatar-picker] [data-avatar-shape="ghost"]');
 		assert.ok(ghost, "the picker opened");
 		if (ghost.getAttribute("aria-disabled") !== "true") await click(ghost);
@@ -145,10 +162,10 @@ test("a new agent arrives with a face nobody has; shuffling gives another; someb
 			Object.getOwnPropertyDescriptor(proto, "value")?.set?.call(element, value);
 			element.dispatchEvent(new Event("input", { bubbles: true }));
 		};
-		setter(view.find<HTMLInputElement>('[aria-label="智能体调用名"]'), "qa-new");
-		setter(view.find<HTMLInputElement>('[aria-label="智能体用途"]'), "Test");
-		setter(view.find<HTMLTextAreaElement>('[aria-label="智能体指令"]'), "Do it.");
-		await fire(view.find("form"), new Event("submit", { bubbles: true, cancelable: true }));
+		setter(inDialog<HTMLInputElement>('[aria-label="智能体调用名"]'), "qa-new");
+		setter(inDialog<HTMLInputElement>('[aria-label="智能体用途"]'), "Test");
+		setter(inDialog<HTMLTextAreaElement>('[aria-label="智能体指令"]'), "Do it.");
+		await fire(inDialog("form"), new Event("submit", { bubbles: true, cancelable: true }));
 		assert.equal(saved?.draft.avatar, chosen, "the saved definition carries the face that was on screen");
 	} finally { await view.unmount(); }
 });

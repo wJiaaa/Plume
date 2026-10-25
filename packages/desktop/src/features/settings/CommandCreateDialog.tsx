@@ -12,7 +12,7 @@ import { FileText } from "../../ui/icons/index.ts";
 import { Input } from "../../ui/inputs/NativeField.tsx";
 import { Dialog, DialogAction } from "../../ui/overlay/Dialog.tsx";
 import type { Dismiss } from "../../ui/overlay/Overlay.tsx";
-import { ChoiceCards, DialogField } from "./dialog-form.tsx";
+import { ChoiceCards, DialogField, EnterSubmits } from "./dialog-form.tsx";
 
 type Scope = "workspace" | "user";
 
@@ -128,7 +128,7 @@ export function CommandCreateDialog({ project, projects, taken, onClose, onCreat
 							</span>
 						</div>
 					</DialogField>
-					<button type="submit" className="hidden" tabIndex={-1} aria-hidden />
+					<EnterSubmits />
 				</form>
 			)}
 		</Dialog>

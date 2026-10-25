@@ -1,11 +1,12 @@
 /**
- * 设置页「新建」弹窗里共用的两样：一个字段，和一组二选一的卡片。
+ * 设置页「新建」弹窗里共用的几样：字段、单选卡片、竖排的选择块，和让回车能提交的那颗隐藏按钮。
  *
  * 新建命令、钩子、MCP 服务、代码托管账号、模型供应商原来都是在页面里就地展开的表单，现在都进了
  * 弹窗。五个弹窗各写一份标签和说明，过不了多久就是五种字号、五种间距。
  */
 
 import { useI18n } from "../../i18n/index.ts";
+import type { DataAttributes } from "../../ui/primitives/Button.tsx";
 import { ChoiceMark } from "../../ui/primitives/ChoiceMark.tsx";
 
 /**
@@ -75,4 +76,43 @@ export function ChoiceCards<T extends string>({ label, value, onChange, options 
 			})}
 		</div>
 	);
+}
+
+/**
+ * 竖排的一块：图标在上，名字在下，可选一行小字。挑代码托管和供应商模板用。
+ *
+ * 给了 `selected` 就是单选组里的一项，选中描一圈深色的线；不给就是点了就走的入口。
+ */
+export function ChoiceTile({ icon, title, caption, selected, onClick, ...data }: DataAttributes & {
+	icon: React.ReactNode;
+	title: React.ReactNode;
+	caption?: React.ReactNode;
+	selected?: boolean;
+	onClick: () => void;
+}) {
+	const radio = selected !== undefined;
+	return (
+		<button
+			{...data}
+			type="button"
+			role={radio ? "radio" : undefined}
+			aria-checked={radio ? selected : undefined}
+			onClick={onClick}
+			className={`flex flex-col items-center gap-2 rounded-lg px-1.5 pt-4 pb-3 ring-inset transition-[box-shadow,background-color] duration-[var(--ly-t-quick)] ${
+				selected ? "ring-[1.5px] ring-ink/80" : "ring-1 ring-line hover:bg-card-hover"
+			}`}
+		>
+			{icon}
+			<span className="text-detail font-medium text-ink">{title}</span>
+			{caption && <span className="-mt-1.5 text-caption text-ink-faint">{caption}</span>}
+		</button>
+	);
+}
+
+/**
+ * 表单里看不见的提交钮：有它，单行框里按回车才会提交。弹窗的主按钮在表单外面的底栏里，
+ * 浏览器不认它是这个表单的。
+ */
+export function EnterSubmits() {
+	return <button type="submit" className="hidden" tabIndex={-1} aria-hidden />;
 }
