@@ -366,6 +366,17 @@ test("送达消息：还有没回来的就点名，只叫它说这几份带来�
 	assert.doesNotMatch(text, /合并成一份/);
 });
 
+test("送达消息：第一块就说明它不是用户说的话，不算对提问的回答或同意", () => {
+	const agent = deliveryMessage([{ report: { id: "s:sub:1", answer: { text: "A 的结论" } }, summary: { agent: "review", description: "复核", status: "done" } }]);
+	const session = deliveryMessage([], [], [], [{ sessionId: "s-child", title: "补文档", status: "done", reply: "补好了。" }]);
+	for (const message of [agent, session]) {
+		const first = message.content[0];
+		assert.ok(first && "text" in first);
+		assert.match(first.text, /^（运行时送达）.*不是用户说的话.*不算用户对你之前任何提问的回答、确认或同意/);
+		assert.equal(textOf(message).split("（运行时送达）").length, 2, "开头说一次，后面各段不再重复");
+	}
+});
+
 test("送达消息：都回来了，已经答过用户的只说改变了什么，不整份重写", () => {
 	const text = textOf(deliveryMessage([{ report: { id: "s:sub:1", answer: { text: "A 的结论" } }, summary: { agent: "review", description: "复核", status: "done" } }]));
 	assert.match(text, /已经给过用户完整的回答，不要把它重写一遍/);

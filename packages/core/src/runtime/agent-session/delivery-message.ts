@@ -9,6 +9,14 @@ import type { SubAgentSummary } from "../../types/sub-agent.ts";
 import type { SettledDispatch } from "../sub-agent/detached-dispatches.ts";
 
 /**
+ * 每条送达的第一块。它占着 user 的位置、在人没开口时开出一轮：模型刚问完「要不要继续」，下一条
+ * 就是它，最顺手的读法是「用户答了」。来信、定时唤醒各自写着「不是用户说的话」，这里补上同一句。
+ */
+const NOT_THE_USER =
+	"（运行时送达）下面是后台的事跑完后自动送来的，不是用户说的话：不算用户对你之前任何提问的回答、确认或同意。" +
+	"在等用户拍板的事，照旧等用户开口。";
+
+/**
  * 一个自己结束了的后台命令（`bash` 的 `run_in_background`，或超时转到后台的那些）。
  *
  * 和子代理的结果走同一条送达：模型不用再拿 `bash_output` 一遍遍去问「好了没」，每问一次都是一整轮
@@ -100,7 +108,7 @@ export function deliveryMessage(
 		items.length === 0
 			? []
 			: [
-					"（运行时送达）你之前派出去的子代理有结果了：",
+					"你之前派出去的子代理有结果了：",
 					...blocks,
 					pending.length > 0
 						? `还有 ${pending.length} 个没回来：${pending.map((one) => `${one.agent}（${one.description}）`).join("、")}。它们跑完也会这样送到。` +
@@ -113,7 +121,7 @@ export function deliveryMessage(
 		jobs.length === 0
 			? []
 			: [
-					"（运行时送达）你之前放到后台的命令结束了。下面是它的退出状态和你上次读取之后的输出，不用再拿 bash_output 去查：",
+					"你之前放到后台的命令结束了。下面是它的退出状态和你上次读取之后的输出，不用再拿 bash_output 去查：",
 					...jobs.map((job) => `<background_job id="${job.id}" command="${attribute(job.command)}" status="${attribute(job.status)}">\n${job.output}\n</background_job>`),
 				];
 	/*
@@ -133,7 +141,7 @@ export function deliveryMessage(
 		monitors.length === 0
 			? []
 			: [
-					"（运行时送达）你用 monitor 监视的命令有新输出，下面是上次送达之后的新行，不用拿 bash_output 去查。" +
+					"你用 monitor 监视的命令有新输出，下面是上次送达之后的新行，不用拿 bash_output 去查。" +
 						"只在这些输出需要你处理时才行动，否则一句话带过；用不着它了就用 bash_output 加 kill: true 停掉：",
 					...monitors.map(monitorBlock),
 				];
@@ -142,7 +150,7 @@ export function deliveryMessage(
 		sessions.length === 0
 			? []
 			: [
-					"（运行时送达）你之前建议另开、用户点了开始的会话跑完了第一轮。下面是它最后的回复；那个会话还在，用户可以接着在那里跟它说话：",
+					"你之前建议另开、用户点了开始的会话跑完了第一轮。下面是它最后的回复；那个会话还在，用户可以接着在那里跟它说话：",
 					...sessions.map((one) => `<session_result id="${one.sessionId}" title="${attribute(one.title)}" status="${one.status}">\n${one.reply || "（它没有留下回复。）"}\n</session_result>`),
 					"就着这份结果接着做你手上的事：说清它带来了什么、要不要因此改你正在做的。它做过的事不要再做一遍。",
 				];
@@ -155,7 +163,7 @@ export function deliveryMessage(
 		 * 一份报告一个文本块：发送前和 `task` 当场交回的结果按同一条线剪（见 `pruneMessage`），分块时
 		 * 只剪超长的那份，几份一起到的时候不会把夹在中间的整份剪掉。
 		 */
-		content: [...agentParts, ...jobParts, ...monitorParts, ...sessionParts].map((text) => ({ type: "text" as const, text })),
+		content: [NOT_THE_USER, ...agentParts, ...jobParts, ...monitorParts, ...sessionParts].map((text) => ({ type: "text" as const, text })),
 	};
 }
 
