@@ -240,6 +240,11 @@ export function buildTurnConfig(
 			 * （`runtime/agent-session/session-turn.ts`），共用这只表，跑满两百轮攒下的观察才不会在续跑时清零。
 			 */
 			repetition: new RepetitionWatch(),
+			awaiting: () =>
+				deps.subAgents
+					.list()
+					.filter((one) => deps.dispatches.outstanding.has(one.id))
+					.map((one) => ({ id: one.id, agent: one.agent, description: one.description })),
 		},
 	};
 }

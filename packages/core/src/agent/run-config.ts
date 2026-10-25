@@ -132,6 +132,18 @@ export interface AgentControlContext {
 	 */
 	repetition: RepetitionWatch | undefined;
 	maxTurns?: number;
+	/**
+	 * 派出去、还没回来的子代理。只有主会话给：子代理手里没有 `task`，评测和单次调用也不派。
+	 * 有它，循环才知道结论该等——见 `awaiting.ts`。
+	 */
+	awaiting?: () => AwaitedDispatch[];
+}
+
+/** 一个派出去还没回来的子代理，模型认得出的那几样。 */
+export interface AwaitedDispatch {
+	id: string;
+	agent: string;
+	description: string;
 }
 
 /*

@@ -199,13 +199,14 @@
 | 续跑次数 | 10 段 | 停下，通知「已达到自动续跑次数上限」 | `continuation.ts` `MAX_CONTINUATIONS` |
 | 续跑没推进清单 | 连续 2 段一项没勾 | 停下，通知 `plan-stalled` | `continuation.ts` `STALLED_CONTINUATIONS` |
 | 撞到步数上限时清单为空或已做完 | — | 主会话停下；子代理宽限一段让它写清单 | `continuation.ts` `planless` |
-| 空回复 | 催 3 次 | `error`「模型连续返回空回复」 | `turn-checks.ts` `MAX_NUDGES` |
+| 空回复 | 催 3 次；子代理没回来时要的是「在等谁」，不是回答 | `error`「模型连续返回空回复」 | `turn-checks.ts` `MAX_NUDGES`、`awaiting.ts` `awaitingEmptyNudge` |
 | 纯文本撞输出上限 | 续写 3 次 | 停下，通知 `output-limit` | `turn-checks.ts` `MAX_TRUNCATED_REPLIES` |
 | 工具参数撞输出上限 | 连续 3 次 | `error`，让它拆小 | 同上 |
 | 同一调用、同一结果 | 第 3 次起纠正，第 10 次停 | `stalled` | `repetition.ts` `REPEAT_WARN` / `REPEAT_STOP` |
 | 翻页问同一个问题 / 切图测距 | 12 次 / 5 次 | 只提示，不停 | `repetition.ts` `INTENT_WARN` / `PROBE_WARN` |
 | 没汇报进度 | 20 次请求 | 只问，不停 | `plan-watch.ts` `PROGRESS_EVERY` |
-| 收尾时清单还有「正在做」 | 每次运行 1 次，这次跑过清单以外的工具才问 | 问一次，不停；回答空着就结束 | `plan-watch.ts` `closing` / `silent` |
+| 收尾时清单还有「正在做」 | 每次运行 1 次，这次跑过清单以外的工具、派出去的子代理都回来了才问 | 问一次，不停；回答空着就结束 | `plan-watch.ts` `closing` / `silent` |
+| 派出去的子代理还没回来 | 名单不变时每 4 次带工具的请求 | 只提醒还在等谁、先别交结论，不停 | `awaiting.ts` `AWAIT_EVERY` |
 | Stop 钩子要求接着做 | 3 次 | 之后不再理会钩子 | `hooks.ts` `MAX_STOP_HOOK_CONTINUATIONS` |
 | 计划模式调过工具、以正文收尾却没交计划 | 每轮 1 次，排在 Stop 钩子后 | 提醒用 `submit_plan` 交，之后不再问 | `plan-mode.ts` `unsubmittedPlanCheck` |
 | 请求被拒收 / 上下文超长 | 各恢复 1 次 | 照原错误收场 | `loop.ts` `requestReply` |

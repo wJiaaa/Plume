@@ -10,6 +10,9 @@
   `electron/app/notify.ts`、`electron/session/session-hub.ts`、`src/features/conversation/DeliveryRow.tsx`
 - 现状（2026-10-23）：`delegation-waits.ts` 现在是 `runtime/sub-agent/detached-dispatches.ts`；
   `deliveryMessage` 在 `runtime/agent-session/delivery-message.ts`，`exit-cut.ts` 也挪到了 `agent-session/`
+- 补充（2026-10-25）：派出后模型常接着干自己的活、在子代理回来前就交结论（本机 7 次里 3 次，最长 10500 字）。
+  「已派出」那句话和 `task` 的工具描述现在都明说结论也依赖它；循环在子代理没回来时隔 4 次请求提醒一次还在等谁、不追问清单、
+  空回复不催「给出回答」，见 core `agent/awaiting.ts`。派出即放手和一个一份送达不变。
 
 ## 背景
 

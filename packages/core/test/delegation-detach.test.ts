@@ -16,6 +16,7 @@ import { AgentSession } from "../src/runtime/agent-session/session.ts";
 import { deliveryMessage } from "../src/runtime/agent-session/delivery-message.ts";
 import { SessionInbox } from "../src/runtime/agent-session/session-inbox.ts";
 import { AgedToolPruner } from "../src/agent/aged-prune.ts";
+import { AWAIT_EVERY, awaitingNote } from "../src/agent/awaiting.ts";
 import { FRESH_RESULT_MAX_CHARS, pruneToolResults } from "../src/agent/prune.ts";
 import { SessionStore } from "../src/session/store.ts";
 import { emptyUsage, type AssistantMessage, type LlmContext, type Message, type ModelConfig, type ProviderConfig } from "../src/types.ts";
@@ -224,6 +225,48 @@ test("派了两个、先后回来：一个一份送达，先到的那份点名�
 	} finally {
 		gates.甲.resolve();
 		gates.乙.resolve();
+		session.abort();
+		delete process.env.PLUME_HOME;
+		await rm(root, { recursive: true, force: true, maxRetries: 8, retryDelay: 25 });
+	}
+});
+
+test("派完接着干自己的活：隔几次请求就听到一遍还在等谁，要它先别交结论", async () => {
+	const root = await mkdtemp(join(tmpdir(), "ly-detach-await-"));
+	process.env.PLUME_HOME = join(root, "home");
+	await mkdir(process.env.PLUME_HOME, { recursive: true });
+	const finish = deferred();
+	const main: LlmContext[] = [];
+	const session = new AgentSession({
+		cwd: root,
+		settings: SETTINGS,
+		store: new SessionStore(join(root, "sessions")),
+		emit: () => {},
+		streamFn: async (context) => {
+			if (!context.tools.some((tool) => tool.name === "task")) {
+				if (context.tools.length === 0) return says("{}");
+				await finish.promise;
+				return says("报告");
+			}
+			main.push(context);
+			if (main.length === 1) {
+				return assistant([{ type: "toolCall", id: "t0", name: "task", arguments: { description: "审查 a.ts", prompt: "看看 a.ts", subagent_type: "general" }, argumentsText: "{}" }], "toolUse");
+			}
+			// 派完自己接着读：每次读一个不同的路径，免得被重复检测叫停。
+			if (main.length <= AWAIT_EVERY + 2) {
+				return assistant([{ type: "toolCall", id: `r${main.length}`, name: "read", arguments: { path: `x${main.length}.ts` }, argumentsText: "{}" }], "toolUse");
+			}
+			return says("还在等审查 a.ts 那一路。");
+		},
+	});
+	try {
+		await session.initialize();
+		await session.prompt([{ type: "text", text: "派一个去审查 a.ts，你自己也看看" }]);
+		const note = awaitingNote([{ id: "", agent: "general", description: "审查 a.ts" }]);
+		const sent = main.at(-1)?.messages.filter((message) => message.role === "user" && message.synthetic && textOf(message) === note) ?? [];
+		assert.equal(sent.length, 1, "派出之后第 AWAIT_EVERY 次自己读完，下一次请求带上「还在等谁」");
+	} finally {
+		finish.resolve();
 		session.abort();
 		delete process.env.PLUME_HOME;
 		await rm(root, { recursive: true, force: true, maxRetries: 8, retryDelay: 25 });

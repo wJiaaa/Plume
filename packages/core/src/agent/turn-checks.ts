@@ -7,6 +7,7 @@
  * docs/architecture/agent-loop.md 的「停止与续跑总表」。
  */
 
+import { awaitingEmptyNudge, AwaitWatch } from "./awaiting.ts";
 import { originalInView, REPEAT_WARN, repeatHint, repeatNotice, type RepetitionWatch } from "./repetition.ts";
 import type { PlanWatch } from "./plan-watch.ts";
 import type { AgentControlContext, AgentRunResult } from "./run-config.ts";
@@ -86,13 +87,15 @@ export async function askAfterTools(checks: TurnChecks, turn: ToolTurn, inject: 
 /** 一次运行一份：计数跟着运行走，`repetition` 由调用方给，跨整条续跑链共用。 */
 export function turnChecks(control: AgentControlContext, emit: AgentEventSink, plan: PlanWatch, repetition: RepetitionWatch): TurnChecks {
 	const limit = outputLimit(emit);
+	const awaiting = new AwaitWatch(control.awaiting ?? (() => []));
 	return {
 		afterProse: [
 			limit.prose,
 			({ assistant }) => (plan.silent(assistant) ? { end: { reason: "done" } } : undefined),
-			emptyReply(),
+			emptyReply(awaiting),
 			stopHook(control),
-			({ turnsLeft }) => say(plan.closing(turnsLeft)),
+			// 子代理还没回来时那一项本来就该挂着；问了，它就把还没等到的结论提前写出来。
+			({ turnsLeft }) => (awaiting.pending().length > 0 ? undefined : say(plan.closing(turnsLeft))),
 		],
 		afterTools: [
 			delivered,
@@ -100,6 +103,7 @@ export function turnChecks(control: AgentControlContext, emit: AgentEventSink, p
 			limit.tools,
 			repeats(repetition),
 			({ assistant, toolCalls }) => say(plan.progress(assistant, toolCalls)),
+			() => say(awaiting.afterTools()),
 		],
 	};
 }
@@ -149,14 +153,16 @@ function outputLimit(emit: AgentEventSink): { prose: Check<ProseTurn>; tools: Ch
  * A checklist cannot tell a question from abandoned work. Text yields to the person; only an
  * actually empty response earns a bounded retry.
  */
-function emptyReply(): Check<ProseTurn> {
+function emptyReply(awaiting: AwaitWatch): Check<ProseTurn> {
 	let nudges = 0;
 	return ({ assistant }) => {
 		const saidNothing = assistant.content.every((part) => part.type !== "text" || !part.text.trim());
 		if (!saidNothing) return undefined;
 		if (nudges >= MAX_NUDGES) return { end: { reason: "error", error: "模型连续返回空回复，请重试或更换模型。" } };
 		nudges += 1;
-		return say(EMPTY_REPLY_NUDGE);
+		// 「请给出回答」在等子代理时是在要结论：`1155850f` 被这句逼出了一句「设计方向已明确」，最后一路还没回来。
+		const pending = awaiting.pending();
+		return say(pending.length > 0 ? awaitingEmptyNudge(pending) : EMPTY_REPLY_NUDGE);
 	};
 }
 
