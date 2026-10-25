@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { after, afterEach, before, test } from "node:test";
-import { DEFAULT_SETTINGS, type ModelConfig, type Settings, type Usage } from "@plume/core";
+import { BUILTIN_AGENTS, DEFAULT_SETTINGS, type ModelConfig, type Settings, type Usage } from "@plume/core";
 import { startApp, type RunningApp } from "./app.ts";
 import { click, type, until } from "./drive.ts";
 import { fixtureStore } from "./session-fixture.ts";
@@ -61,8 +61,9 @@ async function editor(modelId: string) {
 const readFields = `(()=>{const modal=document.querySelector('[data-ly-modal]');const read=t=>[...modal.querySelectorAll('label')].find(e=>e.textContent.startsWith(t)).querySelector('input').value;return {id:read('模型 ID'),context:read('上下文窗口'),output:read('最大输出'),input:read('输入价格'),priceOut:read('输出价格'),cache:read('缓存命中价格'),toggles:[...modal.querySelectorAll('[role="switch"]')].map(e=>e.getAttribute('aria-checked')),text:modal.innerText};})()`;
 
 /*
- * 内置智能体七个，见 `core/src/agents-builtin.ts`。「会话」那一段里原来还有一行 `compact`，压缩改成从
- * 主请求分叉之后删掉了（c9fcf77e：换模型写摘要就读不到主请求的缓存），页面上就是七行。
+ * 内置智能体的名单读 `BUILTIN_AGENTS`，不在这里抄一份：加了 plan-review 之后这里写死的七个就过时了。
+ * 「会话」那一段里原来还有一行 `compact`，压缩改成从主请求分叉之后删掉了（c9fcf77e：换模型写摘要就读不到
+ * 主请求的缓存），页面上每个内置智能体一行，不多不少。
  */
 test("all built-in agents can be configured before any session is created", async (t) => {
 	await click(app, "[data-ly-open-settings]");
@@ -75,9 +76,9 @@ test("all built-in agents can be configured before any session is created", asyn
 	 */
 	await app.evaluate(`new Promise(resolve=>{let last=-1,same=0;const timer=setInterval(()=>{const n=document.querySelectorAll('[data-agent-profile]').length;same=n===last?same+1:0;last=n;if(n>0&&same>=3){clearInterval(timer);resolve();}},80);setTimeout(()=>{clearInterval(timer);resolve();},10000);})`);
 	const visible = await app.evaluate<{ names: string[]; controls: number; overflow: number }>(`({names:[...document.querySelectorAll('[data-agent-profile]')].map(e=>e.getAttribute('data-agent-profile')),controls:document.querySelectorAll('[data-agent-profile] fieldset').length,overflow:document.documentElement.scrollWidth-window.innerWidth})`);
-	assert.deepEqual(visible.names, ["general", "explore", "review", "verify", "plan", "simple", "reason"]);
-	// 七行，每个内置智能体一整组运行配置。
-	assert.equal(visible.controls, 7);
+	assert.deepEqual(visible.names, BUILTIN_AGENTS.map((agent) => agent.name));
+	// 每个内置智能体一整组运行配置。
+	assert.equal(visible.controls, BUILTIN_AGENTS.length);
 	// 「会话」那一段不依赖智能体名单，没有会话也要能选模型；压缩模型那一行不该再回来。
 	assert.ok(
 		await app.evaluate(`Boolean(document.querySelector('button[aria-label="侧边聊天默认模型"]'))`),
@@ -97,7 +98,7 @@ test("all built-in agents can be configured before any session is created", asyn
 	await click(app, "nav button", "智能体");
 	// 回到这一页，等的还是「名单不再变」——理由同上面那处。
 	await app.evaluate(`new Promise(resolve=>{let last=-1,same=0;const timer=setInterval(()=>{const n=document.querySelectorAll('[data-agent-profile]').length;same=n===last?same+1:0;last=n;if(n>0&&same>=3){clearInterval(timer);resolve();}},80);setTimeout(()=>{clearInterval(timer);resolve();},10000);})`);
-	assert.equal(await app.evaluate(`document.querySelectorAll('[data-agent-profile]').length`), 7);
+	assert.equal(await app.evaluate(`document.querySelectorAll('[data-agent-profile]').length`), BUILTIN_AGENTS.length);
 	await until(app, `document.querySelector('[aria-label="explore 模型"]').textContent.includes('gemini-3.7-flash-high')`, 900);
 	t.diagnostic(JSON.stringify(visible)); await shot("builtin-agents");
 });

@@ -48,7 +48,8 @@ async function until(condition: () => Promise<boolean>) {
 
 async function settle() {
 	// 只等文档时间线上的：侧栏吸顶标题的 `ly-under-head` 挂在滚动时间线上，`finished` 永远不来，整份测试会卡死在这里。
-	await app.evaluate("Promise.all(document.getAnimations().filter(a=>a.playState==='running'&&a.timeline===document.timeline&&a.effect?.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))");
+	// 走马灯（`ly-marquee`）也不等：点完会话指针还停在那一行上，长标题悬停时滚两遍、一遍近一分钟（5ca47643 从无限改成两遍之后才被算进来）。
+	await app.evaluate("Promise.all(document.getAnimations().filter(a=>a.playState==='running'&&a.timeline===document.timeline&&a.effect?.getTiming().iterations!==Infinity&&a.animationName!=='ly-marquee').map(a=>a.finished.catch(()=>{})))");
 }
 
 async function point(target: keyof typeof targets) {

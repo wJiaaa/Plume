@@ -67,7 +67,8 @@ async function click(target: keyof typeof clickTargets) {
 		if (!await app.evaluate(clickTargets[target])) return false;
 		await app.evaluate("globalThis.__plumeMentionTarget.scrollIntoView({block:'nearest',behavior:'instant'})");
 		// Only document-timeline animations: the sidebar's sticky-header `ly-under-head` runs on a scroll timeline and stays running forever.
-		return app.evaluate("(()=>{const e=globalThis.__plumeMentionTarget,r=e.getBoundingClientRect();return !document.getAnimations().some(a=>a.playState==='running'&&a.timeline===document.timeline&&a.effect?.getTiming().iterations!==Infinity) && e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));})()");
+		// Not the hover marquee either (`ly-marquee`): the pointer rests on the row just clicked, and a long title scrolls twice at about a minute a pass — counted only since 5ca47643 made it finite.
+		return app.evaluate("(()=>{const e=globalThis.__plumeMentionTarget,r=e.getBoundingClientRect();return !document.getAnimations().some(a=>a.playState==='running'&&a.timeline===document.timeline&&a.effect?.getTiming().iterations!==Infinity&&a.animationName!=='ly-marquee') && e.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));})()");
 	});
 	const at = await app.evaluate<{ x: number; y: number }>("(()=>{const r=globalThis.__plumeMentionTarget.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()");
 	for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) await app.send("Input.dispatchMouseEvent", { type, ...at, ...(type === "mouseMoved" ? {} : { button: "left", clickCount: 1 }) });
@@ -96,7 +97,7 @@ async function shot(name: string) {
 	const directory = process.env.PLUME_E2E_ARTIFACTS; if (!directory) return;
 	await mkdir(directory, { recursive: true });
 	// Same as in click(): a scroll-timeline animation's `finished` never resolves.
-	await app.evaluate(`Promise.all(document.getAnimations().filter(a=>a.playState==='running'&&a.timeline===document.timeline&&a.effect?.getTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))`);
+	await app.evaluate(`Promise.all(document.getAnimations().filter(a=>a.playState==='running'&&a.timeline===document.timeline&&a.effect?.getTiming().iterations!==Infinity&&a.animationName!=='ly-marquee').map(a=>a.finished.catch(()=>{})))`);
 	const { data } = await app.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
 	await writeFile(join(directory, `${name}.png`), Buffer.from(data, "base64"));
 }

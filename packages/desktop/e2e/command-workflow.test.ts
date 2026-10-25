@@ -82,7 +82,8 @@ test("native input decorates commands, keeps arguments and undo, and lists inlin
 	assert.equal(alignment.mirrorOffset + alignment.scrollTop, 0);
 	// Copyable source is the native value; the hint lives in an aria-hidden, unselectable layer.
 	assert.equal(await app.evaluate(`(()=>{const f=document.querySelector('textarea');f.select();return f.value.slice(f.selectionStart,f.selectionEnd);})()`), value);
-	await type(app, "main textarea", "请保留这句 👩‍💻 /rev 后续内容");
+	// `/rev` 现在先撞上内置的 `/review`（d14ae2c6）；这里验的是句中补全保住前后文字，不是排序，所以打到不含糊为止。
+	await type(app, "main textarea", "请保留这句 👩‍💻 /review- 后续内容");
 	for (let index = 0; index < " 后续内容".length; index++) await press(app, "ArrowLeft", 37);
 	await until(app, `document.querySelectorAll('[role="option"]').length > 0`);
 	await press(app, "Tab", 9);

@@ -345,25 +345,41 @@ test("@ agents are selectable and @compact executes real compaction with the ses
 	assert.match(JSON.stringify((await sideOfQaLong())?.messages), /压缩后再次核对原始决策/);
 });
 
-test("a fresh Electron process restores persisted answers and can edit the first visible question", async (t) => {
+test("a fresh Electron process restores persisted answers; only the last question can be edited and re-asked", async (t) => {
 	await app.stop();
 	app = await startApp({ port: 9611, reuseHome: home });
 	await click(app, '[data-ly-row="qa-long"]'); await openSide();
 	await until(app, `document.querySelector('[data-dock-pane="chat"]').innerText.includes('查到工具尾部')`, 900);
 	const point = await app.evaluate<{x: number; y: number}>(`(()=>{const r=document.querySelector('[data-dock-pane="chat"] .ly-scroll-view').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
 	await app.send("Input.dispatchMouseEvent", { type: "mouseWheel", ...point, deltaX: 0, deltaY: -2400 }); await frames(app, 30);
-	// 和主会话同一个气泡：就地编辑，侧边聊天的按钮照旧叫「编辑并重新提问」「重新提问」。
-	const first = '[data-dock-pane="chat"] [data-question-index="0"]';
-	await click(app, `${first} button[aria-label="编辑并重新提问"]`);
-	await until(app, `document.querySelector('${first} textarea')?.value.includes('以前的侧聊问题')`, 900);
-	await app.evaluate(`document.querySelector('${first} textarea').select()`);
+	/*
+	 * 编辑重发只放开最后一条（ADR-0056，同主会话）：改一条更早的，等于把它之后几轮连同那几轮改过的
+	 * 文件一起作废。更早的那条按钮还在，置灰并说明，不是消失。
+	 */
+	const first = '[data-dock-pane="chat"] [data-question-index="0"] button[aria-label="编辑并重新提问"]';
+	await until(app, `document.querySelector('${first}')`, 900);
+	assert.equal(await app.evaluate(`document.querySelector('${first}').disabled`), true, "the first question is not the last one");
+	assert.equal(await app.evaluate(`document.querySelector('${first}').dataset.lyTip`), "只能编辑最后一条消息");
+	// 最后一条：和主会话同一个气泡，就地编辑，侧边聊天的按钮照旧叫「编辑并重新提问」「重新提问」。
+	const last = await app.evaluate<string>(`[...document.querySelectorAll('[data-dock-pane="chat"] [data-question-index]')].at(-1).dataset.questionIndex`);
+	const bubble = `[data-dock-pane="chat"] [data-question-index="${last}"]`;
+	await click(app, `${bubble} button[aria-label="编辑并重新提问"]`);
+	await until(app, `document.querySelector('${bubble} textarea')?.value.includes('压缩后再次核对原始决策')`, 900);
+	await app.evaluate(`document.querySelector('${bubble} textarea').select()`);
 	await app.send("Input.insertText", { text: "EARLY_REQUEST 编辑后查询早期决策" });
-	t.diagnostic(await app.evaluate<string>(`JSON.stringify([...document.querySelectorAll('[data-dock-pane="chat"] textarea')].map(e=>({value:e.value,rect:e.getBoundingClientRect().toJSON(),focused:e===document.activeElement})))`));
-	await click(app, `${first} button`, "重新提问", "starts");
-	await until(app, `document.querySelector('[data-dock-pane="chat"]').innerText.includes('查到早期决策')`, 900);
-	const messages = JSON.stringify((await sideOfQaLong())?.messages);
-	assert.doesNotMatch(messages, /以前的侧聊问题|以前的侧聊回答|TOOL_TAIL_REQUEST/);
+	await click(app, `${bubble} button`, "重新提问", "starts");
+	// 被替换掉的那条回答里也有「查到早期决策」，数屏幕上的字分不出新旧：等记录里新问题之后真的有了回答。
+	let messages = "";
+	for (let attempt = 0; attempt < 80; attempt++) {
+		messages = JSON.stringify((await sideOfQaLong())?.messages ?? []);
+		if (/编辑后查询早期决策.*查到早期决策/.test(messages)) break;
+		await new Promise(resolve => setTimeout(resolve, 100));
+	}
+	assert.match(messages, /编辑后查询早期决策.*查到早期决策/, "the re-asked question was answered");
+	t.diagnostic(JSON.stringify({ editedIndex: Number(last) }));
+	assert.doesNotMatch(messages, /压缩后再次核对原始决策/, "the edited question replaced the last one");
 	assert.match(messages, /编辑后查询早期决策/);
+	assert.match(messages, /以前的侧聊问题/, "earlier questions are kept");
 	assert.deepEqual(await app.evaluate(`window.plume.settings.get().then(s=>s.subAgentProfiles)`), savedProfiles);
 	await shot(app, "sidechat-restored-edit");
 });

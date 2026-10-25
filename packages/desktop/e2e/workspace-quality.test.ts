@@ -158,9 +158,12 @@ test("undo protects later user changes and service stop really closes the owned 
 	 * Undone by the path the delivery names, as its card does. That one is the resolved path — on macOS
 	 * a temp home is /var/… and the change is recorded under /private/var/… — so passing the home's own
 	 * spelling matched no file, and the refusal below was met for the wrong reason.
+	 *
+	 * The refusal names its reason (1c7a7853 dropped the generic pre-check that used to say only
+	 * 「没有可安全撤销」): the file was changed after the turn, and it is kept.
 	 */
 	const recorded=await app.evaluate<string>(`window.plume.delivery.get('qa-short',${timestamp}).then(d=>d.files.find(f=>f.path.endsWith('Sample.ts')).path)`);
-	assert.match(await app.evaluate<string>(`window.plume.delivery.undo('qa-short',${timestamp},${JSON.stringify(recorded)}).then(()=>"undone",e=>e.message)`),/没有可安全撤销/);
+	assert.match(await app.evaluate<string>(`window.plume.delivery.undo('qa-short',${timestamp},${JSON.stringify(recorded)}).then(()=>"undone",e=>e.message)`),/已有后续修改/);
 	assert.equal(await readFile(path,"utf8"),"user added work\n");
 	await writeFile(path,"export const answer = 2;\n");
 	await app.evaluate(`window.plume.delivery.undo('qa-short',${timestamp},${JSON.stringify(recorded)})`);await assert.rejects(readFile(path),{code:"ENOENT"});
