@@ -485,72 +485,84 @@ function ServerCard({
  */
 function EnvEditor({ server, onChange }: { server: McpServerConfig; onChange: (env: Record<string, string>) => void }) {
 	const { t } = useI18n();
-	const declared = new Set((server.needs ?? []).map((need) => need.name));
-	const rows = Object.entries(server.env ?? {}).filter(([name]) => !declared.has(name));
+	return (
+		<Field label={t("mcpSettings.env")} hint={t("mcpSettings.envHint")}>
+			<EnvRows env={server.env} hidden={new Set((server.needs ?? []).map((need) => need.name))} onChange={onChange} />
+		</Field>
+	);
+}
+
+/** 一行一个变量，最后一行起个新名字。标题和说明由外面那一层给：卡片里是 `Field`，新建弹窗里是 `DialogField`。 */
+export function EnvRows({ env, hidden, onChange }: {
+	env: Record<string, string> | undefined;
+	/** 声明过的那几个在别处填（`McpKeys`），这里不重复列。 */
+	hidden?: ReadonlySet<string>;
+	onChange: (env: Record<string, string>) => void;
+}) {
+	const { t } = useI18n();
+	const rows = Object.entries(env ?? {}).filter(([name]) => !hidden?.has(name));
 	const [name, setName] = useState("");
 	const valid = /^[A-Za-z_][A-Za-z0-9_]*$/.test(name);
 
-	const set = (key: string, value: string) => onChange({ ...server.env, [key]: value });
+	const set = (key: string, value: string) => onChange({ ...env, [key]: value });
 	const drop = (key: string) => {
-		const next = { ...server.env };
+		const next = { ...env };
 		delete next[key];
 		onChange(next);
 	};
 
 	return (
-		<Field label={t("mcpSettings.env")} hint={t("mcpSettings.envHint")}>
-			<div className="space-y-1.5">
-				{rows.map(([key, value]) => (
-					<div key={key} className="flex items-center gap-2">
-						<span className="w-[40%] shrink-0 truncate font-mono text-detail text-ink" data-ly-tip={key}>
-							{key}
-						</span>
-						<div className="min-w-0 flex-1">
-							{looksSecret(key) ? (
-								<SecretInput value={value} onChange={(next) => set(key, next)} />
-							) : (
-								<TextInput value={value} onChange={(next) => set(key, next)} mono />
-							)}
-						</div>
-						<IconButton
-							tone="danger"
-							label={t("common.remove")}
-							ariaLabel={t("mcpSettings.removeEnv", { name: key })}
-							onClick={() => drop(key)}
-							icon={<Trash2 size={13} strokeWidth={1.8} />}
-						/>
+		<div className="space-y-1.5">
+			{rows.map(([key, value]) => (
+				<div key={key} className="flex items-center gap-2">
+					<span className="w-[40%] shrink-0 truncate font-mono text-detail text-ink" data-ly-tip={key}>
+						{key}
+					</span>
+					<div className="min-w-0 flex-1">
+						{looksSecret(key) ? (
+							<SecretInput value={value} onChange={(next) => set(key, next)} />
+						) : (
+							<TextInput value={value} onChange={(next) => set(key, next)} mono />
+						)}
 					</div>
-				))}
-				<div className="flex items-center gap-2">
-					<div className="w-[40%] shrink-0">
-						<TextInput
-							value={name}
-							onChange={setName}
-							onKeyDown={(event) => {
-								if (event.key === "Enter" && valid) {
-									set(name, "");
-									setName("");
-								}
-							}}
-							mono
-							invalid={name !== "" && !valid}
-							placeholder="NAME"
-						/>
-					</div>
-					<Button
-						variant="subtle"
-						size="sm"
-						disabled={!valid}
-						onClick={() => {
-							set(name, "");
-							setName("");
-						}}
-						icon={<Plus size={12} strokeWidth={2} aria-hidden />}
-					>
-						{t("mcpSettings.addEnv")}
-					</Button>
+					<IconButton
+						tone="danger"
+						label={t("common.remove")}
+						ariaLabel={t("mcpSettings.removeEnv", { name: key })}
+						onClick={() => drop(key)}
+						icon={<Trash2 size={13} strokeWidth={1.8} />}
+					/>
 				</div>
+			))}
+			<div className="flex items-center gap-2">
+				<div className="w-[40%] shrink-0">
+					<TextInput
+						value={name}
+						onChange={setName}
+						onKeyDown={(event) => {
+							if (event.key === "Enter" && valid) {
+								set(name, "");
+								setName("");
+							}
+						}}
+						mono
+						invalid={name !== "" && !valid}
+						placeholder="NAME"
+					/>
+				</div>
+				<Button
+					variant="subtle"
+					size="sm"
+					disabled={!valid}
+					onClick={() => {
+						set(name, "");
+						setName("");
+					}}
+					icon={<Plus size={12} strokeWidth={2} aria-hidden />}
+				>
+					{t("mcpSettings.addEnv")}
+				</Button>
 			</div>
-		</Field>
+		</div>
 	);
 }

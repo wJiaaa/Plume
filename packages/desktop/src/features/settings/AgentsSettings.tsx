@@ -107,18 +107,6 @@ export function AgentsSettings() {
 		onConfirm: () => { then?.(); void remove(record); },
 	});
 
-	if (editor) {
-		const record = editor.record;
-		const deletable = record && !editor.copy && record.editable && record.scope !== "builtin" && !record.customized;
-		return <>
-			<AgentDefinitionEditor record={record} copy={editor.copy} projectId={editor.projectId} projectName={catalogue.projectName} defaultScope={project ? "project" : "user"} tools={catalogue.tools}
-				avatarOf={avatarOf} taken={agents.filter(agent => !record || editor.copy || agent.name !== record.definition.name).map(agent => ({ name: agent.name, avatar: avatarOf(agent.name) }))}
-				onClose={() => setEditor(null)} onDelete={deletable ? () => askRemove(record, () => setEditor(null)) : undefined}
-				onSaved={(name, warning) => { setEditor(null); setHighlight({ name, at: Date.now() }); setNotice(warning ?? t("agents.savedForNext")); void catalogue.refresh(); }} />
-			{confirm.element}
-		</>;
-	}
-
 	const needle = query.trim().toLowerCase();
 	const matches = (agent: Agent) => !needle || [agent.name, agent.description, agent.source, ...(agent.tools === "*" ? [] : agent.tools)].some(value => value.toLowerCase().includes(needle));
 	/*
@@ -204,6 +192,14 @@ export function AgentsSettings() {
 					</AgentList>
 				</section>}
 			</div>
+			{editor && (() => {
+				const record = editor.record;
+				const deletable = record && !editor.copy && record.editable && record.scope !== "builtin" && !record.customized;
+				return <AgentDefinitionEditor record={record} copy={editor.copy} projectId={editor.projectId} projectName={catalogue.projectName} defaultScope={project ? "project" : "user"} tools={catalogue.tools}
+					avatarOf={avatarOf} taken={agents.filter(agent => !record || editor.copy || agent.name !== record.definition.name).map(agent => ({ name: agent.name, avatar: avatarOf(agent.name) }))}
+					onClose={() => setEditor(null)} onDelete={deletable ? () => askRemove(record, () => setEditor(null)) : undefined}
+					onSaved={(name, warning) => { setEditor(null); setHighlight({ name, at: Date.now() }); setNotice(warning ?? t("agents.savedForNext")); void catalogue.refresh(); }} />;
+			})()}
 			{confirm.element}
 		</div>
 	);

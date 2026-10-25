@@ -1,5 +1,5 @@
 /**
- * 插件、智能体、命令、钩子——四个定义页长成一个样子，两个编辑页也是。
+ * 插件、智能体、命令、钩子——四个定义页长成一个样子，两个编辑弹窗也是。
  *
  * They drifted apart once already: each page had its own search box height, its own card, its own
  * row padding and title weight, and the subagent editor ran its fields 32px tall on a lighter fill.
@@ -212,30 +212,24 @@ test("row actions on subagents stay hidden until the row is hovered, as on comma
 });
 
 interface EditorMetrics {
-	crumb: { tag: string; height: number };
-	heading: { size: string; weight: string; top: number };
-	card: { top: number; width: number; radius: string; background: string };
+	title: { size: string; weight: string };
 	field: { height: number; background: string; ring: string };
 	label: { size: string; weight: string; color: string };
 	footer: string[];
 }
 
-function measureEditor(root: string) {
+/** 两个编辑器都在弹窗里：量弹窗的标题、第一个单行框、字段标题和底下最后两颗按钮。 */
+function measureEditor(form: string) {
 	return app.evaluate<EditorMetrics>(`(() => {
 		${HELPERS}
-		const root = within(${JSON.stringify(root)});
-		const crumb = root.firstElementChild;
-		const h1 = root.querySelector("h1");
-		const card = [...root.querySelectorAll(".ly-settings-card")].find(shown);
-		const field = [...card.querySelectorAll(".ly-field")].find((el) => shown(el) && el.tagName !== "TEXTAREA");
-		// The caption, not the <label>: the label wraps the field too and only inherits the caption's type.
-		const label = [...card.querySelectorAll("label > :first-child")].find((el) => shown(el) && el.children.length === 0 && el.textContent.trim());
-		const h = style(h1), c = style(card), f = style(field), l = style(label);
-		const buttons = [...root.querySelectorAll("button")].filter(shown).map((b) => b.textContent.trim()).filter(Boolean);
+		const root = within(${JSON.stringify(form)}).closest("[data-ly-dialog]");
+		const title = root.querySelector("[data-dialog-title]");
+		const field = [...root.querySelectorAll(".ly-field")].find((el) => shown(el) && el.tagName === "INPUT");
+		const label = [...root.querySelectorAll("[data-ly-dialog-field] > :first-child")].find(shown);
+		const t = style(title), f = style(field), l = style(label);
+		const buttons = [...root.querySelectorAll("[data-ly-dialog-actions] button")].filter(shown).map((b) => b.textContent.trim()).filter(Boolean);
 		return {
-			crumb: { tag: crumb.tagName, height: crumb.getBoundingClientRect().height },
-			heading: { size: h.fontSize, weight: h.fontWeight, top: Math.round(h1.getBoundingClientRect().top) },
-			card: { top: Math.round(card.getBoundingClientRect().top), width: Math.round(card.getBoundingClientRect().width), radius: c.borderTopLeftRadius, background: c.backgroundColor },
+			title: { size: t.fontSize, weight: t.fontWeight },
 			field: { height: field.getBoundingClientRect().height, background: f.backgroundColor, ring: f.boxShadow + " / " + f.borderTopWidth + " " + f.borderTopColor },
 			label: { size: l.fontSize, weight: l.fontWeight, color: l.color },
 			footer: buttons.slice(-2),
@@ -243,13 +237,20 @@ function measureEditor(root: string) {
 	})()`);
 }
 
+async function closeDialog() {
+	await app.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+	await app.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+	await until(`!document.querySelector("[data-ly-modal]")`, "dialog did not close");
+}
+
 test("the subagent editor is laid out like the hook form", async () => {
 	await open(PAGES[1]);
 	await app.evaluate(`document.querySelector(${JSON.stringify(`[aria-label="编辑 ${AGENT}"]`)}).click()`);
-	await until(`document.querySelector("[data-agent-editor] h1")`, "subagent editor did not open");
+	await until(`document.querySelector("[data-ly-modal] [data-agent-editor]")`, "subagent editor did not open");
 	await wait(300);
 	const agent = await measureEditor("[data-agent-editor]");
 	await shot(app, "parity_智能体编辑");
+	await closeDialog();
 
 	await open(PAGES[3]);
 	await app.evaluate(`(() => {
@@ -257,13 +258,14 @@ test("the subagent editor is laid out like the hook form", async () => {
 		const button = [...within("[data-ly-hooks-settings]").querySelectorAll("button")].find((b) => shown(b) && b.textContent.trim() === "新建");
 		button.click();
 	})()`);
-	await until(`document.querySelector("[data-ly-hook-form] h1")`, "hook form did not open");
+	await until(`document.querySelector("[data-ly-modal] [data-ly-hook-form]")`, "hook form did not open");
 	await wait(300);
 	const hook = await measureEditor("[data-ly-hook-form]");
 	await shot(app, "parity_钩子编辑");
+	await closeDialog();
 	console.log(JSON.stringify({ agent, hook }));
 
-	assert.equal(agent.crumb.tag, "NAV", "the subagent editor lost its breadcrumb");
 	assert.deepEqual(agent.footer, ["取消", "保存"], "cancel then save, save last");
-	sameAcross({ 智能体编辑: agent, 钩子编辑: hook }, ["crumb", "heading", "card", "field", "label", "footer"]);
+	assert.equal(hook.footer[0], "取消", "cancel before the hook form's primary button");
+	sameAcross({ 智能体编辑: agent, 钩子编辑: hook }, ["title", "field", "label"]);
 });

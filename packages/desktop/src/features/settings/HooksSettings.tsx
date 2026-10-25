@@ -1,7 +1,7 @@
 /**
  * 钩子：用户级的存在设置文件里，项目级的存在当前项目的 `.plume/config.json` 里。
  *
- * 布局：顶上一行是范围、数量和搜索，下面「已安装」一段，每条一行，点开是表单。项目钩子
+ * 布局：顶上一行是范围、数量和搜索，下面「已安装」一段，每条一行，点开是弹窗里的表单。项目钩子
  * 来自项目目录——可能是别人提交进来的——所以没信任过的那几条开关是灰的，旁边给一个「信任」。
  */
 
@@ -38,7 +38,7 @@ export function HooksSettings() {
 	const [query, setQuery] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const [busy, setBusy] = useState<string | null>(null);
-	/** `undefined` 是列表；`null` 是新建；一条钩子是在编辑它。 */
+	/** `undefined` 是没开弹窗；`null` 是新建；一条钩子是在编辑它。 */
 	const [editing, setEditing] = useState<HookView | null | undefined>(undefined);
 	const confirm = useConfirmer();
 
@@ -75,46 +75,6 @@ export function HooksSettings() {
 		() => [{ value: "user" as const, label: t("common.user") }, ...(project ? [{ value: "project" as const, label: project.name }] : [])],
 		[project, t],
 	);
-
-	if (editing !== undefined) {
-		const target = editing;
-		return (
-			<>
-				<HookForm
-					key={target?.id ?? "new"}
-					hook={target ?? undefined}
-					scopes={scopes}
-					defaultScope={scope}
-					onCancel={() => setEditing(undefined)}
-					onSave={async (saveScope: HookScope, draft: HookDraft) => {
-						try {
-							setView(await bridge.hooks.save(saveScope, cwd, target?.id ?? null, draft));
-							setError(null);
-							if (saveScope === "user") setProjectPath(null);
-							setEditing(undefined);
-						} catch (reason) {
-							setError(reason instanceof Error ? reason.message : String(reason));
-						}
-					}}
-					onDelete={
-						target
-							? () =>
-									confirm.ask({
-										title: t("hooks.delete"),
-										detail: t("hooks.deleteDetail", { event: target.event }),
-										confirmLabel: t("common.delete"),
-										onConfirm: () => {
-											void run(target.id, () => bridge.hooks.remove(target.scope, cwd, target.id)).then(() => setEditing(undefined));
-										},
-									})
-							: undefined
-					}
-				/>
-				{error && <p className="mt-3 text-detail text-danger">{error}</p>}
-				{confirm.element}
-			</>
-		);
-	}
 
 	const hooks = (scope === "project" ? view?.project : view?.user) ?? [];
 	const needle = query.trim().toLowerCase();
@@ -182,6 +142,39 @@ export function HooksSettings() {
 					</Card>
 				)}
 			</section>
+			{editing !== undefined && (
+				<HookForm
+					key={editing?.id ?? "new"}
+					hook={editing ?? undefined}
+					scopes={scopes}
+					defaultScope={scope}
+					onClose={() => setEditing(undefined)}
+					onSave={async (saveScope: HookScope, draft: HookDraft) => {
+						try {
+							setView(await bridge.hooks.save(saveScope, cwd, editing?.id ?? null, draft));
+							setError(null);
+							if (saveScope === "user") setProjectPath(null);
+							return null;
+						} catch (reason) {
+							return reason instanceof Error ? reason.message : String(reason);
+						}
+					}}
+					onDelete={
+						editing
+							? () =>
+									confirm.ask({
+										title: t("hooks.delete"),
+										detail: t("hooks.deleteDetail", { event: editing.event }),
+										confirmLabel: t("common.delete"),
+										onConfirm: () => {
+											void run(editing.id, () => bridge.hooks.remove(editing.scope, cwd, editing.id)).then(() => setEditing(undefined));
+										},
+									})
+							: undefined
+					}
+				/>
+			)}
+			{confirm.element}
 		</div>
 	);
 }

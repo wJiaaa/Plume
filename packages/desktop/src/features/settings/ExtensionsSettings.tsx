@@ -1,6 +1,7 @@
 import { ArrowUp, Blocks, Cable, FolderOpen, MoreHorizontal, Plus, Sparkles, Store } from "../../ui/icons/index.ts";
 import { Caret } from "../../ui/primitives/Caret.tsx";
 import { useEffect, useState } from "react";
+import type { McpServerConfig } from "@plume/core";
 import { Button } from "../../ui/primitives/Button.tsx";
 import { useLocalScan, useMarketMarks } from "../plugins/index.ts";
 
@@ -15,7 +16,7 @@ import { type ExtensionsTab, useApp } from "../../store/index.ts";
 import { usePluginsProject } from "./usePluginsProject.ts";
 import { ProjectScope } from "./ProjectScope.tsx";
 import { McpSettings } from "./McpSettings.tsx";
-import { newMcpServer } from "./mcp-defaults.ts";
+import { McpAddDialog } from "./McpAddDialog.tsx";
 import { PluginsSettings } from "./PluginsSettings.tsx";
 import { SkillsSettings } from "./SkillsSettings.tsx";
 import { bridge } from "../../services/index.ts";
@@ -83,9 +84,11 @@ export function ExtensionsSettings() {
 		useApp.getState().bumpExtensions();
 	};
 
-	const addServer = (transport: "stdio" | "http") => {
+	/** 手动添加时开着的那个弹窗，从菜单的哪一项进来就先停在哪种传输方式上。 */
+	const [adding, setAdding] = useState<"stdio" | "http" | null>(null);
+	const addServer = (server: McpServerConfig) => {
 		if (!settings) return;
-		void saveSettings({ ...settings, mcpServers: [...settings.mcpServers, newMcpServer(transport)] });
+		void saveSettings({ ...settings, mcpServers: [...settings.mcpServers, server] });
 		setTab("mcp");
 	};
 
@@ -201,7 +204,7 @@ export function ExtensionsSettings() {
 									icon={<Plus size={13} strokeWidth={1.9} />}
 									onClick={() => {
 										more.close();
-										addServer("stdio");
+										setAdding("stdio");
 									}}
 								>
 									{t("extensions.addStdio")}
@@ -210,7 +213,7 @@ export function ExtensionsSettings() {
 									icon={<Plus size={13} strokeWidth={1.9} />}
 									onClick={() => {
 										more.close();
-										addServer("http");
+										setAdding("http");
 									}}
 								>
 									{t("extensions.addHttp")}
@@ -272,6 +275,14 @@ export function ExtensionsSettings() {
 				</Scroller>
 			)} />
 
+			{adding && (
+				<McpAddDialog
+					transport={adding}
+					taken={settings?.mcpServers.map((server) => server.name) ?? []}
+					onClose={() => setAdding(null)}
+					onAdd={addServer}
+				/>
+			)}
 		</div>
 	);
 }

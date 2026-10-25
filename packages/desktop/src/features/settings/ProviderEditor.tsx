@@ -29,7 +29,7 @@ import { ProviderModels } from "./ProviderModels.tsx";
  * Short names in the switch; which path each one posts to is in the help beside it. With the
  * paths the three segments no longer fit a 420px pane side by side.
  */
-const API_OPTIONS: { value: ApiFormat; label: string }[] = [
+export const API_OPTIONS: { value: ApiFormat; label: string }[] = [
 	{ value: "openai-responses", label: "Responses" },
 	{ value: "openai-chat-completions", label: "Chat Completions" },
 	{ value: "anthropic-messages", label: "Messages" },

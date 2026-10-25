@@ -1,5 +1,5 @@
-import { Check, ChevronRight, Shuffle, Trash2 } from "../../ui/icons/index.ts";
-import { useEffect, useMemo, useState } from "react";
+import { Check, Shuffle } from "../../ui/icons/index.ts";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AgentDefinitionRecord, AgentDefinitionSave, AgentDraft } from "@plume/core";
 import { TextArea } from "../../ui/inputs/TextArea.tsx";
 import { Button } from "../../ui/primitives/Button.tsx";
@@ -9,7 +9,11 @@ import { AgentAvatar } from "../../ui/avatar/AgentAvatar.tsx";
 import { Popover, usePopover } from "../../ui/overlay/Popover.tsx";
 import { formatAvatar, freshAvatar, parseAvatar, type Avatar } from "../../lib/agent-avatar.ts";
 import type { AvatarOf } from "../../store/agent-avatars.ts";
-import { InlineSelect, Notice, PageHeader, TextInput } from "./controls.tsx";
+import { Select } from "../../ui/inputs/Select.tsx";
+import { Dialog, DialogAction } from "../../ui/overlay/Dialog.tsx";
+import type { Dismiss } from "../../ui/overlay/Overlay.tsx";
+import { Segmented, TextInput } from "./controls.tsx";
+import { DialogField } from "./dialog-form.tsx";
 import { AvatarPicker, avatarName } from "./AvatarPicker.tsx";
 import { bridge } from "../../services/index.ts";
 import { useI18n } from "../../i18n/index.ts";
@@ -19,8 +23,8 @@ const drafts = new Map<string, { draft: AgentDraft; scope: "user" | "project" }>
 const DEFAULT_TOOLS = ["read", "glob", "grep", "ls"];
 
 /*
- * 编辑页，排法同钩子表单：面包屑、标题和一句说明，下面一张设置卡片，
- * 删除在左下，取消、保存在右下。颜色变量见 `styles/fields.css` 的 `[data-agent-settings]`。
+ * 新建、复制、编辑都在弹窗里，排法同钩子弹窗：删除在左下，取消、保存在右下。
+ * 颜色变量见 `styles/fields.css` 的 `[data-agent-settings]`。
  *
  * 脸放在名字旁边，而且新建时就已经挑好了一张没人用的——它是这个智能体在设置页、`@` 菜单、面板
  * 里被认出来的方式，不该是一个等人想起来才去填的空。不满意就点它换，或者掷一次骰子。
@@ -52,111 +56,106 @@ export function AgentDefinitionEditor({ record, copy, projectId, projectName, de
 	const picker = usePopover();
 	const dirty = JSON.stringify(draft) !== JSON.stringify(original) || scope !== (record?.scope === "project" && !copy ? "project" : "user");
 	useEffect(() => { if (dirty) drafts.set(draftKey, { draft, scope }); else drafts.delete(draftKey); }, [draftKey, draft, scope, dirty]);
+	// Esc 和点遮罩照常关掉：没存的字留在 `drafts` 里，下次打开还在。只有「取消」先问一句，因为它读起来像「扔掉」。
 	const discard = () => { drafts.delete(draftKey); onClose(); };
-	const leave = () => dirty ? setLeaving(true) : onClose();
+	const form = useRef<HTMLFormElement>(null);
+	const dismissRef = useRef<Dismiss | null>(null);
 	const patch = (next: Partial<AgentDraft>) => setDraft(current => ({ ...current, ...next }));
 	const face = parseAvatar(draft.avatar) ?? parseAvatar(initialAvatar) ?? freshAvatar(taken.map(other => other.avatar));
 	// 谁在用哪张：选脸的格子据此把别人的那张标出来、不让选，提示里说是谁。
 	const owners = useMemo(() => new Map(taken.map(other => [formatAvatar(other.avatar), other.name])), [taken]);
 	const editing = Boolean(record && !copy);
-	const save = async () => {
+	const save = async (dismiss: Dismiss) => {
 		if (busy) return;
 		setBusy(true); setError("");
 		try {
 			const input: AgentDefinitionSave = { scope, draft, ...record ? copy ? { copyFrom: record.id } : { id: record.id, revision: record.revision } : {} };
 			const result = await bridge.agentDefinitions.save(projectId, input);
-			drafts.delete(draftKey); onSaved(draft.name, result.warning);
+			drafts.delete(draftKey); dismiss(() => onSaved(draft.name, result.warning));
 		} catch (cause) { setError(String(cause)); }
 		finally { setBusy(false); }
 	};
 	const title = editing && record ? t("agentEditor.editNamed", { name: record.definition.name }) : t("agents.add");
 	const selected = draft.tools;
-	return <form data-agent-settings data-agent-editor className="pt-2" onSubmit={event => { event.preventDefault(); void save(); }}>
-		<nav className="-ml-2 flex h-7 min-w-0 items-center text-label">
-			{/* 面包屑的第一段就是返回：这里没有顶栏，放在页首。 */}
-			<Button variant="subtle" size="sm" ariaLabel={t("agentEditor.back")} disabled={busy} onClick={leave}>{t("agents.title")}</Button>
-			<ChevronRight size={14} aria-hidden className="shrink-0 text-ink-faint" />
-			<span className="truncate px-2 text-ink">{editing && record ? record.definition.name : t("agents.add")}</span>
-		</nav>
-		<PageHeader className="mt-4" title={title} intro={record?.scope === "builtin" && !copy ? t("agentEditor.saveAsCustom") : t("agentEditor.intro")} />
-		<div className="@container space-y-4">
+	return <Dialog onClose={onClose} width={640} label={title} title={title}
+		detail={record?.scope === "builtin" && !copy ? t("agentEditor.saveAsCustom") : t("agentEditor.intro")}
+		bodyClassName="max-h-[min(620px,66dvh)]"
+		status={leaving || error ? <div className="mb-1 space-y-2">
 			{leaving && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line px-3.5 py-2.5 text-detail text-ink">
 				{t("agentEditor.unsaved")}
 				<div className="flex items-center gap-2">
 					<Button variant="subtle" size="sm" onClick={() => setLeaving(false)}>{t("agentEditor.keepEditing")}</Button>
-					<Button variant="danger" size="sm" onClick={discard}>{t("agentEditor.discard")}</Button>
+					<Button variant="danger" size="sm" onClick={() => dismissRef.current?.(discard)} data-agent-discard="">{t("agentEditor.discard")}</Button>
 				</div>
 			</div>}
-			{error && <Notice tone="danger" role="alert">{error}</Notice>}
-			{/* The settings card the hook form sits in, so its fields are the same fields. */}
-			<fieldset disabled={busy} className="ly-settings-card m-0 min-w-0 space-y-4 rounded-lg border border-line-float bg-float p-4 disabled:opacity-60">
-				<div className="flex justify-end">
-					<div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-						<span className="shrink-0 text-label text-ink-muted">{t("agentEditor.scopeLabel")}</span>
-						{/* 已有的智能体换不了范围（core 只认复制），所以编辑时写成文字：一个点不动的下拉看上去就是坏了。 */}
-						{editing
-							? <span className="text-label text-ink">{scope === "project" ? projectName ?? t("common.currentProject") : t("common.allProjects")}<span className="ml-2 text-caption text-ink-muted">{t("agentEditor.scopeFixed")}</span></span>
-							: <InlineSelect ariaLabel={t("agentEditor.scope")} value={scope} options={[{ value: "user", label: t("common.allProjects") }, ...(projectId ? [{ value: "project", label: projectName ?? t("common.currentProject") }] : [])]} onChange={value => { if (value === "project" || value === "user") setScope(value); }} />}
-					</div>
-				</div>
+			{error && <p role="alert" className="text-detail text-danger">{error}</p>}
+		</div> : undefined}
+		actions={dismiss => {
+			dismissRef.current = dismiss;
+			return <>
+				{onDelete && <DialogAction tone="danger" disabled={busy} onClick={onDelete}>{t("common.delete")}</DialogAction>}
+				<div className="flex-1" />
+				<DialogAction disabled={busy} onClick={() => dirty ? setLeaving(true) : dismiss()}>{t("common.cancel")}</DialogAction>
+				{/* 按钮在表单外面：走 `requestSubmit`，名字的格式和必填由表单自己拦。 */}
+				<DialogAction tone="primary" disabled={busy} onClick={() => form.current?.requestSubmit()} data-agent-save="">{t("common.save")}</DialogAction>
+			</>;
+		}}>
+		{dismiss => <form ref={form} data-agent-settings data-agent-editor className="@container" onSubmit={event => { event.preventDefault(); void save(dismiss); }}>
+			<fieldset disabled={busy} className="m-0 min-w-0 space-y-4 border-0 p-0 disabled:opacity-60">
 				<div className="flex items-end gap-3">
 					{/*
 					 * 脸是一块能点的底：点它挑，角上那颗骰子直接换一张没人用的。两颗按钮叠在一块底上而不是
 					 * 套在一起——按钮里不能再有按钮。
 					 */}
-					<div className="relative grid h-[56px] w-[56px] shrink-0 place-items-center rounded-2xl border border-[var(--ly-agent-line)] bg-float transition-colors duration-[var(--ly-t-quick)] hover:bg-[var(--ly-agent-hover)]" data-ly-avatar-host="">
+					<div className="relative grid h-[56px] w-[56px] shrink-0 place-items-center rounded-2xl border border-[var(--ly-agent-line)] transition-colors duration-[var(--ly-t-quick)] hover:bg-[var(--ly-agent-hover)]" data-ly-avatar-host="">
 						<button type="button" aria-label={t("agentEditor.pickAvatar")} data-ly-tip={`${t("agentEditor.pickAvatar")} · ${avatarName(face, t)}`} aria-haspopup="dialog" aria-expanded={picker.open}
 							data-agent-avatar={formatAvatar(face)} onClick={picker.toggle} className="absolute inset-0 rounded-2xl" />
 						<AgentAvatar avatar={face} size={38} seed={draft.name || "new"} host="[data-ly-avatar-host]" cheer={rolls || null} className="pointer-events-none" />
 						<IconButton size="sm" label={t("agentEditor.shuffleAvatar")} data-agent-shuffle=""
 							onClick={() => { patch({ avatar: formatAvatar(freshAvatar([...taken.map(other => other.avatar), face])) }); setRolls(n => n + 1); }}
-							className="absolute -right-2 -bottom-2 bg-shell" icon={<Shuffle size={12} strokeWidth={2} aria-hidden />} />
+							className="absolute -right-2 -bottom-2 bg-float" icon={<Shuffle size={12} strokeWidth={2} aria-hidden />} />
 					</div>
-					<label className="block min-w-0 flex-1 @xl:max-w-[14rem]"><FieldLabel>{t("agentEditor.nameLabel")}</FieldLabel>
-						<TextInput aria-label={t("agentEditor.callName")} placeholder="code-reviewer" value={draft.name} readOnly={editing} required pattern={editing ? undefined : "[a-z][a-z0-9_-]{0,63}"} onChange={next => patch({ name: next })} />
-					</label>
+					<div className="min-w-0 flex-1">
+						<DialogField label={t("agentEditor.nameLabel")} htmlFor="ly-agent-name">
+							<TextInput id="ly-agent-name" autoFocus={!editing} aria-label={t("agentEditor.callName")} placeholder="code-reviewer" value={draft.name} readOnly={editing} required pattern={editing ? undefined : "[a-z][a-z0-9_-]{0,63}"} onChange={next => patch({ name: next })} mono spellCheck={false} autoComplete="off" />
+						</DialogField>
+					</div>
+					<div className="min-w-0 shrink-0">
+						<DialogField label={t("agentEditor.scopeLabel")}>
+							{/* 已有的智能体换不了范围（core 只认复制），所以编辑时写成文字：一个点不动的下拉看上去就是坏了。 */}
+							{editing
+								? <div className="ly-field text-ink-muted" data-ly-tip={t("agentEditor.scopeFixed")}>{scope === "project" ? projectName ?? t("common.currentProject") : t("common.allProjects")}</div>
+								: <Select ariaLabel={t("agentEditor.scope")} value={scope} options={[{ value: "user" as const, label: t("common.allProjects") }, ...(projectId ? [{ value: "project" as const, label: projectName ?? t("common.currentProject") }] : [])]} onChange={setScope} />}
+						</DialogField>
+					</div>
 				</div>
-				<label className="block"><FieldLabel>{t("agentEditor.purposeLabel")}</FieldLabel>
-					<TextInput aria-label={t("agentEditor.purpose")} placeholder={t("agentEditor.purposePlaceholder")} required maxLength={2000} value={draft.description} onChange={next => patch({ description: next })} />
-				</label>
-				<div className="space-y-2 pt-1">
-					<div className="flex min-w-0 flex-wrap items-center gap-2">
-						<InlineSelect ariaLabel={t("agentEditor.allowedTools")} value={selected === "*" ? "all" : "custom"}
+				<DialogField label={t("agentEditor.purposeLabel")} htmlFor="ly-agent-purpose">
+					<TextInput id="ly-agent-purpose" aria-label={t("agentEditor.purpose")} placeholder={t("agentEditor.purposePlaceholder")} required maxLength={2000} value={draft.description} onChange={next => patch({ description: next })} />
+				</DialogField>
+				<DialogField label={t("agentEditor.instructionsLabel")} htmlFor="ly-agent-instructions">
+					<TextArea id="ly-agent-instructions" aria-label={t("agentEditor.instructions")} placeholder={t("agentEditor.instructionsPlaceholder")} required maxLength={200000} value={draft.systemPrompt} rows={6} resizable className="min-h-16" onChange={next => patch({ systemPrompt: next })} />
+				</DialogField>
+				<DialogField label={t("agentEditor.allowedTools")} hint={t("agentEditor.toolsNote")}>
+					<div className="w-fit">
+						<Segmented value={selected === "*" ? "all" : "custom"}
 							options={[{ value: "all", label: t("agentEditor.allTools") }, { value: "custom", label: t("agentEditor.customTools") }]}
 							onChange={value => patch({ tools: value === "all" ? "*" : selected === "*" ? DEFAULT_TOOLS : selected })} />
-						<span className="min-w-0 text-label text-ink-muted">{t("agentEditor.toolsNote")}</span>
 					</div>
-					{selected !== "*" && <div className="rounded-lg border border-[var(--ly-agent-line)] bg-float p-1">
-						<div className="grid max-h-72 gap-1 overflow-y-auto @md:grid-cols-2 @2xl:grid-cols-3">
+					{selected !== "*" && <div className="mt-2 rounded-lg border border-[var(--ly-agent-line)] p-1">
+						<div className="grid max-h-56 gap-1 overflow-y-auto @md:grid-cols-2 @xl:grid-cols-3">
 							{[...new Set([...tools, ...selected])].map(name => <ToolCheckbox key={name} name={name} checked={selected.includes(name)}
 								onChange={checked => patch({ tools: checked ? [...selected, name] : selected.filter(tool => tool !== name) })} />)}
 						</div>
 					</div>}
-				</div>
-				<label className="block"><FieldLabel>{t("agentEditor.instructionsLabel")}</FieldLabel>
-					<TextArea aria-label={t("agentEditor.instructions")} placeholder={t("agentEditor.instructionsPlaceholder")} required maxLength={200000} value={draft.systemPrompt} rows={8} resizable className="min-h-16" onChange={next => patch({ systemPrompt: next })} />
-				</label>
+				</DialogField>
 				{definition && <div className="text-label"><Disclosure variant="framed" title={t("agentEditor.advanced")}><p className="mb-2 text-detail text-ink-muted">{t("agentEditor.advancedNote")}</p><pre className="overflow-auto whitespace-pre-wrap break-words text-caption">{JSON.stringify({ model: definition.model, output: definition.output, schemaMode: definition.schemaMode }, null, 2)}</pre></Disclosure></div>}
-				<p className="text-caption text-ink-muted">{t("agentEditor.draftNote")}</p>
-				{/* The hook form's footer: a rule, delete on the left, then cancel before save. */}
-				<div className="flex flex-col gap-2 border-t border-line-soft pt-4 @sm:flex-row @sm:items-center">
-					{onDelete && <Button variant="danger" icon={<Trash2 size={13} aria-hidden />} className="self-start" onClick={onDelete}>{t("common.delete")}</Button>}
-					<div className="flex items-center justify-end gap-2 @sm:ml-auto">
-						<Button variant="ghost" onClick={leave}>{t("common.cancel")}</Button>
-						<Button type="submit" variant="primary" loading={busy}>{t("common.save")}</Button>
-					</div>
-				</div>
+				<p className="text-caption text-ink-faint">{t("agentEditor.draftNote")}</p>
 			</fieldset>
-		</div>
-		{picker.open && <Popover anchor={picker.anchor} onClose={picker.close} placement="bottom" align="start" width={316} label={t("agentEditor.pickAvatar")}>
-			<AvatarPicker value={face} owners={owners} onChange={next => { patch({ avatar: formatAvatar(next) }); setRolls(n => n + 1); }} />
-		</Popover>}
-	</form>;
-}
-
-function FieldLabel({ children }: { children: string }) {
-	// The weight `Field` gives the hook form's labels.
-	return <span className="mb-1.5 block text-label text-ink-muted">{children}</span>;
+			{picker.open && <Popover anchor={picker.anchor} onClose={picker.close} placement="bottom" align="start" width={316} label={t("agentEditor.pickAvatar")}>
+				<AvatarPicker value={face} owners={owners} onChange={next => { patch({ avatar: formatAvatar(next) }); setRolls(n => n + 1); }} />
+			</Popover>}
+		</form>}
+	</Dialog>;
 }
 
 /** 工具勾选：整格是按钮，勾上是前景色实底。能改文件、跑命令的几样右边一个红点。 */

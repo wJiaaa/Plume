@@ -10,6 +10,7 @@ import { ipcMain, shell } from "electron";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { plumeHome, type McpPromptEntry, type UserContent } from "@plume/core";
+import { commandFileName } from "../../shared/command-name.ts";
 import { nativeText } from "../i18n.ts";
 import { registerReferenceFiles } from "../capabilities/reference-files.ts";
 import { settings } from "../app-settings.ts";
@@ -99,8 +100,8 @@ export function registerCommandsIpc(): void {
 			name: string,
 			cwd: string,
 		): Promise<{ ok: true; path: string } | { ok: false; error: string }> => {
-			const clean = name.trim().toLowerCase();
-			if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(clean)) {
+			const clean = commandFileName(name);
+			if (!clean) {
 				return { ok: false, error: "命令名只能用小写字母、数字和连字符，例如 review-diff。" };
 			}
 			if (scope === "workspace" && !cwd) return { ok: false, error: "先打开一个项目，才能创建项目级命令。" };

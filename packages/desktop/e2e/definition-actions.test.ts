@@ -139,10 +139,17 @@ test("loose skill rows delete their own definitions while MCP servers and hooks 
 	await until(app, `document.querySelector('[role="dialog"]')?.textContent.includes('删除 QA 服务？')`);
 	await select("取消"); await until(app, `!document.querySelector('[role="dialog"]')`);
 	await select("钩子", true);
-	// A hook is deleted from its own form: open the row, then 删除 at the foot of the form.
-	await click(app, "[data-ly-hook-row]"); await click(app, "button", "删除");
-	await until(app, `document.querySelector('[role="dialog"]')`);
-	await click(app, '[role="dialog"] button', "取消"); await until(app, `!document.querySelector('[role="dialog"]')`);
+	/*
+	 * A hook is deleted from its own dialog: open the row, then 删除 at the foot of it. The question
+	 * stacks on top of that dialog, so 取消 is looked for in the top layer only — the hook dialog has a
+	 * 取消 of its own, and pressing that one would close the form and leave the question up.
+	 */
+	await click(app, "[data-ly-hook-row]"); await click(app, "[data-ly-dialog-actions] button", "删除");
+	await until(app, `[...document.querySelectorAll('[role="dialog"]')].at(-1)?.textContent.includes('删除钩子')`);
+	await app.evaluate(`[...document.querySelectorAll('[role="dialog"]')].at(-1).setAttribute("data-test-top", "")`);
+	await click(app, '[data-test-top] button', "取消");
+	await until(app, `document.querySelectorAll('[role="dialog"]').length === 1 && document.querySelector('[data-ly-hook-form]')`);
+	await click(app, "[data-ly-dialog-actions] button", "取消"); await until(app, `!document.querySelector('[role="dialog"]')`);
 	const settings = JSON.parse(await readFile(join(app.home, "settings.json"), "utf8"));
 	// Hooks are kept grouped by event (`{ events: { PreToolUse: [{ hooks: [...] }] } }`), as seeded above.
 	const hooks = Object.values(settings.hooks.events as Record<string, { hooks: unknown[] }[]>).flat().flatMap((group) => group.hooks);

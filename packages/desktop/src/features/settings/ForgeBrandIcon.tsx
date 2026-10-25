@@ -48,12 +48,12 @@ const MARKS: Record<"gitlab" | "gitee" | "gitea", { box: string; draw: () => Rea
 	},
 };
 
-export function ForgeBrandIcon({ kind }: { kind: string }) {
-	if (kind === "github") return <GitHubMark size={SIZE} className="shrink-0 text-[#24292f] dark:text-[#f0f6fc]" />;
+export function ForgeBrandIcon({ kind, size = SIZE }: { kind: string; size?: number }) {
+	if (kind === "github") return <GitHubMark size={size} className="shrink-0 text-[#24292f] dark:text-[#f0f6fc]" />;
 	const mark = MARKS[kind as keyof typeof MARKS];
 	if (!mark) return null;
 	return (
-		<svg width={SIZE} height={SIZE} viewBox={mark.box} fill="none" aria-hidden className="shrink-0" data-forge-mark={kind}>
+		<svg width={size} height={size} viewBox={mark.box} fill="none" aria-hidden className="shrink-0" data-forge-mark={kind}>
 			{mark.draw()}
 		</svg>
 	);

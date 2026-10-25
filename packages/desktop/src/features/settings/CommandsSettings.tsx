@@ -7,7 +7,6 @@ import type { SlashCommand } from "@plume/core/commands-view";
 import { FolderOpen, Plus, RefreshCw, SquareTerminal } from "../../ui/icons/index.ts";
 import { useCallback, useEffect, useState } from "react";
 import { useApp } from "../../store/index.ts";
-import { TextInput } from "./inputs.tsx";
 import { ProjectScope } from "./ProjectScope.tsx";
 import { Card, PageHeader } from "./layout.tsx";
 import { DefinitionToolbar, DiagnosticNotices } from "./definition-page.tsx";
@@ -16,6 +15,7 @@ import { bridge } from "../../services/index.ts";
 import { RowDeleteButton } from "../../ui/primitives/RowDeleteButton.tsx";
 import { useDefinitionRemoval } from "./useDefinitionRemoval.tsx";
 import { translate, useI18n } from "../../i18n/index.ts";
+import { CommandCreateDialog } from "./CommandCreateDialog.tsx";
 
 export function CommandsSettings() {
 	const { t } = useI18n();
@@ -42,8 +42,8 @@ function matchesQuery(command: { name: string; description?: string; argumentHin
 /*
  * 布局照钩子页：顶上一行是范围、数量和搜索，下面「已安装」一段，每条一行，点开是编辑器。
  *
- * 新建只要一个名字——文件建好就直接进外部编辑器写正文——所以不像钩子那样换成整页表单，
- * 而是在列表上方展开一行输入，范围跟着顶上选的那个走。
+ * 新建从前是在列表上方展开一行输入，理由是只要一个名字。后来设置页的新建都进了弹窗，这一条
+ * 也跟着进去：除了名字还要说清存在哪、会写出哪个文件，一行输入放不下这些，而列表跟着上下跳。
  */
 function SlashCommands() {
 	const { t } = useI18n();
@@ -58,8 +58,6 @@ function SlashCommands() {
 	);
 	const [query, setQuery] = useState("");
 	const [creating, setCreating] = useState(false);
-	const [name, setName] = useState("");
-	const [error, setError] = useState<string | null>(null);
 
 	const refresh = useCallback(() => {
 		void bridge.commands.list(cwd).then(setList);
@@ -81,28 +79,16 @@ function SlashCommands() {
 	}, [refresh]);
 
 	function startCreate() {
-		setError(null);
 		setCreating(true);
 	}
 
-	function cancelCreate() {
+	function created(target: "workspace" | "user", path: string) {
 		setCreating(false);
-		setName("");
-		setError(null);
-	}
-
-	async function create() {
-		setError(null);
-		const result = await bridge.commands.create(scope, name.trim(), cwd);
-		if (!result.ok) {
-			setError(result.error);
-			return;
-		}
-		setCreating(false);
-		setName("");
+		// 建在个人目录里时顶上还停在项目，列表按范围筛，新的那条就不在眼前。
+		if (target === "user") setProjectPath(null);
 		refresh();
 		// Straight into the editor: a new command is an empty file until somebody writes the prompt.
-		await bridge.commands.open(result.path);
+		void bridge.commands.open(path);
 	}
 
 	const commands = (list?.commands ?? []).filter((command) => command.scope === scope);
@@ -150,51 +136,16 @@ function SlashCommands() {
 					</div>
 				</div>
 
-				{creating && (
-					<Card className="mb-3">
-						<div className="flex items-center gap-3 px-4 py-3">
-							<div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-shell text-ink-faint" aria-hidden>
-								<SquareTerminal size={16} strokeWidth={1.8} />
-							</div>
-							<div className="min-w-0 flex-1">
-								<TextInput
-									value={name}
-									onChange={setName}
-									placeholder={t("commands.namePlaceholder")}
-									autoFocus
-									onKeyDown={(event) => {
-										if (event.key === "Enter" && name.trim()) void create();
-										if (event.key === "Escape") cancelCreate();
-									}}
-								/>
-							</div>
-							<Button variant="subtle" onClick={cancelCreate}>
-								{t("common.cancel")}
-							</Button>
-							<Button variant="primary" disabled={!name.trim()} onClick={() => void create()}>
-								{t("commands.createAndEdit")}
+				{commands.length === 0 ? (
+					<Card>
+						<div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
+							<div className="text-label font-medium text-ink">{t("commands.emptyTitle")}</div>
+							<p className="max-w-[360px] text-detail text-ink-faint">{t("commands.whatIsIt")}</p>
+							<Button variant="primary" className="mt-2" icon={<Plus size={13} aria-hidden />} onClick={startCreate}>
+								{t("commands.new")}
 							</Button>
 						</div>
-						<p className="px-4 pb-3 text-detail text-ink-faint">
-							{scope === "workspace" ? t("commands.projectScope") : t("commands.personalScope")}
-							{` ${t("commands.whatIsIt")}`}
-						</p>
-						{error && <p className="px-4 pb-3 text-detail text-danger">{error}</p>}
 					</Card>
-				)}
-
-				{commands.length === 0 ? (
-					!creating && (
-						<Card>
-							<div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
-								<div className="text-label font-medium text-ink">{t("commands.emptyTitle")}</div>
-								<p className="max-w-[360px] text-detail text-ink-faint">{t("commands.whatIsIt")}</p>
-								<Button variant="primary" className="mt-2" icon={<Plus size={13} aria-hidden />} onClick={startCreate}>
-									{t("commands.new")}
-								</Button>
-							</div>
-						</Card>
-					)
 				) : visible.length === 0 ? (
 					<Card>
 						<p className="px-6 py-10 text-center text-label text-ink-faint">{t("commands.searchEmpty")}</p>
@@ -248,8 +199,24 @@ function SlashCommands() {
 				</section>
 			)}
 			{removal.element}
+			{creating && (
+				<CommandCreateDialog
+					project={project}
+					projects={projects}
+					taken={takenNames(list?.commands ?? [])}
+					onClose={() => setCreating(false)}
+					onCreated={created}
+				/>
+			)}
 		</div>
 	);
+}
+
+/** 每个范围里 Plume 自己目录下已有的文件名。`.claude` 下的同名命令不挡：新文件不写进那里。 */
+function takenNames(commands: readonly SlashCommand[]): Record<"workspace" | "user", Set<string>> {
+	const taken = { workspace: new Set<string>(), user: new Set<string>() };
+	for (const command of commands) if (command.origin !== "claude") taken[command.scope].add(command.name);
+	return taken;
 }
 
 /** 一条命令，行的样子跟钩子页的 `HookRow` 一致。 */

@@ -209,16 +209,20 @@ test("agent definitions can be created without a session, edited, copied, trashe
 		await app.evaluate(`document.querySelector('[aria-label="${name}"]').select()`);
 		await app.send("Input.insertText", { text });
 	}
+	// The editor is a dialog: wait until it has left, or its scrim is still over the row the next step clicks.
+	async function save() {
+		await click(app, "[data-agent-save]"); await until(app, `!document.querySelector('[data-agent-editor]')`, 900);
+	}
 	await fill("智能体调用名", "qa-editor"); await fill("智能体用途", "真实编辑流程验证"); await fill("智能体指令", "Read the repository before answering.");
-	await click(app, "button", "保存", "starts"); await until(app, `document.querySelector('[data-agent-profile="qa-editor"]')`, 900);
+	await save(); await until(app, `document.querySelector('[data-agent-profile="qa-editor"]')`, 900);
 	const created = await readFile(join(app.home, "agents", "qa-editor.md"), "utf8"); assert.match(created, /Read the repository/);
-	await editAgent("general"); await fill("智能体指令", `Customized builtin instructions. ${MARK}`); await click(app, "button", "保存", "starts");
+	await editAgent("general"); await fill("智能体指令", `Customized builtin instructions. ${MARK}`); await save();
 	await until(app, `document.querySelector('[data-agent-profile="general"]').innerText.includes('已自定义')`, 900);
 	assert.match(await readFile(join(app.home, "agents", "general.md"), "utf8"), /Customized builtin/);
 	await click(app, '[aria-label="将 general 复制为新智能体"]');
 	await until(app, `document.querySelector('[data-agent-editor]')`, 900);
 	assert.equal(await app.evaluate(`document.querySelector('[aria-label="智能体指令"]').value.trim()`), `Customized builtin instructions. ${MARK}`);
-	await fill("智能体调用名", COPY); await click(app, "button", "保存", "starts"); await until(app, `document.querySelector('[data-agent-profile="${COPY}"]')`, 900);
+	await fill("智能体调用名", COPY); await save(); await until(app, `document.querySelector('[data-agent-profile="${COPY}"]')`, 900);
 	// Deleting goes to the system trash, as commands and skills do: no undo line, and no hidden copy left beside the others.
 	await expectTrashed(`${COPY}.md`);
 	await click(app, `[aria-label="删除 ${COPY}"]`); await click(app, '[role="dialog"] button', TO_TRASH, "starts");
@@ -233,7 +237,8 @@ test("agent definitions can be created without a session, edited, copied, trashe
 		await editAgent("qa-editor");
 		const measurement = await app.evaluate(`(()=>{const form=document.querySelector('[data-agent-editor]'),r=form.getBoundingClientRect();return {width:innerWidth,left:r.left,right:r.right,overflow:document.documentElement.scrollWidth-innerWidth,fields:[...form.querySelectorAll('input,textarea')].filter(e=>e.checkVisibility()).map(e=>e.getBoundingClientRect().right)};})()`);
 		assert.ok(measurement.overflow === 0 && measurement.left >= 0 && measurement.right <= width && measurement.fields.every((right: number) => right <= width), JSON.stringify(measurement));
-		t.diagnostic(JSON.stringify(measurement)); await shot(app, `agent-editor-${width}`); await click(app, '[aria-label="返回智能体"]');
+		t.diagnostic(JSON.stringify(measurement)); await shot(app, `agent-editor-${width}`);
+		await click(app, "[data-ly-dialog-actions] button", "取消"); await until(app, `!document.querySelector('[data-agent-editor]')`, 900);
 	}
 	await app.send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 850, deviceScaleFactor: 1, mobile: false });
 	await click(app, "nav button", "返回工作区", "starts");

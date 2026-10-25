@@ -80,6 +80,8 @@ export function useProviders() {
 
 	function select(id: string) {
 		setSelectedId(id);
+		// 不等下一次渲染：紧接着拉取的结果要认得出这是屏幕上那一个。
+		shown.current = id;
 		// The old result was about a different endpoint; leaving it up says the wrong thing.
 		setTestResult(null);
 		setModelTestResults({});
@@ -95,23 +97,23 @@ export function useProviders() {
 		});
 	}
 
-	async function add() {
+	/** 弹窗里填好的那一份。`fetch` 为真时存好就去拉模型列表，结果照常落到拉取弹窗里。 */
+	async function add(draft: Pick<ProviderConfig, "name" | "baseUrl" | "api" | "apiKey">, fetch: boolean) {
 		if (!settings) return;
 		const id = `provider-${Date.now().toString(36)}`;
 		const provider: ProviderConfig = {
 			id,
+			...draft,
 			name: uniqueProviderName(
 				settings.providers.map((one) => one.name),
-				translate("providers.newProvider"),
+				draft.name.trim() || translate("providers.newProvider"),
 			),
-			baseUrl: "https://",
-			api: "openai-responses",
-			apiKey: "",
 			enabled: true,
 			models: [],
 		};
 		await saveSettings({ ...settings, providers: [...settings.providers, provider] });
 		select(id);
+		if (fetch) await fetchModelsFromEndpoint(id);
 	}
 
 	async function remove(id: string) {
@@ -187,9 +189,9 @@ export function useProviders() {
 		}
 	}
 
-	async function fetchModelsFromEndpoint() {
-		if (!selected) return;
-		const providerId = selected.id;
+	/** 默认拉当前选中的；刚加好的那个还没进这一次渲染的 `selected`，由 `add` 直接点名。 */
+	async function fetchModelsFromEndpoint(providerId = selected?.id) {
+		if (!providerId) return;
 		setFetchingModels(true);
 		setFetchModelsError(null);
 		try {

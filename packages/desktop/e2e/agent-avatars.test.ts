@@ -163,7 +163,7 @@ test("新建：一进来就是一张没人用的脸，随机能换、能挑，�
 		await app.evaluate(`document.querySelector('[aria-label="${field}"]').select()`);
 		await app.send("Input.insertText", { text });
 	}
-	await click(app, "button", "保存", "starts");
+	await click(app, "[data-agent-save]");
 	await until(`document.querySelector('[data-agent-profile="${NEW_AGENT}"] .ly-avatar')`);
 	faces = await faceMap();
 	assert.equal(faces[NEW_AGENT], chosen, "列表上是存下去的那张");

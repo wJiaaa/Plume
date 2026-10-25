@@ -54,11 +54,14 @@ function numericClass(inputMode: React.HTMLAttributes<HTMLElement>["inputMode"])
 }
 
 export function SecretInput({
+	id,
 	value,
 	onChange,
 	onBlur,
 	placeholder,
 }: {
+	/** 给外面的 `<label htmlFor>` 认。 */
+	id?: string;
 	value: string;
 	onChange: (value: string) => void;
 	/**
@@ -85,6 +88,7 @@ export function SecretInput({
 		 */
 		<div className="ly-field w-full gap-1.5" data-ly-field="">
 			<Input
+				id={id}
 				type={visible ? "text" : "password"}
 				value={value}
 				onChange={(e) => onChange(e.target.value)}

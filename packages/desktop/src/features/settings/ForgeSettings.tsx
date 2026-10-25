@@ -75,7 +75,7 @@ export function ForgeSettings() {
 
 			<SectionTitle>{t("common.account")}</SectionTitle>
 			<div className="mb-3">
-				{accounts.length === 0 && !adding && (
+				{accounts.length === 0 && (
 					<Card>
 						<EmptyHint>{t("forge.empty")}</EmptyHint>
 					</Card>
@@ -168,14 +168,11 @@ export function ForgeSettings() {
 				))}
 			</div>
 
-			{adding ? (
-				<ForgeSignIn kinds={kinds} onDone={() => setAdding(false)} onCancel={() => setAdding(false)} />
-			) : (
-				<DialogAction onClick={() => setAdding(true)} label={t("prList.addAccount")} data-ly-add-forge="">
-					<Plus size={14} strokeWidth={2} aria-hidden />
-					{t("prList.addAccount")}
-				</DialogAction>
-			)}
+			<DialogAction onClick={() => setAdding(true)} label={t("prList.addAccount")} data-ly-add-forge="">
+				<Plus size={14} strokeWidth={2} aria-hidden />
+				{t("prList.addAccount")}
+			</DialogAction>
+			{adding && <ForgeSignIn kinds={kinds} onClose={() => setAdding(false)} />}
 
 			{/*
 			 * 令牌存在哪儿，这一段搬到登录表单里去了（见 `ForgeSignIn`）。

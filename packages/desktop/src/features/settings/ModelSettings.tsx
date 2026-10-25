@@ -23,6 +23,7 @@ import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import { Card, PageHeader } from "./layout.tsx";
 import { FetchModelsModal } from "./FetchModelsModal.tsx";
 import { ModelEditor } from "./ModelEditor.tsx";
+import { ProviderAddDialog } from "./ProviderAddDialog.tsx";
 import { ProviderAvatar } from "./ProviderAvatar.tsx";
 import { ProviderEditor } from "./ProviderEditor.tsx";
 import { ProviderImportModal } from "./ProviderImportModal.tsx";
@@ -40,6 +41,7 @@ export function ModelSettings() {
 		providerId: string;
 		model: ModelConfig | null;
 	} | null>(null);
+	const [adding, setAdding] = useState(false);
 
 	return (
 		// Keep the provider editor usable when a short window cannot fit its minimum height.
@@ -58,7 +60,7 @@ export function ModelSettings() {
 					icon={<MoreHorizontal size={16} strokeWidth={1.8} />}
 				/>
 				{/* 添加供应商放在页面右上角：列表底部那颗会被一长串供应商挤出视野。 */}
-				<DialogAction tone="primary" onClick={() => void p.add()} data-ly-add-provider="">
+				<DialogAction tone="primary" onClick={() => setAdding(true)} data-ly-add-provider="">
 					<Plus size={14} strokeWidth={2} aria-hidden />
 					{t("modelSettings.addProvider")}
 				</DialogAction>
@@ -191,7 +193,7 @@ export function ModelSettings() {
 								<p className="text-label text-ink-muted">
 									{t("modelSettings.noProviders")}
 								</p>
-								<DialogAction tone="primary" onClick={() => void p.add()} data-ly-add-provider="">
+								<DialogAction tone="primary" onClick={() => setAdding(true)} data-ly-add-provider="">
 									<Plus size={14} strokeWidth={2} aria-hidden />
 									{t("modelSettings.addFirst")}
 								</DialogAction>
@@ -250,6 +252,14 @@ export function ModelSettings() {
 						void p.saveModel(editingModel.providerId, model, editingModel.model);
 						setEditingModel(null);
 					}}
+				/>
+			)}
+
+			{adding && (
+				<ProviderAddDialog
+					taken={p.providers.map((provider) => provider.name)}
+					onClose={() => setAdding(false)}
+					onAdd={(draft, fetch) => void p.add(draft, fetch)}
 				/>
 			)}
 
