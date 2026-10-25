@@ -308,10 +308,17 @@ export function attachBrowser(id: string, contentsId: number, sender: WebContent
 	 * `<webview>` 一挂上就照 `src` 加载，上面的监听可能晚到：第一跳在那之前就被 302 送去 `lark://` 的话，
 	 * 它已经无声地断了——什么也没提交、也不在加载，`refuse` 没机会说话，标签停在白页上。点回复里的链接
 	 * 新开标签时面板要先挂出来，正好落在这个窗口里。监听都挂好了，照原地址再走一遍。
+	 * 挂上时还在加载也不代表第一跳还在：302 可能正好落在挂上之前，那一次加载停下时什么也没提交、也没有
+	 * 失败（实测四次里有一次如此）。所以还在加载的，等它停下再看一次。
 	 */
-	if (!contents.getURL() && !contents.isLoading() && tab.state.url !== "about:blank") {
+	const retryLost = () => {
+		if (contents.getURL() || tab.state.failure || tab.state.url === "about:blank") return;
 		tab.documentReady = false;
 		void contents.loadURL(tab.state.url).catch(() => {});
+	};
+	if (!contents.getURL()) {
+		if (contents.isLoading()) contents.once("did-stop-loading", retryLost);
+		else retryLost();
 	}
 	contents.setZoomFactor(tab.state.zoom);
 	// 挂上时第一页还没提交的话，Chromium 提交时按源换上那个源的缩放，刚设的就没了；等它能读了再设一次。
