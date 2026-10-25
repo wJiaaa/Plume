@@ -55,6 +55,15 @@ test("the host comes with it, from every spelling", () => {
 	assert.deepEqual(parseRemote("https://ghe.example.com/kittors/plume"), { host: "ghe.example.com", owner: "kittors", name: "plume" });
 });
 
+test("an http(s) remote keeps its port, an ssh one does not", () => {
+	// The account on that server is found by the `host:port` of its base URL; the ssh port is not where the web side is.
+	assert.deepEqual(parseRemote("https://ghe.example.com:8443/kittors/plume.git"), { host: "ghe.example.com:8443", owner: "kittors", name: "plume" });
+	assert.deepEqual(parseRemote("http://127.0.0.1:63366/fixture/repo.git"), { host: "127.0.0.1:63366", owner: "fixture", name: "repo" });
+	assert.deepEqual(parseRemote("ssh://git@git.example.com:2222/group/plume.git"), { host: "git.example.com", owner: "group", name: "plume" });
+	// The default port is dropped, as `new URL(...).host` drops it from the account's base URL.
+	assert.equal(parseRemote("https://ghe.example.com:443/kittors/plume")?.host, "ghe.example.com");
+});
+
 test("a Windows path is not an scp remote", () => {
 	// `C:` looks like `host:` to a pattern that does not know a drive letter when it sees one.
 	assert.equal(parseRemote("C:/Users/me/code/plume"), null);

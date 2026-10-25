@@ -37,13 +37,26 @@ export interface RemoteRepo {
 export function parseRemote(url: string): RemoteRepo | null {
 	const trimmed = url.trim().replace(/\.git$/, "").replace(/\/+$/, "");
 	// scp-like: [user@]host:owner/name, which is not a URL and cannot be parsed as one.
-	const located =
-		/^(?:[^/@\s]+@)?([^:/\s]{2,}):(?!\/\/)(.+)$/.exec(trimmed) ??
-		/^[a-z+]+:\/\/(?:[^/@]+@)?([^/:]+)(?::\d+)?\/(.+)$/i.exec(trimmed);
+	const scp = /^(?:[^/@\s]+@)?([^:/\s]{2,}):(?!\/\/)(.+)$/.exec(trimmed);
+	const remoteUrl = /^([a-z+]+):\/\/(?:[^/@]+@)?([^/:]+)(:\d+)?\/(.+)$/i.exec(trimmed);
+	/*
+	 * An http(s) remote keeps its port: it is part of the web address, and the signed-in account on
+	 * that server is looked up by the same `host:port` its base URL has (`connectByHost`). Dropping it
+	 * made a GitHub Enterprise on :8443 miss its own account and ask anonymously. An ssh port says
+	 * nothing about where the web side is, so it goes.
+	 */
+	const located = scp ? { host: scp[1], path: scp[2] } : remoteUrl ? { host: webHost(remoteUrl[1], remoteUrl[2], remoteUrl[3]), path: remoteUrl[4] } : null;
 	if (!located) return null;
-	const parts = located[2].split("/").filter(Boolean);
+	const parts = located.path.split("/").filter(Boolean);
 	if (parts.length < 2) return null;
-	return { host: located[1], owner: parts[parts.length - 2], name: parts[parts.length - 1] };
+	return { host: located.host, owner: parts[parts.length - 2], name: parts[parts.length - 1] };
+}
+
+/** `host:port` the way `new URL(...).host` spells it — the default port left off — and only for the web schemes. */
+function webHost(scheme: string, host: string, port: string | undefined): string {
+	const web = scheme.toLowerCase();
+	if (web !== "http" && web !== "https") return host;
+	return !port || port === (web === "https" ? ":443" : ":80") ? host : host + port;
 }
 
 /**
