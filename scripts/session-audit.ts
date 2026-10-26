@@ -58,6 +58,8 @@ import type { Message } from "../packages/core/src/types.ts";
 const CHARS_PER_TOKEN = 3.5;
 /** 进入「单条最贵」榜的门槛，低于这个的条目太多且都不值得看。 */
 const BIG_RESULT_CHARS = 2000;
+/** 一轮里自动压缩的 p90 到这个数，等待才算挡人、值得挪到后台；结论原来写死成「只有几秒」，和数字对不上。 */
+const BLOCKING_COMPACTION_MS = 30_000;
 
 const DB = join(homedir(), ".plume", "sessions", "sessions.db");
 const asJson = process.argv.includes("--json");
@@ -165,6 +167,8 @@ function loadSessions(): Session[] {
 	for (const { id: file, created_at: createdAt, meta } of rows) {
 		const lines = withoutCopies((records.all(file) as { body: string }[]).map((row) => row.body), createdAt, isFork(meta));
 		const calls: Call[] = [];
+		/** 已经数过的调用 id，见下面数调用那里。 */
+		const callIds = new Set<string>();
 		const results = new Map<string, Message>();
 		const stops: string[] = [];
 		const runtimeStops: string[] = [];
@@ -279,6 +283,13 @@ function loadSessions(): Session[] {
 				let inRound = 0;
 				for (const block of content) {
 					if (block.type === "toolCall") {
+						/*
+						 * 同一个 id 第二次出现不数。这是 Responses 补项把整份 output 再追加一遍留下的旧记录（见
+						 * `openai-responses.ts` 的 `backfill`）：不是模型发的，数进去会把重复检测、并行度都抬高，
+						 * 看上去像模型的毛病。id 不同、参数一字不差的照数——那是模型自己发了两遍。
+						 */
+						if (callIds.has(block.id)) continue;
+						callIds.add(block.id);
 						calls.push({ id: block.id, name: block.name, args: block.arguments, round, at: mainStream.messages.length - 1 });
 						inRound++;
 						if (block.name === "todo_write" && block.arguments && typeof block.arguments === "object") {
@@ -1075,7 +1086,13 @@ for (const [label, v] of [["一轮里自动触发（这一轮停下来等它）"
 	}
 	console.log(`  ${label}：完成 ${v.count} 次，p50 ${seconds(v.p50Ms)}，p90 ${seconds(v.p90Ms)}，最长 ${seconds(v.maxMs)}，合计 ${seconds(v.totalMs)}；没完成 ${v.unfinished} 次`);
 }
-console.log("  ⚠ 只有一轮里自动触发的那种在挡路。p90 只有几秒、次数又少，提前在后台做省不下多少等待。");
+if (blockingCompactions.count === 0) console.log("  ⚠ 只有一轮里自动触发的那种在挡路，这批会话里没有，提前在后台做省不下等待。");
+else if (blockingCompactions.p90Ms < BLOCKING_COMPACTION_MS)
+	console.log(`  ⚠ 只有一轮里自动触发的那种在挡路。p90 只有 ${seconds(blockingCompactions.p90Ms)}，提前在后台做省不下多少等待。`);
+else
+	console.log(
+		`  ⚠ 只有一轮里自动触发的那种在挡路：p90 ${seconds(blockingCompactions.p90Ms)}、合计 ${seconds(blockingCompactions.totalMs)}，人真的在等，值得看能不能提前在后台做。`,
+	);
 
 console.log("\n── 12. 压缩请求本身吃没吃到缓存（分叉摘要验收看这里） ──");
 if (byVia.length === 0) console.log("  没有写下过边界的压缩。");
