@@ -56,9 +56,13 @@ export const SIDE_CHAT_PROFILE: PromptProfile = {
 	interfaceBlocks: true,
 };
 
-/** The three tools only a side chat has, bound to the session it sits beside. */
-export function sideChatTools(main: MainSession, model: () => ModelConfig): Tool[] {
-	return [readMainChatTool(main, model), dispatchTaskTool(main), controlMainTool(main)];
+/**
+ * The three tools only a side chat has, bound to the session it sits beside.
+ *
+ * `sideId` is read when a task is dispatched: a new side chat gets its id only after its tools exist.
+ */
+export function sideChatTools(main: MainSession, sideId: () => string, model: () => ModelConfig): Tool[] {
+	return [readMainChatTool(main, model), dispatchTaskTool(main, sideId), controlMainTool(main)];
 }
 
 /**

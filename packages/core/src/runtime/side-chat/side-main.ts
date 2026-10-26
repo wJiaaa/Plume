@@ -13,7 +13,7 @@ export interface MainSession {
 	readonly messages: Message[];
 	readonly running: boolean;
 	readonly taskQueue: QueuedTask[];
-	enqueueTask(text: string): Promise<QueuedTask>;
+	enqueueTask(text: string, origin?: QueuedTask["origin"], sideId?: string): Promise<QueuedTask>;
 	resumeTask(taskId: string): Promise<boolean>;
 	interruptedTask(): QueuedTask | null;
 	discardTaskPlan(): Promise<void>;

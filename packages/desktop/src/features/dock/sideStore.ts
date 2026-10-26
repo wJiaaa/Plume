@@ -167,6 +167,16 @@ export function sideTasksOf(state: Pick<SideState, "tasks">, sessionId: string |
 	return (sessionId ? state.tasks[sessionId] : undefined) ?? NO_TASKS;
 }
 
+/**
+ * 其中由这一格侧边聊天派出去的。
+ *
+ * 队列是几个侧边聊天共用的，面板上只该是自己的回执：不然新开一格也挂着上一格派的那几行。
+ * 还没问过第一句的那一格（`sideId` 没有）什么也没派过。
+ */
+export function dispatchedFrom(tasks: QueuedTask[], sideId: string | undefined): QueuedTask[] {
+	return sideId ? tasks.filter((task) => task.sideId === sideId) : NO_TASKS;
+}
+
 const opening = new Map<string, Promise<SessionMeta>>();
 
 export const useSide = create<SideState>((set, get) => {

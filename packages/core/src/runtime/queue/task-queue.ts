@@ -64,11 +64,12 @@ export class TaskQueue {
 	 * Runs immediately when nothing is in progress, which is the whole point: you dispatch it and
 	 * walk away.
 	 */
-	async enqueue(text: string, origin: QueuedTask["origin"] = "side-chat"): Promise<QueuedTask> {
+	async enqueue(text: string, origin: QueuedTask["origin"] = "side-chat", sideId?: string): Promise<QueuedTask> {
 		const task: QueuedTask = {
 			id: this.options.newId(),
 			text,
 			origin,
+			...(sideId ? { sideId } : {}),
 			status: "queued",
 			createdAt: this.options.now(),
 		};

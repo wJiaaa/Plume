@@ -376,6 +376,13 @@ export interface QueuedTask {
 	/** What to do, phrased as an instruction — this becomes the prompt verbatim. */
 	text: string;
 	origin: "side-chat";
+	/**
+	 * 派它的那个侧边聊天（会话 id）。
+	 *
+	 * 队列是主会话的，几个侧边聊天共用一条；面板按这个只画自己派出去的回执，否则新开一个侧边聊天
+	 * 也会挂着上一个派的那几行。
+	 */
+	sideId?: string;
 	status: "queued" | "running" | "done" | "failed" | "cancelled";
 	createdAt: number;
 	startedAt?: number;

@@ -9,7 +9,7 @@ import type { MainSession } from "./side-main.ts";
  * is doing. It puts a note in the main session's queue and returns, and the main session runs it
  * later under the same approval rules as anything the user typed themselves.
  */
-export function dispatchTaskTool(main: MainSession): Tool<{ instruction: string }> {
+export function dispatchTaskTool(main: MainSession, sideId: () => string): Tool<{ instruction: string }> {
 	return {
 		name: "dispatch_task",
 		description:
@@ -29,7 +29,7 @@ export function dispatchTaskTool(main: MainSession): Tool<{ instruction: string 
 		async execute(args) {
 			const instruction = String(args.instruction ?? "").trim();
 			if (!instruction) return textResult("指令为空，没有派出任何任务。");
-			const task = await main.enqueueTask(instruction);
+			const task = await main.enqueueTask(instruction, "side-chat", sideId());
 			return textResult(
 				main.running
 					? "已排入主会话的任务队列，它会在当前工作完成后执行。"

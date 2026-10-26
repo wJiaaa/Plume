@@ -16,7 +16,7 @@ import { translate } from "../../i18n/translate.ts";
 import type { QueuedTask } from "@plume/core";
 import { Ban, Check, CircleDashed, Clock, OctagonPause, Play, RotateCcw, TriangleAlert, X } from "../../ui/icons/index.ts";
 import { StatusSpinner } from "../../ui/motion/loaders.tsx";
-import { useSide, sideTasksOf } from "../dock/index.ts";
+import { dispatchedFrom, useSide, sideTasksOf } from "../dock/index.ts";
 import { useSideSessionId } from "./scope.ts";
 import { useSideTarget } from "./target.ts";
 import { taskTip } from "./task-tip.ts";
@@ -48,9 +48,10 @@ function worthKeeping(task: QueuedTask): boolean {
 /** Finished rows linger this many, so a row does not vanish the instant it completes. */
 const RECENT_KEPT = 3;
 
-export function TaskStrip() {
+/** `sideId` 是这一格背后的侧边聊天；还没问过第一句时没有，也就没派过任何东西。 */
+export function TaskStrip({ sideId }: { sideId: string | undefined }) {
 	const sessionId = useSideSessionId();
-	const tasks = useSide((s) => sideTasksOf(s, sessionId));
+	const tasks = dispatchedFrom(useSide((s) => sideTasksOf(s, sessionId)), sideId);
 
 	const active = tasks.filter((t) => t.status === "queued" || t.status === "running");
 	const recent = tasks.filter(worthKeeping).slice(-RECENT_KEPT);

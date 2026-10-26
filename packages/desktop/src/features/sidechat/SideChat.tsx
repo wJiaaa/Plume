@@ -72,7 +72,7 @@ export function SideChat() {
 				</PanelEmpty>
 			)}
 
-			<TaskStrip />
+			<TaskStrip sideId={side?.id} />
 			<SideComposer side={side} disabled={!sessionId} />
 			{question && <CloseQuestion answer={question.answer} />}
 		</div>

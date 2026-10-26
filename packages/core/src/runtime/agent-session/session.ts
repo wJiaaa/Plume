@@ -271,7 +271,7 @@ export class AgentSession {
 			this.wakeups.observe(event);
 			return options.emit(event);
 		}, options.meta);
-		const sideTools = options.parent ? sideChatTools(options.parent, () => this.modelInEffect()) : [];
+		const sideTools = options.parent ? sideChatTools(options.parent, () => this.meta.id, () => this.modelInEffect()) : [];
 		this.can = new SessionCapabilities(
 			[...(options.extraTools ?? []), ...sideTools],
 			{
@@ -1201,8 +1201,8 @@ export class AgentSession {
 		return this.tasks.list();
 	}
 
-	async enqueueTask(text: string, origin: QueuedTask["origin"] = "side-chat"): Promise<QueuedTask> {
-		return this.tasks.enqueue(text, origin);
+	async enqueueTask(text: string, origin: QueuedTask["origin"] = "side-chat", sideId?: string): Promise<QueuedTask> {
+		return this.tasks.enqueue(text, origin, sideId);
 	}
 
 	async cancelTask(taskId: string): Promise<boolean> {

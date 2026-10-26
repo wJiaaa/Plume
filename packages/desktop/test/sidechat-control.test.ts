@@ -11,6 +11,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { QueuedTask } from "@plume/core";
 import { TaskQueue } from "../../core/src/runtime/queue/task-queue.ts";
+import { dispatchTaskTool } from "../../core/src/runtime/side-chat/sidechat-controls.ts";
+import type { MainSession } from "../../core/src/runtime/side-chat/side-main.ts";
+import type { ToolContext } from "../../core/src/types.ts";
+import { dispatchedFrom } from "../src/features/dock/sideStore.ts";
 
 /*
  * A stand-in for the session, with only the surface `control_main` touches.
@@ -51,6 +55,9 @@ function fakeMain() {
 				if (task.status === "cancelled" && task.cancelledBy === "stop") return task;
 			}
 			return null;
+		},
+		async enqueueTask(text: string, origin?: QueuedTask["origin"], sideId?: string) {
+			return queue.enqueue(text, origin, sideId);
 		},
 		async resumeTask(id: string) {
 			return queue.resume(id);
@@ -99,4 +106,15 @@ test("with nothing interrupted, resuming sends 继续 as the app's own message",
 
 	assert.equal(main.prompts.length, 1);
 	assert.equal(main.prompts[0].synthetic, true, "没人打过这句话，它不该出现在对话里，也不该重开一轮计时");
+});
+
+test("each side chat shows only the tasks it dispatched itself", async () => {
+	const main = fakeMain();
+	const ctx = {} as ToolContext;
+	await dispatchTaskTool(main as unknown as MainSession, () => "side-old").execute({ instruction: "上一格派的活" }, ctx);
+	await dispatchTaskTool(main as unknown as MainSession, () => "side-new").execute({ instruction: "这一格派的活" }, ctx);
+
+	assert.deepEqual(dispatchedFrom(main.taskQueue, "side-new").map((t) => t.text), ["这一格派的活"], "新开的一格不该挂着上一格派的回执");
+	assert.deepEqual(dispatchedFrom(main.taskQueue, "side-old").map((t) => t.text), ["上一格派的活"]);
+	assert.deepEqual(dispatchedFrom(main.taskQueue, undefined), [], "还没问过第一句的一格什么也没派过");
 });
