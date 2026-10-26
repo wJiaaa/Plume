@@ -45,11 +45,39 @@ function getProvider(api: ApiFormat): Provider {
 }
 
 /** Stream one assistant turn. Yields incremental events and returns the final message. */
-export function streamAssistant(
+export async function* streamAssistant(
 	providerConfig: ProviderConfig,
 	model: ModelConfig,
 	context: LlmContext,
 	options: RequestOptions = {},
 ): AsyncGenerator<StreamEvent, AssistantMessage> {
-	return getProvider(providerConfig.api).stream(providerConfig, model, context, options);
+	const stream = getProvider(providerConfig.api).stream(providerConfig, model, context, options);
+	try {
+		while (true) {
+			const next = await stream.next();
+			if (next.done) return withoutRepeatedCalls(next.value);
+			const event = next.value;
+			yield event.type === "done" || event.type === "error" ? { ...event, message: withoutRepeatedCalls(event.message) } : event;
+		}
+	} finally {
+		await stream.return?.(undefined as never);
+	}
+}
+
+/**
+ * 同一条回复里 id 相同的工具调用只留第一个。
+ *
+ * 循环按 content 里的 toolCall 逐个执行，一个 id 出现两次就真的跑两次：bash 跑两遍，edit 第二遍报
+ * 找不到原文。适配器把同一项拼进来两次时就是这样（见 `openai-responses.ts` 的 `backfill`），在所有
+ * 适配器汇合的这里兜一次底。同一个 id 只能有一个结果，重复的那份没有可执行的意义。
+ */
+function withoutRepeatedCalls(message: AssistantMessage): AssistantMessage {
+	const seen = new Set<string>();
+	const content = message.content.filter((block) => {
+		if (block.type !== "toolCall") return true;
+		if (seen.has(block.id)) return false;
+		seen.add(block.id);
+		return true;
+	});
+	return content.length === message.content.length ? message : { ...message, content };
 }

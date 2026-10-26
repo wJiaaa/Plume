@@ -140,3 +140,50 @@ test("缺了的推理项按 output 里的位置补回去，不排到调用后面
 	const [thinking] = result.content;
 	assert.equal(thinking.type === "thinking" && thinking.encrypted, "E");
 });
+
+/*
+ * 中转在流里和 completed 里各发一套 item id。只按 id 对的时候整份 output 被当成新项再追加一遍：
+ * 真实会话里 deepseek-flash 的每条回复都是「推理 正文 调用… 推理 调用…」，每个工具跑两次。
+ */
+test("completed 换了一套 item id：推理和调用都不再追加一份", async () => {
+	const fc = { type: "function_call", id: "item_c", call_id: "call_00", name: "read", arguments: '{"path":"a.ts"}', status: "completed" };
+	const result = await run(
+		sse([
+			{ type: "response.output_item.added", output_index: 0, item: { type: "reasoning", id: "item_a" } },
+			{ type: "response.output_item.done", output_index: 0, item: { type: "reasoning", id: "item_a", summary: [{ type: "summary_text", text: "想" }] } },
+			{ type: "response.output_item.added", output_index: 1, item: { type: "message", id: "item_b" } },
+			{ type: "response.output_text.delta", output_index: 1, item_id: "item_b", delta: "我先读一下" },
+			{ type: "response.output_item.done", output_index: 1, item: { type: "message", id: "item_b", content: [{ type: "output_text", text: "我先读一下" }] } },
+			{ type: "response.output_item.added", output_index: 2, item: { ...fc, arguments: "" } },
+			{ type: "response.output_item.done", output_index: 2, item: fc },
+			{
+				type: "response.completed",
+				response: { usage, output: [{ type: "reasoning", id: "item_x", summary: [{ type: "summary_text", text: "想" }] }, { ...fc, id: "item_y" }] },
+			},
+		]),
+	);
+	assert.deepEqual(
+		result.content.map((c) => c.type),
+		["thinking", "text", "toolCall"],
+	);
+});
+
+test("同一个 call_id、不同的 item id：按 call_id 认回去，调用只有一个", async () => {
+	const result = await run(
+		sse([
+			{ type: "response.output_item.added", output_index: 0, item: { type: "function_call", id: "item_1", call_id: "call_a", name: "bash" } },
+			{ type: "response.output_item.done", output_index: 0, item: { ...call("a", '{"command":"ls"}'), id: "item_1" } },
+			{ type: "response.output_item.added", output_index: 1, item: { type: "function_call", id: "item_2", call_id: "call_b", name: "bash" } },
+			{ type: "response.output_item.done", output_index: 1, item: { ...call("b", '{"command":"pwd"}'), id: "item_2" } },
+			// completed 里的顺序也换了：只按位置对的话 call_b 会落到 call_a 的块上
+			{ type: "response.completed", response: { usage, output: [call("b", '{"command":"pwd"}'), call("a", '{"command":"ls"}')] } },
+		]),
+	);
+	assert.deepEqual(
+		result.content.map((c) => c.type === "toolCall" && [c.id, c.arguments]),
+		[
+			["call_a", { command: "ls" }],
+			["call_b", { command: "pwd" }],
+		],
+	);
+});

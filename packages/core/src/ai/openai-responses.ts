@@ -368,26 +368,44 @@ async function* streamResponses(
 	 * 只发 `function_call_arguments.done` 的，判「工具调用没有收尾」反复重试；流里一个字没提的调用，静默
 	 * 丢掉、以 `stop` 收场，工具不跑。
 	 *
-	 * 按 item id 对回已经流出来的块，没有 id 的按位置（`output_index` 就是它在 output 里的下标），类型对不上
-	 * 的另开一个槽。已经收尾的项一个字不动：文本和推理只在块是空的时候才从这里填，不会和流里的内容叠在一起。
+	 * 对回已经流出来的块，依次按：item id；工具调用的 `call_id`；同类型里的第几个（只在流里还没被前两条认走的
+	 * 块之间排）。都对不上、而且它的位置（`output_index` 就是它在 output 里的下标）空着才算流里没出现过的项，
+	 * 位置被占了另开一个槽。已经收尾的项一个字不动：文本和推理只在块是空的时候才从这里填，不会和流里的内容叠在一起。
+	 *
+	 * 不能只认 item id：有的中转在流里和 completed 里各发一套 id（deepseek-flash 走 Responses 中转时就是），
+	 * 只按 id 对，整份 output 都被当成新项再追加一遍，每个工具调用跑两次——bash 两次、edit 第二次报找不到原文。
 	 */
 	function* backfill(output: unknown): Generator<StreamEvent> {
 		const list: Record<string, any>[] = Array.isArray(output) ? output : [];
+		const claimed = new Set<number>();
+		const slots = list.map((item) => {
+			const id = typeof item?.id === "string" ? item.id : undefined;
+			const slot = (id === undefined ? undefined : slotsById.get(id)) ?? slotOfCallId(item?.call_id);
+			if (slot !== undefined) claimed.add(slot);
+			return slot;
+		});
+		const ordered = [...items.keys()].sort((a, b) => a - b);
 		for (let at = 0; at < list.length; at++) {
 			const item = list[at] ?? {};
-			const id = typeof item.id === "string" ? item.id : undefined;
-			let slot = id === undefined ? undefined : slotsById.get(id);
-			if (slot === undefined) {
-				const there = items.get(at);
-				const same = !there || (there.kind === kindOf(item.type) && (id === undefined || there.id === undefined || there.id === id));
-				slot = same ? at : nextSlot;
-			}
+			let slot = slots[at] ?? ordered.find((other) => !claimed.has(other) && items.get(other)?.kind === kindOf(item.type));
+			if (slot === undefined) slot = items.has(at) ? nextSlot : at;
+			claimed.add(slot);
 			nextSlot = Math.max(nextSlot, slot + 1);
 			if (items.get(slot)?.done) continue;
 			yield* finish(slot, item);
 		}
 		// output 里没列出来、但参数已经说过写完了的调用。
 		for (const [slot, tracked] of items) if (tracked.kind === "toolCall" && tracked.argsDone && !tracked.done) yield* finish(slot, { type: "function_call" });
+	}
+
+	/** 流里已经开过、`id` 就是这个 `call_id` 的工具调用块所在的槽。 */
+	function slotOfCallId(callId: unknown): number | undefined {
+		if (typeof callId !== "string" || !callId) return undefined;
+		for (const [slot, tracked] of items) {
+			const block = partial.content[tracked.contentIndex];
+			if (tracked.kind === "toolCall" && block?.type === "toolCall" && block.id === callId) return slot;
+		}
+		return undefined;
 	}
 
 	const retryBudget = new RetryBudget(options.retryPolicy, options.retryAttempts);
