@@ -257,7 +257,6 @@ export function ModelSettings() {
 
 			{adding && (
 				<ProviderAddDialog
-					taken={p.providers.map((provider) => provider.name)}
 					onClose={() => setAdding(false)}
 					onAdd={(draft, fetch) => void p.add(draft, fetch)}
 				/>
