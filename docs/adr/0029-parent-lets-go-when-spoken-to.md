@@ -6,7 +6,7 @@
 - 现状（2026-10-23）：`delegation-waits.ts` 拆成 `runtime/sub-agent/detached-dispatches.ts`（派发）和
   `runtime/agent-session/spoken-waits.ts`（人一开口就放手，只剩等另一个会话的工具在用）；名单上的
   `background`、渲染进程的 `awaitingSubAgents` 已删除——派出即放手之后它们恒为真、恒为假
-- 相关：`packages/core/src/runtime/sub-agent/delegation-waits.ts`、`runtime/session.ts`（`submit`、`flushDeliveries`）、`runtime/turn-config.ts`（`spawnSubAgent`、`refreshDispatchGate`）、`runtime/sub-agent/sub-agent.ts`（`admission`、`workingNote`、`planDemand`）、`runtime/sub-agent/sub-agents.ts`（`queued`、`background`、`awaitingApproval`）、`runtime/sub-agent/dispatch-guard.ts`（`acquire`、`concurrencyNote`）、`runtime/continuation.ts`（`planless`）、`runtime/approvals.ts`（`approval_settled`、`rejectWhere`）、`tools/task.ts`；desktop `store/apply-event.ts`、`store/subAgents.ts`（`awaitingSubAgents`、`settled`）、`features/subagents/SubAgentBar.tsx`、`features/conversation/DeliveryRow.tsx`、`features/conversation/ApprovalOverlay.tsx`、`app/session-scope.tsx`（`useScopedWorking`）
+- 相关：`packages/core/src/runtime/sub-agent/delegation-waits.ts`、`runtime/session.ts`（`submit`、`flushDeliveries`）、`runtime/turn-config.ts`（`spawnSubAgent`、`refreshDispatchGate`）、`runtime/sub-agent/sub-agent.ts`（`admission`、`workingNote`、`planDemand`）、`runtime/sub-agent/sub-agents.ts`（`queued`、`background`、`awaitingApproval`）、`runtime/sub-agent/dispatch-guard.ts`（`acquire`、`concurrencyNote`）、`runtime/continuation.ts`（`planless`）、`runtime/approvals.ts`（`approval_settled`、`rejectWhere`）、`tools/task.ts`；desktop `store/apply-event.ts`、`store/subAgents.ts`（`awaitingSubAgents`）、`features/subagents/SubAgentBar.tsx`、`features/conversation/DeliveryRow.tsx`、`features/conversation/ApprovalOverlay.tsx`、`app/session-scope.tsx`（`useScopedWorking`）
 
 ## 背景
 
@@ -51,8 +51,8 @@
 8. **授权说清是谁。** 子代理的授权请求带 `from`（哪个子代理、什么任务）；主窗口的卡片画它的脸和
    「子 Agent「…」在请求」，名单上它显示「等你授权」。后台子代理的授权不随主会话一轮收尾被收掉；每张
    卡怎么收场都发 `approval_settled`，窗口据此拿走；子代理停下时它还挂着的授权一并收回。
-9. **界面收尾。** 输入框上方那一条在「都结束了、这一轮也收尾了」之后自己收起（记录还在，派发卡片一点
-   照样翻到它）；后台子代理还在跑时，清单和「继续」不说「停在这一步」。
+9. **界面收尾。** 输入框上方那一条只说还没完的：跑完一个退一个，都跑完了就自己收起（记录留在右侧
+   面板，派发卡片一点照样翻到它）；后台子代理还在跑时，清单和「继续」不说「停在这一步」。
 
 ## 没有做的
 

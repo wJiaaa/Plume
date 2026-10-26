@@ -42,15 +42,6 @@ export interface SubAgentState {
 	 * reading a long run impossible. `focused` is set only by a person.
 	 */
 	rosters: Record<string, SubAgentSummary[]>;
-	/**
-	 * 每个会话最近一次收尾的时刻。
-	 *
-	 * 输入框上方那条据此收起：在这之前结束的子智能体，它们的结果已经进了那一轮，这一行就没什么
-	 * 可说的了（见 `barAgents`）。记在这里而不是那个组件里，因为收尾可能发生在人没看着这个会话的
-	 * 时候——切回来时那一行不该又冒出来。
-	 */
-	settled: Record<string, number>;
-	settle(sessionId: string): void;
 
 	/**
 	 * Take the roster the session in the live slot just broadcast, or just read back.
@@ -95,13 +86,8 @@ export const useSubAgents = create<SubAgentState>((set, get) => ({
 	focused: null,
 	loading: [],
 	rosters: {},
-	settled: {},
 	revealed: null,
 	announced: null,
-
-	settle(sessionId) {
-		set({ settled: { ...get().settled, [sessionId]: Date.now() } });
-	},
 
 	reveal(id, sessionId) {
 		set({ focused: id, revealed: { id, sessionId, at: Date.now() } });

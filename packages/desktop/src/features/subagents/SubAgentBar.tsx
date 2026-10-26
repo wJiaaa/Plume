@@ -11,10 +11,9 @@
  * because it is the one place in the window that is on screen in every layout. It appears only when
  * there is something to say and takes a single line when it does.
  *
- * 事情说完了它就自己收起来：派出去的都结束了、主智能体也把它们的结果用完了（这一轮收尾了），
- * 这一行就没有什么可说的了。从前它停在那儿写着「4 个子 Agent 已结束」，要人自己去点叉——而叉掉
- * 它还会顺手把登记簿清空，想回头看一眼就没了。现在它淡出，记录留着：对话里的派发卡片一点，面板
- * 照样翻到那一页。
+ * 这一行只说还没完的：跑完一个就从这里退一个，都跑完了它就淡出。从前它停在那儿写着「4 个子
+ * Agent 已结束」，要人自己去点叉——而叉掉它还会顺手把登记簿清空，想回头看一眼就没了。现在记录
+ * 留在右侧面板：对话里的派发卡片一点，面板照样翻到那一页。
  */
 
 import { useI18n } from "../../i18n/index.ts";
@@ -34,24 +33,16 @@ import { Popover, usePopover } from "../../ui/overlay/Popover.tsx";
 import { doingWord, elapsedSince, figuresWord, statusWord } from "./format.ts";
 import { SubAgentMenu } from "./SubAgentMenu.tsx";
 
-/**
- * 这一行此刻要说的那几个：还没完的，和主智能体还没把结果用上的。
- *
- * 「用上了」以这个会话最近一次收尾为准（`settled`）：在那之前结束的，它们的结果已经进了那一轮；
- * 之后结束的——后台跑完、结果刚送回去——主智能体还在用，这一行还得说。人按停的不算：停它的
- * 人知道它停了。
- */
-function barAgents(agents: readonly SubAgentSummary[], settledAt: number): SubAgentSummary[] {
-	return agents.filter((one) => isActive(one) || (one.status !== "aborted" && (one.endedAt ?? 0) > settledAt));
-}
-
 export function SubAgentBar({ onOpen }: { onOpen: () => void }) {
 	const { t } = useI18n();
 	// This screen's conversation's delegated work — not the focused conversation's.
 	const roster = useScopedSubAgents();
 	const sessionId = useScopedSessionId();
-	const settledAt = useSubAgents((s) => (sessionId ? (s.settled[sessionId] ?? 0) : 0));
-	const agents = barAgents(roster, settledAt);
+	/*
+	 * 只留还没完的。跑完的曾经要等主智能体这一轮收尾才一起退场，于是「2 个运行中」旁边叠着三张脸，
+	 * 多出来的那张是早就完成了的。已完成的去右侧面板看。
+	 */
+	const agents = roster.filter(isActive);
 	const running = agents.filter((one) => one.status === "running").length;
 	const queued = agents.filter((one) => one.status === "queued").length;
 	const avatarOf = useAgentAvatars();

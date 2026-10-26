@@ -11,7 +11,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import type { SubAgentSummary } from "@plume/core";
-import { useSubAgents } from "../src/store/subAgents.ts";
 import { outlivingTurn } from "../src/lib/approval-scope.ts";
 import { deliveredReports, joinDispatches } from "../src/lib/dispatches.ts";
 
@@ -86,14 +85,6 @@ test("授权请求带着是谁在问", () => {
 	const from = { subAgentId: "s:sub:1", agent: "general", description: "改 a.ts" };
 	h.dispatch({ type: "approval_request", requestId: "r1", toolCallId: "r1", kind: "write", title: "写入 a.ts", detail: "a.ts", subject: "a.ts", from });
 	assert.deepEqual((h.state().approvals as { from?: unknown }[])[0]?.from, from);
-});
-
-test("这一轮收尾，名单记下收尾时刻——输入框上方那一行据此收起", () => {
-	useSubAgents.setState({ settled: {} });
-	const h = harness();
-	const before = Date.now();
-	h.dispatch({ type: "agent_end", reason: "done" });
-	assert.ok((useSubAgents.getState().settled.s ?? 0) >= before);
 });
 
 test("转到后台的派发：登记簿里没有它了，就看转录里的送达；没送达的是没回来，不是做完", () => {

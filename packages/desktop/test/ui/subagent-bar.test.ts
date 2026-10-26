@@ -39,7 +39,7 @@ async function roster(agents: SubAgentSummary[]): Promise<void> {
 
 beforeEach(() => {
 	useApp.setState({ activeSessionId: "s1" });
-	useSubAgents.setState({ transcripts: {}, focused: null, loading: [], settled: {}, rosters: {}, announced: null });
+	useSubAgents.setState({ transcripts: {}, focused: null, loading: [], rosters: {}, announced: null });
 });
 
 test("the first dispatch of a run opens the pane; the rest of the batch does not", async () => {
@@ -106,11 +106,17 @@ test("整批的合计不在这条线上——那笔钱已经进了这一轮的�
 	 * 留着反过来守，是因为「再加回去」是个太自然的念头。
 	 */
 	const view = await mount(h(SubAgentBar, { onOpen: () => {} }));
-	await roster([summary({ id: "a", status: "done", endedAt: Date.now(), tokens: 2480, cost: 0.0087 }), summary({ id: "b", status: "done", endedAt: Date.now(), tokens: 520, cost: 0.0018 })]);
-	assert.match(view.text(), /2 个子 Agent 已结束/);
-	assert.equal(view.all("[data-sub-total]").length, 0, "条上不该再有整批合计");
-	assert.ok(!view.text().includes("$0.01"), `也不该有它的钱数：${view.text()}`);
-	await view.unmount();
+	const two = [summary({ id: "a", tokens: 2480, cost: 0.0087 }), summary({ id: "b", tokens: 520, cost: 0.0018 })];
+	try {
+		await roster(two);
+		assert.match(view.text(), /2 个子 Agent 运行中/);
+		assert.equal(view.all("[data-sub-total]").length, 0, "条上不该再有整批合计");
+		assert.ok(!view.text().includes("$0.01"), `也不该有它的钱数：${view.text()}`);
+	} finally {
+		// 收成 `done` 再退出：还有 running 的，每秒一跳的计时器会让进程挂着。
+		await roster(two.map((one) => ({ ...one, status: "done" as const, endedAt: Date.now() })));
+		await view.unmount();
+	}
 });
 
 test("卡在重连上的那个，条上说的是它在等什么", async () => {
@@ -130,9 +136,11 @@ test("卡在重连上的那个，条上说的是它在等什么", async () => {
 	 *
 	 * 这条线上只要还有 running 的，组件就开着一个每秒一跳的计时器；留着它退出测试，进程不会结束
 	 * ——而这个文件跑的是 `--test-timeout=0`，于是不是红，是永远挂着。上面那条测试以 `done` 收尾
-	 * 是同一个道理，只是没写出来。
+	 * 是同一个道理，只是没写出来。收起的那一段还画着跑着的那一份，头像照样排着眨眼，所以还要卸掉：
+	 * 假 DOM 里没有 `transitionend`，`Collapse` 不会自己放手。
 	 */
 	await roster([summary({ id: "审代码", status: "done" })]);
+	await view.unmount();
 
 	assert.ok(tip.includes("47"), `说清等到第几次了：${tip}`);
 	assert.ok(tip.includes("服务商返回了空回答"), `也说清在等什么：${tip}`);
@@ -184,36 +192,26 @@ test("派出去四个、闸门只放了一个：条上四张脸叠成一摞，�
 	}
 });
 
-test("都结束了、主智能体也把结果用上了（这一轮收尾），这一行自己收起来；记录还在", async () => {
+test("跑完一个就从这一行退一个，不等这一轮收尾；都跑完了这一行收起来，记录还在", async () => {
+	/*
+	 * 从前跑完的要等主智能体这一轮收尾才一起退场：「2 个子 Agent 运行中」旁边叠着三张脸，多出来的
+	 * 那张早就完成了。已完成的去右侧面板看。
+	 */
 	const view = await mount(h(SubAgentBar, { onOpen: () => {} }));
+	const shell = () => view.find<HTMLElement>(".ly-reveal");
+	const faces = () => view.all("[data-pile-face]").length;
 	try {
-		await act(async () => {
-			useSubAgents.getState().sync([summary({ id: "a" })], "s1");
-		});
-		const shell = () => view.find<HTMLElement>(".ly-reveal");
-		assert.equal(shell().dataset.open, "true");
+		await roster([summary({ id: "a" }), summary({ id: "b" }), summary({ id: "c" })]);
+		assert.equal(faces(), 3);
 
-		// 同一个结束时间用到底：到下一次同步前过去的毫秒数不该让「a」变成收尾之后才结束的。
-		const aEnded = Date.now() - 10;
-		await act(async () => {
-			useSubAgents.getState().sync([summary({ id: "a", status: "done", endedAt: aEnded })], "s1");
-		});
-		assert.equal(shell().dataset.open, "true", "结束了，但主智能体还没用上它的结果——这一行还得说");
+		await roster([summary({ id: "a", status: "done", endedAt: Date.now() }), summary({ id: "b" }), summary({ id: "c" })]);
+		assert.equal(faces(), 2, "跑完的那个当场退出，不等这一轮收尾");
+		assert.match(view.find("[data-ly-subagent-bar]").textContent ?? "", /2 个子 Agent 运行中/);
 
-		await act(async () => {
-			useSubAgents.getState().settle("s1");
-		});
-		assert.equal(shell().dataset.open, "false", "这一轮收尾了，这一行收起来");
-		assert.equal(useSubAgents.getState().rosters.s1?.length, 1, "记录没丢：对话里的派发卡片一点，面板照样翻到它");
-
-		// 后台跑完、结果刚送回去的那个，主智能体还在用——在收尾之后结束的，这一行重新说它。
-		await act(async () => {
-			useSubAgents.getState().sync([summary({ id: "a", status: "done", endedAt: aEnded }), summary({ id: "b", status: "done", endedAt: Date.now() + 5 })], "s1");
-		});
-		assert.equal(shell().dataset.open, "true");
-		assert.match(view.find("[data-ly-subagent-bar]").textContent ?? "", /b/);
+		await roster([summary({ id: "a", status: "done", endedAt: Date.now() }), summary({ id: "b", status: "aborted", endedAt: Date.now() }), summary({ id: "c", status: "failed", endedAt: Date.now() })]);
+		assert.equal(shell().dataset.open, "false", "都结束了，这一行收起来");
+		assert.equal(useSubAgents.getState().rosters.s1?.length, 3, "记录没丢：右侧面板和派发卡片照样翻得到");
 	} finally {
 		await view.unmount();
-		useSubAgents.setState({ settled: {} });
 	}
 });

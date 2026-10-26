@@ -145,12 +145,6 @@ export function applyAgentEvent(sessionId: string, event: AgentEvent, set: Set, 
   }
 
   /*
-   * 这一轮收尾了：输入框上方那一行据此收起。在这之前结束的子智能体，结果已经进了这一轮，那一行
-   * 就没什么可说的了（见 `barAgents`）。每个会话都记，理由同上：收尾常常发生在人没看着的时候。
-   */
-  if (event.type === "agent_end") useSubAgents.getState().settle(sessionId);
-
-  /*
    * 主会话开始等另一个会话做完（`ask_session` / `wait_for_session`）时，排着的话不再等。
    *
    * 排队的意思是「等这一轮做完」，而这一轮此刻不是在干活，是在等别人——那可能是十几分钟。所以
