@@ -434,6 +434,13 @@ export interface Settings {
 	 */
 	disabledSkills: string[];
 	/**
+	 * 关掉的智能体，按名字记；内置的也一样能关。
+	 *
+	 * 按名字而不是路径：智能体本来就按名字合并，同名的项目定义覆盖内置的，关掉的是这个名字，不管
+	 * 最后生效的是哪一份。关掉的不进 `task` 的名单和 `@` 菜单，设置页照样列出来好再打开。
+	 */
+	disabledAgents: string[];
+	/**
 	 * Which file wins a same-name conflict, as `kind:name` → path — 「改用那个」 on the settings page.
 	 *
 	 * Here rather than in `.plume/config.json` because the value is a path on this machine, and
@@ -584,6 +591,7 @@ export const DEFAULT_SETTINGS: Settings = {
 	scheduledTasks: [],
 	disabledPlugins: [],
 	disabledSkills: [],
+	disabledAgents: [],
 	capabilityPreferences: {},
 	rerouteShellCommands: true,
 	autoSummarizeTitle: true,
@@ -826,6 +834,7 @@ export function normalizeSettings(parsed: Partial<Settings>): Settings {
 			scheduledTasks: parsed.scheduledTasks ?? [],
 			disabledPlugins: parsed.disabledPlugins ?? [],
 			disabledSkills: parsed.disabledSkills ?? [],
+			disabledAgents: parsed.disabledAgents ?? [],
 			capabilityPreferences: parsed.capabilityPreferences ?? {},
 			rerouteShellCommands: parsed.rerouteShellCommands !== false,
 			autoSummarizeTitle: parsed.autoSummarizeTitle !== false,

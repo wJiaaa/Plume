@@ -113,10 +113,16 @@ export async function withoutDisabledSkills<T extends { path: string }>(skills: 
 	return skills.filter((_, index) => off[index] === undefined);
 }
 
+/** 关掉的智能体会话里没有：不进 `task` 的名单，点它的名字得到的是「没有这个」。 */
+function withoutDisabledAgents(agents: AgentDefinition[], settings?: Pick<Settings, "disabledAgents">): AgentDefinition[] {
+	const off = settings?.disabledAgents ?? [];
+	return off.length === 0 ? agents : agents.filter((agent) => !off.includes(agent.name));
+}
+
 /** Menu candidates use the runtime registry, including project overrides and configured precedence. */
-export async function collectAgents(cwd: string, settings?: Pick<Settings, "capabilityPreferences">): Promise<AgentDefinition[]> {
+export async function collectAgents(cwd: string, settings?: Pick<Settings, "capabilityPreferences" | "disabledAgents">): Promise<AgentDefinition[]> {
 	const result = await sessionRegistry([]).load<AgentDefinition>("agent", { cwd, preferred: settings?.capabilityPreferences });
-	return result.items;
+	return withoutDisabledAgents(result.items, settings);
 }
 
 
@@ -189,7 +195,7 @@ export async function loadCapabilities(
 	 * priority of 1 and lose by name like anything else.
 	 */
 	const agentResult = await registry.load<AgentDefinition>("agent", { cwd, preferred: settings?.capabilityPreferences });
-	const agents = agentResult.items;
+	const agents = withoutDisabledAgents(agentResult.items, settings);
 
 	/*
 	 * Settings is the only place a session reads MCP servers from.

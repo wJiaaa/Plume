@@ -412,6 +412,16 @@ test("resuming is refused, with a sentence to act on, when it cannot work", asyn
 	await running;
 });
 
+test("one whose agent was switched off since is refused, not resumed as a general on its history", async () => {
+	const agents = [GENERAL, { ...GENERAL, name: "simple" }];
+	const h = harness(agents);
+	const first = await h.run({ prompt: "看", agentType: "simple" }, () => says("看完了"));
+	agents.splice(1, 1);
+	const sent = h.requests.length;
+	await assert.rejects(h.run({ prompt: "再看一眼", resume: first.id! }, () => says("x")), /no longer available/);
+	assert.equal(h.requests.length, sent, "一轮都没跑");
+});
+
 test("the short tail of an id is enough to resume by", async () => {
 	const h = harness();
 	const first = await h.run({ prompt: "看" }, () => says("看完了"));

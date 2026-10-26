@@ -667,9 +667,12 @@ export class AgentSession {
 	updateSettings(settings: Settings): void {
 		if (settings.autoSummarizeTitle === false) void this.title.cancel();
 		this.globalSettings = settings;
+		const agentsWere = String(this.settings.disabledAgents ?? []);
 		// The project layer stays on while it is re-read; dropping it here ran stricter project
 		// settings (approval mode, concurrency) on global ones for the length of a disk read.
 		this.settings = withProjectLayer(settings, this.projectLayer);
+		// 关掉一个智能体是要它现在就别再被派，跟编辑定义一样当场重载，不等下一个会话。
+		if (String(this.settings.disabledAgents ?? []) !== agentsWere) void this.reloadCapabilities().catch(() => {});
 		this.can.state.set(PROJECT_MEMORY_ENABLED_KEY, projectMemoryEnabled(this.settings));
 		for (const subject of settings.alwaysAllow) this.approvals.allow(subject);
 		/*

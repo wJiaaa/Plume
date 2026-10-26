@@ -9,7 +9,7 @@ import type { AgentCapabilities } from "@plume/contract";
 import { useApp } from "../../store/index.ts";
 import { useAgentAvatars, type AvatarOf } from "../../store/agent-avatars.ts";
 import { AgentAvatar } from "../../ui/avatar/AgentAvatar.tsx";
-import { Card, InlineSelect, Notice, PageHeader } from "./controls.tsx";
+import { Card, InlineSelect, Notice, PageHeader, Toggle } from "./controls.tsx";
 import { ModelSelect } from "../models/index.ts";
 import { AgentDefinitionEditor } from "./AgentDefinitionEditor.tsx";
 import { useAgentDefinitions } from "./useAgentDefinitions.ts";
@@ -118,9 +118,19 @@ export function AgentsSettings() {
 	const builtin = agents.filter(agent => (agent.source === "builtin" || (project && agent.source === "user" && recordOf(agent.name)?.customized)) && matches(agent));
 	const count = installed.length + builtin.length;
 	const create = () => setEditor({ projectId: catalogue.projectId });
+	// 只记关掉的，按名字；内置的一样能关。会话当场重载，见 `AgentSession.updateSettings`。
+	const disabledAgents = settings?.disabledAgents ?? [];
+	const setAgentOn = (name: string, on: boolean) => {
+		const current = useApp.getState().settings;
+		if (!current) return;
+		const next = new Set(current.disabledAgents);
+		if (on) next.delete(name); else next.add(name);
+		void persist({ ...current, disabledAgents: [...next] });
+	};
 	const row = (agent: Agent) => {
 		const record = recordOf(agent.name);
 		return <AgentRow key={agent.name} agent={agent} record={record} avatarOf={avatarOf} saved={highlight?.name === agent.name ? highlight.at : null} disabled={saving}
+			on={!disabledAgents.includes(agent.name)} setOn={(on) => setAgentOn(agent.name, on)}
 			controls={settings && <AgentModelControls agent={agent} settings={settings} mainModelId={mainModelId} disabled={saving} onChange={(profile) => { void save(agent.name, profile); }} />}
 			edit={record?.editable ? () => void openEditor(record) : undefined}
 			copy={record ? () => void openEditor(record, true) : undefined}
@@ -229,11 +239,11 @@ function Meta({ children }: { children: React.ReactNode }) {
 	return <span className="shrink-0 text-detail text-ink-faint">{children}</span>;
 }
 
-function AgentRow({ agent, record, avatarOf, saved, disabled, controls, edit, copy, remove }: {
+function AgentRow({ agent, record, avatarOf, saved, disabled, on, setOn, controls, edit, copy, remove }: {
 	agent: Agent; record?: AgentDefinitionRecord; avatarOf: AvatarOf;
 	/** 刚存下时是存下的时刻，否则 null。 */
 	saved: number | null;
-	disabled: boolean; controls: React.ReactNode;
+	disabled: boolean; on: boolean; setOn: (on: boolean) => void; controls: React.ReactNode;
 	edit?: () => void; copy?: () => void; remove?: () => void;
 }) {
 	const { t } = useI18n();
@@ -260,6 +270,7 @@ function AgentRow({ agent, record, avatarOf, saved, disabled, controls, edit, co
 			</div>
 			<div className="pointer-events-none relative col-span-2 flex min-w-0 flex-wrap items-center justify-end gap-2 @2xl:col-span-1 [&>*]:pointer-events-auto">
 				{controls}
+				<Toggle checked={on} onChange={setOn} disabled={disabled} ariaLabel={t("market.enableNamed", { name })} />
 				<div className="flex items-center gap-1">
 					{/* Shown on hover, as a command row's delete and a plugin row's ⋯ are. */}
 					{copy && <span className="ly-row-action flex"><IconButton label={t("agents.duplicateFor", { name })} disabled={disabled} onClick={copy} icon={<Copy size={14} aria-hidden />} /></span>}

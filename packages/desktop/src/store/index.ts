@@ -853,5 +853,6 @@ export const useApp = create<AppState>((set, get) => ({
 function scanKey(settings: Settings | null | undefined): string {
 	if (!settings) return "";
 	// 技能开关也算：同一个 SKILL.md 可能有符号链接的另一个路径，关掉一个，另一个的状态得从主进程重读。
-	return JSON.stringify([settings.mcpServers, settings.disabledPlugins, settings.disabledSkills]);
+	// 智能体开关也算：`/` 与 `@` 菜单里的智能体是主进程按它过滤过的那份。
+	return JSON.stringify([settings.mcpServers, settings.disabledPlugins, settings.disabledSkills, settings.disabledAgents]);
 }

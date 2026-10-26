@@ -89,7 +89,10 @@ export async function dispatchSubAgent(
 
 	// 续跑的时候不换人：它是谁，当初派出去时就定了。
 	const wanted = earlier ? earlier.conversation.agent : input.agentType ?? "general";
-	const definition = options.agents.find((a) => a.name === wanted) ?? BUILTIN_AGENTS[0];
+	const found = options.agents.find((a) => a.name === wanted);
+	// 续跑的那个已经被关掉或删掉了：换成 `general` 的工具和指令接着它的历史跑，就不是它了。
+	if (earlier && !found) throw new Error(`Sub-agent "${earlier.id}" was a "${wanted}" agent, which is no longer available in this session (disabled or removed). Dispatch a new one instead.`);
+	const definition = found ?? BUILTIN_AGENTS[0];
 	/*
 	 * 清单总在：它是子代理自己的记事本，不是一件能力。
 	 *
