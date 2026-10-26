@@ -27,9 +27,12 @@ test("a turn that ends without an answer folds the row with the indicator still 
 		const row = view.find(".ly-reveal");
 		assert.equal(row.dataset.open, "true");
 		assert.ok(view.host.querySelector("[data-ly-running]"), "the indicator shows while the turn runs");
+		// 发送那一帧转录就贴了底，高度再慢慢长，刚发出去的消息会被顶上去一截。
+		assert.equal(row.style.transition, "opacity var(--ly-t-base) var(--ly-e-out)", "opening animated its height under a pinned transcript");
 
 		await view.rerender(h(RunningRow, { running: false, answering: false, grewAt: undefined, answered: false, compacting: false }));
 		assert.equal(row.dataset.open, "false", "the fold starts at once");
+		assert.equal(row.style.transition, "", "the fold keeps the reveal's own transition");
 		assert.ok(view.host.querySelector("[data-ly-running]"), "emptied in the frame the fold began");
 
 		await foldEnds(row, "opacity");
@@ -115,7 +118,8 @@ test("a finished answer takes the row's place in one frame, with nothing left be
 		// 下一轮开始：最后一条成了人说的话，照常展开。
 		await view.rerender(h(RunningRow, { running: true, answering: false, grewAt: undefined, answered: false, compacting: false }));
 		assert.equal(row.dataset.open, "true");
-		assert.equal(row.style.transition, "", "the next turn opens with the usual reveal");
+		assert.doesNotMatch(row.style.transition, /grid-template-rows|none/, "the next turn opens at full height, only fading in");
+		assert.match(row.style.transition, /opacity/);
 	} finally {
 		await view.unmount();
 	}

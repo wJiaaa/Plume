@@ -39,6 +39,9 @@ export const STALL_MS = 2000;
  * `watched`）：演的话它从 0 慢慢长，这一行却当帧没了，转录先掉一行再被顶回来。
  * 在 `answered` 那一次就收的话，中间隔着一次提交，贴底的转录同样先掉下去一行、再被操作行顶回来；
  * 慢慢收的话，刚读完的那段话会先被操作行顶上去、再随着这一行变矮往下沉。
+ *
+ * 展开是当帧的，只淡入：发送时这一行和那条消息在同一次提交里出现，转录当帧贴底（`Conversation` 的
+ * `returnToBottom(true)`）。高度慢慢长的话，贴底的转录跟着它往上滑，刚发出去的消息先落定、又被顶上去一截。
  */
 // 按 props 记住：它和转录挂在同一个组件里，转录流式输出时每一拍都重画。
 export const RunningRow = memo(function RunningRow({ running, answering, grewAt, answered, compacting }: {
@@ -73,7 +76,8 @@ export const RunningRow = memo(function RunningRow({ running, answering, grewAt,
 			className="ly-reveal"
 			data-open={open}
 			aria-hidden={!open || quiet}
-			style={answered ? { transition: "none" } : undefined}
+			// 过渡按变化之后的样式取：打开时只剩透明度，收起时回到 `.ly-reveal` 的整套。
+			style={answered ? { transition: "none" } : open ? { transition: "opacity var(--ly-t-base) var(--ly-e-out)" } : undefined}
 			onTransitionEnd={(event) => {
 				if (event.target === event.currentTarget && event.propertyName === "grid-template-rows" && !open) setRetained(false);
 			}}
