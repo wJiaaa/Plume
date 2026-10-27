@@ -6,7 +6,7 @@
  * 哪几个选项。所以改成写回复时顺手写下来：不多一次请求，写得出完整、具体的一句。
  *
  * 提示词、解析、去标记都在这一个文件里，教给模型的写法就是认得出来的写法。不碰 Node：渲染进程从
- * `@plume/core/followups` 拿，手机经 `@plume/client-runtime` 拿。
+ * `@plume/core/followups` 拿。
  */
 
 export const FOLLOWUP_OPEN = ":followup[";
@@ -59,7 +59,7 @@ export function followups(text: string): Followup[] {
 }
 
 /**
- * 去掉标记：回复、复制、手机，凡是给人看的地方都用这一份。
+ * 去掉标记：回复、复制，凡是给人看的地方都用这一份。
  *
  * 标记多半独占最后一行，去掉之后那一行整行拿掉、末尾的空行收掉，不然回复底下平白多出一段留白。
  * 只动有标记的那几行：别处行尾的两个空格是 Markdown 的硬换行。

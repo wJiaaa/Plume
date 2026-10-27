@@ -13,7 +13,7 @@ import {
 } from "../../app/session-scope.tsx";
 import { freshTokens } from "@plume/core/tokens";
 import { formatTokens } from "../../lib/format-tokens.ts";
-import { formatElapsed } from "@plume/client-runtime/running";
+import { formatElapsed } from "./running-line.ts";
 import { useLiveRate, useProducedChars } from "./useLiveRate.ts";
 import { liveTurnMeter } from "./turns.ts";
 import type { ToolRun } from "../../store/tool-run.ts";

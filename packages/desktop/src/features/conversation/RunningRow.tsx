@@ -20,7 +20,7 @@ export const STALL_MS = 2000;
  * transcript pinned to the bottom dropped the row's whole height at once. Now the indicator stays
  * until the fold has finished, and only then goes.
  *
- * 结论流进来时它只是看不见，位置照旧占着（`answering`，判据见 client-runtime 的 `looksLikeAnswer`）。
+ * 结论流进来时它只是看不见，位置照旧占着（`answering`，判据见 `running-line.ts` 的 `looksLikeAnswer`）。
  * 挂在结论底下的话，表格、代码块每长出一截它就被推下去一截，一跳一跳的。这一轮调工具之前的话也藏
  * （`leadsTheTurn`）：那时分不清是结论还是开场白，可不藏的话第一个字一来它就被推下去一行；开场白的
  * 代价是它消失一下、调用开始时淡入回来，比跳两次轻。调过工具以后的开场白不藏，理由见 `leadsTheTurn`。

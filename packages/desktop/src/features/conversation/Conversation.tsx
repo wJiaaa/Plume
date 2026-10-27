@@ -7,7 +7,7 @@ import { Composer } from "../composer/index.ts";
 import { ResumeRow } from "./ResumeRow.tsx";
 import { HiccupRow } from "./HiccupTrace.tsx";
 import { ModelSwitchRow } from "./ModelSwitchRow.tsx";
-import { leadsTheTurn, looksLikeAnswer } from "@plume/client-runtime/running";
+import { leadsTheTurn, looksLikeAnswer } from "./running-line.ts";
 import { RunningRow } from "./RunningRow.tsx";
 import { TaskList } from "../task/index.ts";
 import { environmentCard, useEnvironmentCard } from "../../store/environment-card.ts";

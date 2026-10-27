@@ -35,7 +35,6 @@ export interface HubDeps {
 	store(): SessionStorage;
 	settings(): Settings;
 	window(): BrowserWindow | null;
-	remoteEvent?(event: import("@plume/client-runtime").RemoteEvent): void;
 }
 
 let deps: HubDeps = {
@@ -334,8 +333,6 @@ export async function revertSessionMessage(sessionId: string, index: number, opt
 }
 
 export function broadcastSessionChange(change: SessionChange): void {
-	// 手机上没有侧边聊天面板，侧边聊天会话推过去只会出现在它的会话列表里。
-	if (!change.meta?.parentId) deps.remoteEvent?.({ type: "session_changed", change });
 	eachAppWindow((win) => win.webContents.send("sessions:changed", change));
 }
 
@@ -348,9 +345,8 @@ export function streamingMessage(sessionId: string): ReturnType<MessagePatcher["
 
 export function broadcast(sessionId: string, event: AgentEvent): void {
 	peers.observe(sessionId, event);
-	// 侧边聊天是开着面板、人正看着问的，不发系统通知；手机端也不认识这种会话。
+	// 侧边聊天是开着面板、人正看着问的，不发系统通知。
 	const side = Boolean(sessions.get(sessionId)?.parent);
-	if (!side) deps.remoteEvent?.({ type: "agent_event", sessionId, event });
 	// 侧边聊天没有环境卡片，也就没有摘要。
 	if (!side) summaries.observe(sessionId, event);
 	// 活会话的回复不经过快照：这一轮刚交付、链着验证截图的那条，正是人马上要点的。

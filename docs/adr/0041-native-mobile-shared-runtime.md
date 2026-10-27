@@ -2,7 +2,7 @@
 
 日期：2026-10-08
 
-状态：已采纳；取代 ADR-0026 中不提供手机端的决定。「不提供中转」一项已被 [ADR-0042](0042-mobile-relay-speaks-lyra.md) 取代。
+状态：已被 [ADR-0059](0059-remove-native-mobile.md) 取代，手机端已移除。曾取代 ADR-0026 中不提供手机端的决定；「不提供中转」一项曾被 [ADR-0042](0042-mobile-relay-speaks-lyra.md) 取代。
 
 ## 背景
 
@@ -20,4 +20,4 @@
 
 手机可操作同一份会话，界面与桌面可分别演进。网络访问默认关闭；本期只支持直连、VPN 或用户配置的 HTTPS 反向代理，不提供云中转、同步副本和后台 agent 宿主。原生打包与商店发布属于独立后续发布工作。
 
-运行方式及当前能力见 [Mobile README](../../packages/mobile/README.md)，视觉规则见 [DESIGN](../../packages/mobile/DESIGN.md)。
+运行方式、当时的能力与视觉规则写在 `packages/mobile/README.md` 与 `DESIGN.md`，随 ADR-0059 删除，在 git 历史里。

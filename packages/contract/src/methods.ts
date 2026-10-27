@@ -24,13 +24,6 @@
  * written.
  */
 export const METHODS = {
-	mobile: {
-		status: "mobile:status",
-		start: "mobile:start",
-		stop: "mobile:stop",
-		rotateToken: "mobile:rotateToken",
-		setRelay: "mobile:setRelay",
-	},
 	agentDefinitions: {
 		list: "agentdefs:list",
 		read: "agentdefs:read",

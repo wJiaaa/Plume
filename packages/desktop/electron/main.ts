@@ -51,8 +51,6 @@ import { observeSessionStorage } from "./session/session-storage.ts";
 import { broadcastSessionChange } from "./session/session-hub.ts";
 import { fetchEndpointModels, testProvider } from "./models/providers.ts";
 import { registerSessionsIpc } from "./ipc/sessions.ts";
-import { registerMobileIpc } from "./ipc/mobile.ts";
-import { closeMobileAccess, configureMobileAccess, mobileBroadcast } from "./mobile/mobile-access.ts";
 import {
 	appIconPath,
 	followThemeWithDockIcon,
@@ -533,7 +531,6 @@ function bindScreenshotShortcut(): void {
 	 * setting appears not to work.
 	 */
 	onSettingsChanged(async (next) => {
-		mobileBroadcast({ type: "bootstrap_changed" });
 		applyNativeAppearance();
 		refreshMenu();
 		bindScreenshotShortcut();
@@ -550,11 +547,7 @@ function bindScreenshotShortcut(): void {
 		setInterval(() => void syncModelCatalog(), MODEL_CATALOG_SYNC_INTERVAL_MS).unref();
 	}
 	useSettingsSource(settings);
-	configureHub({ store: () => store, settings, window: getWindow, remoteEvent: mobileBroadcast });
-	await configureMobileAccess(join(plumeHome(), "mobile-access.json"), {
-		store: () => store, settings,
-		saveSettings,
-	}).catch((cause) => console.error("Mobile access could not start:", cause));
+	configureHub({ store: () => store, settings, window: getWindow });
 	// Before the window exists, so its very first frame gets the right material.
 	applyNativeAppearance();
 
@@ -855,7 +848,6 @@ app.on("before-quit", async (event) => {
 		setImmediate(() => app.quit());
 		return;
 	}
-	void closeMobileAccess();
 	unregisterScreenshotShortcut();
 	// The overlay outlives every capture on purpose, so it has to be let go of here or the process
 	// has a window left open and never finishes quitting. Pinned pictures outlive it too.
@@ -874,7 +866,6 @@ app.on("before-quit", async (event) => {
 });
 
 function registerIpc(): void {
-	registerMobileIpc();
 	registerDeliveryIpc(() => store);
 	registerRunningServicesIpc();
 	registerBrowserIpc(getPrimaryWindow, () => settings().browser ?? {});

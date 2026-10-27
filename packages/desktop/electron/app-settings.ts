@@ -9,8 +9,7 @@ import { normalizeSubAgentProfiles } from "@plume/core/model-choice";
  * and applying a change is one thing that either happens completely or not at all.
  *
  * `subscribe` exists because the parts that must react are not all reachable from here: the window
- * belongs to Electron, live sessions belong to the hub, sync to the server. They register what to
- * do; this decides when.
+ * belongs to Electron, live sessions belong to the hub. They register what to do; this decides when.
  */
 
 import { loadSettings, rememberProviderNames, saveSettings as persist, type Settings } from "@plume/core";

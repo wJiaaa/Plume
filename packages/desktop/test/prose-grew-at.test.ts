@@ -8,7 +8,7 @@ import { test } from "node:test";
 import type { Message } from "@plume/core/client-types";
 
 type AssistantMessage = Extract<Message, { role: "assistant" }>;
-import { messageEvent, proseGrewAt } from "../src/message-event.ts";
+import { messageEvent, proseGrewAt } from "../src/store/message-event.ts";
 
 function reply(text: string, ended = false): AssistantMessage {
 	return {

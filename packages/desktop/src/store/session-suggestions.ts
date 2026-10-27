@@ -47,7 +47,7 @@ export function pendingSuggestions(runs: Record<string, ToolRun>, sessions: Sess
 }
 
 /**
- * 收起只是这台机器上的事：建议还在记录里，手机或别的窗口也许还要它。按调用 id 记在 localStorage，
+ * 收起只是这台机器上的事：建议还在记录里，别的窗口也许还要它。按调用 id 记在 localStorage，
  * 放进 store 是为了收起的那一刻圆点、那一节、对话里那一行一起变。
  */
 const DISMISSED_KEY = "plume.sessionSuggestions.dismissed";

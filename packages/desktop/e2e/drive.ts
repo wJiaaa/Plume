@@ -164,16 +164,6 @@ export async function contextClick(page: Page, selector: string, name?: string, 
 	await frames(page, 2);
 }
 
-/** 长按：落点规则和 `click` 一样，按下后停 `ms` 再松开。手机界面的长按菜单走它。 */
-export async function hold(page: Page, selector: string, name?: string, ms = 600, mode: NamedMode = "exact"): Promise<void> {
-	const at = await settle(page, selector, name, mode);
-	await page.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...at });
-	await page.send("Input.dispatchMouseEvent", { type: "mousePressed", ...at, button: "left", clickCount: 1 });
-	await new Promise((resolve) => setTimeout(resolve, ms));
-	await page.send("Input.dispatchMouseEvent", { type: "mouseReleased", ...at, button: "left", clickCount: 1 });
-	await frames(page, 2);
-}
-
 /**
  * 等目标出现。按名字找而没等到时，报出这个选择器下实际看得见的名字。
  *

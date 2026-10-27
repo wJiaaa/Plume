@@ -22,15 +22,14 @@
 方法的签名与它们传的值也在这里（原先在 `desktop/electron/ipc-types.ts`、`ipc-shapes.ts`，见
 ADR-0055）。`src/api.ts` 把各组拼成 `PlumeApi`，每组连同它的载荷类型住在自己主题的文件里：
 `sessions.ts`、`agent.ts`、`files.ts`、`git.ts`、`forge.ts`、`release.ts`、`worktree.ts`、
-`extensions.ts`、`settings.ts`、`usage.ts`、`windows.ts`、`screenshot.ts`、`system.ts`、`mobile.ts`。
-`session.ts` 是会话快照与变更，手机端也收这两样。
+`extensions.ts`、`settings.ts`、`usage.ts`、`windows.ts`、`screenshot.ts`、`system.ts`。
+`session.ts` 是会话快照与变更。
 
 ## 入口
 
 | 入口 | 给谁 |
 | --- | --- |
 | `@plume/contract` | 桌面端：主进程、preload、渲染进程。方法表、`PlumeApi` 与全部载荷类型 |
-| `@plume/contract/mobile` | 手机端与 `client-runtime`：手机能调的方法与会话变更。只碰 core 的 `client-types` |
 
 ## 边界
 

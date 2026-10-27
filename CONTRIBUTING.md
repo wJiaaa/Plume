@@ -48,7 +48,7 @@ pnpm dev         # 桌面端
 | `Plume-Windows-x64` | `Plume-<version>-x64.exe` |
 | `Plume-macOS` | arm64 与 x64 各一个 `.dmg` 和 `.zip`（zip 给应用内更新原地替换用） |
 
-桌面端在各自平台的 runner 上构建并核验原生模块架构。手机 App 不在这里打包，也不随版本发布。
+桌面端在各自平台的 runner 上构建并核验原生模块架构。
 签名的情况：
 
 - Windows 安装包未做代码签名，安装时可能出现未知发布者或 SmartScreen 提示。

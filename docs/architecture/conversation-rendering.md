@@ -177,7 +177,7 @@
 用应用自己的控件和主题，不进 iframe、不跑模型写的脚本。和 `preview` 的分工：要比、要选、要回话的小界面写界面块，
 要自己的脚本和样式的整页才用 `preview`。
 
-- **一份语言三处用**：标记、表达式、组件表在 `@plume/core/ui-language`（零依赖，渲染进程和手机端可直接引）。系统提示词里那段
+- **一份语言三处用**：标记、表达式、组件表在 `@plume/core/ui-language`（零依赖，渲染进程可直接引）。系统提示词里那段
   （`interface` 段，只在加载了 `preview` 时出现）只说有这回事、什么时候用，约 0.7K 字符；语法和组件表在
   `plume://ui`，由组件表生成，写块之前才读——原先整份放在提示词里约 2.8K，每次请求都付，而 3,281 条回复里只有
   9 条用到。桌面端按同一张表读属性，下一轮的问题回报也用同一套检查，并指回 `plume://ui`。
@@ -206,12 +206,8 @@
 - 画的时候抛异常，退回成那段源码的代码块。
 - **侧边聊天**：它本身是会话，转录就是 `Conversation`，块的画法、`send`（`sayFor` 按会话说，正在答就排队）和
   状态的 key（会话 id）都和主会话一样，自然落在侧边聊天自己身上。
-- **手机端只读**（`mobile/src/Interface.tsx`）：排版、文字、数字、表、图照样画，标签页能切；输入类控件只写出当前值，
-  按钮不画，块底下一行说明回电脑上操作——手机发消息还带不上 `displayText` 和块里的值。读块的规则经
-  `@plume/client-runtime/ui-language` 转给手机，和桌面同一份（图表怎么读数据在 `ui-language/chart.ts`）。没有 SVG，
-  一个序列的图画成横条，多序列或超过 24 个点退成表。值是块的初值，桌面上改过的存在那台电脑的窗口里。
 
-真窗口验证：`e2e/interface-block-demo.ts`（`THEME=dark` 再跑一遍深色）；手机端 `e2e/mobile-interface-probe.ts`；侧边聊天
+真窗口验证：`e2e/interface-block-demo.ts`（`THEME=dark` 再跑一遍深色）；侧边聊天
 `e2e/sidechat-interface-probe.ts`。
 
 正在推进的只有一段：一轮还在跑、而它是这一轮最后一行的那一段（`WorkStep` 的 `live`），任何时候最多一处在扫。断线记录（`HiccupRow`）

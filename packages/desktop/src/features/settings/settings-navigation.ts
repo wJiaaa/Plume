@@ -58,7 +58,6 @@ export const SETTINGS_GROUPS: { labelKey: MessageKey; items: { id: SettingsSecti
 			{ id: "index", labelKey: "settings.index", icon: Database },
 			{ id: "usage", labelKey: "settings.usage", icon: BarChart3 },
 			{ id: "storage", labelKey: "settings.storage", icon: HardDrive },
-			{ id: "mobile", labelKey: "mobile.title", icon: Globe },
 		],
 	},
 	{

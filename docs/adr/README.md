@@ -46,8 +46,8 @@
 | [0039](0039-agent-core-boundaries.md) | 循环只管一轮的顺序，会话只管谁占着历史；循环不依赖 runtime |
 | [0040](0040-session-messaging.md) | 会话之间可以发消息、等对方做完：照 t3code 拉结果，路由在主进程，目录重叠才能通信 |
 
-| [0041](0041-native-mobile-shared-runtime.md) | 独立原生手机界面，共享消息与连接逻辑，直连桌面既有会话运行时 |
-| [0042](0042-mobile-relay-speaks-lyra.md) | 手机经中转连接，沿用 Lyra 中转协议，已部署的中转原样可用 |
+| [0041](0041-native-mobile-shared-runtime.md) | 独立原生手机界面，共享消息与连接逻辑，直连桌面既有会话运行时（已被 0059 取代） |
+| [0042](0042-mobile-relay-speaks-lyra.md) | 手机经中转连接，沿用 Lyra 中转协议，已部署的中转原样可用（已被 0059 取代） |
 | [0043](0043-side-chat-is-a-session.md) | 侧聊是挂在主会话旁边的一个会话：同一套循环、工具、审批和渲染，能自己改文件 |
 | [0044](0044-plan-mode.md) | 计划模式是会话上的开关：工具表不变、执行期拒绝写操作，`submit_plan` 经审批卡片交人，计划是方案不进清单、跨压缩保留 |
 | [0045](0045-standing-goal.md) | 持续目标：每轮收尾由独立裁判判「做到没有」，没做到就续，要等就退避；预算三条硬线，撞上就停下等人（已废弃，功能已移除） |
@@ -60,9 +60,10 @@
 | [0052](0052-macos-screenshot-helper.md) | macOS 截图快照改由常驻的 Swift 取屏小程序拍（`captureImage(in:)`，15.2+）：`desktopCapturer` 的整屏没有窗口阴影；拿不到就退回 `desktopCapturer` |
 | [0053](0053-project-is-an-id.md) | 项目按 id 认、可以重名、一个文件夹可以在好几个项目里；会话记下自己的项目（`SessionMeta.project`），不再按文件夹推算；打开文件夹不登记项目；属于文件夹的配置由共用它的项目共享（部分取代 ADR-0048） |
 | [0054](0054-host-assembly-without-kernel.md) | 删掉插件内核中间层（Context、事件总线、十个默认插件）和 `capability.js`：它们登记的都是模块自带的默认值，两条管道没有监听者；接口回到各自模块，`kernel/` 只剩宿主装配（会话存储、skill 注册表），core 里谁也不 import 它；以后插件化从按会话注入接 |
-| [0055](0055-contract-owns-ipc-types.md) | IPC 的签名与载荷类型住进 `@plume/contract`，按主题分文件；契约只许 `import type`，来源只限 core 的 `contract-types` 与 `client-types`；手机只经 `@plume/contract/mobile` |
+| [0055](0055-contract-owns-ipc-types.md) | IPC 的签名与载荷类型住进 `@plume/contract`，按主题分文件；契约只许 `import type`，来源只限 core 的 `contract-types` 与 `client-types`；手机只经 `@plume/contract/mobile`（手机入口已随 0059 删除） |
 | [0056](0056-revert-takes-files-back.md) | 撤回和编辑重发可以连同被截掉那几轮改过的文件一起撤：先演算再确认，全有或全无，被别人改过的不覆盖不合并，先写文件再截对话 |
 | [0057](0057-run-outcome-and-file-ownership.md) | 一轮正常返回不等于做完：`prompt()` 交回这一轮怎么收的场，任务队列与定时任务据此记失败；定时任务收尾前不叠跑；「交回这里」等会话闲下来再交；子代理交接说清验证到哪一步；同一个文件只有一个写入方（约定，不是锁）；验收状态、后续任务队列、写锁、持久回执都等到真有需要 |
 | [0058](0058-review-in-its-own-session.md) | `/review` 在桌面端交给新开的只读审阅会话：原会话填必填字段的交接单，运行时附上最后批准的计划和用户原话的原文，审阅会话开在和原会话完全相同的目录里、多一维意图对照，审完用 `ask_session` 问原会话修哪几条（原会话定不下再问人）、由审阅会话自己修，报告经 `spawnedFrom.reportBack` 交回原会话；没有 `review_session` 的宿主照旧当场审 |
+| [0059](0059-remove-native-mobile.md) | 再次移除手机端：删掉原生手机应用、主进程的直连与中转服务、契约的手机入口；只剩桌面在用的 `client-runtime` 并回桌面 |
 
 写一份新的：复制最近一份的结构，编号往下走，加进这张表。

@@ -24,14 +24,11 @@ export const MANIFESTS = [
 	"packages/desktop/package.json",
 	"packages/contract/package.json",
 	"packages/registry-shared/package.json",
-	"packages/client-runtime/package.json",
-	"packages/mobile/package.json",
-	"packages/mobile/app.json",
 ];
 
 export async function readVersion(relative) {
 	const manifest = JSON.parse(await readFile(join(ROOT, relative), "utf8"));
-	return manifest.version ?? manifest.expo?.version;
+	return manifest.version;
 }
 
 /**

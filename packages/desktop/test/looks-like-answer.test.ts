@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Message } from "@plume/core/client-types";
-import { ANSWER_CHARS, leadsTheTurn, looksLikeAnswer } from "../src/running.ts";
+import { ANSWER_CHARS, leadsTheTurn, looksLikeAnswer } from "../src/features/conversation/running-line.ts";
 
 type Block = Extract<Message, { role: "assistant" }>["content"][number];
 

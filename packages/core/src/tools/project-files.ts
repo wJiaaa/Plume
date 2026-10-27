@@ -2,7 +2,7 @@
  * 项目里该看哪些文件：grep 兜底、`glob`、symbol 索引共用这一份清单。
  *
  * ripgrep 默认不碰被 `.gitignore` 忽略的路径。兜底原先只认 `grep.ts` 里那张目录名单，于是被忽略
- * 却不在名单上的目录照样整个读一遍：本仓库 2.9G 的 `packages/mobile/ios`、本地笔记 `docs/plan`
+ * 却不在名单上的目录照样整个读一遍：本仓库当时 2.9G 的 `packages/mobile/ios`、本地笔记 `docs/plan`
  * 都在其中——全库搜一次 1.8 秒（ripgrep 46 毫秒），结果里还混着这些地方的命中。名单反过来也会错：
  * 提交进仓库、只是恰好叫 `build/` 的目录被整个跳过，搜 plist 的 `glob` 漏掉了本仓库唯一一个
  * 真正的 plist，返回的却全是 `release/` 里打包产物的。

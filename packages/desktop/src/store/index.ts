@@ -76,7 +76,6 @@ type View = "chat" | "settings" | "pull-requests" | "scheduled" | "plugins" | "g
 
 export type SettingsSection =
   | "general"
-  | "mobile"
   | "appearance"
   | "personalization"
   | "models"

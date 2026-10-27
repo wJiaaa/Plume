@@ -2,7 +2,6 @@ name: 安装包
 
 # 推 `v*` tag（`pnpm release` 的最后一步）：Windows、macOS 都打，再发布到本仓库（wJiaaa/Plume）的 Release，
 # 应用内更新从那里读。手动运行只打包、上传 Artifacts，不发布。
-# 手机 App 暂不打包发布（Android runner 每次现下 NDK，最慢，v0.9.33 就因 NDK 下载损坏失败过），有需求再加回来。
 on:
   push:
     tags: ['v*']

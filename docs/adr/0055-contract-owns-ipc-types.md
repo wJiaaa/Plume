@@ -1,6 +1,6 @@
 # ADR-0055：IPC 的类型住进契约，契约只从 core 拿类型
 
-- 状态：已采纳
+- 状态：已采纳；第 3 条的手机入口（`@plume/contract/mobile`、`mobile.ts`）随 [ADR-0059](0059-remove-native-mobile.md) 删除，其余不变
 - 日期：2026-10-22
 - 相关：`packages/contract/src/`（`api.ts` 与各主题文件、`session.ts`、`mobile.ts`）、
   core `src/contract-types.ts`、`src/client-types.ts`；`.dependency-cruiser.cjs`（`contract-is-a-leaf`、

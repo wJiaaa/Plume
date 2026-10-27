@@ -1,4 +1,4 @@
-import { formatElapsed } from "@plume/client-runtime/running";
+import { formatElapsed } from "./running-line.ts";
 import { useEffect, useState } from "react";
 import { translate } from "../../i18n/translate.ts";
 import { RollWords } from "../../ui/motion/RollWords.tsx";

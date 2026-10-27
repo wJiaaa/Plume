@@ -30,30 +30,6 @@ function runtimeLayers(layers) {
 module.exports = {
 	forbidden: [
 		{
-			name: "mobile-and-client-runtime-stay-portable",
-			severity: "error",
-			from: { path: "^packages/(mobile|client-runtime)/src/" },
-			to: { path: "^packages/(desktop|cli)/|^(node:|electron$)", dependencyTypesNot: ["type-only"] },
-		},
-		{
-			name: "mobile-core-imports-are-types-only",
-			comment:
-				"手机端只认 core 的类型。唯一的例外是 `ui-language/` 里给渲染用的那几个文件：整个目录一个 import " +
-				"都不出去，和桌面渲染进程白名单里的是同一批。手机把回复里的 ```ui 画出来，读块的规则必须和提示词、" +
-				"检查、桌面端是同一份——抄一份过去，就是模型学的写法在手机上被读成另一个样子。经 " +
-				"`@plume/client-runtime/ui-language` 转出去，手机不直接依赖 core。`followups` 同理：回复末尾的下一步建议，" +
-				"手机要把标记拿掉、流式输出时先藏住没写完的那段，认的写法必须和提示词是同一份。",
-			severity: "error",
-			from: { path: "^packages/(mobile|client-runtime)/src/" },
-			to: { path: "^packages/core/", pathNot: "^packages/core/src/ui-language/(index|catalog|chart|check|expression|parse)\\.ts$|^packages/core/src/followups\\.ts$", dependencyTypesNot: ["type-only"] },
-		},
-		{
-			name: "client-runtime-has-no-ui",
-			severity: "error",
-			from: { path: "^packages/client-runtime/src/" },
-			to: { path: "^packages/mobile/|node_modules/(react|react-native|expo)(/|$)" },
-		},
-		{
 			name: "no-circular",
 			comment:
 				"A cycle between *values* is how a module ends up half-initialised at runtime: one of " +

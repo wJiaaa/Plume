@@ -14,7 +14,6 @@ import type { AgentDefinitionsApi, CapabilitiesApi, CommandsApi, HooksApi, Plugi
 import type { ClipboardApi, FilesApi, WorkspaceApi } from "./files.ts";
 import type { ForgeApi } from "./forge.ts";
 import type { DiffApi, GitApi } from "./git.ts";
-import type { MobileApi } from "./mobile.ts";
 import type { PinnedShotApi, ScreenshotApi } from "./screenshot.ts";
 import type { SessionsApi } from "./sessions.ts";
 import type { ChatBackgroundApi, IndexApi, MemoryApi, ProjectMemoryApi, ProvidersApi, SettingsApi } from "./settings.ts";
@@ -32,7 +31,6 @@ import type { WorktreeApi } from "./worktree.ts";
 export type Platform = "aix" | "android" | "cygwin" | "darwin" | "freebsd" | "haiku" | "linux" | "netbsd" | "openbsd" | "sunos" | "win32";
 
 export interface PlumeApi {
-	mobile: MobileApi;
 	agentDefinitions: AgentDefinitionsApi;
 	services: ServicesApi;
 	delivery: DeliveryApi;
