@@ -142,6 +142,8 @@ export interface ToolContext {
 	 * flattening it, so the renderer and `agent://` can both index into it.
 	 */
 	spawnSubAgent?: (input: SubAgentInput) => Promise<SubAgentAnswer>;
+	/** 停掉一个派出去、还没完的子代理（`stop_subagent` 用）。只有主会话给。 */
+	stopSubAgent?: (id: string) => { id: string } | { refusal: string };
 	/**
 	 * 等一件不在这一轮里的事，但人一开口就放手：放手时交回 `null`。
 	 *

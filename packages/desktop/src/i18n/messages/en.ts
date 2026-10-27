@@ -1000,6 +1000,7 @@ export const en = {
 	"tools.fetch": "Fetched pages",
 	"tools.webSearch": "Searched the web",
 	"tools.delegate": "Delegated subtasks",
+	"tools.stopSubAgent": "Stopped a subtask",
 	"tools.preview": "Built previews",
 	"tools.generateImage": "Generated images",
 	"tools.symbol": "Looked up symbols",

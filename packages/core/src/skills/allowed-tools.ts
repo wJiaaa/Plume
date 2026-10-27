@@ -40,6 +40,7 @@ const BUILTIN_TOOLS = [
 	"monitor",
 	"todo_write",
 	"task",
+	"stop_subagent",
 	"skill",
 	"recall",
 	"learn",

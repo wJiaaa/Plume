@@ -146,19 +146,12 @@ export class SubAgentRegistry {
 	/**
 	 * 找一个能续跑的。
 	 *
-	 * 认全名，也认冒号后面那一截（`sub:1a2b3c4d` 或 `1a2b3c4d`）——模型抄一串四十几个字符的 id
-	 * 容易抄错，而同一个会话里短的那截已经足够唯一。认不出来、不唯一、还在跑、上下文已经不在了，
-	 * 各给一句能据以行动的话，而不是一个笼统的「失败」。
+	 * 认 id 的方式见 `match`。认不出来、不唯一、还在跑、上下文已经不在了，各给一句能据以行动的话，
+	 * 而不是一个笼统的「失败」。
 	 */
 	lookupResumable(wanted: string): { id: string; summary: SubAgentSummary; conversation: SubAgentConversation } | { refusal: string } {
-		const key = wanted.trim();
-		let found = this.records.get(key);
-		if (!found && key) {
-			const tail = key.replace(/^.*?(sub:)?([^:]+)$/, "$2");
-			const matches = [...this.records.values()].filter((record) => record.id.endsWith(`:sub:${tail}`) || record.id.endsWith(`:${tail}`));
-			if (matches.length > 1) return { refusal: `\`${wanted}\` 对得上不止一个子代理，请用完整的 id。` };
-			found = matches[0];
-		}
+		const found = this.match(wanted);
+		if (found && "refusal" in found) return found;
 		if (!found) {
 			return {
 				refusal:
@@ -179,6 +172,42 @@ export class SubAgentRegistry {
 		}
 		const { messages: _messages, steering: _steering, abort: _abort, conversation, ...summary } = found;
 		return { id: found.id, summary, conversation };
+	}
+
+	/**
+	 * 派它的模型要停掉的那一个（`stop_subagent`）。认 id 的方式和 `lookupResumable` 一样，停的方式和 `abort` 一样。
+	 *
+	 * 已经结束的不当成错：它多半是在模型决定停它的这几秒里自己跑完了，该说的是结果在路上，
+	 * 而不是让模型以为停失败了、再去想别的办法。
+	 */
+	stop(wanted: string): { id: string } | { refusal: string } {
+		const found = this.match(wanted);
+		if (found && "refusal" in found) return found;
+		if (!found) return { refusal: `找不到子代理 \`${wanted}\`：它可能已经被从名单里清掉了。用派它时交回的那个 id。` };
+		if (!isActive(found.status)) {
+			return {
+				refusal:
+					found.status === "aborted"
+						? `子代理 \`${found.id}\` 已经停下了，不用再停。`
+						: `子代理 \`${found.id}\` 已经跑完了，不用停。它的结果已经或马上会送到你这里。`,
+			};
+		}
+		found.abort?.();
+		return { id: found.id };
+	}
+
+	/**
+	 * 认全名，也认冒号后面那一截（`sub:1a2b3c4d` 或 `1a2b3c4d`）——模型抄一串四十几个字符的 id
+	 * 容易抄错，而同一个会话里短的那截已经足够唯一。
+	 */
+	private match(wanted: string): SubAgentRecord | { refusal: string } | undefined {
+		const key = wanted.trim();
+		const found = this.records.get(key);
+		if (found || !key) return found;
+		const tail = key.replace(/^.*?(sub:)?([^:]+)$/, "$2");
+		const matches = [...this.records.values()].filter((record) => record.id.endsWith(`:sub:${tail}`) || record.id.endsWith(`:${tail}`));
+		if (matches.length > 1) return { refusal: `\`${wanted}\` 对得上不止一个子代理，请用完整的 id。` };
+		return matches[0];
 	}
 
 	/**

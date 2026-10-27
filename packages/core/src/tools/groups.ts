@@ -30,7 +30,7 @@ import { readTool } from "./read.ts";
 import { recallTool } from "./recall.ts";
 import { webSearchTool } from "./search.ts";
 import { symbolTool } from "./symbol.ts";
-import { taskTool } from "./task.ts";
+import { stopSubAgentTool, taskTool } from "./task.ts";
 import { todoTool } from "./todo.ts";
 import { webFetchTool } from "./web.ts";
 import { writeTool } from "./write.ts";
@@ -54,6 +54,7 @@ const SHELL_TOOLS = [bashTool, bashOutputTool, monitorTool] as unknown as Tool[]
 const AGENT_TOOLS = [
 	todoTool,
 	taskTool,
+	stopSubAgentTool,
 	skillTool,
 	recallTool,
 	learnTool,

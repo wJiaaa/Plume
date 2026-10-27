@@ -23,6 +23,7 @@ import {
 	Sparkles,
 	SquarePen,
 	Terminal,
+	UserX,
 	Users,
 } from "../../ui/icons/index.ts";
 import { translate } from "../../i18n/translate.ts";
@@ -48,6 +49,7 @@ const ICONS: Record<string, typeof FileText> = {
 	monitor: Terminal,
 	todo_write: ListTodo,
 	task: Users,
+	stop_subagent: UserX,
 	skill: Sparkles,
 	web_fetch: Globe,
 	image_generate: Image,

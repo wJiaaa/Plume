@@ -36,4 +36,6 @@ test("summarizeToolCall handles missing and alias arguments without displaying '
 	// bash_output: no uuid in either
 	assert.equal(summarizeToolCall("bash_output", { id: "a6f8d1fa-8c85-4ff7-b557-dc15c306b644" }), "Check job");
 	assert.equal(summarizeToolCall("bash_output", { id: "a6f8d1fa-8c85-4ff7-b557-dc15c306b644", kill: true }), "Stop job");
+	// stop_subagent: no id either, the same line as core's summarize
+	assert.equal(summarizeToolCall("stop_subagent", { id: "s1:sub:1a2b3c4d" }), "Stop sub-agent");
 });

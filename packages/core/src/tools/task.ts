@@ -120,3 +120,42 @@ export const taskTool: Tool<TaskArgs> = {
 		}
 	},
 };
+
+/**
+ * 停掉一个自己派出去的子代理。
+ *
+ * 单独一个工具而不是 `task` 上的参数：对话里每一次 `task` 调用都被画成一张派发卡片
+ * （桌面端 `lib/dispatches.ts`），停的那次混进去，就是对着同一个子代理又多出一张。
+ *
+ * 描述里那句「不要因为它跑得久就停」是有意的：跑得久不是卡住的可靠信号（见 AGENTS.md「别让循环
+ * 替人做决定」），该停是因为方向错了、活不需要了、或者人说了停。
+ */
+export const stopSubAgentTool: Tool<{ id: string }> = {
+	name: "stop_subagent",
+	description:
+		"Stop a sub-agent you dispatched with `task` that is still queued or running: when it is going the wrong way, its work is no longer needed, or the user asks you to. " +
+		"Pass the id given when you dispatched it. Once stopped it reports nothing more and you are no longer waiting for it; its context is kept, so `task` with `resume` can continue it later. " +
+		"Do not stop one only because it is taking a while.",
+	parameters: {
+		type: "object",
+		properties: {
+			id: { type: "string", description: "The sub-agent id from the `task` result." },
+		},
+		required: ["id"],
+		additionalProperties: false,
+	},
+	sessionOnly: true,
+	summarize: () => "Stop sub-agent",
+
+	async execute(args, ctx): Promise<ToolResult> {
+		if (!ctx.stopSubAgent) return errorResult("Sub-agents are not available in this session.");
+		if (typeof args.id !== "string" || !args.id.trim()) return errorResult("`id` is required.");
+		const stopped = ctx.stopSubAgent(args.id);
+		// 已经结束、找不到都是一句该据以行动的话，不是一次失败。
+		if ("refusal" in stopped) return { content: [{ type: "text", text: stopped.refusal }] };
+		/*
+		 * 不带 `details.subAgentId`：回退历史时靠它认「这一步派过谁」（`session-rewind.ts`），停的这一步不是派发。
+		 */
+		return { content: [{ type: "text", text: `已停下子代理 \`${stopped.id}\`。它不会再送回结果，不用等它；要接着它做，用 \`task\` 的 resume。` }] };
+	},
+};

@@ -1177,6 +1177,7 @@ export const zhCN = {
 	"tools.fetch": "抓取网页",
 	"tools.webSearch": "搜索网络",
 	"tools.delegate": "派发子任务",
+	"tools.stopSubAgent": "停止子任务",
 	"tools.preview": "生成预览",
 	"tools.generateImage": "生成图片",
 	"tools.symbol": "查找符号",

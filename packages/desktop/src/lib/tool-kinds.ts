@@ -68,6 +68,7 @@ const KIND: Record<string, MessageKey> = {
 	web_fetch: "tools.fetch",
 	web_search: "tools.webSearch",
 	task: "tools.delegate",
+	stop_subagent: "tools.stopSubAgent",
 	preview: "tools.preview",
 	image_generate: "tools.generateImage",
 	symbol: "tools.symbol",
@@ -143,10 +144,11 @@ const ACTIVITY: [RegExp, string, (match: RegExpMatchArray) => string][] = [
 	[/^Generate image (.+)$/, "image_generate", (m) => m[1]],
 ];
 
-/** `bash_output` 的两句摘要：不带任务 id，一串 uuid 人读不出东西。 */
+/** `bash_output` 的两句摘要和 `stop_subagent` 那一句：不带 id，一串 uuid 人读不出东西。 */
 const FIXED: Record<string, MessageKey> = {
 	"Check job": "tools.output",
 	"Stop job": "tools.stopJob",
+	"Stop sub-agent": "tools.stopSubAgent",
 };
 
 /**

@@ -53,6 +53,8 @@ export function summarizeToolCall(name: string, args: Record<string, unknown>): 
 			return "Update task list";
 		case "task":
 			return str("description") ?? "Sub-agent task";
+		case "stop_subagent":
+			return "Stop sub-agent";
 		case "skill":
 			return `Skill: ${str("name") ?? ""}`.trim() || "Skill";
 		case "mcp_search":

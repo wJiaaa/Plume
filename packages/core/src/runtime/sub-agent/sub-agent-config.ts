@@ -125,6 +125,8 @@ export async function subAgentRunConfig(options: SubAgentOptions, dispatched: Di
 				resources: dispatched.resources,
 				// 子代理不派子代理：`task` 已经不在它的工具表里，这里也不留往下派的入口。
 				spawnSubAgent: undefined,
+				// 它没派过谁，也不该停掉兄弟：`stop_subagent` 是 `sessionOnly`，不在它的工具表里。
+				stopSubAgent: undefined,
 			},
 			requestApproval: approvalFrom(options, dispatched),
 			...toolHooks(hooks),

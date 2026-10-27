@@ -40,13 +40,15 @@ test("English joins the parts with a comma, not 「、」", () => {
 	assert.equal(describedIn("en", THREE), "Read files merge.ts, Created files merge.test.ts, Ran commands ×2");
 });
 
-test("reading or stopping a background job is said in the interface's language, without its uuid", () => {
+test("reading or stopping a background job or sub-agent is said in the interface's language, without its id", () => {
 	assert.equal(describeActivity("Check job"), "查看输出");
 	assert.equal(describeActivity("Stop job"), "停止命令");
+	assert.equal(describeActivity("Stop sub-agent"), "停止子任务");
 	setActiveLocale("en");
 	try {
 		assert.equal(describeActivity("Check job"), "Read output");
 		assert.equal(describeActivity("Stop job"), "Stopped a command");
+		assert.equal(describeActivity("Stop sub-agent"), "Stopped a subtask");
 	} finally {
 		setActiveLocale("zh-CN");
 	}

@@ -220,6 +220,11 @@ export function buildTurnConfig(
 					transcript: deps.transcript,
 				}),
 				spawnSubAgent,
+				/*
+				 * 和面板上按停走同一条路：停下的那份不会作为送达回来（`SessionDeliveries.flush` 滤掉
+				 * `aborted`），收尾之后也就不在「还在等谁」里了。
+				 */
+				stopSubAgent: (id) => deps.subAgents.stop(id),
 				untilSpokenTo: (run) => deps.spokenWaits.until(run),
 				resources: deps.resources,
 				scratchDir: deps.scratchDir,
