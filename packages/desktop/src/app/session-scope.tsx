@@ -14,7 +14,7 @@
  * stop button, its project.
  */
 
-import { createContext, useContext, useEffect, useMemo } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { Message, SessionMeta, SubAgentSummary } from "@plume/core";
 import { isProjectLess } from "../lib/project-scope.ts";
@@ -135,10 +135,31 @@ export function useScopedRunning(): boolean {
  * 输入框不看这个：它问的是「现在说话会不会插进一轮」，而后台的子智能体不占着主会话。
  */
 export function useScopedWorking(): boolean {
+	const id = useScopedSessionId();
 	const running = useScopedRunning();
 	const background = useScopedFromSubAgents(delegating);
-	return running || background;
+	/*
+	 * 最后一个子智能体交差、送达还没开出下一轮的那一下也算在干：core 把结果攒 400ms 再开一轮
+	 * （`DELIVERY_GATHER_MS`），这段空档里主回合和名册都是空闲的，交付卡片、「继续」会闪出来又收回去。
+	 * core 的 `idle` 算着这段，可它不到界面，所以这里按那个数留余量。没有送达（刚按了停止）只是晚
+	 * 这么一会儿才显示，不会卡住。在渲染里比对上一次，不放进 effect：effect 晚一帧，那一帧就是闪的那一下。
+	 */
+	const [seen, setSeen] = useState({ id, background });
+	const [settling, setSettling] = useState(false);
+	if (seen.id !== id || seen.background !== background) {
+		setSeen({ id, background });
+		setSettling(seen.id === id && seen.background && !background);
+	}
+	useEffect(() => {
+		if (!settling) return;
+		const timer = setTimeout(() => setSettling(false), DELIVERY_SETTLE_MS);
+		return () => clearTimeout(timer);
+	}, [settling]);
+	return running || background || settling;
 }
+
+/** 见 `useScopedWorking`：core 攒送达的 400ms，加上开轮、事件过 IPC 的余量。 */
+const DELIVERY_SETTLE_MS = 1000;
 
 /** 这一屏这一轮的一样状态：屏上那个读顶层，别的读它停在缓存里的那份，没有就是空的。 */
 function useScopedSlot<K extends keyof CachedSessionState>(key: K): CachedSessionState[K] {

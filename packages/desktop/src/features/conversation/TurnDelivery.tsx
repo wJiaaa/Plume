@@ -8,7 +8,7 @@ import { Button } from "../../ui/primitives/Button.tsx";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import { Popover } from "../../ui/overlay/Popover.tsx";
 import { closeNow, openFilePane, openScopedPanel } from "../dock/index.ts";
-import { useDockScope, useScopedFromMessages, useScopedProjectPath, useScopedRunning, useScopedSessionId } from "../../app/session-scope.tsx";
+import { useDockScope, useScopedFromMessages, useScopedProjectPath, useScopedSessionId, useScopedWorking } from "../../app/session-scope.tsx";
 import { DiffView } from "../git/index.ts";
 import { latestDeliveryTimestamp } from "./delivery-state.ts";
 import { useTurnDelivery } from "./delivery-cache.ts";
@@ -53,7 +53,8 @@ const HOVER_CLOSE_MS = 160;
 export function TurnDeliveryCard({ timestamp }: { timestamp: number }) {
 	// This transcript's conversation, not whichever one has the focus: every screen shows its own.
 	const sessionId = useScopedSessionId();
-	const running = useScopedRunning();
+	// 后台子智能体没回来也不算答完：派完那一轮主会话就收尾了，卡片在这时出来，回来接着跑时又收掉。
+	const running = useScopedWorking();
 	// 一个数，不是转录本身：每轮回答底下都挂着一张，拿整条转录的话流式输出时每一拍每一张都重画。
 	const latest = useScopedFromMessages((messages) => latestDeliveryTimestamp(messages, running));
 	if (!sessionId || latest !== timestamp) return null;
