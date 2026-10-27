@@ -430,6 +430,26 @@
 }
 
 /*
+ * 改动视图里行号是留评论的地方，见 `DiffCommentsProvider`。
+ *
+ * 只标行号那一格，不铺整行：整行的底色已经在说「加了」「删了」，再铺一层就分不出是哪一种。正在评的
+ * 那几行照选区的浓度，评过的淡一档；混的还是代码底色，因为这一格是钉住的，得不透明。
+ */
+.ly-diff-pick:hover {
+  color: var(--color-accent);
+}
+
+.ly-diff-gutter[data-diff-note="saved"] {
+  background: color-mix(in srgb, var(--color-accent) 14%, var(--ly-code-bg, var(--color-shell)));
+  color: var(--color-accent);
+}
+
+.ly-diff-gutter[data-diff-note="draft"] {
+  background: color-mix(in srgb, var(--color-accent) 35%, var(--ly-code-bg, var(--color-shell)));
+  color: var(--color-ink);
+}
+
+/*
  * The sideways scrollbar is drawn, not native — see the `sticky` placement of `OverlayScrollbar`.
  *
  * The native one here is an overlay that macOS hides until something moves, which on a diff is

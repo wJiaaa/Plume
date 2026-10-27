@@ -12,6 +12,7 @@ import { PanelEmpty } from "../../ui/layout/PanelEmpty.tsx";
 
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
 
+import { DiffCommentsProvider } from "./DiffComments.tsx";
 import { FileDiffList } from "./FileDiffList.tsx";
 import { FileDiffTree } from "./FileDiffTree.tsx";
 
@@ -163,7 +164,7 @@ export function ChangesView({
 
   return (
     /* `ly-enter` so the list arrives rather than replacing the skeleton in one frame. */
-    <>
+    <DiffCommentsProvider cwd={cwd}>
       <Scroller className="ly-enter flex-1" contentClassName="px-2 pb-2" top="fade" bottom="fade">
         {stagedPaths.length > 0 && (
 					<GroupHeader
@@ -308,7 +309,7 @@ export function ChangesView({
 
 
       {confirm.element}
-    </>
+    </DiffCommentsProvider>
   );
 }
 

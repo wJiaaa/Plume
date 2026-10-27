@@ -3,7 +3,11 @@ import { useRef } from "react";
 
 import type { DiffHunk } from "@plume/core";
 import { OverlayScrollbar } from "../../ui/scroll/OverlayScrollbar.tsx";
+import { MarkNumber } from "../../ui/primitives/MarkNumber.tsx";
 import { useDiffHighlight } from "./diff-highlight.ts";
+import { useDiffCommenting, type DiffCommenting } from "./DiffComments.tsx";
+
+const GUTTER = "ly-diff-gutter sticky left-0 z-[1] w-[42px] shrink-0 pr-2 text-right text-ink-faint/70 select-none";
 
 /**
  * Unified diff: a gutter of line numbers, a green rail on additions and a red rail on removals,
@@ -47,6 +51,8 @@ export function DiffView({
 	// Null until the grammar has loaded, and for anything there is no grammar for. Rows fall back
 	// to plain text in both cases, so a diff is never waiting on a parser to be readable.
 	const coloured = useDiffHighlight(hunks, path);
+	// Only the changes view can be commented on; everywhere else the line numbers stay plain text.
+	const commenting = useDiffCommenting();
 
 	return (
 		<div className="ly-diff-host relative">
@@ -84,9 +90,11 @@ export function DiffView({
 									>
 										{/* Pinned columns need an opaque fill of their own: the row's tint is
 										    translucent, and the code would otherwise show through as it passes. */}
-										<span className="ly-diff-gutter sticky left-0 z-[1] w-[42px] shrink-0 pr-2 text-right text-ink-faint/70 select-none">
-											{line.newLine ?? line.oldLine ?? ""}
-										</span>
+										{commenting && path ? (
+											<DiffGutterButton commenting={commenting} path={path} hunk={hunk} lineIndex={lineIndex} />
+										) : (
+											<span className={GUTTER}>{line.newLine ?? line.oldLine ?? ""}</span>
+										)}
 										<span
 											className={`sticky left-[42px] z-[1] w-[3px] shrink-0 ${
 												added ? "bg-ok/70" : removed ? "bg-danger/70" : "ly-diff-rail"
@@ -129,5 +137,35 @@ export function DiffView({
 			 */}
 			<OverlayScrollbar viewport={scroller} orientation="horizontal" placement="sticky" />
 		</div>
+	);
+}
+
+/**
+ * The line number as the place to leave a comment on that line — see `DiffCommentsProvider`.
+ *
+ * Out of the tab order: a diff is hundreds of these, and tabbing through every line number to reach
+ * the next file is worse than not reaching them by keyboard at all.
+ */
+function DiffGutterButton({ commenting, path, hunk, lineIndex }: { commenting: DiffCommenting; path: string; hunk: DiffHunk; lineIndex: number }) {
+	const line = hunk.lines[lineIndex]!;
+	const number = line.newLine ?? line.oldLine ?? "";
+	const note = commenting.noteOf(path, line);
+	return (
+		<button
+			type="button"
+			tabIndex={-1}
+			aria-label={translate("diffComment.pick", { line: number })}
+			data-diff-note={note ? (note.draft ? "draft" : "saved") : undefined}
+			className={`${GUTTER} ly-diff-pick cursor-pointer`}
+			onMouseDown={(event) => {
+				if (event.button !== 0) return;
+				// Dragging or shift-clicking here picks lines; left alone it would also select the code beside them.
+				event.preventDefault();
+				commenting.press({ path, hunk, lineIndex }, event.currentTarget, event.shiftKey);
+			}}
+			onMouseEnter={(event) => commenting.enter({ path, hunk, lineIndex }, event.currentTarget)}
+		>
+			{note?.last ? <MarkNumber n={note.n} className="align-middle" /> : number}
+		</button>
 	);
 }
