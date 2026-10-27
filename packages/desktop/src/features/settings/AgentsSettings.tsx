@@ -119,13 +119,15 @@ export function AgentsSettings() {
 	const count = installed.length + builtin.length;
 	const create = () => setEditor({ projectId: catalogue.projectId });
 	// 只记关掉的，按名字；内置的一样能关。会话当场重载，见 `AgentSession.updateSettings`。
+	// 不走 `persist`：它让整页进入保存中，8 行的开关和下拉一起变淡再弹回来，点一下闪一下。
 	const disabledAgents = settings?.disabledAgents ?? [];
 	const setAgentOn = (name: string, on: boolean) => {
 		const current = useApp.getState().settings;
 		if (!current) return;
 		const next = new Set(current.disabledAgents);
 		if (on) next.delete(name); else next.add(name);
-		void persist({ ...current, disabledAgents: [...next] });
+		void useApp.getState().saveSettings({ ...current, disabledAgents: [...next] })
+			.catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)));
 	};
 	const row = (agent: Agent) => {
 		const record = recordOf(agent.name);
@@ -270,7 +272,7 @@ function AgentRow({ agent, record, avatarOf, saved, disabled, on, setOn, control
 			</div>
 			<div className="pointer-events-none relative col-span-2 flex min-w-0 flex-wrap items-center justify-end gap-2 @2xl:col-span-1 [&>*]:pointer-events-auto">
 				{controls}
-				<Toggle checked={on} onChange={setOn} disabled={disabled} ariaLabel={t("market.enableNamed", { name })} />
+				<Toggle checked={on} onChange={setOn} ariaLabel={t("market.enableNamed", { name })} />
 				<div className="flex items-center gap-1">
 					{/* Shown on hover, as a command row's delete and a plugin row's ⋯ are. */}
 					{copy && <span className="ly-row-action flex"><IconButton label={t("agents.duplicateFor", { name })} disabled={disabled} onClick={copy} icon={<Copy size={14} aria-hidden />} /></span>}
