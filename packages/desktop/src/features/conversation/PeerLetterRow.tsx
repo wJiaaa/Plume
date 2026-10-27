@@ -23,7 +23,7 @@ import { peerName } from "./call-words.ts";
 
 export function PeerLetterRow({ letters }: { letters: PeerLetter[] }) {
 	return (
-		<div className="my-1" data-peer-row="">
+		<div className="flex flex-col gap-2.5" data-peer-row="">
 			{letters.map((letter, index) => <Letter key={index} letter={letter} />)}
 		</div>
 	);

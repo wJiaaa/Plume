@@ -88,7 +88,7 @@ function SessionDelivery({ report }: { report: DeliveredReport }) {
 	const sessionId = useScopedSessionId();
 	const failed = report.status === "failed";
 	return (
-		<div className="-mb-1.5" data-delivery-row="" data-delivery-kind="session">
+		<div data-delivery-row="" data-delivery-kind="session">
 			<FlowRow
 				icon={failed ? <CircleAlert size={13} strokeWidth={1.8} className="text-danger" /> : <SquarePen size={13} strokeWidth={1.8} />}
 				title={<span className="font-normal">{t("sessionReturn.from")}</span>}

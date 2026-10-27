@@ -191,6 +191,9 @@ function Delivery({ sessionId, timestamp }: { sessionId: string; timestamp: numb
 		 * `<body>`，出卡片的那一刻这条延迟关闭早就在跑了，进去之后 `keepHover` 再把它取消。
 		 *
 		 * 键盘一起：焦点落到卡片头上的按钮时，预览同样要让开——它开在那些按钮上面。
+		 *
+		 * `mt-3` 叠在转录 10px 的行距上，卡片顶到正文底是 22px，是有意的：卡片是这一轮的结算，
+		 * 不是回答里的又一行。收成 10px 试过，它就读成了正文的一段。
 		 */}
 		<div className="mt-3" onMouseLeave={closeHover} onMouseOver={offRows} onFocus={offRows}>
 			<section data-turn-delivery aria-label={t("delivery.fileChanges")} className="rounded-xl border border-line bg-card/30 text-label">
