@@ -36,16 +36,6 @@ import { describeCalls, describeOne, describePolls, diffOf, pollOutput, polledJo
  */
 export const WINDOW_TURNS = 20;
 
-export type Segment =
-  | { kind: "block"; block: Exclude<AssistantContent, { type: "toolCall" }>; index: number }
-  | { kind: "tools"; blocks: Extract<AssistantContent, { type: "toolCall" }>[] };
-
-/**
- * Split a reply into runs of tool calls and everything else.
- *
- * Text between two calls is a break in the run — the model stopping to explain is exactly the
- * boundary a reader uses, so folding across it would join two things it deliberately separated.
- */
 /**
  * How many lines a stretch of calls added and removed.
  *
@@ -57,20 +47,6 @@ export function useDiffTotals(calls: readonly Pick<Call, "block">[], runs?: Reco
   const added = useScopedFromToolRuns((toolRuns) => calls.reduce((n, { block }) => n + diffOf((runs ?? toolRuns)[block.id], "added"), 0));
   const removed = useScopedFromToolRuns((toolRuns) => calls.reduce((n, { block }) => n + diffOf((runs ?? toolRuns)[block.id], "removed"), 0));
   return { added, removed };
-}
-
-export function segments(content: AssistantContent[]): Segment[] {
-  const out: Segment[] = [];
-  for (const [index, block] of content.entries()) {
-    if (block.type === "toolCall") {
-      const last = out[out.length - 1];
-      if (last?.kind === "tools") last.blocks.push(block);
-      else out.push({ kind: "tools", blocks: [block] });
-    } else {
-      out.push({ kind: "block", block, index });
-    }
-  }
-  return out;
 }
 
 /**

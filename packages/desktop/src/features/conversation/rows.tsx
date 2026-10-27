@@ -26,7 +26,8 @@ import { useScopedFromMeta, useScopedSessionId } from "../../app/session-scope.t
 import { useI18n } from "../../i18n/index.ts";
 import { useApp } from "../../store/index.ts";
 import { sameStats, type TurnStats } from "./turns.ts";
-import { segments, ToolRun as ToolRunGroup } from "./runs.tsx";
+import { ToolRun as ToolRunGroup } from "./runs.tsx";
+import { segments } from "./reply-segments.ts";
 
 /**
  * A row only changes when its own message does.
@@ -194,11 +195,11 @@ function AssistantRow({
       {/* 页脚那一行：话已经在上面画过了，这里只要它的字给复制用。 */}
       {!trailer && segments(own).map((segment, position) => {
         if (segment.kind === "block") {
-          const { block, index } = segment;
+          const { block, index, last } = segment;
           // `segments` numbers what it was handed; `from` puts that back on the message's own scale.
           const at = from + index;
           if (block.type === "thinking") {
-            // 只有推理的行在分组时就拿掉了（`withoutThinking`）；这里是夹在一条回复的话中间的那几段。
+            // 只有推理的行在分组时就拿掉了（`withoutThinking`）；这里是夹在一条回复的话中间的那几段，挨着的已并成一段。
             if (!showThinking) return null;
             return (
               <ThinkingBlock
@@ -209,7 +210,7 @@ function AssistantRow({
                 startedAt={block.startedAt}
                 durationMs={block.durationMs}
                 // 字还在到：后面没有别的块了。接着说话、调工具之后它就写完了，哪怕这一轮还要跑很久。
-                live={message.stopReason === "pending" && at === message.content.length - 1}
+                live={message.stopReason === "pending" && from + last === message.content.length - 1}
               />
             );
           }

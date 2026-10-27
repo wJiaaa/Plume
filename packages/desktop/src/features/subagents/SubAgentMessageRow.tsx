@@ -144,7 +144,7 @@ export const SubAgentTranscript = memo(function SubAgentTranscript({
 								/>
 							);
 						}
-						const { block, index } = segment;
+						const { block, index, last } = segment;
 						const at = from + index;
 						if (block.type === "thinking") {
 							if (!showThinking) return null;
@@ -155,7 +155,7 @@ export const SubAgentTranscript = memo(function SubAgentTranscript({
 									redacted={block.redacted === true}
 									startedAt={block.startedAt}
 									durationMs={block.durationMs}
-									live={message.stopReason === "pending" && at === message.content.length - 1}
+									live={message.stopReason === "pending" && from + last === message.content.length - 1}
 								/>
 							);
 						}

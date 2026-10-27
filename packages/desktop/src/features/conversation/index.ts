@@ -21,7 +21,8 @@ export { turnBlocks, withoutThinking } from "./turn-blocks.ts";
 export { TurnWork } from "./TurnWork.tsx";
 export { WorkStep } from "./WorkStep.tsx";
 export { ModelSwitchRow } from "./ModelSwitchRow.tsx";
-export { ToolRun, segments } from "./runs.tsx";
+export { ToolRun } from "./runs.tsx";
+export { segments } from "./reply-segments.ts";
 /* 人说的一句话画成气泡——侧边聊天和子智能体面板共用，见 `SpokenBubble`。 */
 export { SpokenBubble, spokenText } from "./SpokenBubble.tsx";
 export { TrajectoryPanel } from "./trajectory/TrajectoryPanel.tsx";
