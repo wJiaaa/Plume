@@ -55,8 +55,9 @@ const SCRIPT: (string | null)[] = [
  * Said by the reply that gets interrupted, so its disappearance is something a test can see.
  *
  * Long enough to count as the answer (past 150 characters, see `looksLikeAnswer`), so the running
- * line is hidden when stop is pressed — the state whose fold must not fade it back in. A short opener
- * leaves the line on screen, and its ordinary fold is not what this guards.
+ * line is hidden when stop is pressed — the state whose fold must not fade it back in. Nothing in this
+ * script calls a tool, so shorter prose would hide it too (`leadsTheTurn`); the length keeps it hidden
+ * under either rule.
  */
 const HALF = "开始干活，这一段很长" + "，接着往下写".repeat(30);
 

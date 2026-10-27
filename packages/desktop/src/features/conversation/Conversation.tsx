@@ -7,7 +7,7 @@ import { Composer } from "../composer/index.ts";
 import { ResumeRow } from "./ResumeRow.tsx";
 import { HiccupRow } from "./HiccupTrace.tsx";
 import { ModelSwitchRow } from "./ModelSwitchRow.tsx";
-import { looksLikeAnswer } from "@plume/client-runtime/running";
+import { leadsTheTurn, looksLikeAnswer } from "@plume/client-runtime/running";
 import { RunningRow } from "./RunningRow.tsx";
 import { TaskList } from "../task/index.ts";
 import { environmentCard, useEnvironmentCard } from "../../store/environment-card.ts";
@@ -225,8 +225,8 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
-  /** 末尾正在流的正文像结论：运行行原地隐去，不跟着字一跳一跳。见 `RunningRow`。 */
-  const answering = useMemo(() => looksLikeAnswer(messages), [messages]);
+  /** 末尾正在流的正文像结论，或者是这一轮调工具之前的话：运行行原地隐去，不跟着字一跳一跳。见 `RunningRow`。 */
+  const answering = useMemo(() => looksLikeAnswer(messages) || leadsTheTurn(messages), [messages]);
   /** 末尾那段正文上一次变长的时刻：一阵子不长了，运行行就回来说耗时和速度，见 `RunningRow`。 */
   const grewAt = useMemo(() => proseGrewAt(messages[messages.length - 1]), [messages]);
   /** 最后一条是一段正常写完的回答：底下的操作行在这时长出来，运行行在同一帧让位，见 `RunningRow`。 */

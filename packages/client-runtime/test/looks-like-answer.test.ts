@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Message } from "@plume/core/client-types";
-import { ANSWER_CHARS, looksLikeAnswer } from "../src/running.ts";
+import { ANSWER_CHARS, leadsTheTurn, looksLikeAnswer } from "../src/running.ts";
 
 type Block = Extract<Message, { role: "assistant" }>["content"][number];
 
@@ -38,4 +38,28 @@ test("whatever comes after the prose decides: a call, a think, or the end of the
 
 test("text marked commentary is a preamble however long it is", () => {
 	assert.equal(looksLikeAnswer([user, reply("pending", text("先查三处：\n- 入口\n- 存储\n- 手机", "commentary"))]), false);
+});
+
+test("prose before the turn's first tool call leads the turn, short or long, marked or not", () => {
+	assert.equal(leadsTheTurn([user, reply("pending", text("你好！"))]), true);
+	assert.equal(leadsTheTurn([user, reply("pending", text("先查三处", "commentary"))]), true);
+	// 推理之后才开口也算：推理不是工具调用。
+	assert.equal(leadsTheTurn([user, reply("pending", { type: "thinking", thinking: "想想" }, text("在。"))]), true);
+});
+
+test("once the turn has called a tool, later prose does not lead it", () => {
+	const result: Message = { role: "toolResult", toolCallId: "c", toolName: "read", content: [], isError: false, timestamp: 3 };
+	assert.equal(leadsTheTurn([user, reply("toolUse", text("先看看"), call), result, reply("pending", text("看完了"))]), false);
+	assert.equal(leadsTheTurn([user, reply("pending", text("先看看"), call)]), false, "the call has started: the line comes back");
+	// 送达插在一轮中间不算开口：前面调过的工具照样算。
+	const delivered: Message = { role: "user", content: [{ type: "text", text: "后台结果" }], delivery: [], timestamp: 3 };
+	assert.equal(leadsTheTurn([user, reply("toolUse", call), result, delivered, reply("pending", text("收到"))]), false);
+	// 上一轮的工具不算：人开口就是新的一轮。
+	assert.equal(leadsTheTurn([user, reply("toolUse", call), result, reply("stop", text("好了")), user, reply("pending", text("在。"))]), true);
+});
+
+test("nothing streaming, nothing to lead", () => {
+	assert.equal(leadsTheTurn([user, reply("pending", text("  "))]), false, "an empty block opened before the first word");
+	assert.equal(leadsTheTurn([user, reply("stop", text("在。"))]), false);
+	assert.equal(leadsTheTurn([user]), false);
 });

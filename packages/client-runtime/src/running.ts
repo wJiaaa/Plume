@@ -135,3 +135,26 @@ export function looksLikeAnswer(messages: Message[]): boolean {
 	const text = block.text.trim();
 	return text.includes("\n") || text.length > ANSWER_CHARS;
 }
+
+/**
+ * 末尾在流的是这一轮第一次调工具之前的话：不管它是结论还是开场白，桌面的运行行都让开。
+ *
+ * `looksLikeAnswer` 不在第一个字就判，运行行就挂在这句话底下，第一个字一来它被推下去一行——逐字显现
+ * 的字那时还是透明的，看上去是它跳进了一片空白。2026-10 本机 651 个人开的轮次：纯回答 13.5%，开场白
+ * 后调工具 51%。后一种让开之后是开场白写在它原来的位置、调用开始时它在下面淡入回来，原来是跳两次，
+ * 所以两种一起让。只管第一次调工具之前：之后每批调用之间的话都让的话，它就围着每一批调用出没。
+ *
+ * 往回找到人开口的那条为止。中途插进来的送达不算开口，越过去接着找。
+ */
+export function leadsTheTurn(messages: Message[]): boolean {
+	const last = messages[messages.length - 1];
+	if (last?.role !== "assistant" || last.stopReason !== "pending") return false;
+	const block = last.content[last.content.length - 1];
+	if (block?.type !== "text" || !block.text.trim()) return false;
+	for (let at = messages.length - 1; at >= 0; at--) {
+		const message = messages[at];
+		if (message.role === "user" && !message.delivery) return true;
+		if (message.role === "assistant" && message.content.some((part) => part.type === "toolCall")) return false;
+	}
+	return true;
+}

@@ -2,16 +2,17 @@
  * Whether the window ever stops saying it is working while it is still working.
  *
  * The running line steps aside while the conclusion streams in — under it, it would jump with
- * every line the conclusion grows. What it must not do is step aside for a sentence said before a
- * tool call: mid-stream that sentence looks like the start of an answer, and hiding for it made the
- * line vanish and come back around every batch of calls while the composer's stop button went on
- * spinning. See `looksLikeAnswer` for how the two are told apart.
+ * every line the conclusion grows — and for whatever is said before the turn's first tool call,
+ * which mid-stream cannot be told from the start of an answer (`leadsTheTurn`). What it must not do
+ * is stay aside once a call has started, or for the sentences between later batches of calls:
+ * hiding for those made the line vanish and come back around every batch while the composer's stop
+ * button went on spinning. See `looksLikeAnswer` for how a conclusion is told apart.
  *
  * Three shapes, all ordinary:
  *
  *   1. A reply that says a sentence and then calls a tool. That is one assistant message holding
  *      `[text, toolCall]`, not two messages — so a test that models it as two never sees it.
- *   2. A one-line reply that keeps writing: the line stays.
+ *   2. A one-line reply that keeps writing, before any call: the line stays out of the way.
  *   3. A conclusion in paragraphs: the line stays out of the way for all of it.
  *
  * The last two are read across the whole stream, so a flicker cannot hide between two readings.
@@ -327,7 +328,7 @@ test("a reply that talks and then calls a tool keeps saying it is working", asyn
 // 2. A one-line reply that keeps writing
 // ---------------------------------------------------------------------------
 
-test("while a one-line reply is streaming, the line stays on screen", async () => {
+test("while a one-line reply streams before any call, the line stays out of the way", async () => {
 	await app.evaluate(`(() => {
 		[...document.querySelectorAll("button")].find((b) => b.textContent?.trim() === "新对话")?.click();
 		return true;
@@ -351,8 +352,13 @@ test("while a one-line reply is streaming, the line stays on screen", async () =
 
 	const streamed = readings.filter((c) => c.stopButton);
 	assert.ok(streamed.length >= 8, `the turn ended too early to prove anything: ${streamed.length} readings`);
-	const hidden = streamed.filter((c) => !c.line);
-	assert.equal(hidden.length, 0, `the running line went away while the turn was still running: ${JSON.stringify(hidden)}`);
+	/*
+	 * 不挂在这句话底下：挂着的话第一个字一来它就被推下去一行。藏在原地、不收起，收起会让转录跟着动。
+	 * 写停住以后它回来，那一半和下一条（分段的结论）共用同一套，在那边验。
+	 */
+	const shown = streamed.filter((c) => c.line);
+	assert.equal(shown.length, 0, `the running line was under the reply while it streamed: ${JSON.stringify(shown)}`);
+	assert.ok(streamed.every((c) => c.mounted && c.foldHeight > 1), "hidden in place, not folded: folding moves the transcript");
 });
 
 // ---------------------------------------------------------------------------
