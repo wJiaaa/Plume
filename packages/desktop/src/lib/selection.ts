@@ -27,6 +27,34 @@ export function selectedText(range: Range): Range {
 	return trimmed;
 }
 
+/**
+ * 选中的字在屏幕上占的外框，只并字的行框。
+ *
+ * `selectedText` 收得了两端，收不了中间：跨三条列表项划选，中间那条 `<li>` 整个落在范围里，
+ * `Range.getBoundingClientRect()` 把它整栏宽的边框盒并进来，菜单就挂到了栏的右半边。
+ */
+export function selectedBounds(range: Range): DOMRect {
+	const root = range.commonAncestorContainer;
+	if (root.nodeType === Node.TEXT_NODE) return range.getBoundingClientRect();
+	const walker = root.ownerDocument!.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+	const piece = root.ownerDocument!.createRange();
+	let [left, top, right, bottom] = [Infinity, Infinity, -Infinity, -Infinity];
+	for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+		if (!range.intersectsNode(node) || !chosen(node, range)) continue;
+		piece.selectNodeContents(node);
+		if (node === range.startContainer) piece.setStart(node, range.startOffset);
+		if (node === range.endContainer) piece.setEnd(node, range.endOffset);
+		for (const rect of piece.getClientRects()) {
+			if (!rect.width) continue;
+			left = Math.min(left, rect.left);
+			top = Math.min(top, rect.top);
+			right = Math.max(right, rect.right);
+			bottom = Math.max(bottom, rect.bottom);
+		}
+	}
+	return left === Infinity ? range.getBoundingClientRect() : new DOMRect(left, top, right - left, bottom - top);
+}
+
 /** 这段字在选区里有没有选中的可见内容：只选到一个换行、或者标题栏那种选不中的字，都不算。 */
 function chosen(node: Text, range: Range): boolean {
 	const from = node === range.startContainer ? range.startOffset : 0;

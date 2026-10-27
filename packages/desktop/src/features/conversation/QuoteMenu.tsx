@@ -14,6 +14,7 @@ import { useI18n } from "../../i18n/index.ts";
 import { useApp } from "../../store/index.ts";
 import { Popover } from "../../ui/overlay/Popover.tsx";
 import type { DraftQuote } from "../../lib/quote.ts";
+import { selectedBounds } from "../../lib/selection.ts";
 import { quotedIn } from "./quote.ts";
 
 /*
@@ -45,7 +46,7 @@ interface Picked {
 
 /** 菜单压在选区上：横向对它的中线，上沿是它的上沿。 */
 function atOf(range: Range): Picked["at"] {
-	const rect = range.getBoundingClientRect();
+	const rect = selectedBounds(range);
 	return { x: rect.left + rect.width / 2, y: rect.top };
 }
 
