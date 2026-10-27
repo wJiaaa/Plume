@@ -111,8 +111,9 @@ test("还没说出最后那句话时，全在过程这一块里", () => {
 });
 
 test("只有重连标记、没有推理和工具的一轮不算有过程，原样摊开", () => {
+	// 人开的一轮不管有没有过程都是一块（见下一条），所以拿后台结果叫醒的一轮来问。
 	const hiccup = { kind: "hiccup", hiccup: {} } as Run;
-	assert.deepEqual(shape([ask("跑一下", 0), say("先说一句。", 1), hiccup, say("接着说。", 2)]), ["plain", "plain", "plain", "plain"]);
+	assert.deepEqual(shape([delivered(0), say("先说一句。", 1), hiccup, say("接着说。", 2)]), ["plain", "plain", "plain", "plain"]);
 });
 
 test("断线还在等、或者已经放弃时，留在外面；收了场才算过程", () => {
@@ -127,9 +128,12 @@ test("一条什么都没说出来的失败回复照样画出来", () => {
 	assert.deepEqual(items(turnBlocks([ask("跑一下", 0), work(1), failed])[1]), ["step(read)", "assistant"], "失败那一行是它唯一露面的机会");
 });
 
-test("没有过程的一轮不产生空壳", () => {
-	// 一问一答，中间什么都没发生——不该凭空多出一行「已工作」。
-	assert.deepEqual(shape([ask("你好", 0), say("你好。", 1)]), ["plain", "plain"]);
+test("没有过程的一轮也是一块：跑着和跑完分得一样，回答不换父元素", () => {
+	// 跑完退回 `plain` 的话，那句回答在收尾那一帧卸掉重挂、再演一遍进场：写完的字闪没了又淡出来。
+	const list = [ask("你好", 0), say("你好。", 1)];
+	assert.deepEqual(turnBlocks(list, true).map((b) => b.kind), ["plain", "work"], "跑着");
+	assert.deepEqual(shape(list), ["plain", "work"], "跑完");
+	assert.deepEqual(items(turnBlocks(list)[1]), ["assistant"]);
 });
 
 test("挂在一段活后面的推理就是那一段的，下一段另起时也不跟过去", () => {
@@ -219,8 +223,10 @@ test("不显示推理时，推理行拿掉；被它隔开的同类活合成一�
 	assert.deepEqual(items(blocks[1]), ["step(read,read)", "assistant"]);
 });
 
-test("不显示推理时，只想不做的一轮不算有过程，就是一句回答", () => {
-	assert.deepEqual(shape(withoutThinking([ask("在吗", 0), think(1), say("在。", 1)])), ["plain", "plain"]);
+test("不显示推理时，只想不做的一轮推理行拿掉，剩一句回答", () => {
+	const blocks = turnBlocks(withoutThinking([ask("在吗", 0), think(1), say("在。", 1)]));
+	assert.deepEqual(blocks.map((b) => b.kind), ["plain", "work"]);
+	assert.deepEqual(items(blocks[1]), ["assistant"]);
 });
 
 /** 推理不画时 `Conversation` 怎么分。 */
@@ -240,13 +246,13 @@ test("不显示推理时，跑着的那一轮从开始想就算有过程，不�
 	assert.deepEqual(items(working[1]), ["assistant", "step(read)"]);
 });
 
-test("不显示推理时，只想不做的一轮跑完就退回一句回答", () => {
-	assert.deepEqual(hidden([ask("在吗", 0), think(1), say("在。", 1)], false).map((b) => b.kind), ["plain", "plain"]);
+test("不显示推理时，只想不做的一轮跑完也不退回", () => {
+	assert.deepEqual(hidden([ask("在吗", 0), think(1), say("在。", 1)], false).map((b) => b.kind), ["plain", "work"]);
 });
 
-test("不显示推理时，只有跑着的最后一轮先占位", () => {
+test("不显示推理时，只有跑着的最后一轮先占位；上一轮在下一条发出后也不退回", () => {
 	const blocks = hidden([ask("在吗", 0), think(1), say("在。", 1), ask("再看看", 2), think(3)], true);
-	assert.deepEqual(blocks.map((b) => [b.kind, b.turn]), [["plain", 1], ["plain", 1], ["plain", 2], ["work", 2]]);
+	assert.deepEqual(blocks.map((b) => [b.kind, b.turn]), [["plain", 1], ["work", 1], ["plain", 2], ["work", 2]]);
 });
 
 test("模型不把推理流出来：刚发出就占位，开口、调工具都是同一块", () => {
@@ -258,13 +264,13 @@ test("模型不把推理流出来：刚发出就占位，开口、调工具都�
 		assert.deepEqual(sent[1].runs, []);
 		assert.deepEqual(blocks([ask("看看", 0), say("我先看一下。", 1)], true).map((b) => b.kind), ["plain", "work"], "说了第一句：在这一块里");
 		assert.deepEqual(items(blocks([ask("看看", 0), say("我先看一下。", 1), work(1)], true)[1]), ["assistant", "step(read)"]);
-		assert.deepEqual(blocks([ask("看看", 0), say("好。", 1)], false).map((b) => b.kind), ["plain", "plain"], "跑完没有过程：退回一句回答");
+		assert.deepEqual(blocks([ask("看看", 0), say("好。", 1)], false).map((b) => b.kind), ["plain", "work"], "跑完没有过程：还是同一块");
 	}
 });
 
 test("压缩命令开的那一轮跑着也不占位", () => {
 	const compact = { kind: "command", command: { status: "running" } } as unknown as Run;
-	assert.deepEqual(turnBlocks([ask("看看", 0), say("好。", 1), compact], true).map((b) => b.kind), ["plain", "plain", "plain"]);
+	assert.deepEqual(turnBlocks([ask("看看", 0), say("好。", 1), compact], true).map((b) => b.kind), ["plain", "work", "plain"]);
 });
 
 test("不显示推理时，后台结果叫醒的一轮想着也不占位", () => {
@@ -279,7 +285,8 @@ test("不显示推理时，停在推理上的那一行留个壳：推理切掉�
 		index: 1,
 		upTo: 1,
 	};
-	const kept = withoutThinking([ask("改一下", 0), stopped]);
+	// 人开的一轮怎么都是一块，拿后台结果叫醒的一轮来问它算不算推理。
+	const kept = withoutThinking([delivered(0), stopped]);
 	assert.equal(kept.length, 2);
 	assert.deepEqual(kept[1].kind === "message" && [kept[1].from, kept[1].upTo], [1, 1]);
 	assert.deepEqual(shape(kept), ["plain", "plain"], "空壳不算推理，不该算成有过程");

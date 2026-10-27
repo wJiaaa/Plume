@@ -211,8 +211,11 @@ function withJobs(run: Run, more: DeliveredReport[]): Run {
  * 一轮要等到第一次推理或工具调用才算有过程，在那之前说的第一句话是 `plain`，有了过程就被挪进 `work` 重挂一遍。
  * 只在「想过」时提前算不够：推理不画时推理行先被拿掉，而有的模型（经代理的 GPT）根本不把推理流出来，第一次
  * 工具调用之前什么也问不出。发出的那一刻没法知道这一轮会不会有过程，所以不问。`work` 没有标题（见
- * `TurnWork`），看上去和 `plain` 一样；跑完了还是没有过程的一轮照旧退回一句回答。后台结果叫醒的一轮、压缩命令
- * 开的一轮不这样分。
+ * `TurnWork`），看上去和 `plain` 一样。
+ *
+ * 跑完了也不退回 `plain`，不管有没有过程：退回去，那句回答在收尾那一帧换了父元素，整段卸掉重挂、
+ * 再演一遍进场，看上去是写完的字闪没了又淡出来。下一条发出去时上一轮也不能退，同理。后台结果叫醒的一轮、
+ * 压缩命令开的一轮不这样分。
  */
 export function turnBlocks(list: Run[], live = false): TurnBlock[] {
 	const out: TurnBlock[] = [];
@@ -233,12 +236,12 @@ export function turnBlocks(list: Run[], live = false): TurnBlock[] {
 		while (end < list.length && !opensBlock(list[end])) end++;
 		const body = list.slice(at, end);
 		/*
-		 * 只有重连这类标记、没有一次推理或工具的一轮，原样摊开。
+		 * 不是人开的口、又只有重连这类标记、没有一次推理或工具的一轮，原样摊开。
 		 *
 		 * 检查的那一页从写第一笔起就算：它后面要么是一次发布、要么是它自己收进过程，这一轮早晚是有过程的。
 		 * 等到那时才换成有过程的一轮，页面就换了一个父元素，重新挂一遍、闪一下。
 		 */
-		if ((live && asked && end === list.length) || body.some((run) => (run.kind === "tools" && (!run.shown || run.calls.some((call) => call.page))) || reasoning(run))) {
+		if (asked || body.some((run) => (run.kind === "tools" && (!run.shown || run.calls.some((call) => call.page))) || reasoning(run))) {
 			out.push({ kind: "work", runs: body, items: itemsOf(body), turn });
 		} else for (const run of body) plain(run);
 		at = end;

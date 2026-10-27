@@ -54,7 +54,7 @@ test("跑着的时候也一样：送达之后的工作还是同一段过程", ()
 test("把空闲的会话叫醒的送达开新的一轮，画在外面", () => {
 	const messages = [user("渲染一下"), answer, delivery(false), calls("b"), result("b"), answer];
 	const blocks = shape(messages);
-	assert.deepEqual(blocks.map((b) => b.kind), ["plain", "plain", "plain", "work"]);
+	assert.deepEqual(blocks.map((b) => b.kind), ["plain", "work", "plain", "work"]);
 	assert.equal(blocks[2].turn, blocks[0].turn + 1, "送达那一行开了第二轮");
 	assert.equal(computeTurnStats(messages, messages.length - 1).startIndex, 2, "第二轮的账从送达算起");
 });
