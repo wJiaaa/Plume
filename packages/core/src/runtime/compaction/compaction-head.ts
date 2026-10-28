@@ -30,6 +30,11 @@ const SEEN_FILES_CAP = 20;
  * 分「读过」和「改过」两类：改过的那些，内容已经和它记忆里的不一样了，重读是对的；只读过的那些，
  * 重读多半是白花钱。这个分法照搬 oh-my-pi 的压缩摘要（它还多分一类「改过但没读过」，那类在这里
  * 归入改过）。
+ *
+ * 返回的是**全量**，不截到 `SEEN_FILES_CAP`：截断只在写进正文时做（`summaryMessages`）。压缩头把这份
+ * 全量放在 `compactionFiles` 里带到下一次压缩，于是「上一个头 + 之后的原文」链式算出来的，和重建时
+ * 从会话开头的全部原文算出来的是同一份。截过再链式传下去就不是了：超过 20 个文件后两份清单不同，
+ * 压缩当场发出去的头和下一次运行重建的头对不上，`messages[0]` 起整段前缀不命中（`20ec7460` seq 3921）。
  */
 export function filesSeen(messages: Message[]): { read: string[]; changed: string[] } {
 	const read = new Set<string>();
@@ -51,8 +56,7 @@ export function filesSeen(messages: Message[]): { read: string[]; changed: strin
 	}
 	// 改过的不再算进「只读过」——两边都出现时，「它变了」是更要紧的那件事。
 	for (const path of changed) read.delete(path);
-	const tail = (set: Set<string>) => [...set].slice(-SEEN_FILES_CAP);
-	return { read: tail(read), changed: tail(changed) };
+	return { read: [...read], changed: [...changed] };
 }
 
 /**
@@ -87,12 +91,15 @@ export function summaryMessages(
 	taskContext?: CompactionContext,
 ): Message[] {
 	standing = taskContext?.latestRequest ?? standing;
+	// 正文只列最近的那些；全量留在 `compactionFiles` 里给下一次压缩，见 `filesSeen`。
+	const read = seen?.read.slice(-SEEN_FILES_CAP) ?? [];
+	const changed = seen?.changed.slice(-SEEN_FILES_CAP) ?? [];
 	const seenBlock =
-		seen && (seen.read.length > 0 || seen.changed.length > 0)
+		read.length > 0 || changed.length > 0
 			? `<files-already-seen>\n` +
 				`折叠掉的那段里，你已经看过这些文件。内容不在上面的摘要里了，但你**读过**它们：\n` +
-				(seen.read.length > 0 ? `\n只读过（多半不必再读一遍）：\n${seen.read.map((f) => `- ${f}`).join("\n")}\n` : "") +
-				(seen.changed.length > 0 ? `\n你改过（内容已经和你记得的不一样，需要时值得重读）：\n${seen.changed.map((f) => `- ${f}`).join("\n")}\n` : "") +
+				(read.length > 0 ? `\n只读过（多半不必再读一遍）：\n${read.map((f) => `- ${f}`).join("\n")}\n` : "") +
+				(changed.length > 0 ? `\n你改过（内容已经和你记得的不一样，需要时值得重读）：\n${changed.map((f) => `- ${f}`).join("\n")}\n` : "") +
 				`\n这不是禁止你重读——是提醒你先想清楚要找的东西是不是已经知道了。要原文用 \`recall\`。\n` +
 				`</files-already-seen>`
 			: null;
@@ -196,7 +203,13 @@ export function lastRequest(messages: Message[], limit = 2000): string | null {
  * drop rather than a summary, because it means nobody read what went: the model should trust
  * nothing about the earlier work except what it recalls for itself.
  */
-export function droppedMessage(standing: string | null = null, taskContext?: CompactionContext, model?: ModelConfig): Message {
+export function droppedMessage(
+	standing: string | null = null,
+	taskContext?: CompactionContext,
+	model?: ModelConfig,
+	/** 不写进正文，只带给下一次压缩：没有它，丢弃边界之后再摘要时，边界之前碰过的文件当场算不到、重建却算得到。 */
+	seen?: { read: string[]; changed: string[] },
+): Message {
 	standing = taskContext?.latestRequest ?? standing;
 	/*
 	 * 窗口小时按窗口收紧三段摘录（最新请求、原始请求、中间请求）。只由窗口决定，从日志重建时才得出
@@ -232,5 +245,6 @@ export function droppedMessage(standing: string | null = null, taskContext?: Com
 		timestamp: Date.now(),
 		synthetic: true,
 		...(taskContext ? { compactionContext: taskContext } : {}),
+		...(seen ? { compactionFiles: seen } : {}),
 	};
 }

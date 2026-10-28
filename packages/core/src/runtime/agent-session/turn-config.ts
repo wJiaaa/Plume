@@ -198,6 +198,7 @@ export function buildTurnConfig(
 					observer,
 					force: options?.force,
 					lineage: options?.lineage,
+					cwd: deps.cwd,
 				});
 			},
 			pruner: sessionPruner(deps.state),

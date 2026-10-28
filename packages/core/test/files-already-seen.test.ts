@@ -11,8 +11,10 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { filesSeen, summaryMessages } from "../src/runtime/compaction/compaction-head.ts";
-import type { AssistantMessage, ModelConfig, ProviderConfig } from "../src/types.ts";
+import { droppedMessage, filesSeen, lastRequest, summaryMessages } from "../src/runtime/compaction/compaction-head.ts";
+import { taskContextFromHistory } from "../src/runtime/compaction/task-context.ts";
+import { historyFrom } from "../src/runtime/agent-session/session-turn.ts";
+import type { AssistantMessage, Message, ModelConfig, ProviderConfig } from "../src/types.ts";
 import { emptyUsage } from "../src/types.ts";
 
 const MODEL: ModelConfig = { id: "m", providerId: "p", modelId: "m", name: "M", contextWindow: 100_000, maxOutputTokens: 4096, supportsThinking: false, supportsImages: false, supportsTools: true };
@@ -52,10 +54,14 @@ test("a file both read and changed counts as changed", () => {
 test("the list is capped so it stays a list, not another wall of text", () => {
 	// 再长就从「一眼能扫完的清单」变成「又一段要读的正文」——那是在省 token 的名义下花 token。
 	const many = Array.from({ length: 50 }, (_, i) => calls({ name: "read", path: `f${i}.ts` }));
-	const seen = filesSeen(many);
+	const head = summaryMessages("s", null, PROVIDER, MODEL, filesSeen(many));
+	const listed = [...(head[0].content[0] as { text: string }).text.matchAll(/^- (f\d+\.ts)$/gm)].map((match) => match[1]);
 
-	assert.equal(seen.read.length, 20);
-	assert.equal(seen.read[19], "f49.ts", "留最近的，不是最早的");
+	assert.equal(listed.length, 20);
+	assert.equal(listed[19], "f49.ts", "留最近的，不是最早的");
+	assert.ok(!listed.includes("f29.ts"));
+	// 截的只是正文：全量跟着压缩头走，下一次压缩才算得出和重建时同一份。
+	assert.equal((head[0] as { compactionFiles?: { read: string[] } }).compactionFiles?.read.length, 50);
 });
 
 test("the summary head tells the model what it has already seen", () => {
@@ -105,4 +111,34 @@ test("both places that rebuild a compaction head pass the list", async () => {
 			assert.match(line, /filesSeen\(/, `${file} 的这个组装点没带上已读清单：${line.trim()}`);
 		}
 	}
+});
+
+test("a second compaction's head is the same whether built on the spot or rebuilt from the log", () => {
+	/*
+	 * 压缩当场是链式算的（上一个头 + 之后的原文），重建是从会话开头的全部原文算的。碰过的文件超过 20 个
+	 * 时，从前两份清单不同：同一轮里发的是当场那份，下一句话起换成重建那份，`messages[0]` 起整段前缀
+	 * 不命中。`20ec7460` seq 3921 那一次请求为此多付了约八倍。
+	 */
+	const user = (text: string): Message => ({ role: "user", content: [{ type: "text", text }], timestamp: 1 });
+	const reads = (from: number, to: number) => Array.from({ length: to - from }, (_, i) => calls({ name: "read", path: `f${from + i}.ts` }));
+	const raw: Message[] = [user("第一句"), ...reads(0, 30), calls({ name: "edit", path: "f3.ts" }), user("第二句"), ...reads(30, 45), calls({ name: "read", path: "f5.ts" }), user("第三句")];
+	const first = 32;
+	const second = raw.length - 1;
+	const head = (retired: Message[]) => summaryMessages("s", lastRequest(retired), PROVIDER, MODEL, filesSeen(retired), taskContextFromHistory(retired));
+
+	// 第一次压缩之后，循环眼里的历史：头 + 边界之后的原文。
+	const view = [...head(raw.slice(0, first)), ...raw.slice(first)];
+	// 第二次压缩当场：被收掉的是第一个头和它之后到第二个边界的原文。
+	const onTheSpot = head(view.slice(0, view.length - (raw.length - second)));
+	const rebuilt = historyFrom(raw, { at: 7, summary: "s", keptFrom: second }, PROVIDER, MODEL);
+
+	assert.equal((rebuilt[0].content[0] as { text: string }).text, (onTheSpot[0].content[0] as { text: string }).text);
+});
+
+test("a dropped head carries the files forward too", () => {
+	// 丢弃边界之后再摘要：当场那个丢弃头要是不带清单，边界之前碰过的文件就只有重建时才算得到。
+	const before = [calls({ name: "read", path: "a.ts" })];
+	const dropped = droppedMessage(null, undefined, MODEL, filesSeen(before));
+	assert.deepEqual(filesSeen([dropped, calls({ name: "read", path: "b.ts" })]), filesSeen([...before, calls({ name: "read", path: "b.ts" })]));
+	assert.ok(!/a\.ts/.test((dropped.content[0] as { text: string }).text), "丢弃头的正文不列清单");
 });

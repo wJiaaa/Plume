@@ -25,6 +25,8 @@ export interface CompactionParts {
 	settings: () => Settings;
 	streamFn: StreamFn | undefined;
 	emit: AgentEventSink;
+	/** 工具调用里的相对路径按它解析，见 `CompactionRequest.cwd`。 */
+	cwd: string;
 	/** Put the pruner's remembered views back before reading the history; see `AgentSession.preparePruner`. */
 	preparePruner: () => Promise<void>;
 }
@@ -87,6 +89,7 @@ async function compactHistory(parts: CompactionParts, instructions: string, sign
 		artifacts,
 		manual: { instructions, signal },
 		lineage,
+		cwd: parts.cwd,
 	});
 	/*
 	 * Two different outcomes, and they used to say the same thing.

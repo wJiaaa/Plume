@@ -54,8 +54,8 @@ interface Draft {
 	ran: { provider?: string; model?: string };
 	/** Where a resume switched models: handles before it were stripped then, so they are here too. */
 	switchedAt: number;
-	/** Results its compaction cut, by call id; see the `subagent_views` event. */
-	views: Map<string, Message>;
+	/** Results its compaction cut, by call id, with when it adopted them; see the `subagent_views` event. */
+	views: Map<string, { message: Message; at: number }>;
 	boundary: Boundary | null;
 	/** Calls that got as far as `tool_start` — the ones that may have acted. */
 	started: Set<string>;
@@ -92,7 +92,7 @@ export function restoreSubAgents(records: readonly SessionRecord[], rebuild?: Re
 		const draft = drafts.get(event.id);
 		if (!draft) continue;
 		if (event.type === "subagent_views") {
-			for (const { toolCallId, message } of event.views) draft.views.set(toolCallId, message);
+			for (const { toolCallId, message } of event.views) draft.views.set(toolCallId, { message, at: record.ts });
 			continue;
 		}
 		draft.lastSeen = record.ts;
@@ -230,7 +230,7 @@ function conversationOf(draft: Draft, target: NonNullable<ReturnType<Rebuild>>):
 		const pruner = sessionPruner(state);
 		for (const message of ordered) {
 			const cut = message.role === "toolResult" ? draft.views.get(message.toolCallId) : undefined;
-			if (cut) pruner.remember(message, cut);
+			if (cut) pruner.remember(message, cut.message, cut.at);
 		}
 	}
 	return { agent: draft.summary.agent, view, state, envDate: environmentDate(view) ?? today(), model: target.model };

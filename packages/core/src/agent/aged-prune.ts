@@ -1,4 +1,5 @@
 import type { Message } from "../types.ts";
+import { markRewritten } from "../tokens.ts";
 import { carriesResults, derive, descends, dropUneventful, FRESH_RESULT_MAX_CHARS, pruneToolResults, sourceOf, type ArtifactSink } from "./prune.ts";
 
 /**
@@ -48,20 +49,28 @@ export class AgedToolPruner {
 	 */
 	adopt(before: Message[], after: Message[], count = Math.min(before.length, after.length)): void {
 		const adopted: { source: Message; view: Message }[] = [];
+		const at = Date.now();
 		for (let k = 1; k <= Math.min(count, before.length, after.length); k++) {
 			const was = before[before.length - k];
 			const now = after[after.length - k];
 			if (now === was || !sameResult(was, now)) continue;
 			const source = sourceOf(was);
 			this.views.set(source, derive(was, now));
+			// 之前那条回复量的是剪之前那份；只剪枝时没有摘要头替它划这条线。
+			markRewritten(now, at);
 			adopted.push({ source, view: now });
 		}
 		if (adopted.length > 0) this.onAdopt?.(adopted.reverse());
 	}
 
-	/** 放回一份从日志读回来的已发视图：对不上同一份结果的不认。 */
-	remember(source: Message, view: Message): void {
-		if (sameResult(source, view)) this.views.set(source, derive(source, view));
+	/**
+	 * 放回一份从日志读回来的已发视图：对不上同一份结果的不认。`at` 是当初采纳它的时刻，重启后照样
+	 * 替计量划线——收尾剪完就关掉窗口，重开后第一句话前同样没有新请求。
+	 */
+	remember(source: Message, view: Message, at?: number): void {
+		if (!sameResult(source, view)) return;
+		this.views.set(source, derive(source, view));
+		if (at !== undefined && view !== source) markRewritten(view, at);
 	}
 
 	/*

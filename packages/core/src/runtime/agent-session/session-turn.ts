@@ -259,7 +259,7 @@ export function historyFrom(messages: Message[], boundary: Boundary | null, prov
 	const at = boundary.at;
 	if (!boundary.summary) {
 		const standing = lastRequest(older) ?? lastRequest(messages);
-		return [{ ...droppedMessage(standing, taskContextFromHistory(older), model), timestamp: at }, ...tail];
+		return [{ ...droppedMessage(standing, taskContextFromHistory(older), model, filesSeen(older)), timestamp: at }, ...tail];
 	}
 
 	const head = summaryMessages(boundary.summary, lastRequest(older), provider, model, filesSeen(older), taskContextFromHistory(older));

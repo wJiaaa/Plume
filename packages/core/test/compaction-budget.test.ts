@@ -136,3 +136,26 @@ test("the reply the summary request asks for is the room the pre-send check kept
 	const input = requestTokens(sent[0].context) * 2;
 	assert.ok(input + (sent[0].maxTokens ?? m.maxOutputTokens) <= m.contextWindow, `calibrated input ${input} + reply ${sent[0].maxTokens} fits the window`);
 });
+
+test("what the tail gives up after an independent summary is in that summary, not lost between the two", async () => {
+	/*
+	 * 独立请求只摘要交给它的那段。摘要写好后为了放得下再从尾部删的，从前既不在摘要里、也不在结果里——
+	 * 那是最近的工作。小窗口加较大开销、尾部有剪不动的大调用时才会走到。
+	 */
+	const m = model(32_000);
+	const history: Message[] = [user("目标：迁移配置")];
+	for (let i = 0; i < 30; i++) history.push(say(`第 ${i} 步记号M${i} ${"s".repeat(1500)}`), user(`继续 ${i} 记号U${i}`));
+	for (let i = 0; i < 2; i++) {
+		history.push(reply([{ type: "toolCall", id: `big${i}`, name: "write", arguments: { path: `/repo/big${i}.ts`, content: `记号B${i} ${"w".repeat(26_000)}` } }]));
+		history.push(toolResult(`big${i}`, `写好了 记号R${i}`));
+	}
+	const { requests, stream } = recorder();
+	const result = await compactIfNeeded({ messages: history, model: m, provider: provider(m), streamFn: stream, overhead: 10_000 });
+	assert.ok(result?.kept !== undefined, "precondition: it summarised");
+	const summarised = JSON.stringify(requests.map((request) => request.messages));
+	const kept = JSON.stringify(result.messages);
+	const lost = history
+		.map((message) => /记号[MUBR]\d+/.exec(JSON.stringify(message))?.[0])
+		.filter((mark): mark is string => Boolean(mark) && !summarised.includes(mark!) && !kept.includes(mark!));
+	assert.deepEqual(lost, [], "every message is either summarised or kept");
+});

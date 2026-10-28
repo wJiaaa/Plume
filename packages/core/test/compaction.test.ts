@@ -822,3 +822,34 @@ test("trimming a little off a large history is not a compaction", async () => {
 		`by summarising, not by trimming one result (${withOne.length} → ${result.length})`,
 	);
 });
+
+test("a view adopted after a reply makes that reply's usage stale, with or without a summary head", async () => {
+	/*
+	 * 只剪枝的压缩不留摘要头：循环里剪了、紧接着那次请求失败（没有新的实测），或者收尾剪了、人还没开口，
+	 * 历史里最新那条回复量的都还是剪之前那份。它不能再当成眼下的大小。
+	 */
+	const { AgedToolPruner } = await import("../src/agent/aged-prune.ts");
+	const t0 = Date.now() - 10_000;
+	const big = "x".repeat(40_000);
+	const result: Message = { role: "toolResult", toolCallId: "c1", toolName: "read", content: [{ type: "text", text: big }], isError: false, timestamp: t0 };
+	const answered: AssistantMessage = {
+		role: "assistant", content: [{ type: "text", text: "读完了" }], api: "openai-responses", provider: "p", model: "m",
+		usage: { ...emptyUsage(), input: 30_000, total: 30_000 }, stopReason: "stop", timestamp: t0 + 1,
+	};
+	const before: Message[] = [{ role: "user", content: [{ type: "text", text: "读" }], timestamp: t0 }, result, answered];
+	assert.equal(measureTotal(before).measured, true, "nothing rewritten yet: the reply describes this history");
+
+	const cut: Message = { ...result, content: [{ type: "text", text: "[cut]" }] };
+	const after = [before[0], cut, answered];
+	const pruner = new AgedToolPruner();
+	pruner.adopt(before, after);
+	assert.equal(measureTotal(after).measured, false, "the 30k was measured on the uncut result");
+
+	const next: AssistantMessage = { ...answered, timestamp: Date.now() + 1, usage: { ...emptyUsage(), input: 2_000, total: 2_000 } };
+	assert.deepEqual(measureTotal([...after, next]), { measured: true, tokens: 2_000 }, "a reply after the rewrite measures it again");
+
+	// 重启：视图从 `views` 记录读回来，带着当时采纳它的时刻。
+	const restored: Message = { ...result, content: [{ type: "text", text: "[cut]" }] };
+	new AgedToolPruner().remember(result, restored, t0 + 5);
+	assert.equal(measureTotal([before[0], restored, answered]).measured, false, "a restored view draws the same line");
+});

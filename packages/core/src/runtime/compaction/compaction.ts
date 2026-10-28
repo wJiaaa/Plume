@@ -96,6 +96,13 @@ export interface CompactionRequest {
 	 * 超长恢复不给，因为完整历史本来就放不下。
 	 */
 	lineage?: CompactionLineage;
+	/**
+	 * 工具调用里的相对路径按哪个目录解析——会话（或子代理）的工作目录。
+	 *
+	 * 判断一次读取是否被后来的读写覆盖（`dropStaleResults`）要知道两个路径是不是同一个文件。不给就只能
+	 * 按字面猜：`package.json` 和 `/repo/package.json` 是不是一个，取决于 cwd 是不是 `/repo`。
+	 */
+	cwd?: string;
 }
 
 /**
@@ -181,7 +188,7 @@ export async function compactIfNeeded(request: CompactionRequest): Promise<Compa
 	 * 被后来的观察覆盖的结果也只在这里清：会话中途不改写已经发出去的内容，压缩本来就要重写前缀。
 	 */
 	const tidied = dropUneventful(messages);
-	const stale = dropStaleResults(tidied);
+	const stale = dropStaleResults(tidied, request.cwd);
 	/*
 	 * 模型还没看过的新结果（最后一条助手消息之后）只剪炸开的那种，和发送路径第一次发出前的那条线相同。
 	 * `read` 把输出控制在这条线以内，并把返回的行记成读过；这里照常剪到 8k 的话，它记下的又
@@ -264,8 +271,41 @@ export async function compactIfNeeded(request: CompactionRequest): Promise<Compa
 	while (cut < messages.length && messages[cut].role === "toolResult") cut++;
 	if (cut <= 1) return null;
 
-	const older = messages.slice(0, cut);
 	const recent = messages.slice(cut);
+
+	/*
+	 * Keep dropping the oldest of what was kept until the result actually fits.
+	 *
+	 * Shrinking is not the requirement; fitting is. A window at 277k that compacts to 250k has been
+	 * compacted and still cannot be sent, and the next turn arrives at a conversation that is over
+	 * the line with nothing left to try.
+	 *
+	 * What varies is how much of the recent tail is kept beside the summary, which costs nothing to
+	 * reconsider. Tool results are dropped with the call they answer, since sending one without the
+	 * other is rejected outright.
+	 *
+	 * Trimmed to `settled`, not to where dropping aims: the tail is the current work its budget chose,
+	 * and beside a summary it normally lands far below the line anyway. Aiming lower only hurt
+	 * windows where the prompt and schemas are a large share — see `SAFE_AFTER`.
+	 */
+	const target = budget.settled;
+	const scaled = (list: Message[]) => estimateTokens(list) * scale;
+	const withHead = (text: string, tail: Message[]) => {
+		// Tail trimming can retire another request or plan update; keep its facts outside the summary too.
+		const retired = messages.slice(0, messages.length - tail.length);
+		return [...summaryMessages(text, lastRequest(retired), provider, model, filesSeen(retired), taskContextFromHistory(retired)), ...tail];
+	};
+	const fit = (text: string, from: Message[]) => {
+		let tail = from;
+		let compacted = withHead(text, tail);
+		while (scaled(compacted) > target && tail.length > 1) {
+			let drop = 1;
+			while (drop < tail.length && tail[drop].role === "toolResult") drop++;
+			tail = tail.slice(drop);
+			compacted = withHead(text, tail);
+		}
+		return { tail, compacted };
+	};
 
 	/*
 	 * 先试从主请求分叉（`compaction-fork.ts`）：同一个前缀，缓存照常命中，看到的是没剪过的完整历史。
@@ -290,50 +330,42 @@ export async function compactIfNeeded(request: CompactionRequest): Promise<Compa
 			via = "fork";
 		}
 	}
+	/*
+	 * 独立请求只看得到交给它的那段。分叉摘要的是整段，之后从尾部再删的它都写过；独立的不是——摘要之后
+	 * 为了放得下再从尾部删掉的那几条，既不在摘要里也不在结果里，是最近的工作。要删的时候把它们并进
+	 * 要摘要的那段重写一次。为了少重写，发请求前先按不带摘要正文的头收一次尾部——头里的最新请求、任务
+	 * 上下文、文件清单是确定的，只有摘要正文要等写出来才知道。不按摘要最长能有多长预留：那样小窗口上
+	 * 尾部整段都进了摘要，而实际的摘要多半短得多。只重写一次：第二次还要删的，按原样删。
+	 */
+	let tail = recent;
 	if (!summary) {
-		await observer?.progress({ phase: "summarizing", provider: provider.id, model: model.id });
-		summary = await summarize(older, model, provider, streamFn, force ? manual ?? {} : undefined, observer, scale);
-		if (observer?.signal?.aborted) return null;
-	}
-	if (!summary) {
-		summary = fallbackSummary(older);
-		via = "fallback";
+		tail = fit("", recent).tail;
+		for (let attempt = 0; attempt < 2; attempt++) {
+			const summarised = messages.slice(0, messages.length - tail.length);
+			let written: string | null = null;
+			if (via !== "fallback") {
+				await observer?.progress({ phase: "summarizing", provider: provider.id, model: model.id });
+				written = await summarize(summarised, model, provider, streamFn, force ? manual ?? {} : undefined, observer, scale);
+				if (observer?.signal?.aborted) return null;
+			}
+			if (!written) {
+				written = fallbackSummary(summarised);
+				via = "fallback";
+			}
+			summary = written;
+			const fitted = fit(written, tail).tail;
+			if (fitted.length === tail.length || attempt === 1) break;
+			tail = fitted;
+		}
 	}
 	const tagged = (result: Compaction | null): Compaction | null => (result && prefix ? { ...result, prefix } : result);
 	if (!summary) return tagged(dropOldest(messages, model, budget, scale));
 	const text = summary;
 
-	/*
-	 * Keep dropping the oldest of what was kept until the result actually fits.
-	 *
-	 * Shrinking is not the requirement; fitting is. A window at 277k that compacts to 250k has been
-	 * compacted and still cannot be sent, and the next turn arrives at a conversation that is over
-	 * the line with nothing left to try.
-	 *
-	 * The summary is written once — that is the part that costs a request — and what varies
-	 * afterwards is how much of the recent tail is kept beside it, which costs nothing to
-	 * reconsider. Tool results are dropped with the call they answer, since sending one without the
-	 * other is rejected outright.
-	 *
-	 * Trimmed to `settled`, not to where dropping aims: the tail is the current work its budget chose,
-	 * and beside a summary it normally lands far below the line anyway. Aiming lower only hurt
-	 * windows where the prompt and schemas are a large share — see `SAFE_AFTER`.
-	 */
-	const target = budget.settled;
-	const scaled = (list: Message[]) => estimateTokens(list) * scale;
-	let tail = recent;
-	const withHead = () => {
-		// Tail trimming can retire another request or plan update; keep its facts outside the summary too.
-		const retired = messages.slice(0, messages.length - tail.length);
-		return [...summaryMessages(text, lastRequest(retired), provider, model, filesSeen(retired), taskContextFromHistory(retired)), ...tail];
-	};
-	let compacted = withHead();
-	while (scaled(compacted) > target && tail.length > 1) {
-		let drop = 1;
-		while (drop < tail.length && tail[drop].role === "toolResult") drop++;
-		tail = tail.slice(drop);
-		compacted = withHead();
-	}
+	// 摘要写好了，按它的实际长度再收一次尾部：分叉那份覆盖整段，删多少都在摘要里；独立的那份已经按最长留过位置。
+	const fitted = fit(text, tail);
+	tail = fitted.tail;
+	const compacted = fitted.compacted;
 
 	/*
 	 * A summary that did not shrink anything is not worth the message it arrived in. Compared in
@@ -380,7 +412,7 @@ function dropOldest(messages: Message[], model: ModelConfig, budget: CompactionB
 	const build = (start: number) => {
 		const older = messages.slice(0, start);
 		const standing = lastRequest(older) ?? lastRequest(messages);
-		return [droppedMessage(standing, taskContextFromHistory(older), model), ...messages.slice(start)];
+		return [droppedMessage(standing, taskContextFromHistory(older), model, filesSeen(older)), ...messages.slice(start)];
 	};
 	if (weight(messages) <= target) return null;
 	let start = 0;

@@ -14,9 +14,11 @@
  * Emptied in place, never removed. An unpaired `tool_use` poisons every later request.
  */
 
+import { posix, win32 } from "node:path";
 import type { Message, ToolResultMessage } from "../../types.ts";
 import { isRepeatNotice } from "../../agent/repetition.ts";
 import { MAX_LINE_CHARS } from "../../tools/long-line.ts";
+import { toAbsolute } from "../../tools/paths.ts";
 import { PRUNE_FLOOR_CHARS, PRUNE_THRESHOLD_CHARS, sourceOf } from "../../agent/prune.ts";
 
 const PROTECTED = new Set(["skill"]);
@@ -26,7 +28,7 @@ interface StaleCut {
 	notice: string;
 }
 
-function staleCuts(messages: Message[]): StaleCut[] {
+function staleCuts(messages: Message[], cwd: string | undefined): StaleCut[] {
 	const calls = callsById(messages);
 	const latestReads = new Map<string, Window[]>();
 	const mutated = new Set<string>();
@@ -45,7 +47,7 @@ function staleCuts(messages: Message[]): StaleCut[] {
 		if (isRepeatNotice(message)) continue;
 
 		const path = pathOf(call.arguments);
-		const key = path ? intern(latestReads, mutated, path) : "";
+		const key = !path ? "" : cwd !== undefined ? resolvedKey(cwd, path) : intern(latestReads, mutated, path);
 		const fingerprint = `${call.name} ${stable(call.arguments)}`;
 		const isRead = call.name === "read";
 		/*
@@ -69,8 +71,12 @@ function staleCuts(messages: Message[]): StaleCut[] {
 			if (size > Math.max(PRUNE_FLOOR_CHARS, notice.length)) cuts.push({ index, notice });
 		}
 
-		// A failed or cancelled read observed nothing, so it cannot stand in for an earlier one.
-		if (!(isRead && message.isError)) seenExact.add(fingerprint);
+		/*
+		 * A failed or cancelled call observed nothing, so it cannot stand in for an earlier one. Not only
+		 * reads: a repeated `edit` fails because the first one already applied, and blanking that first
+		 * success leaves only the failure in view — the model then believes the change never landed.
+		 */
+		if (!message.isError) seenExact.add(fingerprint);
 		if (key && (call.name === "write" || call.name === "edit") && !message.isError) mutated.add(key);
 		if (key && returned) {
 			const list = latestReads.get(key) ?? [];
@@ -82,8 +88,9 @@ function staleCuts(messages: Message[]): StaleCut[] {
 	return cuts;
 }
 
-export function dropStaleResults(messages: Message[]): Message[] {
-	return applyStaleCuts(messages, staleCuts(messages));
+/** `cwd`：工具调用里的相对路径按它解析；见 `CompactionRequest.cwd`。 */
+export function dropStaleResults(messages: Message[], cwd?: string): Message[] {
+	return applyStaleCuts(messages, staleCuts(messages, cwd));
 }
 
 function applyStaleCuts(messages: Message[], cuts: readonly StaleCut[]): Message[] {
@@ -180,11 +187,29 @@ function pathOf(args: Record<string, unknown>): string {
 }
 
 function pathKey(path: string): string {
-	return path.replace(/\\/g, "/").replace(/\/+$/, "");
+	return posix.normalize(path.replace(/\\/g, "/")).replace(/\/+$/, "");
 }
 
+const isAbsolute = (key: string) => posix.isAbsolute(key) || win32.isAbsolute(key);
+
+/**
+ * 知道 cwd 时，路径按工具自己的解析办法（`toAbsolute`：`~/`、Windows 的 `/c/…` 写法都认）变成绝对路径，
+ * 之后只认全等。`package.json` 和 `apps/cli/package.json` 是两个文件，从前按后缀匹配，把根目录那份
+ * 当成被子包那份覆盖了；绝对路径恰好以某个相对路径结尾、却不在 cwd 下的，也是两个文件。
+ */
+function resolvedKey(cwd: string, path: string): string {
+	return pathKey(toAbsolute(cwd, path));
+}
+
+/*
+ * 不知道 cwd 时（宿主换了压缩策略、没把它传下来）只能按字面猜：两边同类（都相对、或都绝对）只认全等，
+ * 一边绝对、一边相对才按后缀认。
+ */
 function samePath(a: string, b: string): boolean {
-	return a === b || a.endsWith(`/${b}`) || b.endsWith(`/${a}`);
+	if (a === b) return true;
+	if (isAbsolute(a) === isAbsolute(b)) return false;
+	const [absolute, relative] = isAbsolute(a) ? [a, b] : [b, a];
+	return absolute.endsWith(`/${relative}`);
 }
 
 function intern(reads: Map<string, Window[]>, mutated: Set<string>, path: string): string {

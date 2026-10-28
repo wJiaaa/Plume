@@ -62,6 +62,7 @@ export async function idleCompaction(parts: CompactionParts, signal: AbortSignal
 				artifacts,
 				observer,
 				lineage: options?.lineage,
+				cwd: parts.cwd,
 			}),
 			pruner,
 		},

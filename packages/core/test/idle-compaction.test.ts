@@ -102,3 +102,90 @@ test("/compact forks from the last request while the cache is warm", async () =>
 		assert.equal(wire.summaries[0].systemPrompt, wire.turns.at(-1)!.systemPrompt);
 	});
 });
+
+test("a prune adopted while idle is not undone by the reply measured before it", async () => {
+	/*
+	 * 收尾时只剪枝就收下，人再开口时中间没有新请求。计量若还信剪枝前那条回复的用量，就照旧越线，
+	 * 而已经没东西可剪——于是走一次不需要的独立摘要（`20ec7460` seq 2555→2562）。
+	 */
+	const root = await mkdtemp(join(tmpdir(), "ly-idle-prune-"));
+	const { writeFile } = await import("node:fs/promises");
+	await writeFile(join(root, "big.txt"), Array.from({ length: 1200 }, (_, i) => `第 ${i} 行：${"内容".repeat(12)}`).join("\n"));
+	const events: AgentEvent[] = [];
+	const summaries: LlmContext[] = [];
+	let step = 0;
+	const call = (id: string): AssistantMessage => ({
+		role: "assistant", content: [{ type: "toolCall", id, name: "read", arguments: { path: "big.txt" }, argumentsText: '{"path":"big.txt"}' }],
+		api: PROVIDER.api, provider: PROVIDER.id, model: MODEL.modelId, usage: { ...emptyUsage(), input: 1000, total: 1000 }, stopReason: "toolUse", timestamp: Date.now(),
+	});
+	const streamFn = async (context: LlmContext): Promise<AssistantMessage> => {
+		const last = context.messages.at(-1);
+		if (last?.role === "user" && JSON.stringify(last.content).includes("## Goal & Original User Intent")) {
+			summaries.push(context);
+			return reply(SUMMARY);
+		}
+		step += 1;
+		if (step === 1) return call("r1");
+		if (step === 2) return call("r2");
+		// 第二次读完越线：同一个文件读了两遍，剪掉前一份就回到线下。
+		return reply(`第 ${step} 个回答`, step === 3 ? 31_000 : 1000);
+	};
+	const session = new AgentSession({ cwd: root, settings: SETTINGS, store: new SessionStore(join(root, "sessions")), emit: (event) => { events.push(event); }, streamFn, compactWhenIdle: true });
+	await session.initialize();
+	try {
+		await session.prompt([{ type: "text", text: "读两遍 big.txt" }]);
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		assert.ok(events.some((event) => event.type === "compacted" && event.kept === undefined), "收尾时剪掉了，趁缓存还热");
+		await session.prompt([{ type: "text", text: "接着说" }]);
+		assert.equal(summaries.length, 0, "剪过之后没有新请求量过，旧用量不算数，不该再做一次摘要");
+	} finally {
+		await session.dispose();
+		await rm(root, { recursive: true, force: true, maxRetries: 8, retryDelay: 25 });
+	}
+});
+
+test("a prune adopted while idle still counts after a restart", async () => {
+	// 收尾剪完就关掉窗口：重开之后第一句话前同样没有新请求，旧用量照样不能算数。
+	const root = await mkdtemp(join(tmpdir(), "ly-idle-prune-restart-"));
+	const { writeFile } = await import("node:fs/promises");
+	await writeFile(join(root, "big.txt"), Array.from({ length: 1200 }, (_, i) => `第 ${i} 行：${"内容".repeat(12)}`).join("\n"));
+	const events: AgentEvent[] = [];
+	const summaries: LlmContext[] = [];
+	let step = 0;
+	const call = (id: string): AssistantMessage => ({
+		role: "assistant", content: [{ type: "toolCall", id, name: "read", arguments: { path: "big.txt" }, argumentsText: '{"path":"big.txt"}' }],
+		api: PROVIDER.api, provider: PROVIDER.id, model: MODEL.modelId, usage: { ...emptyUsage(), input: 1000, total: 1000 }, stopReason: "toolUse", timestamp: Date.now(),
+	});
+	const streamFn = async (context: LlmContext): Promise<AssistantMessage> => {
+		const last = context.messages.at(-1);
+		if (last?.role === "user" && JSON.stringify(last.content).includes("## Goal & Original User Intent")) {
+			summaries.push(context);
+			return reply(SUMMARY);
+		}
+		step += 1;
+		if (step === 1) return call("r1");
+		if (step === 2) return call("r2");
+		return reply(`第 ${step} 个回答`, step === 3 ? 31_000 : 1000);
+	};
+	const store = new SessionStore(join(root, "sessions"));
+	const first = new AgentSession({ cwd: root, settings: SETTINGS, store, emit: (event) => { events.push(event); }, streamFn, compactWhenIdle: true });
+	await first.initialize();
+	let reopened: AgentSession | undefined;
+	try {
+		await first.prompt([{ type: "text", text: "读两遍 big.txt" }]);
+		await until(() => events.some((event) => event.type === "compacted" && event.kept === undefined));
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		await first.dispose();
+
+		const loaded = await store.load(first.meta.id);
+		assert.ok(loaded);
+		reopened = new AgentSession({ cwd: root, settings: SETTINGS, store, meta: loaded.meta, emit: () => {}, streamFn });
+		reopened.restore(loaded.messages, loaded.compaction);
+		await reopened.initialize();
+		await reopened.prompt([{ type: "text", text: "接着说" }]);
+		assert.equal(summaries.length, 0, "重启后同样不信剪枝前那条回复的用量");
+	} finally {
+		await reopened?.dispose();
+		await rm(root, { recursive: true, force: true, maxRetries: 8, retryDelay: 25 });
+	}
+});

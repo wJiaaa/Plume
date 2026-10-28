@@ -354,15 +354,16 @@ export class SessionLog {
 	}
 
 	/**
-	 * 从日志读回的已发视图，按位置对上当前历史里的原文。只在载入之后有意义；截断照 `load` 的规矩退回。
+	 * 从日志读回的已发视图，按位置对上当前历史里的原文，带着采纳它的那条记录的时刻。只在载入之后有意义；
+	 * 截断照 `load` 的规矩退回。
 	 */
-	async restoredViews(): Promise<{ source: Message; view: Message }[]> {
+	async restoredViews(): Promise<{ source: Message; view: Message; at: number }[]> {
 		if (!this.restored) return [];
 		const seqs: number[] = [];
-		const views = new Map<number, { seq: number; message: Message }>();
+		const views = new Map<number, { seq: number; ts: number; message: Message }>();
 		for await (const record of this.store.read(this.meta.id, 0, { kinds: ["message", "views", "truncate"] })) {
 			if (record.type === "message") { if (record.message) seqs.push(record.seq); }
-			else if (record.type === "views") for (const view of record.views) views.set(view.at, { seq: record.seq, message: view.message });
+			else if (record.type === "views") for (const view of record.views) views.set(view.at, { seq: record.seq, ts: record.ts, message: view.message });
 			else if (record.type === "truncate") {
 				while (seqs.length && seqs.at(-1)! > record.afterSeq) seqs.pop();
 				for (const [at, view] of views) if (view.seq > record.afterSeq || at >= seqs.length) views.delete(at);
@@ -370,7 +371,8 @@ export class SessionLog {
 		}
 		const found = [...views].filter(([at]) => at < this.messages.length);
 		const hydrated = await rehydrateMessages(found.map(([, view]) => view.message));
-		return found.map(([at], index) => ({ source: this.messages[at], view: hydrated[index] }));
+		// `at`：这份视图是什么时候被采纳的——在那之前量的 usage 不算数，见 `markRewritten`。
+		return found.map(([at, view], index) => ({ source: this.messages[at], view: hydrated[index], at: view.ts }));
 	}
 
 	/** 快照按会话 id 冻结，见 `memory-inject.ts`。 */

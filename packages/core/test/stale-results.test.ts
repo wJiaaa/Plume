@@ -215,3 +215,75 @@ test("a later read already cut to head and tail covers nothing", () => {
 	const history = [assistant("a", "read", { path: "f.ts", offset: 180, limit: 35 }), result("a", "read", body, shown(180, 214, 1000)), assistant("b", "read", { path: "f.ts" }), cut];
 	assert.equal((dropStaleResults(history)[1].content[0] as { text: string }).text, body);
 });
+
+test("two relative paths that only share a suffix are two files", () => {
+	// 都按会话 cwd 解析：根目录的 package.json 不会被子包那份覆盖。本机 33 个会话里有 137 对这样误配过。
+	const messages = [
+		assistant("a", "read", { path: "package.json" }),
+		result("a", "read", "root manifest ".repeat(80)),
+		assistant("b", "read", { path: "apps/cli/package.json" }),
+		result("b", "read", "cli", shown(1, 40, 40)),
+		assistant("c", "edit", { path: "apps/cli/package.json" }),
+		result("c", "edit", "ok"),
+	];
+	assert.equal(dropStaleResults(messages)[1], messages[1]);
+
+	const absolute = [
+		assistant("a", "read", { path: "/repo/package.json" }),
+		result("a", "read", "root manifest ".repeat(80)),
+		assistant("b", "read", { path: "/repo/apps/cli/package.json" }),
+		result("b", "read", "cli", shown(1, 40, 40)),
+	];
+	assert.equal(dropStaleResults(absolute)[1], absolute[1], "两边都绝对时也只认全等");
+
+	const windows = [
+		assistant("a", "read", { path: "C:\\repo\\src\\a.ts" }),
+		result("a", "read", "abs ".repeat(80)),
+		assistant("b", "read", { path: "src/a.ts" }),
+		result("b", "read", "rel", shown(1, 40, 40)),
+	];
+	assert.match((dropStaleResults(windows)[1].content[0] as { text: string }).text, /superseded/, "Windows 的绝对路径和相对路径照样认得出是同一个");
+});
+
+test("a later failed or cancelled call with the same arguments does not blank an earlier success", () => {
+	// 同一个 edit 再发一次，因为 old_string 已经不在了而失败：剪掉第一次的成功，模型眼里就只剩那次失败。
+	const edit = { path: "a.ts", old_string: "x", new_string: "y" };
+	const edited = [
+		assistant("a", "edit", edit),
+		result("a", "edit", "Applied the edit. ".repeat(40)),
+		assistant("b", "edit", edit),
+		result("b", "edit", "old_string not found", { isError: true }),
+	];
+	assert.equal(dropStaleResults(edited)[1], edited[1]);
+
+	const ran = [
+		assistant("a", "bash", { command: "npm test" }),
+		result("a", "bash", "all 120 tests passed ".repeat(40)),
+		assistant("b", "bash", { command: "npm test" }),
+		result("b", "bash", "[cancelled]", { isError: true, details: { kind: "bash", cancelled: true } }),
+	];
+	assert.equal(dropStaleResults(ran)[1], ran[1]);
+});
+
+test("with the session's cwd, paths are compared as the files the tools opened", async () => {
+	const { homedir } = await import("node:os");
+	const { join } = await import("node:path");
+	const cwd = "/Users/me/proj";
+	const pair = (first: string, second: string) => [
+		assistant("a", "read", { path: first }),
+		result("a", "read", "first snapshot ".repeat(80)),
+		assistant("b", "read", { path: second }),
+		result("b", "read", "current", shown(1, 40, 40)),
+	];
+	const blanked = (messages: Message[]) => /superseded/.test((dropStaleResults(messages, cwd)[1].content[0] as { text: string }).text);
+
+	// 绝对路径恰好以相对路径结尾，却不在 cwd 下：是另一个项目里的同名文件。按字面猜会把它当成同一个。
+	const elsewhere = pair("/Users/me/other/src/a.ts", "src/a.ts");
+	assert.equal(blanked(elsewhere), false, "another project's src/a.ts is not this one's");
+	assert.match((dropStaleResults(elsewhere)[1].content[0] as { text: string }).text, /superseded/, "without a cwd it can only guess, and guesses the same file");
+
+	assert.equal(blanked(pair("/Users/me/proj/src/a.ts", "src/a.ts")), true, "the same file spelled both ways");
+	assert.equal(blanked(pair("src/a.ts", "./lib/../src/a.ts")), true, "normalised before comparing");
+	assert.equal(blanked(pair(join(homedir(), "notes.md"), "~/notes.md")), true, "`~/` resolved the way the read tool resolves it");
+	assert.equal(blanked(pair("package.json", "apps/cli/package.json")), false);
+});

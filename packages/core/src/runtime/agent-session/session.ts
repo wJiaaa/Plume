@@ -696,6 +696,7 @@ export class AgentSession {
 			settings: () => this.settings,
 			streamFn: this.streamFn,
 			emit: (event) => this.emit(event),
+			cwd: this.cwd,
 			preparePruner: () => this.preparePruner(),
 		};
 	}
@@ -711,7 +712,7 @@ export class AgentSession {
 		if (this.viewsSeededFor === history) return;
 		this.viewsSeededFor = history;
 		const views = await this.log.restoredViews().catch(() => []);
-		for (const { source, view } of views) pruner.remember(source, view);
+		for (const { source, view, at } of views) pruner.remember(source, view, at);
 	}
 
 	/**

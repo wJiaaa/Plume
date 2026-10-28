@@ -108,13 +108,14 @@ export function measureTotal(messages: Message[]): { measured: boolean; tokens: 
 	 *
 	 * So a reply older than the newest summary is not evidence about the present. There is no new
 	 * measurement to replace it with — nothing has been sent since — and the estimate is what is
-	 * left, which is exactly what it is for.
+	 * left, which is exactly what it is for. A pruning that left no summary rewrote the history just
+	 * the same, so the views it adopted draw the same line (`markRewritten`).
 	 */
-	const compactedAt = lastCompactionAt(messages);
+	const staleAt = staleBefore(messages);
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const message = messages[i];
 		if (message.role !== "assistant" || message.stopReason === "pending") continue;
-		if (compactedAt !== null && message.timestamp <= compactedAt) break;
+		if (staleAt !== null && message.timestamp <= staleAt) break;
 		// Not `usage`: that also bills attempts abandoned by retries, which never shared this window.
 		const usage = requestUsage(message);
 		const total = usage.input + usage.cacheRead + usage.cacheWrite + usage.output;
@@ -122,6 +123,33 @@ export function measureTotal(messages: Message[]): { measured: boolean; tokens: 
 		return { measured: true, tokens: total + estimateTokens(messages.slice(i + 1)) };
 	}
 	return { measured: false, tokens: estimateTokens(messages) };
+}
+
+/**
+ * 发出去之后又被改写过的视图：消息 → 改写落定的时刻。
+ *
+ * 只剪枝的压缩不留边界头，`lastCompactionAt` 认不出它；可剪下来的视图同样让之前那条回复的 usage
+ * 作废——它量的是剪之前那份。收尾时剪了、人再开口前没有新请求，读旧数就照旧越线、又没东西可剪，
+ * 于是白做一次凉的独立摘要（`20ec7460`：$1.65、干等 169 秒）。所以采纳视图的地方在这里登记
+ * （`AgedToolPruner.adopt`，重启后 `remember` 用那条 `views` 记录的时刻补登），`measureTotal`
+ * 把它和摘要头一样当分界。按对象记而不是写进消息：视图本身就落盘在 `views` 记录里，时刻跟着
+ * 那条记录走，不必给消息类型加一个只有计量才读的字段。
+ */
+const rewrittenAt = new WeakMap<Message, number>();
+
+/** 登记一条刚被改写、即将替代原来那份发出去的视图。重复登记取较晚的那次。 */
+export function markRewritten(message: Message, at: number): void {
+	rewrittenAt.set(message, Math.max(at, rewrittenAt.get(message) ?? 0));
+}
+
+/** 在这之前（含）的回复量的都不是眼下这份历史：最近一次压缩边界，或最近一次视图改写。 */
+function staleBefore(messages: Message[]): number | null {
+	let at = lastCompactionAt(messages);
+	for (const message of messages) {
+		const rewritten = rewrittenAt.get(message);
+		if (rewritten !== undefined && (at === null || rewritten > at)) at = rewritten;
+	}
+	return at;
 }
 
 /**

@@ -21,7 +21,7 @@ for (const meta of await store.listSessions()) {
 			requests++;
 			const pruned = send.prepare(history), trimmed = both.prepare(bounded);
 			// 覆盖判断只在压缩里做；这里量的是它在压缩时能清掉多少，不是发送路径的行为。
-			const stale = dropStaleResults(history);
+			const stale = dropStaleResults(history, meta.cwd);
 			before += chars(history); afterSend += chars(pruned); afterStale += chars(stale); afterGrep += chars(bounded); combined += chars(trimmed);
 			rewrites += pruned.filter((m, i) => m !== history[i]).length;
 		}

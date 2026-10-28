@@ -198,6 +198,7 @@ function compactHistory(options: SubAgentOptions, { chosen, controller, allowed 
 		observer,
 		force: compactOptions?.force,
 		lineage: compactOptions?.lineage,
+		cwd: options.cwd,
 		artifacts: options.addresses?.artifacts,
 	});
 }
