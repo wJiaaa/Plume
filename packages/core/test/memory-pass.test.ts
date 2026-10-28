@@ -15,7 +15,7 @@ import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { DEFAULT_SETTINGS, type Settings } from "../src/config/settings.ts";
 import { lastPassAt, PASS_INTERVAL_MS, runMemoryPass, shouldRunPass } from "../src/runtime/memory/memory-pass.ts";
-import { forgetExtractedMemory, projectMemoryDir } from "../src/runtime/memory/project-memory.ts";
+import { EXTRACT_CURSOR, forgetExtractedMemory, projectMemoryDir } from "../src/runtime/memory/project-memory.ts";
 import { projectIdFor } from "../src/session/store.ts";
 import type { SessionStorage } from "../src/session/storage.ts";
 import type { AssistantMessage, Message } from "../src/types.ts";
@@ -269,3 +269,32 @@ test("a session merged once is not read again the next day, unless a pass failed
 		await rm(cursor, { recursive: true, force: true, maxRetries: 8, retryDelay: 25 });
 	}
 });
+
+test("a reply cut off by the output limit is not written over MEMORY.md, and the batch is read again", async () => {
+	// 要的是整份更新后的记忆；只有前半截的那份写下去，截断处之后的旧条目就永久没了。
+	const cut = await mkdtemp(join(tmpdir(), "ly-pass-length-"));
+	try {
+		await seedSession(cut, "l1", ["a", "b", "c", "d", "e", "f"], 20 * 60 * 60 * 1000);
+		const t0 = Date.now();
+		const first = await runMemoryPass({ cwd: cut, settings: settings(), storage: STORAGE, stream: scripted("- 第一条\n- 第二条"), now: t0 });
+		assert.equal(first.answered, true);
+		const before = await readFile(join(projectMemoryDir(cut), "MEMORY.md"), "utf8");
+
+		await forgetCursorOnly(cut);
+		const truncated = await runMemoryPass({ cwd: cut, settings: settings(), storage: STORAGE, stream: scripted("- 第一", "length"), now: t0 + PASS_INTERVAL_MS + 1000 });
+		assert.equal(truncated.sessions, 1, "前提：这一遍真的读了那批会话");
+		assert.notEqual(truncated.answered, true);
+		assert.equal(await readFile(join(projectMemoryDir(cut), "MEMORY.md"), "utf8"), before, "原样留着");
+
+		const retried = await runMemoryPass({ cwd: cut, settings: settings(), storage: STORAGE, stream: scripted("- 重读"), now: t0 + 2 * (PASS_INTERVAL_MS + 1000) });
+		assert.equal(retried.sessions, 1, "没写下的那批下次再读");
+	} finally {
+		seeded.delete("l1");
+		await rm(cut, { recursive: true, force: true, maxRetries: 8, retryDelay: 25 });
+	}
+});
+
+/** 只让游标回到起点，MEMORY.md 留着：模拟「又有一批会话可读」。 */
+async function forgetCursorOnly(cwd: string): Promise<void> {
+	await rm(join(projectMemoryDir(cwd), EXTRACT_CURSOR), { force: true });
+}

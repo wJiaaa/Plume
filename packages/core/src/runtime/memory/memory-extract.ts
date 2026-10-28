@@ -336,6 +336,13 @@ export async function extractMemory(options: ExtractOptions): Promise<Extraction
 		if (reply.stopReason === "error" || reply.stopReason === "aborted") {
 			return { memory: "", sessions: options.candidates.length, skipped: "抽取被中断" };
 		}
+		/*
+		 * 要的是「更新后的完整记忆」，整份覆盖 MEMORY.md。撞上输出上限的那份只有前半截，写下去就把截断处
+		 * 之后的旧条目永久删了；不算读过（没有 `answered`），游标不走，这批会话下次再读。
+		 */
+		if (reply.stopReason !== "stop") {
+			return { memory: "", sessions: options.candidates.length, skipped: "抽取的回复不完整，这次没有写入" };
+		}
 
 		const text = replyText(reply, "\n").trim();
 

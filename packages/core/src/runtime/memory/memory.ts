@@ -3,9 +3,10 @@
  * Similar to OpenAI / Codex local memory model, saved under ~/.plume/memory.json.
  */
 
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { plumeHome } from "../../session/store.ts";
+import { writeFileAtomic } from "../../utils/atomic-write.ts";
 
 export interface MemoryEntry {
 	id: string;
@@ -24,16 +25,43 @@ export function memoryPath(): string {
 	return join(plumeHome(), "memory.json");
 }
 
-export async function loadMemory(): Promise<MemoryStore> {
-	const p = memoryPath();
-	const raw = await readFile(p, "utf8").catch(() => null);
-	if (!raw) return { entries: [] };
+/**
+ * 读出来的记忆，以及它是不是可信的空。
+ *
+ * 文件不存在是真的空；读不出或解析不了是**不知道**里面有什么。两者从前都返回空，于是下一次增删把
+ * `[新条目]` 整份写回，旧记忆一声不响全没了。注入照旧当成空（不能因为记忆坏了就开不了会话），写入
+ * 要分开。
+ */
+async function readMemory(): Promise<{ store: MemoryStore; unreadable?: unknown }> {
+	let raw: string;
+	try {
+		raw = await readFile(memoryPath(), "utf8");
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return { store: { entries: [] } };
+		return { store: { entries: [] }, unreadable: error };
+	}
+	if (!raw.trim()) return { store: { entries: [] } };
 	try {
 		const parsed = JSON.parse(raw) as Partial<MemoryStore>;
-		return { entries: Array.isArray(parsed.entries) ? parsed.entries : [] };
-	} catch {
-		return { entries: [] };
+		if (!Array.isArray(parsed.entries)) return { store: { entries: [] }, unreadable: new Error("entries is not a list") };
+		return { store: { entries: parsed.entries } };
+	} catch (error) {
+		return { store: { entries: [] }, unreadable: error };
 	}
+}
+
+export async function loadMemory(): Promise<MemoryStore> {
+	return (await readMemory()).store;
+}
+
+/** 要改之前读：读不出就停下，不拿一个空列表去覆盖它。 */
+async function loadForWrite(): Promise<MemoryStore> {
+	const { store, unreadable } = await readMemory();
+	if (unreadable) {
+		const reason = unreadable instanceof Error ? unreadable.message : String(unreadable);
+		throw new Error(`记忆文件 ${memoryPath()} 读不出来（${reason}），为免覆盖原有记忆，这次没有改动。修好或移走这个文件后再试。`);
+	}
+	return store;
 }
 
 /**
@@ -59,7 +87,8 @@ async function saveMemory(store: MemoryStore): Promise<void> {
 	const p = memoryPath();
 	await mkdir(dirname(p), { recursive: true });
 	const data = JSON.stringify({ entries: store.entries }, null, 2);
-	await writeFile(p, data, "utf8");
+	// 整份替换：写到一半崩掉留下的是截断的 JSON，下一次读就是上面那种「不知道里面有什么」。
+	await writeFileAtomic(p, data);
 	invalidateMemorySnapshots();
 }
 
@@ -67,7 +96,7 @@ async function saveMemory(store: MemoryStore): Promise<void> {
 export async function addMemoryEntry(content: string): Promise<MemoryEntry> {
 	const trimmed = content.trim();
 	if (!trimmed) throw new Error("Memory content cannot be empty");
-	const store = await loadMemory();
+	const store = await loadForWrite();
 	const entry: MemoryEntry = {
 		id: `mem_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
 		content: trimmed,
@@ -81,7 +110,7 @@ export async function addMemoryEntry(content: string): Promise<MemoryEntry> {
 }
 
 export async function removeMemoryEntry(id: string): Promise<boolean> {
-	const store = await loadMemory();
+	const store = await loadForWrite();
 	const initial = store.entries.length;
 	store.entries = store.entries.filter((e) => e.id !== id);
 	if (store.entries.length !== initial) {
