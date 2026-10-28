@@ -273,3 +273,71 @@ test("the roster row read back from the log says which model it ran on and how h
 	const old = restoreSubAgents(log(dispatch(), done()));
 	assert.equal(old[0]?.summary.model, undefined);
 });
+
+test("跑到检查点、续过一段又讨了交接的：重启后续跑发出的第一个请求，和不重启时那个一样", () => checkpointRoundTrip(false));
+
+test("修复前写下的日志（那两句没记）：重启后续跑发出的第一个请求，也和不重启时那个一样", () => checkpointRoundTrip(true));
+
+async function checkpointRoundTrip(asWrittenBefore: boolean): Promise<void> {
+	/*
+	 * 两句运行时递进去的话：没写清单时续跑那段开头那句（`planDemand`），和讨交接那句（`finalDemand`）。
+	 * 跑着的时候前一句在历史里、后一句那一轮不在；从前两句都不进日志，讨交接那一轮的回复和结果
+	 * 倒进了，重启后重建出来的历史在这两处都对不上。
+	 */
+	const records: SessionRecord[] = [];
+	const persisted = new Set(["subagent", "subagent_message", "subagent_event", "subagent_done", "subagent_views"]);
+	const requests: Message[][] = [];
+	let replyTo: (turn: number, last: Message | undefined) => AssistantMessage;
+	const run = (registry: SubAgentRegistry, input: { description: string; prompt: string; resume?: string }) => {
+		let turn = 0;
+		return runSubAgent(
+			{
+				sessionId: "s",
+				cwd: "/tmp",
+				settings: { thinking: "off" } as unknown as Settings,
+				tools: [read],
+				skills: [],
+				agents: [GENERAL],
+				registry,
+				requestApproval: async () => "once",
+				emit: async (event) => {
+					if (!persisted.has(event.type)) return;
+					// 修复前的写法：检查点上那两句运行时的话不进转录，别的照旧。
+					if (asWrittenBefore && event.type === "subagent_message" && /^（自动追加）(这一段的|到检查点了)/.test(textOf(event.message))) return;
+					records.push({ seq: records.length + 1, ts: Date.now(), type: "event", event } as SessionRecord);
+				},
+				streamFn: async (context) => {
+					requests.push(context.messages.map(({ timestamp: _timestamp, ...rest }) => rest as Message));
+					return replyTo(turn++, context.messages.at(-1));
+				},
+			},
+			input,
+			PROVIDER,
+			MODEL,
+		);
+	};
+	replyTo = (turn, last) =>
+		last && textOf(last).includes("到检查点了")
+			? assistant([{ type: "toolCall", id: `y${turn}`, name: "yield", arguments: { summary: "看到 auth.ts:42", done: "读了一半", remaining: "剩下一半", next: "接着读" }, argumentsText: "{}" }])
+			: call(`c${turn}`, "read", { path: `f${turn}.ts` });
+	const memory = new SubAgentRegistry();
+	const first = await run(memory, { description: "梳理", prompt: "梳理登录流程" });
+	const written = [...records];
+	const said = (pattern: RegExp) => written.some((record) => record.type === "event" && record.event.type === "subagent_message" && pattern.test(textOf(record.event.message)));
+	assert.equal(said(/轮用完了/), !asWrittenBefore, "续跑那段开头那句记进了日志");
+	assert.equal(said(/到检查点了/), !asWrittenBefore, "讨交接那句也记进了日志");
+
+	replyTo = () => assistant([{ type: "text", text: "读完了" }], "stop");
+	requests.length = 0;
+	await run(memory, { description: "接着", prompt: "接着读", resume: first.id });
+	const withoutRestart = requests[0]!;
+
+	const reopened = new SubAgentRegistry();
+	reopened.restore(restoreSubAgents(written, rebuild));
+	requests.length = 0;
+	await run(reopened, { description: "接着", prompt: "接着读", resume: first.id });
+	const afterRestart = requests[0]!;
+
+	assert.ok(!JSON.stringify(withoutRestart).includes("到检查点了"), "讨交接那一轮不在续跑的历史里");
+	assert.deepEqual(afterRestart, withoutRestart);
+}

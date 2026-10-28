@@ -21,6 +21,8 @@ import type { Boundary, SessionRecord } from "../../session/types.ts";
 import { TODOS_KEY, todosFromLog } from "../../tools/todo.ts";
 import { addUsage, emptyUsage, type AssistantContent, type Message } from "../../types.ts";
 import { clearEnding, type SubAgentConversation } from "./sub-agents.ts";
+import { LegacyCheckpoints } from "./sub-agent-restore-legacy.ts";
+import { isFinalDemand } from "./yield-tool.ts";
 import type { SubAgentSummary } from "../../types/sub-agent.ts";
 
 type ToolCall = Extract<AssistantContent, { type: "toolCall" }>;
@@ -59,6 +61,14 @@ interface Draft {
 	started: Set<string>;
 	hookRuns: Map<string, HookRun>;
 	lastSeen: number;
+	/**
+	 * 讨交接那一轮：从那句话起，到下一段开头那句之前。面板上照画，模型的历史里没有——跑着的时候
+	 * `view` 就停在它之前（`sub-agent-run.ts`），续跑从那里接着。
+	 */
+	handoff: Set<Message>;
+	handingOff: boolean;
+	/** 旧日志没记下的那两处检查点，见 `sub-agent-restore-legacy.ts`。 */
+	legacy: LegacyCheckpoints;
 }
 
 /**
@@ -88,10 +98,15 @@ export function restoreSubAgents(records: readonly SessionRecord[], rebuild?: Re
 		draft.lastSeen = record.ts;
 		if (event.type === "subagent_message") {
 			if (!event.message) continue;
+			const missing = draft.legacy.before(event.message);
+			if (missing) draft.messages.push(missing);
 			draft.messages.push(event.message);
+			if (isFinalDemand(event.message)) draft.handingOff = true;
+			if (draft.handingOff) draft.handoff.add(event.message);
 			if (event.message.role === "assistant") draft.summary.usage = addUsage(draft.summary.usage, event.message.usage);
 		} else if (event.type === "subagent_event") {
 			const inner = event.event;
+			draft.legacy.event(inner, draft.messages.length, record.ts);
 			// Same arithmetic as the session's own boundary (`replay-records.ts`): the tail it kept is the tail of what was written.
 			if (inner.type === "compacted" && inner.kept !== undefined) draft.boundary = { at: record.ts, summary: inner.summary ?? "", keptFrom: Math.max(0, draft.messages.length - inner.kept) };
 			if (inner.type === "tool_start") {
@@ -101,6 +116,8 @@ export function restoreSubAgents(records: readonly SessionRecord[], rebuild?: Re
 			}
 			if (inner.type === "hook_run") draft.hookRuns.set(inner.run.id, inner.run);
 		} else {
+			const salvage = draft.legacy.salvageFrom(event);
+			if (salvage !== undefined) for (const message of draft.messages.slice(salvage)) draft.handoff.add(message);
 			draft.summary.status = event.status;
 			draft.summary.endedAt = record.ts;
 			if (event.answer) draft.summary.answer = event.answer;
@@ -134,6 +151,12 @@ function dispatched(drafts: Map<string, Draft>, event: Event<"subagent">, at: nu
 	const model = ranOn(event);
 	if (known) {
 		// A resume: same row, running again. Its opening line arrived as a `subagent_message` just before.
+		if (known.handingOff) {
+			known.handingOff = false;
+			const opening = known.messages.at(-1);
+			if (opening) known.handoff.delete(opening);
+		}
+		known.legacy.dispatched();
 		known.summary.status = "running";
 		clearEnding(known.summary);
 		known.summary.resumes = (known.summary.resumes ?? 0) + 1;
@@ -166,6 +189,9 @@ function dispatched(drafts: Map<string, Draft>, event: Event<"subagent">, at: nu
 		started: new Set(),
 		hookRuns: new Map(),
 		lastSeen: at,
+		handoff: new Set(),
+		handingOff: false,
+		legacy: new LegacyCheckpoints(),
 	});
 }
 
@@ -186,12 +212,15 @@ function untruncated(records: readonly SessionRecord[]): SessionRecord[] {
 }
 
 function conversationOf(draft: Draft, target: NonNullable<ReturnType<Rebuild>>): SubAgentConversation {
-	const transcript = draft.switchedAt > 0 ? stripStaleHandles(draft.messages, draft.switchedAt) : draft.messages;
+	const stripped = draft.switchedAt > 0 ? stripStaleHandles(draft.messages, draft.switchedAt) : draft.messages;
+	// `stripStaleHandles` 只换动过的那几条，按位置对回去认讨交接那一轮。
+	const transcript = stripped.filter((_message, index) => !draft.handoff.has(draft.messages[index]!));
 	const ordered = paired(transcript, draft.started, draft.lastSeen);
 	// The boundary named a position in the transcript as written; find the same message in the reordered one.
+	const kept = draft.boundary ? stripped.slice(draft.boundary.keptFrom).find((message) => ordered.includes(message)) : undefined;
 	const boundary = draft.boundary && {
 		...draft.boundary,
-		keptFrom: draft.boundary.keptFrom >= transcript.length ? ordered.length : Math.max(0, ordered.indexOf(transcript[draft.boundary.keptFrom]!)),
+		keptFrom: kept === undefined ? ordered.length : ordered.indexOf(kept),
 	};
 	const view = withEnvironment(target.history(ordered, boundary));
 	const plan = todosFromLog(ordered);

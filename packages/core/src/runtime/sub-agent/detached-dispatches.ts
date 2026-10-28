@@ -27,8 +27,13 @@ export interface SettledDispatch {
 }
 
 export class DetachedDispatches {
-	/** 放了手、还在后台跑的，按登记 id。跑完了要送回去的就是这些。 */
-	private readonly detached = new Set<string>();
+	/**
+	 * 放了手、还在后台跑的，一次派发一条，值是登记 id。跑完了要送回去的就是这些。
+	 *
+	 * 按派发记而不按 id：续跑和首次派发是同一个 id。按 id 记时，上一段 `finish` 之后、它的结果还没
+	 * 落定的那一下被续跑了，上一段落定时删掉的是同一个键，续跑那段跑完就再也送不回来。
+	 */
+	private readonly detached = new Map<object, string>();
 	private readonly settled: (report: SettledDispatch) => void;
 
 	/** `settled`：放了手的那个跑完了，把结果送回主会话。 */
@@ -38,7 +43,7 @@ export class DetachedDispatches {
 
 	/** 还在后台跑、跑完要送回来的那些。 */
 	get outstanding(): ReadonlySet<string> {
-		return this.detached;
+		return new Set(this.detached.values());
 	}
 
 	/**
@@ -51,10 +56,11 @@ export class DetachedDispatches {
 	dispatch(run: Promise<SubAgentAnswer>, id: () => string | undefined): Promise<SubAgentAnswer> {
 		const dispatched = id();
 		if (!dispatched) return run;
-		this.detached.add(dispatched);
+		const token = {};
+		this.detached.set(token, dispatched);
 		const settle = (report: Omit<SettledDispatch, "id">) => {
 			// 放手之后会话被停过（`forget`）或派发被撤回了（`forgetUnless`），就不再送。
-			if (this.detached.delete(dispatched)) this.settled({ id: dispatched, ...report });
+			if (this.detached.delete(token)) this.settled({ id: dispatched, ...report });
 		};
 		run.then(
 			(answer) => settle({ answer }),
@@ -70,9 +76,13 @@ export class DetachedDispatches {
 
 	/** 历史被截回去了：派发那一步已经不在历史里的，不再送回来。返回这些 id，它们由登记簿停下。 */
 	forgetUnless(kept: (id: string) => boolean): string[] {
-		const cut = [...this.detached].filter((id) => !kept(id));
-		for (const id of cut) this.detached.delete(id);
-		return cut;
+		const cut = new Set<string>();
+		for (const [token, id] of this.detached) {
+			if (kept(id)) continue;
+			this.detached.delete(token);
+			cut.add(id);
+		}
+		return [...cut];
 	}
 }
 

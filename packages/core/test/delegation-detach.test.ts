@@ -524,3 +524,86 @@ test("闲着时撤回到派发之前：后台那个停下，结果不再送回�
 		}
 	}
 });
+
+test("闲着时撤回到续跑之前：续跑那一段停下、不送回来；首次派发还留在历史里", async () => {
+	const root = await mkdtemp(join(tmpdir(), "ly-detach-resume-"));
+	const home = join(root, "home");
+	await mkdir(home, { recursive: true });
+	process.env.PLUME_HOME = home;
+	const resumed = deferred();
+	let subRequests = 0;
+	let mainRequests = 0;
+	let session!: AgentSession;
+	session = new AgentSession({
+		cwd: root,
+		settings: SETTINGS,
+		store: new SessionStore(join(root, "sessions")),
+		emit: () => {},
+		streamFn: async (context) => {
+			if (!context.tools.some((tool) => tool.name === "task")) {
+				if (context.tools.length === 0) return says("{}");
+				subRequests += 1;
+				// 首次派发当场交差；续跑那一段等测试放行。
+				if (context.messages.some((message) => message.role === "user" && textOf(message).includes("再看 b.ts"))) {
+					await resumed.promise;
+					return says("续跑的报告：b.ts 也有问题。");
+				}
+				return says("报告：a.ts 没问题。");
+			}
+			mainRequests += 1;
+			const last = context.messages.findLast((message) => message.role !== "user" || !textOf(message).startsWith("<env>"));
+			const userAsked = (text: string) => last?.role === "user" && textOf(last).includes(text);
+			if (userAsked("派一个")) {
+				return assistant([{ type: "toolCall", id: "t1", name: "task", arguments: { description: "审查 a.ts", prompt: "看看 a.ts", subagent_type: "general" }, argumentsText: "{}" }], "toolUse");
+			}
+			if (userAsked("接着让它看")) {
+				const id = session.subAgents.list()[0]!.id;
+				return assistant([{ type: "toolCall", id: "t2", name: "task", arguments: { description: "续看 b.ts", prompt: "再看 b.ts", resume: id }, argumentsText: "{}" }], "toolUse");
+			}
+			return says("好的。");
+		},
+	});
+	await session.initialize();
+	try {
+		await session.prompt([{ type: "text", text: "派一个去审查 a.ts" }]);
+		await until(() => session.subAgents.list()[0]?.status === "done", "首次派发交差");
+		await session.whenIdle();
+		await session.prompt([{ type: "text", text: "接着让它看 b.ts" }]);
+		await until(() => session.subAgents.list()[0]?.status === "running", "续跑开跑");
+		assert.equal(session.running, false);
+		const requestsBefore = mainRequests;
+
+		const asked = session.messages.findIndex((message) => message.role === "user" && textOf(message).includes("接着让它看"));
+		await session.revert(asked);
+		assert.ok(session.messages.some((message) => message.role === "toolResult" && (message.details as { subAgentId?: string } | undefined)?.subAgentId), "首次派发还在历史里");
+		resumed.resolve();
+		await until(() => session.subAgents.list()[0]?.status !== "running", "续跑停下");
+		await new Promise((resolve) => setTimeout(resolve, 600));
+		await session.whenIdle();
+		assert.equal(session.subAgents.list()[0]?.status, "aborted");
+		assert.equal(mainRequests, requestsBefore, "没有为被撤掉的续跑再开一轮");
+		assert.ok(!session.messages.some((message) => message.role === "user" && message.delivery && textOf(message).includes("续跑的报告")));
+	} finally {
+		resumed.resolve();
+		session.abort();
+		delete process.env.PLUME_HOME;
+		await rm(root, { recursive: true, force: true, maxRetries: 8, retryDelay: 25 });
+	}
+});
+
+test("上一段还没落定就被续跑：两段的结果各送一份，续跑那段不会因为同一个 id 被吞掉", async () => {
+	const { DetachedDispatches } = await import("../src/runtime/sub-agent/detached-dispatches.ts");
+	const settled: string[] = [];
+	const dispatches = new DetachedDispatches((report) => settled.push(`${report.id}:${report.answer?.text}`));
+	let first!: (answer: { text: string }) => void;
+	let second!: (answer: { text: string }) => void;
+	void dispatches.dispatch(new Promise((resolve) => (first = resolve)), () => "x");
+	void dispatches.dispatch(new Promise((resolve) => (second = resolve)), () => "x");
+	first({ text: "一" });
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.deepEqual([...dispatches.outstanding], ["x"], "续跑那段还在等");
+	second({ text: "二" });
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.deepEqual(settled, ["x:一", "x:二"]);
+	assert.equal(dispatches.outstanding.size, 0);
+});

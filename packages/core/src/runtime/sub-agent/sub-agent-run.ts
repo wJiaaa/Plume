@@ -21,7 +21,8 @@ import { continueWhileWorkRemains, type ContinuationDeps } from "../policy/conti
 import type { SubAgentOptions } from "./sub-agent-options.ts";
 import { subAgentRunConfig } from "./sub-agent-config.ts";
 import type { Dispatched } from "./sub-agent-dispatch.ts";
-import { YIELD_KEY, YIELD_TOOL_NAME } from "./yield-tool.ts";
+import { planDemand } from "./checkpoint-demands.ts";
+import { FINAL_DEMAND_OPENING, YIELD_KEY, YIELD_TOOL_NAME } from "./yield-tool.ts";
 
 /** 跑完之后交给收尾的东西。 */
 export interface SubAgentRan {
@@ -139,7 +140,15 @@ export async function runDispatched(
 		 * 提示发到它自己的面板上，不进主对话：那是它的事。
 		 */
 		const checkpoints = {
-			run: segment,
+			/*
+			 * 续跑那一段开头接的话（`planDemand`）是运行时递进去的输入，循环不会为它发 `message_end`。
+			 * 不记下来，进程内的 `view` 里有它、日志里没有，重启后重建的历史从这一条起对不上，续跑的缓存
+			 * 整段作废。和讨交接那句一样走一遍 `message_end`：面板上也看得到它为什么接着跑。
+			 */
+			run: async (messages: Message[]) => {
+				for (const message of messages.slice(view.length)) await relay({ type: "message_end", message });
+				return segment(messages);
+			},
 			messages: () => view,
 			todos: () => (subState.get(TODOS_KEY) as TodoItem[] | undefined) ?? [],
 			aborted: () => controller.signal.aborted,
@@ -154,11 +163,22 @@ export async function runDispatched(
 		 * 循环到了检查点就不再取插话（取了也送不进下一轮），话留在登记簿里；而登记簿收场时会把它
 		 * 清掉——面板上那句话发出去了，它却再也读不到。所以接着跑一段：循环顶上照常取走、写进转录，
 		 * 跟跑到一半时插话是同一条路。停在检查点的也一样：人开了口，是否接着干不该由清单替他决定。
-		 * 主会话的同一件事由 `AgentSession.drainPending` 兜着。
+		 * 原地打转（`stalled`）和上游出错也一样：那是循环替它停的，人的话是新的输入，不是「再问一次」；
+		 * 话取走了就不会再来，所以至多每句一段。只有被按停的不接着跑。主会话的同一件事由
+		 * `AgentSession.drainPending` 兜着，它也不看这一轮是怎么结束的。
 		 */
 		const heardMore = () => !controller.signal.aborted && registry.hasSteering(id);
-		while ((result.reason === "done" || result.reason === "max_turns") && heardMore()) {
+		while (heardMore()) {
 			result = await continueWhileWorkRemains(await segment(view), checkpoints);
+		}
+		/*
+		 * 从这里起没有循环再取话了——讨交接那一轮不取，收尾的记账更不取。`close` 之后 `steer` 当场
+		 * 拒收；从前照收，写进面板、显示已发出，再由 `finish` 悄悄清掉。和上面的检查之间没有 await，
+		 * 中间插不进话；还剩着的只能是被按停时没取走的，在面板上说一句没送到。
+		 */
+		const unheard = registry.close(id);
+		if (unheard.length > 0) {
+			await options.emit({ type: "subagent_event", id, event: { type: "notice", level: "warn", message: `停下时还有 ${unheard.length} 句话没送到它那里。` } });
 		}
 
 		/*
@@ -187,13 +207,19 @@ export async function runDispatched(
 			 */
 			const plan = subState.get(TODOS_KEY);
 			subState.delete(TODOS_KEY);
+			/*
+			 * 这句也记进转录：重建续跑上下文时（`sub-agent-restore.ts`）认它，从它起到下一段开头那句
+			 * 之间的都不进模型的历史——和这里 `view` 停在讨交接之前是同一件事。
+			 */
+			const demand = finalDemand(checkpoint);
+			await relay({ type: "message_end", message: demand });
 			try {
 				const salvage = await runTurn(
 					{
 						session: {
 							...runConfig.session,
 							// 模型眼里的那一份：压缩过就是压缩过的。从前拼的是完整原文，压缩过的子代理在这一轮又撑爆一次。
-							messages: [...view, finalDemand(checkpoint)],
+							messages: [...view, demand],
 							pruner: undefined,
 							artifacts: undefined,
 						},
@@ -303,35 +329,10 @@ function finalDemand(rounds: number): Message {
 			{
 				type: "text",
 				text:
-					`（自动追加）到检查点了：这一段的 ${rounds} 轮已经用完，这一轮只能调用 \`yield\`，别的工具都会被拒绝。` +
+					`${FINAL_DEMAND_OPENING}：这一段的 ${rounds} 轮已经用完，这一轮只能调用 \`yield\`，别的工具都会被拒绝。` +
 					"按它的字段把目前的进展交上去：做完了什么、查到的关键事实（带 `path:line`）、还剩什么没做、下一步打算怎么做——" +
 					"没有对应字段的写进 `summary`。不完整也要交。" +
 					"你的上下文会原样留着，派你来的人可能让你从这里接着做。不调用 `yield`，他就什么都拿不到。",
-			},
-		],
-		timestamp: Date.now(),
-		synthetic: true,
-	};
-}
-
-/**
- * 没写清单就撞上检查点时，接着跑的那一段以这句话开头。
- *
- * 两条路都给：列清单接着做，或者现在收尾。只给第一条的话，一个其实已经查够了的子代理会为了
- * 「有清单」而硬凑三项、再跑六十轮；只给第二条，就退回了从前那一刀。
- *
- * `synthetic`：这是运行时在说话，不是派它来的人。
- */
-function planDemand(rounds: number): Message {
-	return {
-		role: "user",
-		content: [
-			{
-				type: "text",
-				text:
-					`（自动追加）这一段的 ${rounds} 轮用完了。还没做完的话，先用 \`todo_write\` 把剩下的步骤列出来再接着做——` +
-					"之后每到检查点，清单在往前推就会让你继续；手上的信息已经够了，就现在收尾交付。" +
-					"接下来把互不依赖的读取和搜索放在同一条回复里一起发。",
 			},
 		],
 		timestamp: Date.now(),

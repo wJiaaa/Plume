@@ -35,9 +35,10 @@ export async function rewind(parts: RewindParts, messageIndex: number): Promise<
 		throw new Error(`Failed to truncate message at index ${messageIndex}`);
 	}
 	restorePlan(parts);
-	stopCutDelegations(parts);
 	// The store may move the cut back so a call keeps its result: what was cut is what is no longer there.
-	stopCutWatches(parts, before.slice(parts.log.messages.length));
+	const cut = before.slice(parts.log.messages.length);
+	stopCutDelegations(parts, cut);
+	stopCutWatches(parts, cut);
 	await parts.emit({ type: "rewound", messageCount: parts.log.messages.length });
 }
 
@@ -61,21 +62,34 @@ function restorePlan({ log, state }: RewindParts): void {
  * Background sub-agents whose dispatch was cut off are stopped, and their results no longer
  * delivered.
  *
- * A cut during a turn goes through `abort` first, which stops them all. A cut while idle used not
- * to touch them, so a sub-agent dispatched in the discarded part of the history ran to the end,
+ * This is the only place a cut stops them, during a turn as well as while idle: edit-and-resend
+ * halts the turn without revoking, which leaves background work running. A cut used not to touch
+ * them, so a sub-agent dispatched in the discarded part of the history ran to the end,
  * delivered its report and opened a turn — the main session picking up work that never happened in
  * its history, and paying another turn for it. Dispatches still in the history are left alone:
  * someone is still waiting for those results.
+ *
+ * A resume carries the same id as the first dispatch, so "the id is still in the history" is not
+ * enough: cut back past `task resume X` while the first dispatch stays, and the resumed run went on,
+ * delivered and opened a turn for instructions no longer there. What runs in the background is the
+ * latest dispatch of that id — one in the cut part means the run belongs to the cut.
  */
-function stopCutDelegations({ log, deliveries, dispatches, subAgents }: RewindParts): void {
-	const dispatched = new Set<string>();
-	for (const message of log.messages) {
-		const id = message.role === "toolResult" ? (message.details as { subAgentId?: unknown } | undefined)?.subAgentId : undefined;
-		if (typeof id === "string") dispatched.add(id);
-	}
+function stopCutDelegations({ log, deliveries, dispatches, subAgents }: RewindParts, cut: Message[]): void {
+	const dispatched = dispatchedIn(log.messages);
+	for (const id of dispatchedIn(cut)) dispatched.delete(id);
 	// Ones already finished and waiting to be delivered are no longer in `dispatches`; filter them separately.
 	deliveries.keepOnly(dispatched);
 	for (const id of dispatches.forgetUnless((id) => dispatched.has(id))) subAgents.abort(id);
+}
+
+/** Sub-agents a `task` call in these messages dispatched or resumed (its result's `subAgentId`). */
+function dispatchedIn(messages: readonly Message[]): Set<string> {
+	const ids = new Set<string>();
+	for (const message of messages) {
+		const id = message.role === "toolResult" ? (message.details as { subAgentId?: unknown } | undefined)?.subAgentId : undefined;
+		if (typeof id === "string") ids.add(id);
+	}
+	return ids;
 }
 
 /**

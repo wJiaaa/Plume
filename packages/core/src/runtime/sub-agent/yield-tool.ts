@@ -16,11 +16,21 @@
  * user happens to have configured.
  */
 
-import type { JsonSchema, Tool, ToolResult } from "../../types.ts";
+import type { JsonSchema, Message, Tool, ToolResult } from "../../types.ts";
 
 export const YIELD_TOOL_NAME = "yield";
 /** Where the validated object is parked for the caller to pick up. */
 export const YIELD_KEY = "yieldResult";
+
+/** 到检查点讨交接的那句话（`sub-agent-run.ts` 的 `finalDemand`）的开头。重建续跑上下文时靠它认出那一轮。 */
+export const FINAL_DEMAND_OPENING = "（自动追加）到检查点了";
+
+/** 这条是讨交接那一轮开头那句话：运行时说的，开头是那几个字。见 `sub-agent-restore.ts`。 */
+export function isFinalDemand(message: Message): boolean {
+	if (message.role !== "user" || !message.synthetic) return false;
+	const first = message.content[0];
+	return first?.type === "text" && first.text.startsWith(FINAL_DEMAND_OPENING);
+}
 
 export interface YieldOutcome {
 	value: Record<string, unknown>;

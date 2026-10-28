@@ -96,6 +96,8 @@ export interface SubAgentDetail extends SubAgentSummary {
 interface SubAgentRecord extends SubAgentDetail {
 	/** Drained by the running loop between turns; see `drainSteering` in `agent/loop.ts`. */
 	steering: Message[];
+	/** 进了收尾：不再有循环来取话，`steer` 当场拒收，免得收下一句永远送不进去的话。见 `close`。 */
+	closing?: boolean;
 	/** 停下时留下的上下文，续跑用。跑着的时候没有——那一份在它自己的循环里。 */
 	conversation?: SubAgentConversation;
 	abort?: () => void;
@@ -130,7 +132,7 @@ export class SubAgentRegistry {
 
 	/** Newest last, which is the order a tab strip reads in. */
 	list(): SubAgentSummary[] {
-		return [...this.records.values()].map(({ messages: _messages, hookRuns: _hookRuns, steering: _steering, abort: _abort, conversation, ...rest }) => ({
+		return [...this.records.values()].map(({ messages: _messages, hookRuns: _hookRuns, steering: _steering, closing: _closing, abort: _abort, conversation, ...rest }) => ({
 			...rest,
 			...(conversation && !isActive(rest.status) ? { resumable: true } : {}),
 		}));
@@ -139,7 +141,7 @@ export class SubAgentRegistry {
 	detail(id: string): SubAgentDetail | null {
 		const record = this.records.get(id);
 		if (!record) return null;
-		const { steering: _steering, abort: _abort, conversation, ...rest } = record;
+		const { steering: _steering, closing: _closing, abort: _abort, conversation, ...rest } = record;
 		return { ...rest, ...(conversation && !isActive(rest.status) ? { resumable: true } : {}) };
 	}
 
@@ -170,7 +172,7 @@ export class SubAgentRegistry {
 		if (!found.conversation) {
 			return { refusal: `子代理 \`${found.id}\` 的上下文已经不在了（应用重启过，或它没能留下），没法续跑。要继续，重新派一个并把它交回的结论带上。` };
 		}
-		const { messages: _messages, steering: _steering, abort: _abort, conversation, ...summary } = found;
+		const { messages: _messages, steering: _steering, closing: _closing, abort: _abort, conversation, ...summary } = found;
 		return { id: found.id, summary, conversation };
 	}
 
@@ -241,6 +243,7 @@ export class SubAgentRegistry {
 		found.retrying = undefined;
 		found.conversation = undefined;
 		found.steering = [];
+		found.closing = undefined;
 		found.abort = input.abort;
 		found.resumes = (found.resumes ?? 0) + 1;
 		this.onChange();
@@ -402,9 +405,21 @@ export class SubAgentRegistry {
 		found.awaitingApproval = undefined;
 		// The levers go with the run: a finished sub-agent must not look steerable.
 		found.steering.length = 0;
+		found.closing = undefined;
 		found.abort = undefined;
 		this.onChange();
 		this.onFinish(id);
+	}
+
+	/**
+	 * 它的循环不会再取话了：讨交接那一轮、收尾的记账都不取。从这一刻起 `steer` 拒收，面板如实
+	 * 说「送不到」、把字放回输入框；已经收下还没取走的交回给调用方去说明。
+	 */
+	close(id: string): Message[] {
+		const found = this.records.get(id);
+		if (!found) return [];
+		found.closing = true;
+		return found.steering.splice(0, found.steering.length);
 	}
 
 	/**
@@ -420,7 +435,7 @@ export class SubAgentRegistry {
 	 */
 	steer(id: string, said: string | UserContent[], display?: SteerDisplay): Message | null {
 		const found = this.records.get(id);
-		if (!found || found.status !== "running") return null;
+		if (!found || found.status !== "running" || found.closing) return null;
 		/*
 		 * 一串内容块，不只是一段字。
 		 *

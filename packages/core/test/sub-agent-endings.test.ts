@@ -480,3 +480,42 @@ test("收工时它起的后台进程一并停掉：父会话和界面都够不�
 	assert.equal(record.status, "done");
 	assert.deepEqual(killed, ["SIGKILL"]);
 });
+
+test("讨交接那一轮里对它说话：当场拒收，不再显示已发出、再被悄悄清掉", async () => {
+	let registry: SubAgentRegistry | undefined;
+	let id = "";
+	let accepted: Message | null | undefined;
+	const { answer, record, requests } = await dispatch({
+		onTurn: (_turn, r, current) => {
+			registry = r;
+			id = current;
+		},
+		reply: (turn, pressedNow) => {
+			if (!pressedNow) return looks(turn);
+			accepted = registry!.steer(id, "换成只看 auth.ts");
+			return yields(turn, { summary: "登录在 auth.ts:42", files: [] });
+		},
+	});
+	assert.equal(accepted, null, "收尾时送不进去的话不收");
+	assert.ok(answer.text.includes("登录在 auth.ts:42"));
+	assert.equal(record.status, "done");
+	const transcript = registry!.detail(id)!.messages;
+	assert.ok(transcript.length > 0);
+	assert.ok(!transcript.some((message) => textOf(message).includes("换成只看")), "面板上也没有一句「已发出」");
+	assert.ok(!requests.some((context) => context.messages.some((message) => textOf(message).includes("换成只看"))));
+	assert.equal(registry!.steer(id, "再说一句"), null, "收完工更不收");
+});
+
+test("出错停下时人刚说的话：接着跑一段把它送进去，不随着收尾丢掉", async () => {
+	const { record, requests } = await dispatch({
+		agentType: "general",
+		onTurn: (turn, registry, id) => {
+			if (turn === 0) registry.steer(id, "换个方向：先看 auth.ts");
+		},
+		reply: (turn) => (turn === 0 ? broke() : says("auth.ts:42 是入口。")),
+	});
+	assert.equal(requests.length, 2, "为这句话多跑了一段");
+	assert.ok(requests[1]!.messages.some((message) => textOf(message).includes("换个方向")), "第二段的请求里读到了它");
+	assert.equal(record.status, "done");
+	assert.ok(record.answer?.includes("auth.ts:42"));
+});
