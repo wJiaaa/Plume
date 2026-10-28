@@ -94,6 +94,27 @@ export function latestApprovedPlan(messages: readonly Message[]): PlanDraft | nu
 }
 
 /**
+ * 会话里批准过的每一份计划，按批准先后；交给新会话的也算，打回的、还在等审批的不算。计划面板的切换和
+ * 环境卡片的「计划」一节列的是它。
+ *
+ * 压缩不剪会话日志，压缩前的批准结果都还在历史里；快照里那份是兜底，按 `approvedAt` 认出同一份不列两次。
+ * 返回消息里的原对象，调用方可以逐个比引用。
+ */
+export function approvedPlans(messages: readonly Message[]): ApprovedPlan[] {
+	const seen = new Set<number>();
+	const plans: ApprovedPlan[] = [];
+	for (const message of messages) {
+		const plan = message.role === "toolResult"
+			? (message.toolName === SUBMIT_PLAN_TOOL_NAME && !message.isError ? approvedPlanOf(message.details) : undefined)
+			: message.role === "user" && message.synthetic ? message.compactionContext?.plan : undefined;
+		if (!plan || seen.has(plan.approvedAt)) continue;
+		seen.add(plan.approvedAt);
+		plans.push(plan);
+	}
+	return plans;
+}
+
+/**
  * 会话里眼下的那份计划：最后一次交上来的，不论批没批。
  *
  * 不另存文件，直接从历史里读——交计划的调用和它的结果本来就在会话日志里，再写一份就是两处真相

@@ -1778,6 +1778,8 @@ export const en = {
 	"plan.none": "No plan in this conversation yet",
 	"plan.approved": "Approved",
 	"plan.declined": "Not approved",
+	"plan.approvedCount": "{n} approved",
+	"plan.handedOff": "Handed to a new session",
 	"plan.open": "Open plan",
 	"plan.commentHint": "Select any text in the plan to leave a comment",
 	"plan.commentPlaceholder": "Add a comment",

@@ -1957,6 +1957,8 @@ export const zhCN = {
 	"plan.none": "这场对话还没有交过计划",
 	"plan.approved": "已批准",
 	"plan.declined": "未批准",
+	"plan.approvedCount": "批准过 {n} 份",
+	"plan.handedOff": "已交给新会话执行",
 	"plan.open": "打开计划",
 	"plan.commentHint": "选中计划里的文字，留下修改意见",
 	"plan.commentPlaceholder": "添加评论",

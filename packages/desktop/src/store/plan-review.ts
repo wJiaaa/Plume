@@ -31,6 +31,12 @@ interface PlanReview {
 interface PlanReviewState {
 	/** 按会话。 */
 	reviews: Readonly<Record<string, PlanReview>>;
+	/**
+	 * 不在审批时，面板摊开的是哪一份批准过的计划（`approvedAt`）。没挑过就是最后交上来的那份。
+	 * 一个会话可以批准好几份，面板的切换和环境卡片的「计划」一节写这里。
+	 */
+	viewing: Readonly<Record<string, number>>;
+	view(sessionId: string, approvedAt: number): void;
 	/** 记下这次审批的计划；是新的一次返回 true——只有这时才替人打开面板，人关掉以后不再追着开。 */
 	show(sessionId: string, requestId: string, text: string): boolean;
 	add(sessionId: string, comment: Omit<PlanComment, "id">): void;
@@ -39,10 +45,16 @@ interface PlanReviewState {
 
 export const usePlanReview = create<PlanReviewState>((set, get) => ({
 	reviews: {},
+	viewing: {},
 	show(sessionId, requestId, text) {
 		if (get().reviews[sessionId]?.requestId === requestId) return false;
-		set((state) => ({ reviews: { ...state.reviews, [sessionId]: { requestId, text, comments: [] } } }));
+		// 又交了一份：先前挑着看的那份让位，审批完面板停在新的这份上。
+		const { [sessionId]: _picked, ...viewing } = get().viewing;
+		set((state) => ({ reviews: { ...state.reviews, [sessionId]: { requestId, text, comments: [] } }, viewing }));
 		return true;
+	},
+	view(sessionId, approvedAt) {
+		set((state) => ({ viewing: { ...state.viewing, [sessionId]: approvedAt } }));
 	},
 	add(sessionId, comment) {
 		const review = get().reviews[sessionId];

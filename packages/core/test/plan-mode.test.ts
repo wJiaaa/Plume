@@ -9,7 +9,7 @@ import { buildSystemPrompt } from "../src/prompt/system.ts";
 import { ApprovalGate } from "../src/runtime/policy/approvals.ts";
 import { compactIfNeeded } from "../src/runtime/compaction/compaction.ts";
 import { inPlanMode, PLAN_MODE_KEY, REVIEW_FIX_KEY, planModeTools } from "../src/runtime/plan/plan-mode.ts";
-import { currentPlan, latestApprovedPlan, planTitle, renderPlan } from "../src/runtime/plan/plan-view.ts";
+import { approvedPlans, currentPlan, latestApprovedPlan, planTitle, renderPlan } from "../src/runtime/plan/plan-view.ts";
 import { PLAN_APPROVE, PLAN_REVISE, submitPlanTool } from "../src/runtime/plan/plan-tool.ts";
 import { formatTaskContext, taskContextFromHistory } from "../src/runtime/compaction/task-context.ts";
 import { TODOS_KEY, todosFromLog } from "../src/tools/todo.ts";
@@ -294,6 +294,33 @@ test("currentPlan reads the last submitted plan off the log, approved or not", (
 	const compacted = { role: "user", synthetic: true, content: [], timestamp: 2, compactionContext: { plan: { ...PLAN, approvedAt: 1 } } } as unknown as Message;
 	assert.deepEqual(currentPlan([compacted]), { plan: { ...PLAN, approvedAt: 1 }, status: "approved" });
 	assert.equal(currentPlan([compacted, call("e", second)])?.toolCallId, "e");
+});
+
+test("approvedPlans 按先后列出每一份批准的计划，压缩以后也在", () => {
+	const call = (id: string, args: Record<string, unknown>) =>
+		({ role: "assistant", content: [{ type: "toolCall", id, name: "submit_plan", arguments: args }], timestamp: 1 }) as unknown as Message;
+	const result = (id: string, details: unknown, isError = false) =>
+		({ role: "toolResult", toolCallId: id, toolName: "submit_plan", content: [], isError, details, timestamp: 1 }) as Message;
+	const first = { ...PLAN, handoff: true as const, approvedAt: 1 };
+	const second = { plan: PLAN.plan.replace("# 改登录", "# 改登录 v2"), approvedAt: 2 };
+
+	assert.deepEqual(approvedPlans([]), []);
+	// 打回的、等审批的、被工具退回的都不列；交给新会话的照列。
+	const history = [
+		call("a", PLAN), result("a", { kind: "plan-feedback", feedback: "再想想" }),
+		call("b", PLAN), result("b", { kind: "plan", plan: first }),
+		call("c", { plan: "" }), result("c", undefined, true),
+		call("d", second), result("d", { kind: "plan", plan: second }),
+		call("e", PLAN),
+	];
+	assert.deepEqual(approvedPlans(history), [first, second]);
+
+	// 压缩以后原来的结果还在历史里，快照里那份是同一份，不重复列。
+	const compacted = { role: "user", synthetic: true, content: [], timestamp: 3, compactionContext: { plan: { ...second } } } as unknown as Message;
+	assert.deepEqual(approvedPlans([...history, compacted]), [first, second]);
+	assert.equal(approvedPlans([...history, compacted])[1], second, "列的是结果里那个对象，不是快照的拷贝");
+	// 历史里只剩快照时，从快照读。
+	assert.deepEqual(approvedPlans([compacted, call("f", PLAN), result("f", { kind: "plan", plan: { ...PLAN, approvedAt: 4 } })]).map((plan) => plan.approvedAt), [2, 4]);
 });
 
 test("latestApprovedPlan 取最终批准的那一版，带着批注；打回的、被退回的不算", () => {

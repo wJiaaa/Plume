@@ -6,18 +6,23 @@
  * 末尾挂一枚和卡上同号的序号。批准或打回以后面板只读，那份计划留着看。
  *
  * 等审批时正文用审批卡上那一份；其余时候从会话历史里读最后交上来的那份（`currentPlan`），重启以后也还在。
+ * 一个会话批准过好几份时，状态那一行右边能切到别的批准过的那几份（`approvedPlans`），打回的不列。
  */
 
-import { currentPlan, renderPlan as planMarkdown } from "@plume/core/plan-view";
+import { approvedPlans, currentPlan, planTitle, renderPlan as planMarkdown } from "@plume/core/plan-view";
 import { useEffect, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useScopedApprovals, useScopedFromMessages, useScopedSessionId } from "../../../app/session-scope.tsx";
 import { useI18n } from "../../../i18n/index.ts";
 import { ArrowUp, ListOrdered, MessageSquare } from "../../../ui/icons/index.ts";
 import { Textarea } from "../../../ui/inputs/NativeField.tsx";
 import { PanelEmpty } from "../../../ui/layout/PanelEmpty.tsx";
-import { Popover } from "../../../ui/overlay/Popover.tsx";
+import { MenuBody, MenuItem, Popover, usePopover } from "../../../ui/overlay/Popover.tsx";
+import { Button } from "../../../ui/primitives/Button.tsx";
+import { Caret } from "../../../ui/primitives/Caret.tsx";
 import { IconButton } from "../../../ui/primitives/IconButton.tsx";
 import { MarkNumber } from "../../../ui/primitives/MarkNumber.tsx";
+import { TimeAgo } from "../../../ui/primitives/TimeAgo.tsx";
 import { Scroller } from "../../../ui/scroll/Scroller.tsx";
 import { selectedText } from "../../../lib/selection.ts";
 import { usePlanReview } from "../../../store/plan-review.ts";
@@ -72,7 +77,14 @@ export function PlanPanel() {
 		return plan ? planMarkdown(plan.plan) : null;
 	});
 	const approved = useScopedFromMessages((messages) => currentPlan(messages)?.status === "approved");
-	const text = pending && review ? review.text : saved;
+	const plans = useScopedFromMessages(useShallow(approvedPlans));
+	const viewing = usePlanReview((state) => (sessionId ? state.viewing[sessionId] : undefined));
+	const picked = pending ? undefined : plans.find((plan) => plan.approvedAt === viewing);
+	const text = pending && review ? review.text : picked ? planMarkdown(picked) : saved;
+	// 摊开的是哪一份批准的计划：挑过的那份；没挑过而最后交的那份批准了，它就是列表里最后一份。
+	const shownAt = picked?.approvedAt ?? (approved ? plans.at(-1)?.approvedAt : undefined);
+	const switchable = !pending && plans.some((plan) => plan.approvedAt !== shownAt);
+	const menu = usePopover();
 	const bodyRef = useRef<HTMLDivElement>(null);
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const [owner] = useState(() => Symbol("plan-panel"));
@@ -167,7 +179,13 @@ export function PlanPanel() {
 				<MessageSquare size={13} strokeWidth={1.8} className="shrink-0" />
 				{t("plan.commentHint")}
 			</p>}
-			{!pending && <p className="mb-3 text-caption text-ink-faint" data-plan-status="">{t(approved ? "plan.approved" : "plan.declined")}</p>}
+			{!pending && <div className="mb-3 flex items-center gap-2">
+				<p className="min-w-0 flex-1 text-caption text-ink-faint" data-plan-status="">{t(picked || approved ? "plan.approved" : "plan.declined")}</p>
+				{switchable && <Button size="xs" variant="subtle" menu={menu.open} onClick={menu.toggle} className="-my-0.5" data-plan-switch="">
+					{t("plan.approvedCount", { n: plans.length })}
+					<Caret open={menu.open} />
+				</Button>}
+			</div>}
 			{/* 松开鼠标时取选区：双击、三击选词选段也是松开之后才定。 */}
 			<div className="relative">
 				<div ref={bodyRef} onMouseUp={(event) => { if (event.button === 0) requestAnimationFrame(pick); }} data-plan-body="">
@@ -177,6 +195,23 @@ export function PlanPanel() {
 				{marks.map((mark) => <MarkNumber key={mark.id} n={mark.n} className="pointer-events-none absolute -translate-y-1/2 shadow-sm" data-plan-mark={mark.n} style={{ left: mark.x, top: mark.y }} />)}
 			</div>
 		</Scroller>
+		{menu.open && <Popover anchor={menu.anchor} onClose={menu.close} placement="bottom" align="end" width="wide">
+			<MenuBody>
+				{plans.map((plan) => (
+					<MenuItem
+						key={plan.approvedAt}
+						selected={plan.approvedAt === shownAt}
+						detail={<><TimeAgo iso={new Date(plan.approvedAt).toISOString()} />{plan.handoff && ` · ${t("plan.handedOff")}`}</>}
+						onClick={() => {
+							usePlanReview.getState().view(sessionId, plan.approvedAt);
+							menu.close();
+						}}
+					>
+						{planTitle(plan)}
+					</MenuItem>
+				))}
+			</MenuBody>
+		</Popover>}
 		{draft && <Popover anchor={draft.at} onClose={() => setDraft(null)} placement="bottom" align="start" width={320} surface="panel" role="dialog" label={t("plan.commentPlaceholder")}>
 			<form className="flex items-end gap-1.5 p-2" onSubmit={(event) => { event.preventDefault(); commit(); }}>
 				<Textarea
