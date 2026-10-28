@@ -91,12 +91,13 @@ export async function askAfterTools(checks: TurnChecks, turn: ToolTurn, inject: 
 export function turnChecks(control: AgentControlContext, emit: AgentEventSink, plan: PlanWatch, repetition: RepetitionWatch): TurnChecks {
 	const limit = outputLimit(emit);
 	const awaiting = new AwaitWatch(control.awaiting ?? (() => []));
+	const stop = stopHook(control);
 	return {
 		afterProse: [
 			limit.prose,
 			({ assistant }) => (plan.silent(assistant) ? { end: { reason: "done" } } : undefined),
-			emptyReply(awaiting),
-			stopHook(control),
+			emptyReply(awaiting, stop.answering),
+			stop.check,
 			// 子代理还没回来时那一项本来就该挂着；问了，它就把还没等到的结论提前写出来。
 			({ turnsLeft }) => (awaiting.pending().length > 0 ? undefined : say(plan.closing(turnsLeft))),
 		],
@@ -157,11 +158,12 @@ function outputLimit(emit: AgentEventSink): { prose: Check<ProseTurn>; tools: Ch
  * A checklist cannot tell a question from abandoned work. Text yields to the person; only an
  * actually empty response earns a bounded retry.
  */
-function emptyReply(awaiting: AwaitWatch): Check<ProseTurn> {
+function emptyReply(awaiting: AwaitWatch, answeringStop: (produced: readonly Message[]) => boolean): Check<ProseTurn> {
 	let nudges = 0;
-	return ({ assistant }) => {
+	return ({ assistant, produced }) => {
 		const saidNothing = assistant.content.every((part) => part.type !== "text" || !part.text.trim());
-		if (!saidNothing) return undefined;
+		// 回 Stop 钩子那句话时一个字没写，是「没有要补的」：计划模式那句提醒就要它这样收尾，催了它只会补一句「无需计划」。
+		if (!saidNothing || answeringStop(produced)) return undefined;
 		if (nudges >= MAX_NUDGES) return { end: { reason: "error", error: "模型连续返回空回复，请重试或更换模型。" } };
 		nudges += 1;
 		// 「请给出回答」在等子代理时是在要结论：`1155850f` 被这句逼出了一句「设计方向已明确」，最后一路还没回来。
@@ -170,13 +172,20 @@ function emptyReply(awaiting: AwaitWatch): Check<ProseTurn> {
 	};
 }
 
-function stopHook(control: AgentControlContext): Check<ProseTurn> {
-	return async ({ assistant, produced }) => {
-		if (!control.onStop || control.signal?.aborted) return undefined;
-		const responseText = assistant.content.filter((part) => part.type === "text").map((part) => part.text).join("");
-		const toolCallCount = produced.filter((message) => message.role === "toolResult").length;
-		const resume = await control.onStop({ responseText, toolCallCount }).catch(() => undefined);
-		return resume && !control.signal?.aborted ? { say: resume } : undefined;
+/** `answering`：这条回复紧跟在钩子上一次说的话后面，是在回答它。 */
+function stopHook(control: AgentControlContext): { check: Check<ProseTurn>; answering: (produced: readonly Message[]) => boolean } {
+	let said: Message | undefined;
+	return {
+		check: async ({ assistant, produced }) => {
+			if (!control.onStop || control.signal?.aborted) return undefined;
+			const responseText = assistant.content.filter((part) => part.type === "text").map((part) => part.text).join("");
+			const toolCallCount = produced.filter((message) => message.role === "toolResult").length;
+			const resume = await control.onStop({ responseText, toolCallCount }).catch(() => undefined);
+			if (!resume || control.signal?.aborted) return undefined;
+			said = resume;
+			return { say: resume };
+		},
+		answering: (produced) => said !== undefined && produced.at(-2) === said,
 	};
 }
 

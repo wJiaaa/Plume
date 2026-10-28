@@ -101,7 +101,7 @@ function allow(tool: Tool, args: Record<string, unknown>): "ok" | ToolResult {
 export const UNSUBMITTED_PLAN_NOTE =
 	`（自动提示）现在是计划模式：计划只有通过 \`${SUBMIT_PLAN_TOOL_NAME}\` 提交，用户才看得到审批卡、才能批准，写在回复正文里的方案批不了。` +
 	`如果上面的回复就是方案，现在把它完整地用 \`${SUBMIT_PLAN_TOOL_NAME}\` 交上来，不要再把正文写一遍；还缺用户的决定，就用 \`ask_user\` 问。` +
-	"如果这一轮只是回答问题、用户并没有要改东西，回一句「无需计划」即可。";
+	"如果这一轮只是回答问题、用户并没有要改东西，就直接结束，不要写任何正文——上面的回答用户已经看到了。";
 
 /**
  * 计划模式的一轮以正文收尾，计划却没交：提醒一次。返回 `undefined` 是没有要说的。

@@ -81,6 +81,14 @@ test("in the loop: a plan written as prose gets one more request, a second prose
 	assert.equal(notes, 1);
 });
 
+test("in the loop: answering the reminder with nothing ends the run without the empty-reply nudge", async () => {
+	const { outcome, requests, notes } = await run([readCall, prose("登录走的是 session，没有 token"), said([], "stop")]);
+	assert.equal(outcome.reason, "done");
+	assert.equal(requests, 3, "the silent reply is the answer, not something to nudge");
+	assert.equal(notes, 1);
+	assert.equal(outcome.messages.filter((message) => textOf(message).startsWith("（自动继续）")).length, 0);
+});
+
 test("in the loop: answering the reminder with submit_plan ends there", async () => {
 	const submit = said([{ type: "toolCall", id: "p1", name: "submit_plan", arguments: { plan: "# 加显示字段\n\n## 改动\n- 入口" }, argumentsText: "{}" }], "toolUse");
 	const { outcome, requests, notes } = await run([readCall, prose("方案：加一个显示字段入口"), submit, prose("等你改完再交")]);
