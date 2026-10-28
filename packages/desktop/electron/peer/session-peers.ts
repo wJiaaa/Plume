@@ -6,10 +6,11 @@
  *   忙着排到手上这一轮之后，每个发件会话单独一轮（core 的 `SessionInbox.next`）。等的只认自己那封
  *   信进的那一轮（`peer-runs.ts`），几家同时来问也不串。等到一半被打断（人开口、超时、对方在等它
  *   的人），信照样在对方那里，记在账上，之后用 `wait` 接着等。
- * - **告诉**（`notify`）：一句通知，从不为它开一轮——对方在跑就在两步之间读到，闲着就攒到它下一次
- *   开工时读。没有回答，也就没有等。最初「通知」也能叫醒空闲的对方，结果是对方为一句不需要回答
- *   的话专门跑了一轮，发件方还得等它跑完。
- * - **等**（`wait`）：只给被打断的那几次问，以及「等它把手上的事做完」。
+ * - **告诉**（`notify`）：一句通知，当场返回——对方在跑就在两步之间读到，闲着就为它开一轮。没有
+ *   回答，也就没有等。曾经闲着时攒到对方下一次开工才读（照 codex 的 `trigger_turn = false`）：
+ *   协调各路的主会话收到「做完了」一直不动，攒着的几封等人开口才一下子全冒出来。
+ * - **等**（`wait`）：只给被打断的那几次问，以及「等它把手上这一轮做完」。只看前台
+ *   （`idleInForeground`）：对方放到后台的子代理可能跑半小时，等的一方要的是它主线的结论。
  *
  * 发件方那一轮本来就没结束，所以不需要运行时另递「它闲了」的回执，也不会因为回执多开一轮——最初是
  * 那样做的，人看到的是一件事被切成了好几截。对方卡在等它的人回答上时，等待当场返回，让发件方去
@@ -85,7 +86,8 @@ interface Sent {
 export type WaitOutcome =
 	| Missed
 	/** `dropped`：一起等的信里有几封还没进对话就被对方的人停下，丢了，没有回答。 */
-	| { kind: "done"; to: string; answers: Answer[]; dropped: number; waitedMs: number }
+	/** `background`：对方前台没事了，还有后台子代理在跑，回来以后它会自己再开一轮。 */
+	| { kind: "done"; to: string; answers: Answer[]; dropped: number; waitedMs: number; background?: true }
 	| { kind: "blocked"; to: string; pending: Pending[] }
 	| { kind: "dropped"; to: string }
 	| { kind: "timeout"; to: string; seconds: number }
@@ -171,7 +173,7 @@ export function createPeerRouter(host: PeerHost) {
 	 */
 	function settle(target: AgentSession, letters: Sent[]): { answers: Map<number, RunEnd & { asked: string[] }>; dropped: number } | null {
 		const id = target.meta.id;
-		const idle = target.idle;
+		const idle = target.idleInForeground;
 		const answers = new Map<number, RunEnd & { asked: string[] }>();
 		let dropped = 0;
 		for (const letter of letters) {
@@ -202,7 +204,7 @@ export function createPeerRouter(host: PeerHost) {
 		const refusal = pacer.admit(fromId, target.meta.id, text, chain);
 		if (refusal) return { kind: "paced", to, reason: refusal, length: text.length, chain: chain.length };
 
-		const busy = !target.idle;
+		const busy = !target.idleInForeground;
 		const letter: PeerLetter = { id: randomUUID(), sessionId: fromId, from: address(from), text, cwd: from.cwd, chain };
 		target.receive(letter, kind);
 		return { kind: "posted", sent: { id: letter.id!, text }, busy };
@@ -222,14 +224,16 @@ export function createPeerRouter(host: PeerHost) {
 			answers: ends.map((end) => ({ ...clip(end.reply), reason: end.reason, asked: end.asked ?? [] })),
 			dropped,
 			waitedMs: Date.now() - started,
+			// agent_end 先于前台 hold 释放，不能用两个 idle 的差推断后台名单。
+			...(target.subAgents.list().some((one) => one.status === "running" || one.status === "queued") ? { background: true as const } : {}),
 		});
-		const run = letters.length > 0 ? undefined : (runs.current(id) ?? (target.idle ? undefined : runs.next(id)));
+		const run = letters.length > 0 ? undefined : (runs.current(id) ?? (target.idleInForeground ? undefined : runs.next(id)));
 		if (letters.length === 0 && run === undefined) return answered([{ reason: "done", reply: lastReply(target) }]);
 
 		/** 落定了的结果；还没有就是 null。 */
 		const outcome = () => {
 			if (letters.length === 0) {
-				const end = runs.ended(id, run!) ?? (target.idle ? { reason: "done" as const, reply: lastReply(target) } : null);
+				const end = runs.ended(id, run!) ?? (target.idleInForeground ? { reason: "done" as const, reply: lastReply(target) } : null);
 				return end && answered([end]);
 			}
 			const settled = settle(target, letters);
@@ -272,7 +276,7 @@ export function createPeerRouter(host: PeerHost) {
 		try {
 			return await Promise.race([
 				runs.changed(session.meta.id).then(() => "changed" as const),
-				session.whenIdle().then(() => "changed" as const),
+				session.whenIdle("foreground").then(() => "changed" as const),
 				new Promise<"timeout">((resolve) => { timer = setTimeout(() => resolve("timeout"), Math.max(0, until - Date.now())); }),
 				new Promise<"stopped">((resolve) => {
 					if (signal?.aborted) return resolve("stopped");
@@ -295,7 +299,7 @@ export function createPeerRouter(host: PeerHost) {
 			const visible = await Promise.all(others.map(async (session) => ((await reachable(from, session)) ? session : null)));
 			return visible
 				.filter((session): session is AgentSession => session !== null)
-				.map((session) => ({ address: address(session), sessionId: session.meta.id, cwd: session.cwd, busy: !session.idle, mode: session.settingsInEffect.permissionMode }));
+				.map((session) => ({ address: address(session), sessionId: session.meta.id, cwd: session.cwd, busy: !session.idleInForeground, mode: session.settingsInEffect.permissionMode }));
 		},
 
 		/** 发一封请求，等处理它的那一轮收场。被打断时信留在账上，见 `wait`。 */

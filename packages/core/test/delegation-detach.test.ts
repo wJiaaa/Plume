@@ -150,6 +150,12 @@ test("派出即放手：这一轮当场收尾，子代理在后台跑完，结�
 		void h.session.whenIdle().then(() => (idle = true));
 		await new Promise((resolve) => setTimeout(resolve, 50));
 		assert.equal(idle, false, "等「闲了」的人不会在子代理还在跑时被放走");
+		// 另一个会话等它（wait_for_session）只等前台：后台子代理跑多久都不算。
+		assert.equal(h.session.idleInForeground, true);
+		let foreground = false;
+		void h.session.whenIdle("foreground").then(() => (foreground = true));
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		assert.equal(foreground, true, "只等前台的当场放走");
 
 		h.finish.resolve();
 		await until(() => h.main.length === 3 && !h.session.running, "送达之后开新回合");

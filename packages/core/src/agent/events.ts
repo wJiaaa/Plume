@@ -1,5 +1,5 @@
 import type { AutoCompactionState, CompactionVia } from "../types/compaction.ts";
-import type { ApprovalRisk, AssistantMessage, Message, RequestPrefix, StreamEvent, ThinkingLevel, ToolResult, ToolResultMessage } from "../types.ts";
+import type { ApprovalRisk, AssistantMessage, Message, PeerLetter, RequestPrefix, StreamEvent, ThinkingLevel, ToolResult, ToolResultMessage } from "../types.ts";
 import type { SubAgentSummary } from "../types/sub-agent.ts";
 import type { Failure } from "../ai/failure.ts";
 
@@ -339,7 +339,14 @@ export type AgentEvent =
 	 */
 	| { type: "wakeups"; wakeups: SessionWakeup[] }
 	/** 这个会话里还在跑的 `monitor` 有几个变了。它会自己叫醒会话，窗口据此在环境按钮上亮点。 */
-	| { type: "monitors"; running: number };
+	| { type: "monitors"; running: number }
+	/**
+	 * 别的会话发来、排在这一轮之后的请求变了（`runtime/agent-session/session-inbox.ts` 的 `queued`）。
+	 *
+	 * 它们轮到之前不进转录，窗口不知道就什么也画不出来：有人在等这个会话，屏幕上却一个字没有。
+	 * 和 `tasks` 一样每次带整张表。
+	 */
+	| { type: "peer_queue"; letters: PeerLetter[] };
 
 /**
  * 一个会话里待触发的定时唤醒：到点往这个对话送一条消息，模型带着已有上下文接着做。

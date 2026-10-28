@@ -6,7 +6,7 @@
  * leave one of the two meanings impossible to say.
  */
 
-import type { Message, ThinkingLevel } from "../../types.ts";
+import type { Message, PeerLetter, ThinkingLevel } from "../../types.ts";
 import { lettersOnly, peerMessage } from "./peer-letters.ts";
 
 export interface Queued {
@@ -63,6 +63,11 @@ export class SessionInbox {
 
 	get empty(): boolean {
 		return this.queued.length === 0 && this.steering.length === 0;
+	}
+
+	/** 排着的那几封别的会话的请求，按轮到的先后。窗口据此画出「有人在等」，见 `peer_queue` 事件。 */
+	get letters(): PeerLetter[] {
+		return this.queued.flatMap((entry) => lettersOnly(entry.message) ?? []);
 	}
 
 	/**

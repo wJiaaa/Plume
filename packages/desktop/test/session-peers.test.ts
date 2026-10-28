@@ -149,19 +149,20 @@ test("路由：对方权限比自己宽，不送；反过来照送", async () =>
 	assert.equal(ask.inbox.length, 1);
 });
 
-test("路由：问送的是请求，告诉送的是通知，通知不让闲着的它变忙", async () => {
+test("路由：问送的是请求，告诉送的是通知；闲着时的通知为它开一轮", async () => {
 	const a = fakeSession("aaaaaaaa-3", "/w/p");
 	const b = fakeSession("bbbbbbbb-3", "/w/p");
 	const { router } = routerWith(a, b);
 	assert.deepEqual(await router.notify("aaaaaaaa-3", { to: "bbbb", message: "闲着时" }), { kind: "delivered", to: "bbbb [bbbbbb]", busy: false });
-	assert.equal(b.session.idle, true);
+	assert.equal(b.session.idleInForeground, false);
+	b.read();
 	b.start();
 	assert.deepEqual(await router.notify("aaaaaaaa-3", { to: "bbbb", message: "先别动 config.ts" }), { kind: "delivered", to: "bbbb [bbbbbb]", busy: true });
 	await asking(router, b, "aaaaaaaa-3", { to: "bbbb", message: "接着发版" });
 	assert.deepEqual(b.inbox.map((one) => one.kind), ["notice", "notice", "request"]);
 });
 
-test("路由：两家的信进了 B 的同一次运行（一封请求开轮、一封通知插进来），之后发出去的接最长的那条链", async () => {
+test("路由：两家的信进了 B 的同一次运行（一封请求开轮、一封通知插进来），之后发出去的接开轮那封的链", async () => {
 	const a = fakeSession("aaaaaaaa-4", "/w/p");
 	const b = fakeSession("bbbbbbbb-4", "/w/p");
 	const c = fakeSession("cccccccc-4", "/w/p");
@@ -177,4 +178,26 @@ test("路由：两家的信进了 B 的同一次运行（一封请求开轮、�
 	b.read(1);
 	await router.notify("bbbbbbbb-4", { to: "aaaa", message: "答复" });
 	assert.deepEqual(a.inbox[1]?.letter.chain, ["cccccccc-4", "aaaaaaaa-4", "bbbbbbbb-4"]);
+});
+
+test("路由：插进一次已经在跑的运行的通知不接链——各跑长回合、互相递通知，链不会一封封涨上去", async () => {
+	const a = fakeSession("aaaaaaaa-19", "/w/p");
+	const b = fakeSession("bbbbbbbb-19", "/w/p");
+	const { router } = routerWith(a, b);
+	a.start();
+	b.start();
+	for (let round = 0; round < 15; round++) {
+		assert.equal((await router.notify("aaaaaaaa-19", { to: "bbbb", message: `A 第 ${round} 次` })).kind, "delivered");
+		b.read();
+		assert.equal((await router.notify("bbbbbbbb-19", { to: "aaaa", message: `B 第 ${round} 次` })).kind, "delivered", "不会撞上链长上限");
+		a.read();
+	}
+	assert.deepEqual(a.inbox.at(-1)?.letter.chain, ["bbbbbbbb-19"]);
+	// 叫起一次运行的通知照样接链：闲着的 B 被它叫起来之后再发的，接在后面。
+	b.finish();
+	await router.notify("aaaaaaaa-19", { to: "bbbb", message: "叫醒你" });
+	b.read();
+	b.start();
+	await router.notify("bbbbbbbb-19", { to: "aaaa", message: "醒了" });
+	assert.deepEqual(a.inbox.at(-1)?.letter.chain, ["aaaaaaaa-19", "bbbbbbbb-19"]);
 });

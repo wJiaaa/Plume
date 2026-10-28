@@ -12,7 +12,9 @@
  *
  * 请求总是自己开一次（core 排队时一个发件会话一轮），所以那一次最后说的话就是它的回答。通知不开轮、
  * 没人等它的回答，它进了哪一次记下了也没人来取，有用的只是它的链。往来链记在运行上：这一次运行里发出去的信，接的是把它
- * 叫起来、或插进它的那几封信的链，不是这个会话最近收到的那一封。
+ * 叫起来的那几封信的链，不是这个会话最近收到的那一封。插进一次已经在跑的运行的信不接：那一次
+ * 不是它叫起来的，几个会话各跑一个长回合、互相递通知时，每封都给链加一跳，正常协作半小时就撞上
+ * 链长上限，被当成原地来回拦下（2026-10 实测链长 18，其中同一会话出现 8 次）。
  */
 
 import type { AgentEvent } from "@plume/core";
@@ -70,8 +72,8 @@ export class PeerRuns {
 				const run = track.active ? track.seq : track.seq + 1;
 				for (const letter of event.message.peer) {
 					if (letter.id) track.letters.set(letter.id, run);
-					// 取最长的那条：链是防两边原地来回的，宁可多算一跳，不能少算。
-					if (letter.chain && letter.chain.length > (track.chains.get(run)?.length ?? 0)) track.chains.set(run, letter.chain);
+					// 只有叫起这一次的信接链，见文件头。取最长的那条：链是防两边原地来回的，宁可多算一跳。
+					if (!track.active && letter.chain && letter.chain.length > (track.chains.get(run)?.length ?? 0)) track.chains.set(run, letter.chain);
 				}
 				break;
 			}

@@ -145,12 +145,13 @@ export interface ToolContext {
 	/** 停掉一个派出去、还没完的子代理（`stop_subagent` 用）。只有主会话给。 */
 	stopSubAgent?: (id: string) => { id: string } | { refusal: string };
 	/**
-	 * 等一件不在这一轮里的事，但人一开口就放手：放手时交回 `null`。
+	 * 等一件不在这一轮里的事，但有人找就放手：放手时交回 `{ spokenTo }`，说清是人开口还是别的会话
+	 * 递来了通知。
 	 *
 	 * 插话只在两轮之间才有人取，卡在等待上的工具调用会把人说的话压到它返回为止。只有主会话给
 	 * （见 `spoken-waits.ts`）；没有它，工具就一直等到底。
 	 */
-	untilSpokenTo?: <T>(run: Promise<T>) => Promise<T | null>;
+	untilSpokenTo?: <T>(run: Promise<T>) => Promise<T | { spokenTo: "person" | "notice" }>;
 	/** Shared per-session scratch space (todo list, file read cache, ...). */
 	state: Map<string, unknown>;
 	/**

@@ -54,7 +54,7 @@ export function createPeerTools(router: PeerRouter): Tool[] {
 			if (SUB_AGENT_ID.test(to)) return errorResult(subAgentAddressed(to));
 			if (!message) return errorResult("`message` is required.");
 			const outcome = await untilSpokenTo(ctx, (signal) => router.ask(ctx.sessionId, { to, message, timeoutSeconds: seconds(args.timeout_seconds), signal }));
-			if (outcome === null) return textResult(spokenTo(to, "Your request stays with it"));
+			if (isSpokenTo(outcome)) return textResult(spokenTo(outcome.spokenTo, to, "Your request stays with it"));
 			return outcome.kind === "done" ? textResult(asked(outcome, to), outcome) : errorResult(asked(outcome, to));
 		},
 	};
@@ -63,7 +63,7 @@ export function createPeerTools(router: PeerRouter): Tool[] {
 		name: "notify_session",
 		description:
 			"Tell another running session something that bears on its work, without asking for an answer: you are about to change files it is working on, it broke something you depend on, \"stop editing that file\". " +
-			"It never starts a turn for a notice: a busy session reads it between its steps, an idle one when it next starts working. Returns at once. " +
+			"A busy session reads it between its steps; an idle one starts a turn to read it. Returns at once. " +
 			"Anything you need done or answered is ask_session, not this.",
 		parameters: {
 			type: "object",
@@ -87,7 +87,7 @@ export function createPeerTools(router: PeerRouter): Tool[] {
 		name: "wait_for_session",
 		description:
 			"Keep waiting for the answers to your ask_session requests whose wait was cut short: each returns what the session said at the end of the turn that handled it. " +
-			"Without such a request, waits for the session's current work to finish (at once if idle). " +
+			"Without such a request, waits for the session's current turn to finish (at once if it is not in one); sub-agents it runs in the background are not waited for. " +
 			"Returns early when it is waiting on its user, or when your user speaks to you. A timeout does not stop the other session.",
 		parameters: {
 			type: "object",
@@ -101,7 +101,7 @@ export function createPeerTools(router: PeerRouter): Tool[] {
 			if (!to) return errorResult("`to` is required: an address from list_sessions.");
 			if (SUB_AGENT_ID.test(to)) return errorResult(subAgentAddressed(to));
 			const outcome = await untilSpokenTo(ctx, (signal) => router.wait(ctx.sessionId, { to, timeoutSeconds: seconds(args.timeout_seconds), signal }));
-			if (outcome === null) return textResult(spokenTo(to, "It keeps working on its own"));
+			if (isSpokenTo(outcome)) return textResult(spokenTo(outcome.spokenTo, to, "It keeps working on its own"));
 			return outcome.kind === "done" ? textResult(waited(outcome, to), outcome) : errorResult(waited(outcome, to));
 		},
 	};
@@ -113,26 +113,34 @@ function seconds(value: unknown): number | undefined {
 	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+type SpokenTo = { spokenTo: "person" | "notice" };
+
+function isSpokenTo(outcome: unknown): outcome is SpokenTo {
+	return typeof outcome === "object" && outcome !== null && "spokenTo" in outcome;
+}
+
 /**
- * 人一开口就不再等：插话只在两次请求之间才有人读，等在这里会把人说的话压到对方做完为止
- * （默认十分钟）。路由器那头的等待跟着停，免得它还挂在「谁在等谁」上，把之后的问误判成死等。
+ * 有人找就不再等：插话只在两次请求之间才有人读，等在这里会把人说的话、别的会话的通知压到对方做完
+ * 为止（默认十分钟）。路由器那头的等待跟着停，免得它还挂在「谁在等谁」上，把之后的问误判成死等。
  * 本轮被停下（`ctx.signal`）也一样。
  */
-async function untilSpokenTo<T>(ctx: ToolContext, start: (signal: AbortSignal) => Promise<T>): Promise<T | null> {
+async function untilSpokenTo<T>(ctx: ToolContext, start: (signal: AbortSignal) => Promise<T>): Promise<T | SpokenTo> {
 	const stop = new AbortController();
 	const quit = () => stop.abort();
 	ctx.signal?.addEventListener("abort", quit, { once: true });
 	try {
 		const run = start(stop.signal);
 		const outcome = ctx.untilSpokenTo ? await ctx.untilSpokenTo(run) : await run;
-		if (outcome === null) stop.abort();
+		if (isSpokenTo(outcome)) stop.abort();
 		return outcome;
 	} finally {
 		ctx.signal?.removeEventListener("abort", quit);
 	}
 }
 
-function spokenTo(to: string, still: string): string {
+/** 被谁打断就照实说：被通知打断却说「你的用户说话了」，模型会去回应一个没开口的人。 */
+function spokenTo(by: SpokenTo["spokenTo"], to: string, still: string): string {
+	if (by === "notice") return `A notice from another session arrived, so you stopped waiting. ${still}; ${to} keeps working on its own. Read the notice, then call wait_for_session if you still need its answer.`;
 	return `Your user spoke to you, so you stopped waiting. ${still}; ${to} keeps working on its own. Answer your user first; call wait_for_session later if you still need its answer.`;
 }
 
@@ -181,7 +189,7 @@ function refused(outcome: Refused, wanted: string): string {
 
 function notified(outcome: NotifyOutcome, wanted: string): string {
 	if (outcome.kind !== "delivered") return refused(outcome, wanted);
-	return `Delivered to ${outcome.to}. ${outcome.busy ? "It reads it between its steps." : "It is idle and reads it when it next starts working; a notice does not start it."} There is no answer to a notice.`;
+	return `Delivered to ${outcome.to}. ${outcome.busy ? "It reads it between its steps." : "It is idle, so it starts a turn to read it."} There is no answer to a notice.`;
 }
 
 function asked(outcome: AskOutcome, wanted: string): string {
@@ -247,7 +255,9 @@ function settled(outcome: Exclude<WaitOutcome, Missed | { kind: "deadlock" }>, s
 				return `${outcome.to} ${how}${index === 0 ? waitedFor : ""}${which}. What it said at the end:\n${answer.reply || "(no reply text)"}${cut}`;
 			});
 			const dropped = outcome.dropped > 0 ? [`${outcome.dropped} message(s) were dropped: it was stopped by its user before reading them. Ask your user before sending them again.`] : [];
-			return [...answers, ...dropped].join("\n\n");
+			// 不说这一句，模型会接着 wait_for_session，每次都当场拿回同一段话。
+			const background = outcome.background ? [`${outcome.to} still has sub-agents running in the background. When they report back it starts a new turn by itself; waiting does not cover that, and wait_for_session returns at once until then. If you need what comes after, ask it to notify you when it is done, then go on with other work or end your turn.`] : [];
+			return [...answers, ...dropped, ...background].join("\n\n");
 		}
 		case "blocked":
 			return `${outcome.to} is waiting for its user to answer: ${outcome.pending.map((one) => `${one.question ? "a question" : "an approval"} — ${one.title}`).join("; ")}. Tell your user to answer it in that session. ${still}; calling wait_for_session waits until it is answered and the work is done.`;

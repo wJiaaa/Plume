@@ -188,7 +188,7 @@ export class AgentSession {
 	/** 主会话派出去的子代理：派出即放手，跑完一个送回一个。见 `detached-dispatches.ts`。 */
 	private readonly dispatches = new DetachedDispatches((report) => this.deliveries.report(report));
 	/** 工具在等另一个会话做完时，有人找就放手。见 `spoken-waits.ts`。 */
-	private readonly spokenWaits = new SpokenWaits(() => this.inbox.spoken || (this.running && this.notices.length > 0));
+	private readonly spokenWaits = new SpokenWaits(() => (this.inbox.spoken ? "person" : this.running && this.notices.length > 0 ? "notice" : null));
 	/** 跑完了、还没送回主会话的后台结果；攒一小会儿再送。见 `session-deliveries.ts`。 */
 	private readonly deliveries: SessionDeliveries;
 	/**
@@ -202,8 +202,8 @@ export class AgentSession {
 	private exitCut: Message | null = null;
 	/** Whether the previous process's sub-agents are back on the roster; see `restoreSubAgents`. */
 	private subAgentsRestored = false;
-	/** 等着这个会话闲下来的人；见 `whenIdle`。 */
-	private readonly idleWaiters: Array<() => void> = [];
+	/** 等着这个会话闲下来的人；`foreground` 的只等前台，见 `whenIdle`。 */
+	private readonly idleWaiters: Array<{ resolve: () => void; foreground: boolean }> = [];
 	/** 正在跑的那一轮对「模型换了」的订阅；见 `liveModel`。 */
 	private readonly modelListeners = new Set<() => void>();
 	/**
@@ -228,8 +228,10 @@ export class AgentSession {
 	});
 	/** 侧边聊天改过、这个会话还没被告知的文件；下一轮开头说一次。见 `noteSideChanges`。 */
 	private readonly sideChanges = new Set<string>();
-	/** 其他会话发来、还没读到的通知：下一个空档读到，从不为它开一轮。见 `receive`。 */
+	/** 其他会话发来、这一轮还没读到的通知：循环在两步之间取走。闲着时来的不放这里，见 `receive`。 */
 	private notices: PeerLetter[] = [];
+	/** 上一次告诉窗口的排队请求，见 `announcePeerQueue`。 */
+	private peerQueueSent = "";
 
 	constructor(options: AgentSessionOptions) {
 		this.cwd = options.cwd;
@@ -288,7 +290,15 @@ export class AgentSession {
 			jobs: () => backgroundJobs(this.can.state),
 			detail: (id) => this.subAgents.detail(id),
 			outstanding: () => this.subAgents.list().filter((one) => this.dispatches.outstanding.has(one.id)),
-			submit: async (message, deliver) => { await this.submit(message, { fromPerson: false, deliver }); },
+			submit: async (message, deliver) => {
+				// 攒批期间可能已经开轮；通知不能进会被 stop 清空的普通 inbox。
+				if (deliver === "notice" && this.running && message.role === "user" && message.peer) {
+					for (const letter of message.peer) this.receive(letter, "notice");
+					return;
+				}
+				await this.submit(message, { fromPerson: false, deliver: deliver === "followUp" ? deliver : undefined });
+			},
+			unsent: (letters) => { this.notices.push(...letters); },
 			settled: () => this.checkIdle(),
 		});
 		backgroundJobs(this.can.state).onFinished((job) => this.deliveries.jobFinished(job));
@@ -352,18 +362,27 @@ export class AgentSession {
 	 * 派完子代理的那一轮收尾时更是这样：活才刚开始，结果回来还要一轮一轮地接着做。
 	 */
 	get idle(): boolean {
-		return (
-			!this.running &&
-			this.dispatches.outstanding.size === 0 &&
-			this.deliveries.empty &&
-			!this.tasks.list().some((task) => task.status === "queued" || task.status === "running")
-		);
+		return this.idleInForeground && this.dispatches.outstanding.size === 0;
 	}
 
-	/** 下一次 `idle` 成立时兑现；此刻就闲着则立刻兑现。会话被处置时随之兑现，等的人自己再看它还在不在。 */
-	whenIdle(): Promise<void> {
+	/**
+	 * 前台手上没事了：和 `idle` 只差放了手的后台子代理。
+	 *
+	 * 另一个会话等它（`wait_for_session`）看的是这个。后台子代理一跑可能半小时，期间主会话一句话
+	 * 不说，等的那一方只能干等到超时，而它要的是主会话这一轮的结论；结果回来后真有新的，对方会再开
+	 * 一轮，要就再问。攒着待送的、排着的任务仍然算忙：那是马上就要开的下一轮。
+	 */
+	get idleInForeground(): boolean {
+		return !this.running && this.deliveries.empty && !this.tasks.list().some((task) => task.status === "queued" || task.status === "running");
+	}
+
+	/**
+	 * 下一次 `idle`（`"foreground"`：`idleInForeground`）成立时兑现；此刻就成立则立刻兑现。会话被
+	 * 处置时随之兑现，等的人自己再看它还在不在。
+	 */
+	whenIdle(scope?: "foreground"): Promise<void> {
 		return new Promise((resolve) => {
-			this.idleWaiters.push(resolve);
+			this.idleWaiters.push({ resolve, foreground: scope === "foreground" });
 			this.checkIdle();
 		});
 	}
@@ -373,17 +392,23 @@ export class AgentSession {
 	 *
 	 * - 请求：和后台结果走同一条路，攒一小会儿；闲着就开一轮，忙着排到这一轮做完之后，单独一轮。
 	 *   发件方等的就是这一轮最后说的话。
-	 * - 通知：不开轮。在跑就在下一步之前读到，闲着就等下一次开轮时排在最前面读到（照 codex 的
-	 *   `trigger_turn = false`）。「我要改 config.ts」这种话不值得对方为它花一整轮。在跑时和人插话
-	 *   一样放开正在等的事，不然它要等那件事等完才读得到。
+	 * - 通知：在跑就在下一步之前读到，和人插话一样放开正在等的事，不然它要等那件事等完才读得到。
+	 *   闲着就走送达开一轮（不再照 codex 的 `trigger_turn = false` 攒到下一次开轮）：攒着的通知不进
+	 *   记录、界面上看不见，卸载或重启就没了；而闲着的收件方多半是在等各路回报的主会话，「做完了」
+	 *   「被谁挡住了」正是它该接着动的事，攒着它就一直不动。发件方从不等通知，开这一轮不拖累谁。
 	 */
 	receive(letter: PeerLetter, kind: "request" | "notice"): void {
 		if (kind === "request") {
 			this.deliveries.letter(letter);
 			return;
 		}
+		// 压缩也占着 running，却没有循环取通知；送达会等压缩结束后开轮。
+		if (!this.running || this.activity.compaction) {
+			this.deliveries.notice(letter);
+			return;
+		}
 		this.notices.push(letter);
-		if (this.running) this.spokenWaits.release();
+		this.spokenWaits.release("notice");
 	}
 
 	/**
@@ -430,9 +455,31 @@ export class AgentSession {
 	private checkIdle(): void {
 		if (this.idleWaiters.length === 0) return;
 		setTimeout(() => {
-			if (!this.idle) return;
-			for (const resolve of this.idleWaiters.splice(0, this.idleWaiters.length)) resolve();
+			if (!this.idleInForeground) return;
+			const idle = this.idle;
+			const due = this.idleWaiters.filter((waiter) => idle || waiter.foreground);
+			for (const waiter of due) this.idleWaiters.splice(this.idleWaiters.indexOf(waiter), 1);
+			for (const { resolve } of due) resolve();
 		}, 0);
+	}
+
+	/** 排着的请求变了才告诉窗口：每取一条排着的都会来问，多数时候取走的不是请求。 */
+	private announcePeerQueue(): void {
+		const letters = this.inbox.letters;
+		const key = letters.map((letter) => letter.id ?? letter.text).join("\n");
+		if (key === this.peerQueueSent) return;
+		this.peerQueueSent = key;
+		void this.emit({ type: "peer_queue", letters }).catch(() => {});
+	}
+
+	/**
+	 * 一段运行收了场，还有通知没被循环取走：多半是模型写最后那段回复时到的，循环最后一次取插话已经过了。
+	 * 留着就要等下一次有人开口才读到，闲着的会话于是一直不动；交给送达，和闲着时来的通知一样开一轮。
+	 * 人按了停的不送（停下是人的决定），留到下一轮开头读。还有别的运行占着会话时也不动，那一轮会读到。
+	 */
+	private releaseNotices(mark: number): void {
+		if (this.notices.length === 0 || this.running || this.activity.stoppedSince(mark)) return;
+		for (const letter of this.notices.splice(0, this.notices.length)) this.deliveries.notice(letter);
 	}
 
 	/** Load skills, agents and MCP tools. Safe to call again after settings change. */
@@ -814,6 +861,7 @@ export class AgentSession {
 		};
 		const held = this.activity.hold("resume", resume);
 		void held.finally(() => {
+			this.releaseNotices(mark);
 			void this.tasks.drain();
 			this.checkIdle();
 		}).catch(() => {});
@@ -918,6 +966,7 @@ export class AgentSession {
 	): Promise<TurnEnd | undefined> {
 		if (this.running) {
 			const went = this.inbox.accept({ message, thinking: options.thinking }, options.deliver, this.activity.steerable);
+			if (went === "queue") this.announcePeerQueue();
 			if (went === "steer") {
 				/*
 				 * 有人找它了（人开口，或另一个会话插进来一封信），别再干等另一个会话。
@@ -926,7 +975,7 @@ export class AgentSession {
 				 * 「两轮之间」要等到那个会话做完。放手之后这一轮当场往下走，下一个回合开头就读到这句话。
 				 * 谁算「有人找」见 `addressed`。
 				 */
-				if (options.fromPerson || addressed(message)) this.spokenWaits.release();
+				if (options.fromPerson || addressed(message)) this.spokenWaits.release("person");
 			}
 			return undefined;
 		}
@@ -958,6 +1007,7 @@ export class AgentSession {
 		};
 		try { await this.activity.hold("prompt", accept); }
 		finally {
+			this.releaseNotices(mark);
 			void this.tasks.drain();
 			this.checkIdle();
 		}
@@ -974,6 +1024,7 @@ export class AgentSession {
 		while (!this.inbox.empty) {
 			// Orphaned steering comes out first; see `SessionInbox.next`.
 			const next = this.inbox.next();
+			this.announcePeerQueue();
 			if (!next) break;
 			if (this.activity.stopping) break;
 			const mark = this.activity.mark();
@@ -1119,6 +1170,7 @@ export class AgentSession {
 		this.activity.stop();
 		// Steering and the queue both go: see `SessionInbox.clear`. A wakeup among them fires again: see `SessionWakeups.dropped`.
 		this.wakeups.dropped(this.inbox.clear());
+		this.announcePeerQueue();
 		/*
 		 * Explicitly, as well as through the chain.
 		 *

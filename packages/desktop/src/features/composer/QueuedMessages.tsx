@@ -21,7 +21,10 @@
 import { CornerDownLeft, GripVertical, MessageSquarePlus, MoreHorizontal, PencilLine, Trash2 } from "../../ui/icons/index.ts";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import type { PeerLetter } from "@plume/core";
 import type { QueuedMessage } from "../../store/queue-slice.ts";
+import { usePeerQueue } from "../../store/peer-queue.ts";
+import { QueuedLetter } from "./QueuedLetter.tsx";
 import { motionReduced } from "../../ui/motion/reduced.ts";
 import { DURATION } from "../../ui/motion/tokens.ts";
 import { MenuBody, MenuItem, Popover, usePopover } from "../../ui/overlay/Popover.tsx";
@@ -31,6 +34,7 @@ import { IconButton } from "../../ui/primitives/IconButton.tsx";
 
 /** 空列表用同一个，否则每次取值都是一个新数组，订阅它的组件每一帧都要重渲染一次。 */
 const NONE: QueuedMessage[] = [];
+const NO_LETTERS: PeerLetter[] = [];
 
 /** 还在播退场的那一条，连同它走之前站的位置——补回原处，队伍才不会在它头上先塌一格。 */
 interface Leaving {
@@ -82,6 +86,8 @@ export function QueuedMessages({
 }) {
 	const { t } = useI18n();
 	const items = useApp((state) => state.queued[sessionId] ?? NONE);
+	/* 别的会话排进来的请求：只读，摆在人排的那几条上面，见 `QueuedLetter`。 */
+	const letters = usePeerQueue((state) => state.bySession[sessionId] ?? NO_LETTERS);
 	const [leaving, setLeaving] = useState<Leaving[]>([]);
 	const previous = useRef(items);
 	/** 人从条上拿走的那几条。只有它们播收起；不在这里面的离场都是被送出去了，见文件头。 */
@@ -127,10 +133,11 @@ export function QueuedMessages({
 	}, [items]);
 	useEffect(() => () => { for (const timer of timers.current) clearTimeout(timer); }, []);
 
-	if (rows.length === 0) return null;
+	if (rows.length === 0 && letters.length === 0) return null;
 	return (
 		<Rows
 			source={source}
+			letters={letters}
 			rows={rows}
 			onEdit={onEdit}
 			onGone={finish}
@@ -156,6 +163,7 @@ interface Drag {
 
 function Rows({
 	source,
+	letters,
 	rows,
 	onEdit,
 	onGone,
@@ -164,6 +172,7 @@ function Rows({
 	nowLabel,
 }: {
 	source: QueueSource;
+	letters: PeerLetter[];
 	rows: { entry: QueuedMessage; leaving: boolean }[];
 	onEdit: (entry: QueuedMessage) => void;
 	/** 走掉的那一行收完了。 */
@@ -263,7 +272,8 @@ function Rows({
 		 * `overflow-hidden` 是为了圆角：行的高亮要在角上被切住。它也顺手圈住了拖动——被拖的那行
 		 * 位移在下面按队伍长度夹过，甩不出这张卡片。
 		 */
-		<div ref={list} role="list" aria-label={label} data-composer-queue data-empty={rows.every(row => row.leaving) || undefined} className="ly-composer-queue overflow-hidden rounded-xl bg-card/40">
+		<div ref={list} role="list" aria-label={label} data-composer-queue data-empty={(letters.length === 0 && rows.every(row => row.leaving)) || undefined} className="ly-composer-queue overflow-hidden rounded-xl bg-card/40">
+			{letters.map((letter, index) => <QueuedLetter key={letter.id ?? index} letter={letter} />)}
 			{rows.map((row, index) => (
 				<Row
 					key={row.entry.id}

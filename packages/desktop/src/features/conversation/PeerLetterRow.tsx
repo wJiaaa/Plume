@@ -19,7 +19,7 @@ import { useScopedSessionId } from "../../app/session-scope.tsx";
 import { Markdown } from "../markdown/index.ts";
 import { FlowRow } from "./FlowRow.tsx";
 import { jumpToSession } from "./jump-to-session.ts";
-import { peerName } from "./call-words.ts";
+import { peerName } from "../../store/peer-name.ts";
 
 export function PeerLetterRow({ letters }: { letters: PeerLetter[] }) {
 	return (

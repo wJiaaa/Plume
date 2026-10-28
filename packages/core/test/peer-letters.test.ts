@@ -1,7 +1,8 @@
 /**
  * 另一个会话写来的信，从 `AgentSession` 这一头验：请求闲着时开一轮、忙着时排到这一轮之后，同一个
- * 会话的几封合成一条而不同会话的各开一轮；通知从不开轮，忙着插进这一轮、闲着攒到下一轮开头；
- * `whenIdle` 不把「马上要开的下一轮」当成闲了；宿主注入的跨会话工具不下发给子代理。
+ * 会话的几封合成一条而不同会话的各开一轮；通知忙着插进这一轮、闲着开一轮，这一轮来不及读的收场后
+ * 另开一轮，人按停的不丢；`whenIdle` 不把「马上要开的下一轮」当成闲了；等待被打断时说清是人还是
+ * 通知；宿主注入的跨会话工具不下发给子代理。
  */
 
 import assert from "node:assert/strict";
@@ -159,26 +160,158 @@ test("同一刻到的几封请求：不同会话的不合并、各开一轮，�
 	}
 });
 
-test("闲着时来通知：不开轮、不算忙，攒到下一轮开头读到，几家的并成一条", async () => {
-	const h = await harness(() => says("好。"));
+test("闲着时来通知：开一轮读，几家的并成一条，进了记录；攒着的那一会儿不算闲", async () => {
+	const h = await harness(() => says("收到，我避开 config.ts。"));
 	try {
 		h.session.receive(letter("我要改 config.ts。", "丙 [cccccc]", "cccccccc"), "notice");
 		h.session.receive(letter("我也要改它。", "丁 [dddddd]", "dddddddd"), "notice");
-		assert.equal(h.session.idle, true, "通知不让它变忙");
-		await new Promise((resolve) => setTimeout(resolve, 600));
-		assert.equal(h.runs(), 0, "没有为通知开一轮");
-		await h.session.prompt([{ type: "text", text: "接着干" }]);
-		await until(() => !h.session.running, "人开的那一轮收尾");
-		assert.equal(h.runs(), 1);
+		assert.equal(h.session.idle, false, "四百毫秒后就要开一轮：这时被回收，信就没了");
+		await until(() => h.runs() === 1 && h.session.idle, "为通知开的那一轮收尾");
+		assert.equal(h.requests.length, 1);
 		const [notice] = letters(h.requests[0]!.messages);
-		assert.deepEqual(notice?.role === "user" ? notice.peer?.map((one) => one.sessionId) : null, ["cccccccc", "dddddddd"], "第一次请求就读到");
-		assert.ok(notice?.role === "user" && notice.steered, "不画成一轮的开头");
+		assert.deepEqual(notice?.role === "user" ? notice.peer?.map((one) => one.sessionId) : null, ["cccccccc", "dddddddd"]);
+		assert.ok(notice?.role === "user" && !notice.steered, "它开了这一轮，画成一轮的开头");
 		assert.match(textOf(notice!), /插进来的通知/);
-		assert.equal(letters(h.session.messages).length, 1, "只进一次");
+		assert.deepEqual(letters(h.session.messages), [notice], "进了记录，只进一次");
 	} finally {
 		await h.cleanup();
 	}
 });
+
+test("模型写最后那段回复时来的通知：这一轮来不及读，收场后另开一轮读到，不攒到人下次开口", async () => {
+	let sent = false;
+	const h = await harness((context) => {
+		if (context.messages.some((message) => message.role === "user" && message.peer)) return says("看到了。");
+		return says("干完了。");
+	});
+	// 循环发出 agent_end 时已经不再取插话，会话却还没放手：落在这里的通知以前就一直攒着。
+	h.events.push = function (this: AgentEvent[], ...items: AgentEvent[]) {
+		if (!sent && items.some((event) => event.type === "agent_end")) {
+			sent = true;
+			h.session.receive(letter("interop 编不过了。"), "notice");
+		}
+		return Array.prototype.push.apply(this, items);
+	};
+	try {
+		await h.session.prompt([{ type: "text", text: "干活" }]);
+		await until(() => h.runs() === 2 && h.session.idle, "收场后为通知另开一轮");
+		assert.ok(h.requests[1]!.messages.some((message) => message.role === "user" && message.peer), "第二轮读到通知");
+		assert.equal(letters(h.session.messages).length, 1);
+	} finally {
+		await h.cleanup();
+	}
+});
+
+test("闲着时来通知、还没送进去人就按了停：不开轮，也不丢，下一轮开头读到", async () => {
+	const h = await harness(() => says("好。"));
+	try {
+		h.session.receive(letter("我要改 config.ts。"), "notice");
+		h.session.abort();
+		await new Promise((resolve) => setTimeout(resolve, 600));
+		assert.equal(h.runs(), 0, "停下的会话不被通知叫醒");
+		assert.equal(h.session.idle, true);
+		await h.session.prompt([{ type: "text", text: "接着干" }]);
+		await until(() => !h.session.running, "人开的那一轮收尾");
+		assert.ok(h.requests[0]!.messages.some((message) => message.role === "user" && message.peer), "下一轮读到");
+	} finally {
+		await h.cleanup();
+	}
+});
+
+for (const stop of [false, true]) {
+	test(`闲时通知攒批期间转忙：${stop ? "打断等待后按停，通知留到下一轮" : "打断已有等待，同一轮读到"}`, async () => {
+		let released = false;
+		let finishTool!: () => void;
+		const toolGate = new Promise<void>((resolve) => { finishTool = resolve; });
+		const h = await harness((context) => context.messages.some((message) => message.role === "user" && message.peer)
+			? says("读到通知了。")
+			: assistant([{ type: "toolCall", id: "p1", name: "peer_wait", arguments: {}, argumentsText: "{}" }], "toolUse"), [{
+			name: "peer_wait",
+			description: "等另一个会话",
+			parameters: { type: "object", properties: {} },
+			async execute(_args, ctx) {
+				const outcome = await ctx.untilSpokenTo!(new Promise<string>(() => {}));
+				released = typeof outcome === "object" && outcome.spokenTo === "notice";
+				// 已放开等待、循环还没取通知：人在这个空档可以按停。
+				await toolGate;
+				return textResult("通知来了");
+			},
+		}]);
+		let turn: ReturnType<AgentSession["prompt"]> | undefined;
+		try {
+			h.session.receive(letter("config.ts 不能发布。"), "notice");
+			turn = h.session.prompt([{ type: "text", text: "等一下 B" }]);
+			await until(() => released, "攒批的通知放开正在等的工具");
+			assert.equal(letters(h.session.messages).length, 0, "工具尚未返回，循环还没取通知");
+			if (stop) h.session.abort();
+			finishTool();
+			await turn;
+			if (stop) {
+				await new Promise((resolve) => setTimeout(resolve, 500));
+				assert.equal(h.runs(), 1, "停下后不能为未读通知自动开轮");
+				assert.equal(letters(h.session.messages).length, 0);
+				turn = h.session.prompt([{ type: "text", text: "接着干" }]);
+				await turn;
+			}
+			assert.equal(h.runs(), stop ? 2 : 1);
+			assert.equal(letters(h.session.messages).length, 1, "通知不丢，也不重复");
+			assert.match(textOf(letters(h.requests.at(-1)!.messages)[0]!), /config.ts 不能发布/);
+		} finally {
+			h.session.abort();
+			finishTool();
+			await turn?.catch(() => {});
+			await h.cleanup();
+		}
+	});
+}
+
+for (const stop of [false, true]) {
+	test(`压缩中收到通知：${stop ? "送达等待压缩时按停，下一轮仍读到" : "压缩完成后自动交付，不会先变成可回收的空闲"}`, async () => {
+		let finishSummary!: (message: AssistantMessage) => void;
+		const summary = new Promise<AssistantMessage>((resolve) => { finishSummary = resolve; });
+		let summarizing = true;
+		const h = await harness(() => summarizing ? summary : says("读到压缩期间的通知。"));
+		let compacting: ReturnType<AgentSession["compact"]> | undefined;
+		try {
+			for (let index = 0; index < 20; index++) {
+				await h.session.log.commit(index % 2 ? says("Implementation notes. ".repeat(100)) : {
+					role: "user", content: [{ type: "text", text: "Preserve this task. ".repeat(100) }], timestamp: index,
+				});
+			}
+			compacting = h.session.compact();
+			await until(() => h.requests.length === 1, "真实压缩已经请求摘要");
+			h.session.receive(letter("构建被挡住了。"), "notice");
+			let idleAt = -1;
+			void h.session.whenIdle().then(() => { idleAt = h.runs(); });
+			// 让真实的 400ms 送达开始等压缩，而不是只测 timer 尚未触发的 clear。
+			await new Promise((resolve) => setTimeout(resolve, 500));
+			assert.equal(h.runs(), 0);
+			assert.equal(h.session.idle, false);
+			assert.equal(idleAt, -1);
+			if (stop) h.session.abort();
+			summarizing = false;
+			finishSummary(says("Task, decisions and outstanding work retained."));
+			assert.equal((await compacting).ok, !stop);
+			if (stop) {
+				await new Promise((resolve) => setTimeout(resolve, 500));
+				assert.equal(h.runs(), 0, "停止压缩也撤销这次自动唤醒");
+				assert.equal(letters(h.session.messages).length, 0);
+				await h.session.prompt([{ type: "text", text: "继续" }]);
+			} else {
+				await until(() => idleAt >= 0, "通知那一轮结束后才放开空闲等待者");
+				assert.equal(idleAt, 1, "不能在压缩结束和通知开轮之间被回收");
+			}
+			assert.equal(h.runs(), 1);
+			assert.equal(letters(h.session.messages).length, 1);
+			assert.match(textOf(letters(h.requests.at(-1)!.messages)[0]!), /构建被挡住了/);
+		} finally {
+			h.session.abort();
+			finishSummary(says("stop"));
+			await compacting?.catch(() => {});
+			await h.cleanup();
+		}
+	});
+}
 
 test("whenIdle：攒着待送的信也算没闲，等那一轮跑完才兑现", async () => {
 	const h = await harness(() => says("好。"));
@@ -258,6 +391,12 @@ test("忙着时排队的信：不插进这一轮，这一轮收场后另开一�
 		assert.ok(first.every((context) => !context.messages.some((message) => message.role === "user" && message.peer)), "第一次运行的请求里没有这封信");
 		const kinds = h.events.map((event) => (event.type === "message_start" && event.message.role === "user" && event.message.peer ? "letter" : event.type)).filter((kind) => kind === "letter" || kind === "agent_start" || kind === "agent_end");
 		assert.deepEqual(kinds, ["agent_start", "agent_end", "letter", "agent_start", "agent_end"]);
+		// 排着的那段时间窗口看得见它：进队时一张有它的表，轮到时一张空表。
+		const queues = h.events.flatMap((event) => (event.type === "peer_queue" ? [event.letters.map((one) => one.id)] : []));
+		assert.deepEqual(queues, [["L1"], []]);
+		const emptied = h.events.findIndex((event) => event.type === "peer_queue" && event.letters.length === 0);
+		const read = h.events.findIndex((event) => event.type === "message_start" && event.message.role === "user" && Boolean(event.message.peer));
+		assert.ok(emptied >= 0 && emptied < read, "先从条上撤下，再落进转录");
 	} finally {
 		release();
 		await h.cleanup();
@@ -304,8 +443,8 @@ test("一轮里隔着几分钟排进来的几封信：收场后合成一条、�
 	}
 });
 
-test("宿主的工具在等别的会话时，人一开口就放手：工具拿到 null，下一个请求就读到人的话", async () => {
-	let gotNull = false;
+test("宿主的工具在等别的会话时，人一开口就放手：工具拿到「人开口」，下一个请求就读到人的话", async () => {
+	let released = false;
 	const h = await harness((context) => {
 		const last = context.messages.at(-1);
 		if (last?.role === "user" && last.content.some((part) => part.type === "text" && part.text === "先别等了")) return says("好，先回应你。");
@@ -319,8 +458,8 @@ test("宿主的工具在等别的会话时，人一开口就放手：工具拿�
 		parameters: { type: "object", properties: {} },
 		async execute(_args, ctx) {
 			const outcome = await ctx.untilSpokenTo!(new Promise<string>(() => {}));
-			gotNull = outcome === null;
-			return textResult(outcome === null ? "人开口了" : "等到了");
+			released = typeof outcome === "object" && outcome.spokenTo === "person";
+			return textResult(released ? "人开口了" : "等到了");
 		},
 	}]);
 	try {
@@ -330,7 +469,7 @@ test("宿主的工具在等别的会话时，人一开口就放手：工具拿�
 		await h.session.prompt([{ type: "text", text: "先别等了" }]);
 		await turn;
 		await until(() => !h.session.running, "收尾");
-		assert.ok(gotNull, "等待交回 null，而不是一直卡着");
+		assert.ok(released, "等待交回「人开口」，而不是一直卡着");
 		assert.equal(h.runs(), 1, "人的话插进同一轮，不用等这一轮做完");
 		assert.ok(h.requests.at(-1)?.messages.some((message) => message.role === "user" && message.content.some((part) => part.type === "text" && part.text === "先别等了")));
 	} finally {
@@ -339,7 +478,7 @@ test("宿主的工具在等别的会话时，人一开口就放手：工具拿�
 });
 
 test("在等别的会话时来了通知：和人开口一样放手，下一个请求就读到通知", async () => {
-	let gotNull = false;
+	let released = false;
 	const h = await harness((context) => {
 		if (context.messages.some((message) => message.role === "user" && message.peer)) return says("看到通知了。");
 		if (!context.messages.some((message) => message.role === "toolResult")) {
@@ -352,8 +491,8 @@ test("在等别的会话时来了通知：和人开口一样放手，下一个�
 		parameters: { type: "object", properties: {} },
 		async execute(_args, ctx) {
 			const outcome = await ctx.untilSpokenTo!(new Promise<string>(() => {}));
-			gotNull = outcome === null;
-			return textResult(outcome === null ? "放手了" : "等到了");
+			released = typeof outcome === "object" && outcome.spokenTo === "notice";
+			return textResult(released ? "放手了" : "等到了");
 		},
 	}]);
 	try {
@@ -363,7 +502,7 @@ test("在等别的会话时来了通知：和人开口一样放手，下一个�
 		h.session.receive(letter("我要改 config.ts。"), "notice");
 		await turn;
 		await until(() => !h.session.running, "收尾");
-		assert.ok(gotNull, "通知不用等那件事等完才读到");
+		assert.ok(released, "交回的是「通知」，不是「人开口」；不用等那件事等完才读到");
 		assert.equal(h.runs(), 1);
 		assert.ok(h.requests.at(-1)?.messages.some((message) => message.role === "user" && message.peer));
 	} finally {

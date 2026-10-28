@@ -38,6 +38,7 @@ import { sessionTitle } from "../lib/session-title.ts";
 import { completionNotice } from "../lib/session-notifications.ts";
 import { dropHandoff, takeHandoff } from "./handoff.ts";
 import { setMonitors } from "./session-monitors.ts";
+import { setPeerQueue } from "./peer-queue.ts";
 import { setWakeups } from "./session-wakeups.ts";
 
 type Get = () => AppState;
@@ -64,6 +65,10 @@ export function applyAgentEvent(sessionId: string, event: AgentEvent, set: Set, 
 	}
 	if (event.type === "monitors") {
 		setMonitors(sessionId, event.running);
+		return;
+	}
+	if (event.type === "peer_queue") {
+		setPeerQueue(sessionId, event.letters);
 		return;
 	}
 	/*

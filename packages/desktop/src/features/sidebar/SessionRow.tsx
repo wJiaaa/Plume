@@ -308,11 +308,12 @@ export const SessionRow = memo(function SessionRow({
 				 * 收起时说清楚收了几条，和项目折叠后标题右边那个数是同一件事；里面有在跑的就换成转圈，
 				 * 否则在跑的那条被收起来以后侧边栏上就没有任何东西在动了。垫一层底：光秃秃的数字紧挨着
 				 * 「4 天」，读出来是「3 4 天」。底色用 `ink/10` 而不是 `card-hover`，后者就是打开那一行的底色。
+				 * 换成转圈时撤掉底：圆圈自己就有轮廓，不会和数字连读，再垫一层就成了圈外又套一个圈。
 				 */}
 				{followUps && folded && (
 					<span
 						data-ly-row-folded={followUps.length}
-						className="flex h-4 min-w-[18px] shrink-0 items-center justify-center rounded-full bg-ink/10 px-1.5 text-caption text-ink-muted tabular-nums transition-opacity duration-[var(--ly-t-quick)] group-hover/row:opacity-0 group-has-[:focus-visible]/row:opacity-0"
+						className="flex h-4 min-w-[18px] shrink-0 items-center justify-center rounded-full bg-ink/10 px-1.5 has-[[data-ly-group-running]]:bg-transparent has-[[data-ly-group-running]]:px-0 text-caption text-ink-muted tabular-nums transition-opacity duration-[var(--ly-t-quick)] group-hover/row:opacity-0 group-has-[:focus-visible]/row:opacity-0"
 					>
 						<GroupActivity sessions={followUps} collapsed count={followUps.length} />
 					</span>

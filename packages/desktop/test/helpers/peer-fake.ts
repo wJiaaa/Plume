@@ -9,9 +9,11 @@ export type FakeSession = ReturnType<typeof fakeSession>;
 
 export function fakeSession(id: string, cwd: string, mode: PermissionMode = "auto") {
 	const inbox: { letter: PeerLetter; kind: "request" | "notice" }[] = [];
+	/** 前台闲着（`idleInForeground`）；`background` 是放到后台、还没回来的子代理。 */
 	let idle = true;
+	let background = false;
 	let active = false;
-	let wake: (() => void)[] = [];
+	let wake: { resolve: () => void; foreground: boolean }[] = [];
 	/** 收到、还没进对话的那几封：它们还在，会话就不算闲（`AgentSession.idle` 也看攒着和排着的）。 */
 	const unread = new Set<number>();
 	let emit: (event: AgentEvent) => void = () => {};
@@ -19,22 +21,28 @@ export function fakeSession(id: string, cwd: string, mode: PermissionMode = "aut
 	const settle = () => {
 		if (unread.size > 0) return;
 		idle = true;
-		for (const resolve of wake) resolve();
-		wake = [];
+		const due = wake.filter((one) => one.foreground || !background);
+		wake = wake.filter((one) => !due.includes(one));
+		for (const { resolve } of due) resolve();
 	};
 	const session = {
 		meta: { id, title: id.slice(0, 4), updatedAt: 1 },
 		cwd,
 		messages,
 		settingsInEffect: { ...DEFAULT_SETTINGS, permissionMode: mode },
-		get idle() { return idle; },
-		whenIdle: () => new Promise<void>((resolve) => { if (idle) resolve(); else wake.push(resolve); }),
+		subAgents: { list: () => background ? [{ id: `${id}:sub:1`, status: "running" }] : [] },
+		get idle() { return idle && !background; },
+		get idleInForeground() { return idle; },
+		whenIdle: (scope?: "foreground") => new Promise<void>((resolve) => {
+			if (idle && (scope === "foreground" || !background)) resolve();
+			else wake.push({ resolve, foreground: scope === "foreground" });
+		}),
 		receive: (letter: PeerLetter, kind: "request" | "notice") => {
 			const index = inbox.push({ letter, kind }) - 1;
-			// 通知不开轮，也不让它变忙，和 `AgentSession.receive` 一样。
-			if (kind === "notice") return;
+			// 在跑时的通知插进这一轮，不另开，和 `AgentSession.receive` 一样。
+			if (kind === "notice" && active) return;
 			unread.add(index);
-			// 攒着待送的那四百毫秒也不算闲，和 `AgentSession.idle` 一样。
+			// 攒着待送的那四百毫秒也不算闲，和 `AgentSession.idleInForeground` 一样。
 			idle = false;
 		},
 	};
@@ -54,8 +62,8 @@ export function fakeSession(id: string, cwd: string, mode: PermissionMode = "aut
 			unread.delete(index);
 			emit({ type: "message_start", message: { role: "user", synthetic: true, timestamp: 0, peer: [inbox[index]!.letter], content: [] } as never });
 		},
-		/** 这一次运行说了 `reply`，收场。 */
-		finish(reply?: string, reason: "done" | "aborted" = "done") {
+		/** `release: false` 留住前台 hold，测试稍后调用 settle，和真实 agent_end 的收尾间隔一样。 */
+		finish(reply?: string, reason: "done" | "aborted" = "done", release = true) {
 			if (reply) {
 				const message = { role: "assistant", content: [{ type: "text", text: reply }] };
 				messages.push(message);
@@ -63,8 +71,9 @@ export function fakeSession(id: string, cwd: string, mode: PermissionMode = "aut
 			}
 			active = false;
 			emit({ type: "agent_end", reason });
-			settle();
+			if (release) settle();
 		},
+		settle,
 		/** 卡在等人回答上。 */
 		ask(requestId: string, title: string) {
 			emit({ type: "approval_request", requestId, toolCallId: "c", kind: "bash", title, detail: "", subject: "" } as never);
@@ -77,6 +86,11 @@ export function fakeSession(id: string, cwd: string, mode: PermissionMode = "aut
 		},
 		/** 忙着别的，没有运行事件（比如任务队列里还有一件）。 */
 		busy() { idle = false; },
+		/** 派了后台子代理（`running` 时表示还没回来）：不算前台忙。 */
+		backgrounded(running: boolean) {
+			background = running;
+			if (!active) settle();
+		},
 	};
 }
 

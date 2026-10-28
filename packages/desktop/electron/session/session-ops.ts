@@ -70,7 +70,7 @@ export function createSessionOpsTools(host: { archiveAfterTurn(sessionId: string
 			"Suggest a new, separate conversation for follow-up work that deserves its own session: something you noticed that is worth doing but would bloat the current change — dead code, stale docs, missing tests, a TODO you confirmed, a security problem spotted in passing. " +
 			"How it differs from a sub-agent (`task`): the person sees it as a card and decides whether it starts; once started it is a conversation in their sidebar they can open, talk to and stop, with its own clean context, and it stays afterwards to be continued. " +
 			"A sub-agent is yours: it runs at once, the person cannot see or steer it, and it only hands its conclusion back to you. Work you need done now to finish the current task, that nobody has to watch, is a sub-agent's. " +
-			"Not for vague code smells, low-confidence guesses, small fixes you can make inline, or the current task itself. " +
+			"Not for vague code smells, low-confidence guesses, small fixes you can make inline, or the current task itself — unless the person asks you to split their task across separate sessions; then each part is a spawn_session with report_back true. " +
 			"Returns immediately and starts nothing. Keep working on the current task afterwards. " +
 			"The prompt is the new conversation's first message and is all it will know: name the files and give enough context to act without this conversation.",
 		parameters: {
@@ -82,7 +82,7 @@ export function createSessionOpsTools(host: { archiveAfterTurn(sessionId: string
 				report_back: {
 					type: "boolean",
 					description:
-						"Default false. True only when what it finds should change what you do here: when its first turn ends, its reply is delivered to this conversation and starts a turn here. Leave it off for independent follow-ups. The person can still change it on the card.",
+						"Default false. True when what it finds should change what you do here, and always when it carries out part of a task the person gave you (they asked you to split the work across sessions): you are the one they will ask how it went. When its first turn ends, its reply is delivered to this conversation and starts a turn here. Leave it off for independent follow-ups. The person can still change it on the card.",
 				},
 			},
 			required: ["title", "summary", "prompt"],

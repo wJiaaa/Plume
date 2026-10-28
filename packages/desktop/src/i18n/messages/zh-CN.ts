@@ -231,6 +231,8 @@ export const zhCN = {
 	"composer.filenameOnly": "仅文件名",
 	"composer.queueLabel": "排队中的消息",
 	"composer.queueWaiting": "等这一轮结束后发出",
+	"composer.queueLetterStatus": "等这一轮结束",
+	"composer.queueLetterWaiting": "这一轮结束后接着处理，回答交回给发来的会话",
 	"composer.queueNow": "现在就发：停下正在跑的这一轮，拿这条重新开始",
 	"composer.queueSendNow": "现在就发",
 	"composer.queueRemove": "删除这一条",
