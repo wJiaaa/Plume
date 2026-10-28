@@ -24,6 +24,7 @@ import { Button } from "../../ui/primitives/Button.tsx";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import { Text } from "../../ui/primitives/Text.tsx";
 import { useApp } from "../../store/index.ts";
+import { bridge } from "../../services/index.ts";
 import { commentPlace, diffCommentPrompt, rowKey, useDiffComments, type DiffComment } from "./diff-comments.ts";
 
 type DiffLine = DiffHunk["lines"][number];
@@ -75,6 +76,9 @@ export function DiffCommentsProvider({ cwd, children }: { cwd: string; children:
 	const comments = useDiffComments((state) => state.byRepo[cwd] ?? EMPTY);
 	const [draft, setDraft] = useState<Draft | null>(null);
 	const [note, setNote] = useState("");
+	const panelWindow = bridge.bootWindow?.kind === "panel";
+	const [sending, setSending] = useState(false);
+	const inFlight = useRef(false);
 	/*
 	 * 上一次点的是哪一行，Shift 点的时候从它拉到这一行；`dragFrom` 是这一次按下去的起点。
 	 *
@@ -148,11 +152,33 @@ export function DiffCommentsProvider({ cwd, children }: { cwd: string; children:
 		setDraft(null);
 	};
 
-	const send = () => {
-		useApp.getState().setComposerDraft(diffCommentPrompt(comments), { sessionId: screen, send: true });
-		// 发出去就清空：agent 改完以后这些行号已经不是原来那些行了，留着只会标错地方。
-		useDiffComments.getState().clear(cwd);
-		setDraft(null);
+	const send = async () => {
+		if (inFlight.current || comments.length === 0 || (panelWindow && !screen)) return;
+		inFlight.current = true;
+		setSending(true);
+		try {
+			const prompt = diffCommentPrompt(cwd, comments);
+			if (panelWindow && screen) {
+				// 独立窗没有输入框，交给主进程确认接收；忙时排下一轮，不插进正在做的事。
+				await bridge.agent.prompt(screen, [{ type: "text", text: prompt }], { deliver: "followUp" });
+			} else {
+				useApp.getState().setComposerDraft(prompt, { sessionId: screen, send: true });
+			}
+			// 只收走交出的那一份：等待确认时新写的、改过的评论还没发出去。
+			const store = useDiffComments.getState();
+			if (store.byRepo[cwd] === comments) store.clear(cwd);
+			else {
+				for (const comment of comments) {
+					if (useDiffComments.getState().byRepo[cwd]?.includes(comment)) store.remove(cwd, comment.id);
+				}
+			}
+			setDraft((was) => was === draft ? null : was);
+		} catch (cause) {
+			useApp.getState().notify(t("turn.sendFailed", { reason: cause instanceof Error ? cause.message : String(cause) }), "error");
+		} finally {
+			inFlight.current = false;
+			setSending(false);
+		}
 	};
 
 	return (
@@ -165,10 +191,10 @@ export function DiffCommentsProvider({ cwd, children }: { cwd: string; children:
 					<Text size="label" tone="muted" className="ml-1 min-w-0 flex-1 truncate">
 						{t("diffComment.count", { n: comments.length })}
 					</Text>
-					<Button size="sm" onClick={() => useDiffComments.getState().clear(cwd)}>
+					<Button size="sm" disabled={sending} onClick={() => useDiffComments.getState().clear(cwd)}>
 						{t("common.clear")}
 					</Button>
-					<Button size="sm" variant="primary" icon={<ArrowUp size={13} strokeWidth={2} />} onClick={send} data-diff-comment-send="">
+					<Button size="sm" variant="primary" icon={<ArrowUp size={13} strokeWidth={2} />} onClick={() => void send()} disabled={sending || (panelWindow && !screen)} data-diff-comment-send="">
 						{t("diffComment.send")}
 					</Button>
 				</div>

@@ -100,11 +100,12 @@ function fenceFor(code: string): string {
  * diff 照 unified 的写法带 `+`/`-`/空格前缀：模型认得这个格式，也就分得清人评的是改之前还是改之后。
  * 序号写成 `(1)` 而不是 `1.`：每条中间夹着代码块，Markdown 列表到那里就断了，转录里每条都显示成「1.」。
  */
-export function diffCommentPrompt(comments: readonly DiffComment[]): string {
+export function diffCommentPrompt(cwd: string, comments: readonly DiffComment[]): string {
 	const parts = comments.map((comment, index) => {
 		const code = comment.lines.map((line) => `${line.type === "add" ? "+" : line.type === "remove" ? "-" : " "}${line.text}`).join("\n");
 		const fence = fenceFor(code);
 		return `(${index + 1}) \`${commentPlace(comment)}\`\n${fence}diff\n${code}\n${fence}\n${comment.text.trim()}`;
 	});
-	return [translate("diffComment.prompt"), ...parts].join("\n\n");
+	// 仓库选择器能指向会话目录之外的工作树，不能让相对路径落回会话自己的目录。
+	return [translate("diffComment.prompt"), `${translate("common.workspace")}: ${JSON.stringify(cwd)}`, ...parts].join("\n\n");
 }

@@ -44,12 +44,23 @@ test("位置用新行号；只评了删掉的行时说是改动前的第几行",
 });
 
 test("发出去的每条是位置、带前缀的 diff、评论；代码里有 ``` 时围栏加长", () => {
-	const prompt = diffCommentPrompt([
+	const prompt = diffCommentPrompt("/repo", [
 		{ id: "1", path: "a.ts", lines: [removed(3, "old()"), add(3, "next()")], text: " 这里要判空 " },
 		{ id: "2", path: "b.md", lines: [context(1, 1, "```js")], text: "围栏" },
 	]);
-	const [lead, first, second] = prompt.split("\n\n");
+	const [lead, root, first, second] = prompt.split("\n\n");
 	assert.ok(lead?.startsWith("按下面这几条评论改代码"));
+	assert.equal(root, '工作区: "/repo"');
 	assert.equal(first, "(1) `a.ts:3`\n```diff\n-old()\n+next()\n```\n这里要判空");
 	assert.equal(second, "(2) `b.md:1`\n````diff\n ```js\n````\n围栏");
+});
+
+test("同名文件的评论带所选仓库目录，主仓库、另一工作树和 Windows 目录不混用", () => {
+	const comments = [{ id: "1", path: "src/a.ts", lines: [add(3, "next()")], text: "这里要判空" }];
+	for (const cwd of ["/workspace/main", "/worktrees/feature space", "C:\\worktrees\\feature"]) {
+		const prompt = diffCommentPrompt(cwd, comments);
+		assert.equal(prompt.split("\n\n")[1], `工作区: ${JSON.stringify(cwd)}`);
+		assert.ok(prompt.includes("`src/a.ts:3`"));
+	}
+	assert.notEqual(diffCommentPrompt("/workspace/main", comments), diffCommentPrompt("/worktrees/feature space", comments));
 });

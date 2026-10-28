@@ -11,7 +11,7 @@
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { RunningApp } from "./app.ts";
+import type { AppWindow, RunningApp } from "./app.ts";
 import { named, type NamedMode } from "./named.ts";
 
 type Evaluate = Pick<RunningApp, "evaluate">;
@@ -279,6 +279,14 @@ export async function openPane(page: Page, label: string): Promise<void> {
 	await until(page, finder('[role="menuitem"]', label, "starts"));
 	if (await page.evaluate<boolean>(`${finder('[role="menuitem"]', label, "starts")}.disabled`)) throw new Error(`${label} is not available on this profile`);
 	await click(page, '[role="menuitem"]', label, "starts");
+}
+
+/** 从面板自身的按钮弹出独立窗口，等 preload 确认身份后再交给后续操作。 */
+export async function popOutPane(page: Page & Pick<RunningApp, "windows">, kind: string): Promise<AppWindow> {
+	await click(page, `button:has([data-ly-pop-out=${JSON.stringify(kind)}])`);
+	const window = await poll(async () => (await page.windows()).find((one) => one.boot.kind === "panel" && one.boot.panelKind === kind), Boolean);
+	if (!window) throw new Error(`面板窗口没有打开：${kind}`);
+	return window;
 }
 
 /**
