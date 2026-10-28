@@ -135,15 +135,22 @@ function say(text: string | undefined): Verdict {
 function outputLimit(emit: AgentEventSink): { prose: Check<ProseTurn>; tools: Check<ToolTurn> } {
 	let streak = 0;
 	return {
-		prose: async ({ assistant, turnsLeft }) => {
+		prose: async ({ assistant }) => {
 			if (assistant.stopReason !== "length") {
 				streak = 0;
 				return undefined;
 			}
 			streak += 1;
-			if (streak <= MAX_TRUNCATED_REPLIES && turnsLeft) return say(CONTINUE_AFTER_LENGTH);
+			/*
+			 * 步数用完也照说这一句，不看 `turnsLeft`：截断的回答没写完，这一轮该由循环在下一步顶上按
+			 * `max_turns` 收场，续跑链认的是它。从前步数用完时不说、往下问，后面的规则都没意见，于是一条
+			 * 写到一半的回答按 `done` 收场、续跑链不接，还先报了一句并不属实的「连续多次……已停下」。
+			 * 说出来也让续跑那次请求以这句话结尾，而不是以半截回复结尾——带思考的请求不接受那种续写。
+			 */
+			if (streak <= MAX_TRUNCATED_REPLIES) return say(CONTINUE_AFTER_LENGTH);
 			await emit({ type: "notice", level: "warn", message: "回复连续多次达到输出长度上限，已停下。最后一段回答可能不完整。", code: "output-limit" });
-			return undefined;
+			// 说了「已停下」就真停：交给后面的规则，只有思考、正文为空的那种截断会被 `emptyReply` 当成空回复再催三次。
+			return { end: { reason: "done" } };
 		},
 		tools: ({ assistant }) => {
 			const truncated = assistant.stopReason === "length";

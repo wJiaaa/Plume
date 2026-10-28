@@ -149,6 +149,10 @@
 输出上限已取到模型允许的最大值（`contextMaxTokens`），没有更大的可调。纯文本回复被截断时不当作
 答完：从前直接 `done`，界面上是一段戛然而止的回答，看不出被截断。现在让它从断处接着写，连续
 `MAX_TRUNCATED_REPLIES` 次还在撞就停，并说出来。工具参数被截断时让它拆小重发，连续撞满同样停下。
+说了停就以 `done` 收场，不再交给后面的规则：只有思考、正文为空的截断从前会被「空回复」再催三次，
+每次照样打满输出上限，一共七次请求。最后一步被截断时也照说「接着写」：这一轮于是在下一步顶上按
+`max_turns` 收场，续跑链接得上，续跑那次请求也以这句话结尾。从前这里不说，一条写到一半的回答按
+`done` 收场、续跑链不接，还先报了一句「连续多次……已停下」——而它只被截断了一次。
 
 ## 空回复与 Stop 钩子
 
@@ -204,7 +208,7 @@
 | 续跑没推进清单 | 连续 2 段一项没勾 | 停下，通知 `plan-stalled` | `continuation.ts` `STALLED_CONTINUATIONS` |
 | 撞到步数上限时清单为空或已做完 | — | 主会话停下；子代理宽限一段让它写清单 | `continuation.ts` `planless` |
 | 空回复 | 催 3 次；子代理没回来时要的是「在等谁」，不是回答 | `error`「模型连续返回空回复」 | `turn-checks.ts` `MAX_NUDGES`、`awaiting.ts` `awaitingEmptyNudge` |
-| 纯文本撞输出上限 | 续写 3 次 | 停下，通知 `output-limit` | `turn-checks.ts` `MAX_TRUNCATED_REPLIES` |
+| 纯文本撞输出上限 | 续写 3 次 | `done`，通知 `output-limit`；正文为空也不再按空回复催 | `turn-checks.ts` `MAX_TRUNCATED_REPLIES` |
 | 工具参数撞输出上限 | 连续 3 次 | `error`，让它拆小 | 同上 |
 | 同一调用、同一结果 | 第 3 次起纠正，第 10 次停 | `stalled` | `repetition.ts` `REPEAT_WARN` / `REPEAT_STOP` |
 | 并行调用的参数全部为空（服务商在路上丢了） | 不执行，当场纠正为一次调一个；连续 3 轮停 | `error`，让人换模型；这几轮不计入重复检测 | `tool-run.ts` `argumentsLost`、`turn-checks.ts` `MAX_LOST_ROUNDS` |

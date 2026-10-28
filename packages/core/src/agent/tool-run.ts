@@ -80,7 +80,7 @@ export async function runTools(
 			toolCallId: call.id,
 			toolName: call.name,
 			args: call.arguments,
-			summary: tool?.summarize?.(call.arguments) ?? call.name,
+			summary: summaryOf(tool, call),
 		});
 
 		const result = refusal !== undefined ? errorResult(refusal) : await executeOne(tool, call, tools, scope, emit);
@@ -162,6 +162,19 @@ function argumentsLost(planned: readonly { call: ToolCall; tool: Tool | undefine
 /** 这条结果是不是 `argumentsLost` 那一轮的。整轮要么全是、要么全不是。 */
 export function isArgumentsLost(result: ToolResultMessage): boolean {
 	return (result.details as Record<string, unknown> | undefined)?.[ARGUMENTS_LOST] === true;
+}
+
+/**
+ * 一行摘要只是给界面看的。参数名写错、JSON 没写完的调用照样会到这里——`bash` 的
+ * `args.command.split` 曾在这儿抛错，整轮跟着崩掉，后面那道「参数不是合法 JSON」的检查根本走不到，
+ * 模型也拿不到一条能据以改正的结果。
+ */
+function summaryOf(tool: Tool | undefined, call: ToolCall): string {
+	try {
+		return tool?.summarize?.(call.arguments) ?? call.name;
+	} catch {
+		return call.name;
+	}
 }
 
 function executionMode(tool: Tool, args: Record<string, unknown>): "parallel" | "sequential" {
@@ -315,7 +328,21 @@ async function executeOne(
 			}
 			if (decision?.approval === "allow") preApproved = true;
 			if (decision?.approval === "ask" && requestApproval) {
-				const answer = await awaitingPerson(() => requestApproval(hookApprovalRequest(tool, call.arguments, decision.approvalReason)));
+				/*
+				 * 和工具自己要的确认一样跟停止赛跑（见下面 `execute` 那段）：停下时收回卡片的那声「拒绝」不是
+				 * 人说的，照它告诉模型「用户拒绝了」，下一轮它会绕着一个没人拒绝过的决定走。
+				 */
+				const stop = cancelled(signal, () => cancelledResult(true));
+				let answer: ApprovalDecision | undefined;
+				try {
+					answer = await Promise.race([
+						awaitingPerson(() => requestApproval(hookApprovalRequest(tool, call.arguments, decision.approvalReason))),
+						stop.stopped.then(() => undefined),
+					]);
+				} finally {
+					stop.release();
+				}
+				if (answer === undefined || signal?.aborted) return cancelledResult(true);
 				if (!approved(answer)) return declinedResult(`The user declined "${call.name}".`);
 				preApproved = true;
 			}

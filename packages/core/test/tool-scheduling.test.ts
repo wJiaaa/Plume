@@ -201,3 +201,55 @@ test("unbound, the runtime judges with the built-in policy", () => {
 	// Two copies drifted once: the MCP rule above reached tests and not the app. There is one now.
 	assert.equal(approvalPolicy(), builtInApprovalPolicy);
 });
+
+test("a call whose arguments a tool cannot summarize still gets an answer instead of crashing the batch", async () => {
+	// `bash` 的 summarize 读 `args.command.split`：参数名写错、JSON 没写完都会让它抛错，整轮跟着崩。
+	const starts: string[] = [];
+	const results = await runTools(
+		[
+			call("wrong-name", "bash", { cmd: "ls" }),
+			{ ...call("cut-off", "bash"), argumentsText: "{\"command\": \"ls" },
+		],
+		toolGroup([bashTool]),
+		scope(),
+		async (event) => { if (event.type === "tool_start") starts.push(event.summary ?? ""); },
+	);
+	assert.deepEqual(results.map((r) => r.toolCallId), ["wrong-name", "cut-off"]);
+	assert.ok(results.every((r) => r.isError), "both are answered as errors the model can act on");
+	assert.match(text(results[1]), /not valid JSON/);
+	assert.deepEqual(starts, ["bash", "bash"], "the line falls back to the tool's name");
+});
+
+test("a hook's confirmation card taken back by a stop is not reported as the user declining", async () => {
+	const ran: string[] = [];
+	const plain: Tool = { name: "t", snippet: "t", description: "t", parameters: { type: "object", properties: {} }, execute: async () => { ran.push("t"); return { content: [{ type: "text", text: "ran" }] }; } };
+	const ask = async () => ({ approval: "ask" as const });
+
+	// 停下时会话先 abort、再 rejectAll：卡片收到的「拒绝」是收卡片，不是人说的。
+	const controller = new AbortController();
+	const [stopped] = await runTools([call("c", "t")], toolGroup([plain], {
+		beforeToolCall: ask,
+		requestApproval: async () => {
+			controller.abort();
+			return "reject";
+		},
+	}), scope(controller.signal), async () => {});
+	assert.match(text(stopped), /waited for approval, so it never ran/);
+	assert.doesNotMatch(text(stopped), /declined/);
+
+	// 人真点了拒绝，照旧说是拒绝。
+	const [declined] = await runTools([call("d", "t")], toolGroup([plain], { beforeToolCall: ask, requestApproval: async () => "reject" }), scope(new AbortController().signal), async () => {});
+	assert.match(text(declined), /declined/);
+
+	// 一直没人答、停下了：不挂住。
+	const hung = new AbortController();
+	const [waiting] = await runTools([call("e", "t")], toolGroup([plain], {
+		beforeToolCall: ask,
+		requestApproval: () => {
+			queueMicrotask(() => hung.abort());
+			return new Promise<never>(() => {});
+		},
+	}), scope(hung.signal), async () => {});
+	assert.match(text(waiting), /waited for approval, so it never ran/);
+	assert.deepEqual(ran, []);
+});

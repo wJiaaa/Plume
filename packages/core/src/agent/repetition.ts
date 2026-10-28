@@ -347,7 +347,8 @@ function stable(value: unknown): string {
 
 const IMAGE_FILE = /\.(?:png|jpe?g|webp|gif)\b/i;
 const MEASURE = /numpy|PIL\.|Image\.open|cv2\.|histogram|non[-_]?white|getBoundingClientRect|band_\d+|row_inspect|box_line|pixel.?count|screencast/i;
-const SLICE_NAME = /(?:^|\/)(?:band_\d+|row_inspect|box_line|icon_\d+)[^/]*\.(?:png|jpe?g|webp)$/i;
+// 两种分隔符都认：Windows 上模型写的是 `C:\…\band_1.png`。
+const SLICE_NAME = /(?:^|[\\/])(?:band_\d+|row_inspect|box_line|icon_\d+)[^\\/]*\.(?:png|jpe?g|webp)$/i;
 
 function commandOf(args: unknown): string {
 	if (args === null || typeof args !== "object" || !("command" in args)) return "";

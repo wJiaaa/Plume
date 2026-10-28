@@ -252,3 +252,13 @@ test("one watch spans a whole continuation chain", async () => {
 
 	assert.match(source, /repetition: new RepetitionWatch\(\)/, "整条续跑链共用一只表");
 });
+
+test("slices read by a Windows path count as the same probe loop", () => {
+	const watch = new RepetitionWatch();
+	let reported: { kind?: string } | null = null;
+	for (let i = 0; i < PROBE_WARN; i++) {
+		const round = watch.observe(call("read", { path: `C:\\Users\\me\\AppData\\Local\\Temp\\band_${String(i).padStart(2, "0")}.png` }), [result("pixels")]);
+		if (round.kind === "probe") reported = round;
+	}
+	assert.equal(reported?.kind, "probe");
+});

@@ -62,3 +62,34 @@ test("tool calls cut off mid-arguments are not run, ask for smaller pieces, and 
 	assert.equal(result.reason, "error");
 	assert.match(result.error ?? "", /输出长度上限/);
 });
+
+test("thinking that eats the whole output budget stops at the limit instead of being nudged as an empty reply", async () => {
+	// 只有思考、正文为空的截断：从前超限后交给空回复那条规则再催三次，每次照样把上限打满。
+	const thinkingOnly = () => reply("length", [{ type: "thinking", thinking: "想了很久……" }]);
+	const { result, sent, events } = await run(Array.from({ length: 10 }, thinkingOnly));
+	assert.equal(sent.length, 4, "三次接着写之后就停");
+	assert.equal(result.reason, "done");
+	assert.equal(events.filter((event) => event.type === "notice" && /输出长度上限/.test(event.message ?? "")).length, 1, "「已停下」只说一次，说了就真停");
+	assert.ok(!sent.flat().some((message) => /没有正文/.test(JSON.stringify(message.content))), "没有被当成空回复去催");
+});
+
+test("a reply cut off on the last step ends at the step limit, so the continuation chain picks it up", async () => {
+	/*
+	 * 从前这里按 `done` 收场：续跑链只认 `max_turns`，一条写到一半的回答就此算答完，还先报了一句
+	 * 「连续多次达到输出长度上限，已停下」——而它只被截断了一次。
+	 */
+	const events: { type: string; message?: string }[] = [];
+	const result = await runAgent(
+		runConfig({
+			session: { messages: [user] },
+			model: { provider, model, streamFn: async () => reply("length", [{ type: "text", text: "写到一半" }]) },
+			control: { maxTurns: 1 },
+		}),
+		async (event) => { events.push(event as { type: string; message?: string }); },
+	);
+	assert.equal(result.reason, "max_turns", "步数上限收场，续跑链接得上");
+	assert.ok(!events.some((event) => event.type === "notice" && /输出长度上限/.test(event.message ?? "")), "只截断了一次，不说「连续多次」");
+	const last = result.view.at(-1);
+	assert.equal(last?.role === "user" && last.synthetic, true, "续跑那次请求以「接着写」结尾，不以半截回复结尾");
+	assert.match(JSON.stringify(last?.content), /输出长度上限/);
+});
