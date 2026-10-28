@@ -368,9 +368,17 @@ async function* streamResponses(
 	 * 只发 `function_call_arguments.done` 的，判「工具调用没有收尾」反复重试；流里一个字没提的调用，静默
 	 * 丢掉、以 `stop` 收场，工具不跑。
 	 *
-	 * 对回已经流出来的块，依次按：item id；工具调用的 `call_id`；同类型里的第几个（只在流里还没被前两条认走的
-	 * 块之间排）。都对不上、而且它的位置（`output_index` 就是它在 output 里的下标）空着才算流里没出现过的项，
-	 * 位置被占了另开一个槽。已经收尾的项一个字不动：文本和推理只在块是空的时候才从这里填，不会和流里的内容叠在一起。
+	 * 对回已经流出来的块，认身份只认确凿的东西：item id，以及工具调用的 `call_id`。
+	 *
+	 * 都对不上的项才当新项补：它自己的位置（`output_index` 就是它在 output 里的下标）空着就放那儿，被占了另开
+	 * 一个槽。位置比「同类型里的第几个」更可信——流里的 id 和 completed 里对得上时，对不上就是真的另一项，
+	 * 按同类型顺序找一个槽，找出来的可能正是别人的槽：流里只有 `output_index` 1 的 B、completed 里是 A 和 B
+	 * 时，A 抢走 B 的槽，B 再补一份，于是 A 漏执行、B 跑两遍。
+	 *
+	 * 「同类型里的第几个」只留给 id 完全对不上的中转（deepseek-flash 走 Responses 中转时流里和 completed 里
+	 * 各发一套 id）：那时 id 和位置都指不到东西，剩下的只有顺序。
+	 *
+	 * 已经收尾的项一个字不动：文本和推理只在块是空的时候才从这里填，不会和流里的内容叠在一起。
 	 *
 	 * 不能只认 item id：有的中转在流里和 completed 里各发一套 id（deepseek-flash 走 Responses 中转时就是），
 	 * 只按 id 对，整份 output 都被当成新项再追加一遍，每个工具调用跑两次——bash 两次、edit 第二次报找不到原文。
@@ -378,7 +386,8 @@ async function* streamResponses(
 	function* backfill(output: unknown): Generator<StreamEvent> {
 		const list: Record<string, any>[] = Array.isArray(output) ? output : [];
 		const claimed = new Set<number>();
-		const slots = list.map((item) => {
+		/** 先认确凿的那两条：item id、`call_id`。 */
+		const known = list.map((item) => {
 			const id = typeof item?.id === "string" ? item.id : undefined;
 			const slot = (id === undefined ? undefined : slotsById.get(id)) ?? slotOfCallId(item?.call_id);
 			if (slot !== undefined) claimed.add(slot);
@@ -387,7 +396,15 @@ async function* streamResponses(
 		const ordered = [...items.keys()].sort((a, b) => a - b);
 		for (let at = 0; at < list.length; at++) {
 			const item = list[at] ?? {};
-			let slot = slots[at] ?? ordered.find((other) => !claimed.has(other) && items.get(other)?.kind === kindOf(item.type));
+			/*
+			 * 位置：`output_index` 就是这一项在 `output` 里的下标，同一个下标上只可能是同一项。它比「同类型里的
+			 * 第几个」可靠——后者会指到一个已经被别的项占着、而且已经收尾的槽上，那一项的内容就这么没了。
+			 */
+			const here = items.get(at);
+			let slot = known[at];
+			if (slot === undefined && !claimed.has(at) && (here === undefined || here.kind === kindOf(item.type))) slot = at;
+			// 剩下的只有顺序：id 整套换过、位置又被占着的中转（deepseek-flash 那类）。
+			slot ??= ordered.find((other) => !claimed.has(other) && items.get(other)?.kind === kindOf(item.type));
 			if (slot === undefined) slot = items.has(at) ? nextSlot : at;
 			claimed.add(slot);
 			nextSlot = Math.max(nextSlot, slot + 1);

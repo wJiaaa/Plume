@@ -61,7 +61,11 @@ const BIG_RESULT_CHARS = 2000;
 /** 一轮里自动压缩的 p90 到这个数，等待才算挡人、值得挪到后台；结论原来写死成「只有几秒」，和数字对不上。 */
 const BLOCKING_COMPACTION_MS = 30_000;
 
-const DB = join(homedir(), ".plume", "sessions", "sessions.db");
+/*
+ * `PLUME_HOME` 优先，和 `session-dump.ts`、`plumeHome()` 一致：测试要在临时目录里搭一份会话库再跑这个脚本，
+ * 否则它一启动就去读这台机器上的真实会话。
+ */
+const DB = join(process.env.PLUME_HOME || join(homedir(), ".plume"), "sessions", "sessions.db");
 const asJson = process.argv.includes("--json");
 
 interface Call {
@@ -167,8 +171,6 @@ function loadSessions(): Session[] {
 	for (const { id: file, created_at: createdAt, meta } of rows) {
 		const lines = withoutCopies((records.all(file) as { body: string }[]).map((row) => row.body), createdAt, isFork(meta));
 		const calls: Call[] = [];
-		/** 已经数过的调用 id，见下面数调用那里。 */
-		const callIds = new Set<string>();
 		const results = new Map<string, Message>();
 		const stops: string[] = [];
 		const runtimeStops: string[] = [];
@@ -281,15 +283,21 @@ function loadSessions(): Session[] {
 				stops.push(String(message.stopReason ?? "(none)"));
 				const content = (message.content ?? []) as { type: string; id: string; name: string; arguments: unknown }[];
 				let inRound = 0;
+				/*
+				 * 同一条回复里同一个 id 第二次出现不数。这是 Responses 补项把整份 output 再追加一遍留下的旧记录
+				 * （见 `openai-responses.ts` 的 `backfill`；生产出口 `ai/index.ts` 的 `withoutRepeatedCalls` 同样按
+				 * 单条消息去重）：不是模型发的，数进去会把重复检测、并行度都抬高，看上去像模型的毛病。id 不同、
+				 * 参数一字不差的照数——那是模型自己发了两遍。
+				 *
+				 * 不能跨消息记这个 id：中转每一轮都从 `bash:0` / `call_0` 重新编号，那是支持的契约
+				 * （`ai/anthropic-messages-request.ts` 的替身表就是按轮建的）。会话级去重会把这些**真的跑过**的
+				 * 调用连同它的结果一起丢掉，工具体积、携带成本、重复检测全都少算。
+				 */
+				const seenInReply = new Set<string>();
 				for (const block of content) {
 					if (block.type === "toolCall") {
-						/*
-						 * 同一个 id 第二次出现不数。这是 Responses 补项把整份 output 再追加一遍留下的旧记录（见
-						 * `openai-responses.ts` 的 `backfill`）：不是模型发的，数进去会把重复检测、并行度都抬高，
-						 * 看上去像模型的毛病。id 不同、参数一字不差的照数——那是模型自己发了两遍。
-						 */
-						if (callIds.has(block.id)) continue;
-						callIds.add(block.id);
+						if (seenInReply.has(block.id)) continue;
+						seenInReply.add(block.id);
 						calls.push({ id: block.id, name: block.name, args: block.arguments, round, at: mainStream.messages.length - 1 });
 						inRound++;
 						if (block.name === "todo_write" && block.arguments && typeof block.arguments === "object") {

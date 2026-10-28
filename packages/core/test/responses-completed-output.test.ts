@@ -187,3 +187,64 @@ test("同一个 call_id、不同的 item id：按 call_id 认回去，调用只�
 		],
 	);
 });
+
+/*
+ * 流里只出现了 `output_index` 1 的 B，completed 里是 A、B 两项，A 在流里一个字都没提。
+ *
+ * 原来的对位顺序是：id → call_id → 同类型里的第几个。前两条对 A 都不成立（流里的 `stream_b` 和
+ * `final_a` / `final_b` 是两套 id，A 也没有 `call_id` 可对），于是落到第三条：A 是 completed 里第一个
+ * 没被认走的调用，就抢了 B 的槽；B 再按位置补一份。结果是 A 的内容写进 B 的块、执行时按 `stream_b`
+ * 跑一遍 B，再按 `call_b` 跑一遍 B——A 从来没跑过，B 跑两次。
+ */
+test("流里缺了前一个调用：按位置补，不抢流里那一个的槽", async () => {
+	const result = await run(
+		sse([
+			{ type: "response.output_item.added", output_index: 1, item: { type: "function_call", id: "stream_b", name: "bash" } },
+			{ type: "response.function_call_arguments.delta", output_index: 1, item_id: "stream_b", delta: '{"command":"echo B"}' },
+			{ type: "response.output_item.done", output_index: 1, item: { type: "function_call", id: "stream_b", name: "bash", arguments: '{"command":"echo B"}' } },
+			{
+				type: "response.completed",
+				response: {
+					usage,
+					output: [
+						{ type: "function_call", id: "final_a", call_id: "call_a", name: "bash", arguments: '{"command":"echo A"}', status: "completed" },
+						{ type: "function_call", id: "final_b", call_id: "call_b", name: "bash", arguments: '{"command":"echo B"}', status: "completed" },
+					],
+				},
+			},
+		]),
+	);
+	assert.equal(result.stopReason, "toolUse", result.errorMessage);
+	assert.deepEqual(
+		result.content.map((c) => c.type === "toolCall" && c.arguments),
+		[{ command: "echo A" }, { command: "echo B" }],
+		"A 要在、B 只能有一份",
+	);
+});
+
+/*
+ * 同一条流里换成文本项也一样：流里只有 `output_index` 1 的那段正文，completed 里是先一段后一段。
+ * 按同类型第几个排的话，completed 的第一段会落到第二段那个已经收尾的槽上，然后被跳过。
+ */
+test("流里缺了前一段正文：按位置补回它，不和流里那段抢", async () => {
+	const result = await run(
+		sse([
+			{ type: "response.output_item.added", output_index: 1, item: { type: "message", id: "item_b" } },
+			{ type: "response.output_text.delta", output_index: 1, item_id: "item_b", delta: "第二段" },
+			{
+				type: "response.completed",
+				response: {
+					usage,
+					output: [
+						{ type: "message", id: "final_a", content: [{ type: "output_text", text: "第一段" }] },
+						{ type: "message", id: "final_b", content: [{ type: "output_text", text: "第二段" }] },
+					],
+				},
+			},
+		]),
+	);
+	assert.deepEqual(
+		result.content.map((c) => c.type === "text" && c.text),
+		["第一段", "第二段"],
+	);
+});
