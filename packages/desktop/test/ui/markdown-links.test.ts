@@ -228,3 +228,28 @@ test("the bar sits over where the pointer came in, keeps right for the keyboard,
 		await view.unmount();
 	}
 });
+
+test("in a conversation with no project, a relative link resolves against the conversation's own directory", async () => {
+	const calls: string[] = [];
+	const previous = Object.getOwnPropertyDescriptor(window, "plume");
+	Object.defineProperty(window, "plume", {
+		configurable: true,
+		value: { host: "desktop", platform: "darwin", system: { openTargets: async () => [], pathExists: async () => true, openPath: async (path: string) => void calls.push(path) } },
+	});
+	const before = useApp.getState();
+	const cwd = "/home/.plume/workspaces/chats/2026-10-28/6f432a8b";
+	// 聊天会话：工作目录在 workspaces 下，`useScopedProjectPath` 给的是 null。
+	useApp.setState({ activeSessionId: "chat", meta: { id: "chat", cwd } as never, workspace: null, scratchRoots: ["/home/.plume/workspaces"] });
+	const view = await mount(h(Markdown, { text: "[正式伴奏 WAV](song_release.wav)" }));
+	try {
+		const wrap = view.find("[data-ly-file-link]");
+		assert.equal(wrap.querySelector("[data-ly-file-name]")?.textContent, "正式伴奏 WAV", "成了文件签，不是纯文字");
+		await click(wrap.querySelector("[data-ly-file-actions] button")!);
+		assert.deepEqual(calls, [`${cwd}/song_release.wav`]);
+	} finally {
+		await view.unmount();
+		useApp.setState({ activeSessionId: before.activeSessionId, meta: before.meta, workspace: before.workspace, scratchRoots: before.scratchRoots });
+		if (previous) Object.defineProperty(window, "plume", previous);
+		else Reflect.deleteProperty(window, "plume");
+	}
+});

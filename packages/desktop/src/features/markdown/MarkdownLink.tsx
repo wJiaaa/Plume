@@ -13,7 +13,7 @@ import { useApp } from "../../store/index.ts";
 import { openFilePane } from "../dock/index.ts";
 import { useRevealLabel, withFileThere } from "../../store/open-targets.ts";
 import { iconColour, lookFor } from "../../ui/fileIcon.tsx";
-import { SessionScope, useDockScope, useScopedProjectPath } from "../../app/session-scope.tsx";
+import { SessionScope, useDockScope, useScopedCwd, useScopedProjectPath } from "../../app/session-scope.tsx";
 import { usePathMenu } from "./PathMenu.tsx";
 import { useLocatedPaths } from "./located-path.ts";
 import { FileChoices } from "./FileChoices.tsx";
@@ -278,11 +278,17 @@ export function Link({ href, children }: { href: string; children: ReactNode }) 
 	 * great many links.
 	 */
 	const project = useScopedProjectPath();
+	/*
+	 * 不在项目里的会话（聊天、PR 评审）没有项目路径，但它跑在 `~/.plume/workspaces/` 下自己的目录里，
+	 * 模型写的相对路径就是相对那里的。只拿项目当基准时，这类会话里的 `[伴奏](song.wav)` 解析不出路径，
+	 * 整条链接退成了纯文字。
+	 */
+	const cwd = useScopedCwd();
 	const scoped = useContext(SessionScope);
 	const local = !!scoped && href.startsWith(`ly-preview://${scoped}/`);
 	const safe = local || href.startsWith("http://") || href.startsWith("https://");
 	const { path: target, lines } = splitLineSuffix(href);
-	const guess = safe ? null : resolveAsset(baseDir ?? project ?? (isAbsolutePath(href) ? "/" : undefined), target);
+	const guess = safe ? null : resolveAsset(baseDir ?? project ?? cwd ?? (isAbsolutePath(href) ? "/" : undefined), target);
 	/*
 	 * `approvals.ts:125` joined to the working directory mostly names nothing: models write the bare
 	 * name, or a path relative to some package. The one file in the project it can only mean wins; with

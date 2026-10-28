@@ -7,7 +7,7 @@ import { ExternalLink } from "../../ui/icons/index.ts";
 import { useContext, useEffect, useState } from "react";
 import { resolveAsset, isAbsolutePath } from "../../lib/markdown/assets.ts";
 import { bridge } from "../../services/index.ts";
-import { useScopedProjectPath } from "../../app/session-scope.tsx";
+import { useScopedCwd, useScopedProjectPath } from "../../app/session-scope.tsx";
 import { Doc, Writing } from "./context.ts";
 import { Link } from "./MarkdownLink.tsx";
 
@@ -29,6 +29,8 @@ import { Link } from "./MarkdownLink.tsx";
 export function Image({ src, alt, width, height }: { src: string; alt: string; width?: number; height?: number }) {
 	const { baseDir, remoteImages, localImages } = useContext(Doc);
 	const project = useScopedProjectPath();
+	// 不在项目里的会话，相对路径相对它自己的工作目录，同 `Link`。
+	const cwd = useScopedCwd();
 	/*
 	 * 定在挂上那一刻：回复正在写时落下的图，先站在占位里、加载完再显影；写完的转录里的图直接就在，
 	 * 否则每次滚回视野（重新挂载）都要再显影一遍。
@@ -42,7 +44,7 @@ export function Image({ src, alt, width, height }: { src: string; alt: string; w
 	const [broken, setBroken] = useState<string | null>(null);
 
 	const direct = src.startsWith("data:") || src.startsWith("blob:") ? src : null;
-	const base = baseDir ?? (localImages ? (project ?? (isAbsolutePath(src.trim()) ? "/" : undefined)) : undefined);
+	const base = baseDir ?? (localImages ? (project ?? cwd ?? (isAbsolutePath(src.trim()) ? "/" : undefined)) : undefined);
 	const onDisk = direct || remote ? null : resolveAsset(base, src);
 	const checked = localImages && !baseDir ? onDisk : null;
 	const version = useFileVersion(checked);

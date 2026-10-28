@@ -225,6 +225,13 @@ export function useScopedFromMeta<T>(read: (meta: SessionMeta | null) => T): T {
 	});
 }
 
+const cwdOf = (meta: SessionMeta | null) => meta?.cwd ?? null;
+
+/** 这一屏会话的工作目录。不在项目里的会话（聊天、PR 评审）没有项目路径，它的相对路径就相对这里。 */
+export function useScopedCwd(): string | null {
+	return useScopedFromMeta(cwdOf);
+}
+
 export function useScopedLoading(): boolean {
 	const id = useScopedSessionId();
 	return useApp((s) => {
