@@ -1559,6 +1559,7 @@ export const en = {
 	"hiccup.recoveredAfter": { one: "Back after {n} retry", other: "Back after {n} retries" },
 	"hiccup.switchedTo": { one: "Switched to {model} after {n} retry", other: "Switched to {model} after {n} retries" },
 	"hiccup.switched": { one: "Switched models after {n} retry", other: "Switched models after {n} retries" },
+	"hiccup.stopped": { one: "Stopped while retrying ({n} retry)", other: "Stopped while retrying ({n} retries)" },
 	"hiccup.retryIn": "retrying in {n}s",
 	"hiccup.retrying": "retrying",
 	"hiccup.dropped": "Connection dropped",

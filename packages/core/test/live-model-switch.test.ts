@@ -41,8 +41,12 @@ let server: Server;
 let base = "";
 /** 服务器按到达顺序收到的模型。 */
 let hits: string[] = [];
-/** 模型 a 的回答方式：`broken` 一直 502；`slow` 先吐一个字，停一会儿再说完。 */
-let aMode: "broken" | "slow" = "broken";
+/**
+ * 模型 a 的回答方式：`broken` 一直 502；`slow` 先吐一个字，停一会儿再说完；`silent` 回了响应头和
+ * 保活帧，一个字都不说；`drop` 第一次吐一个字就掐断，之后一直 502。
+ */
+let aMode: "broken" | "slow" | "silent" | "drop" = "broken";
+let aHits = 0;
 
 const sse = (text: string) =>
 	[
@@ -58,7 +62,19 @@ before(async () => {
 		req.on("end", () => {
 			const wanted = (JSON.parse(raw) as { model?: string }).model ?? "?";
 			hits.push(wanted);
-			if (wanted === "model-a" && aMode === "broken") {
+			if (wanted === "model-a") aHits += 1;
+			if (wanted === "model-a" && aMode === "silent") {
+				res.writeHead(200, { "content-type": "text/event-stream" });
+				res.write(": keepalive\n\n");
+				return;
+			}
+			if (wanted === "model-a" && aMode === "drop" && aHits === 1) {
+				res.writeHead(200, { "content-type": "text/event-stream" });
+				res.write(`data: {"choices":[{"index":0,"delta":{"role":"assistant","content":"a 说了半句"},"finish_reason":null}]}\n\n`);
+				setTimeout(() => res.destroy(), 100);
+				return;
+			}
+			if (wanted === "model-a" && (aMode === "broken" || aMode === "drop")) {
 				res.writeHead(502, { "content-type": "application/json" });
 				res.end(JSON.stringify({ error: { message: "upstream exploded" } }));
 				return;
@@ -179,6 +195,53 @@ test("a request that is already answering is left to finish; the switch applies 
 		const last = agent.messages.at(-1) as AssistantMessage;
 		assert.match(last.content.map((part) => (part.type === "text" ? part.text : "")).join(""), /说完了/);
 		assert.ok(!events.some((event) => event.type === "retry_settled" && event.outcome === "switched"));
+	} finally {
+		await cleanup();
+	}
+});
+
+test("a request that answered with headers but no words yet is let go without leaving an empty reply", async () => {
+	/*
+	 * 收到了 200 和 `start`，第一个字还没来（长思考、中转憋着）：这时换模型，旧的那条不该作为一条空的
+	 * 「已停止」回复留在转录里——没人按停，而且循环自己不留它，日志多一条，压缩边界就错一位。
+	 */
+	hits = [];
+	aHits = 0;
+	aMode = "silent";
+	const { agent, events, cleanup } = await session();
+	try {
+		const turn = agent.prompt([{ type: "text", text: "Q" }]);
+		await until(() => events.some((event) => event.type === "message_start" && event.message.role === "assistant"));
+		await agent.setModel(B.id);
+		await turn;
+
+		assert.deepEqual(hits, ["model-a", "model-b"]);
+		const roles = agent.messages.map((message) => (message.role === "assistant" ? `assistant:${message.stopReason}` : message.role));
+		assert.deepEqual(roles, ["user", "assistant:stop"], `nothing of the let-go request is left: ${roles.join(" | ")}`);
+	} finally {
+		await cleanup();
+	}
+});
+
+test("after a mid-stream drop, switching while it retries lets it go: the retry starts from nothing", async () => {
+	hits = [];
+	aHits = 0;
+	aMode = "drop";
+	const { agent, events, cleanup } = await session();
+	try {
+		const turn = agent.prompt([{ type: "text", text: "Q" }]);
+		await until(() => aHits >= 2);
+		const switchedAt = hits.length;
+		await agent.setModel(B.id);
+		await turn;
+
+		assert.deepEqual(hits.slice(switchedAt), ["model-b"], `after the switch only b was asked: ${hits.join(", ")}`);
+		const roles = agent.messages.map((message) => (message.role === "assistant" ? `assistant:${message.stopReason}` : message.role));
+		assert.deepEqual(roles, ["user", "assistant:stop"], `the half sentence of the dropped attempt is not committed: ${roles.join(" | ")}`);
+		const last = agent.messages.at(-1) as AssistantMessage;
+		assert.match(last.content.map((part) => (part.type === "text" ? part.text : "")).join(""), /model-b 回答/);
+		const settled = events.filter((event) => event.type === "retry_settled");
+		assert.ok(settled.some((event) => event.type === "retry_settled" && event.outcome === "switched"));
 	} finally {
 		await cleanup();
 	}

@@ -15,7 +15,7 @@
 import { CARRY_ON_PROMPTS, carryOnPrompt } from "../../store/derive.ts";
 import { translate } from "../../i18n/translate.ts";
 import { useEffect, useState } from "react";
-import { ArrowLeftRight, ChevronRight, CircleAlert, CircleCheck, Play, Settings2 } from "../../ui/icons/index.ts";
+import { ArrowLeftRight, ChevronRight, CircleAlert, CircleCheck, CircleStop, Play, Settings2 } from "../../ui/icons/index.ts";
 import { StatusSpinner } from "../../ui/motion/loaders.tsx";
 import { describeHiccup, hiccupTip, type Hiccup } from "../../lib/hiccup.ts";
 import { useScopedSessionId } from "../../app/session-scope.tsx";
@@ -139,7 +139,7 @@ export function HiccupRow({ hiccup }: { hiccup: Hiccup }) {
 }
 
 /**
- * 四种结局，四个图标，一样大。
+ * 五种结局，五个图标，一样大。
  *
  * 停下来的那个是圆圈里的感叹号——参考图里就是它，而且它比一个断掉的链条更中性：链条断了是在说
  * 「网线掉了」，而这里也可能是密钥不对。等待时是个转着的圈，因为它确实还在动，比任何文案都更能
@@ -155,6 +155,10 @@ function Icon({ outcome }: { outcome: Hiccup["outcome"] }) {
 	// 换了模型：没接上、也没放弃，是换了个人接着问——跟对勾一样安静，但不是对勾。
 	if (outcome === "switched") {
 		return <ArrowLeftRight size={13} strokeWidth={2} className="shrink-0 text-ink-faint" />;
+	}
+	// 人按了停：和换模型一样安静，不是对勾也不是感叹号——这一停是人的决定，不是故障。
+	if (outcome === "stopped") {
+		return <CircleStop size={13} strokeWidth={2} className="shrink-0 text-ink-faint" />;
 	}
 	return <CircleAlert size={15} strokeWidth={1.8} className="shrink-0 text-ink-muted" />;
 }

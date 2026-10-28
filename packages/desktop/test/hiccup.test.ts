@@ -153,3 +153,19 @@ test("没有正在等的那一条时，换模型不凭空补出一条", () => {
 	const hiccups = settleHiccups([], { outcome: "switched", attempts: 0, switchedTo: "Model B" }, 0);
 	assert.deepEqual(hiccups, []);
 });
+
+test("等重试的时候被停下，说停下了，不说恢复，也不再倒计时", () => {
+	let hiccups = foldRetry([], retry(1), 1000);
+	hiccups = foldRetry(hiccups, retry(2), 1000);
+	hiccups = settleHiccups(hiccups, { outcome: "stopped", attempts: 2 }, 0);
+	assert.equal(hiccups.length, 1);
+	assert.equal(hiccups[0].outcome, "stopped");
+	const line = describeHiccup(hiccups[0], 2000);
+	assert.equal(line, "重试 2 次时停下了");
+	assert.ok(!line.includes("恢复"), `没接上就不能说恢复：${line}`);
+	assert.ok(!line.includes("秒后"), `停下了就不再倒计时：${line}`);
+});
+
+test("没有在等的记录时，停下不凭空补一条", () => {
+	assert.deepEqual(settleHiccups([], { outcome: "stopped", attempts: 0 }, 0), []);
+});

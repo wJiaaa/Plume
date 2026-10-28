@@ -19,19 +19,31 @@ import type { ModelConfig, ProviderConfig } from "../src/types.ts";
 let server: Server;
 let base = "";
 let hits = 0;
+/**
+ * 每次请求怎么答，按到达顺序取；取完了就一直是最后那种。
+ * `fail` 502；`slow` 先吐一段、停 300ms 再说完；`drop` 吐一段之后掐断连接。
+ */
+let script: ("fail" | "slow" | "drop")[] = [];
+
+const piece = (text: string) => `data: {"choices":[{"index":0,"delta":{"role":"assistant","content":${JSON.stringify(text)}},"finish_reason":null}]}\n\n`;
 
 before(async () => {
 	server = createServer((req, res) => {
 		req.resume();
 		req.on("end", () => {
 			hits += 1;
-			if (hits === 1) {
+			const mode = script[Math.min(hits, script.length) - 1];
+			if (mode === "fail") {
 				res.writeHead(502, { "content-type": "application/json" });
 				res.end(JSON.stringify({ error: { message: "upstream exploded" } }));
 				return;
 			}
 			res.writeHead(200, { "content-type": "text/event-stream" });
-			res.write(`data: {"choices":[{"index":0,"delta":{"role":"assistant","content":"接上了"},"finish_reason":null}]}\n\n`);
+			res.write(piece("接上了"));
+			if (mode === "drop") {
+				setTimeout(() => res.destroy(), 100);
+				return;
+			}
 			setTimeout(() => {
 				res.end(`data: {"choices":[{"index":0,"delta":{"content":"，说完了"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n`);
 			}, 300);
@@ -43,7 +55,7 @@ before(async () => {
 
 after(() => new Promise<void>((resolve) => server.close(() => resolve())));
 
-test("a recovered retry is settled on the first delta, not when the reply ends", async () => {
+async function turn(signal?: AbortSignal, onEvent?: (event: AgentEvent) => void) {
 	const model: ModelConfig = {
 		id: "t/m", providerId: "t", modelId: "m", name: "M", contextWindow: 100_000,
 		maxOutputTokens: 1024, supportsThinking: false, supportsImages: false, supportsTools: true,
@@ -56,9 +68,18 @@ test("a recovered retry is settled on the first delta, not when the reply ends",
 	const { message } = await streamTurn(
 		modelConfig,
 		{ systemPrompt: "", messages: [{ role: "user", content: [{ type: "text", text: "Q" }], timestamp: Date.now() }], tools: [] },
-		{ signal: undefined, state: undefined },
-		async (event) => { events.push(event); },
+		{ signal, state: undefined },
+		async (event) => { events.push(event); onEvent?.(event); },
 	);
+	return { message, events };
+}
+
+const settledOf = (events: AgentEvent[]) => events.flatMap((event) => (event.type === "retry_settled" ? [event] : []));
+
+test("a recovered retry is settled on the first delta, not when the reply ends", async () => {
+	hits = 0;
+	script = ["fail", "slow"];
+	const { message, events } = await turn();
 
 	assert.equal(message.stopReason, "stop", message.errorMessage);
 	assert.equal(hits, 2);
@@ -69,4 +90,33 @@ test("a recovered retry is settled on the first delta, not when the reply ends",
 	const at = kinds.indexOf("retry_settled");
 	assert.ok(at < kinds.indexOf("message_update"), `settled before the first delta is drawn: ${kinds.join(", ")}`);
 	assert.ok(at < kinds.indexOf("message_end"), "not held until the reply is done");
+});
+
+test("stopped while waiting to retry is reported as stopped, never as recovered", async () => {
+	hits = 0;
+	script = ["fail"];
+	const stop = new AbortController();
+	const { message, events } = await turn(stop.signal, (event) => {
+		if (event.type === "retry") setTimeout(() => stop.abort(), 50);
+	});
+
+	assert.equal(message.stopReason, "aborted");
+	assert.equal(hits, 1, "nothing more went out after stop");
+	const settled = settledOf(events);
+	assert.equal(settled.length, 1, events.map((event) => event.type).join(", "));
+	assert.equal(settled[0]!.outcome, "stopped");
+	assert.equal(settled[0]!.attempts, 1);
+});
+
+test("a second interruption in the same request counts its own retries from 1", async () => {
+	hits = 0;
+	// 502 → 接上、出字后掐断 → 接上说完：两次中断，各重试一次。
+	script = ["fail", "drop", "slow"];
+	const { message, events } = await turn();
+
+	assert.equal(message.stopReason, "stop", message.errorMessage);
+	assert.equal(hits, 3);
+	const retries = events.flatMap((event) => (event.type === "retry" ? [event.attempt] : []));
+	assert.deepEqual(retries, [1, 1], "each interruption numbers its own retries");
+	assert.deepEqual(settledOf(events).map((event) => [event.outcome, event.attempts]), [["recovered", 1], ["recovered", 1]]);
 });

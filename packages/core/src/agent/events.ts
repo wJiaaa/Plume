@@ -306,9 +306,11 @@ export type AgentEvent =
 	 * 才换成一句失败。用户要的「重试解决了就别报错，留个轻微的痕迹」，落到数据上就是这个事件。
 	 *
 	 * `switched`：人在它重试的时候换了模型，这一次请求不再等旧的那个，换成 `switchedTo` 重发。它
-	 * 既没有接上也没有放弃——说成哪一样都是在报一件没发生的事。
+	 * 既没有接上也没有放弃——说成哪一样都是在报一件没发生的事。`stopped` 同理：等重试的时候人按了停。
+	 *
+	 * `attempts` 是这一次中断里重试的次数，接上过又断就从头数，和 `retry.attempt` 一致。
 	 */
-	| { type: "retry_settled"; outcome: "recovered" | "gave_up" | "switched"; attempts: number; failure?: Failure; switchedTo?: string }
+	| { type: "retry_settled"; outcome: "recovered" | "gave_up" | "switched" | "stopped"; attempts: number; failure?: Failure; switchedTo?: string }
 	/**
 	 * The session got its name from the first prompt.
 	 *

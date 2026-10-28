@@ -110,6 +110,12 @@ export async function streamTurn(modelConfig: AgentModelContext, context: LlmCon
 	 * 分钟，那段时间里屏幕一直说「正在重试」，而连接早就好了。之后再断，就是新的一次。
 	 */
 	let pending = false;
+	/*
+	 * 这一次中断开始时 `retries` 是多少。界面上「第 N 次」「重试 N 次后恢复」说的是这一次中断，
+	 * 接上过又断，就从 1 数起——按整个请求累计，第二次断线只重试了一回，屏幕上却说「重试 2 次后恢复」。
+	 */
+	let base = 0;
+	const attempts = () => retries - base;
 
 	/*
 	 * Where the prefix first differs from the previous request, stamped on the reply as evidence for
@@ -138,9 +144,16 @@ export async function streamTurn(modelConfig: AgentModelContext, context: LlmCon
 		cacheKey: modelConfig.cacheKey,
 		// Said out loud: seconds of silence while retrying are indistinguishable from a hang.
 		onRetry: ({ delayMs, reason, failure }) => {
+			if (!pending) base = retries;
 			retries += 1;
 			pending = true;
-			void emit({ type: "retry", attempt: retries, delayMs, reason, failure });
+			/*
+			 * 重试从头再来（`retryStream` 先 `reset`），上一次尝试写出的那截不会留下，这个请求又回到「还
+			 * 什么都没说」：这时人换模型，就该放手。不复位的话，流中途断过一次之后切模型永远不生效，
+			 * 而网络重试默认没有上限。
+			 */
+			said = false;
+			void emit({ type: "retry", attempt: attempts(), delayMs, reason, failure });
 		},
 	}), stamp);
 
@@ -173,22 +186,26 @@ export async function streamTurn(modelConfig: AgentModelContext, context: LlmCon
 		pending = false;
 		await emit({
 			type: "retry_settled",
-			outcome: failed ? "gave_up" : "recovered",
-			attempts: retries,
+			// 等重试的时候被人停下：既没接上也没放弃，说成「已恢复」是在报一件没发生的事。
+			outcome: failed ? "gave_up" : message.stopReason === "aborted" ? "stopped" : "recovered",
+			attempts: attempts(),
 			failure: message.failure,
 		});
 	};
 
 	/*
-	 * Let go of the request for a model switch. Nothing reaches the transcript if the stream never
-	 * started — an empty "stopped" bubble would read as the person pressing stop. The reconnect
-	 * line is closed honestly: not recovered, switched.
+	 * Let go of the request for a model switch. Nothing reaches the transcript — an empty "stopped"
+	 * bubble would read as the person pressing stop. A stream that had started (headers in, nothing
+	 * said yet, or only a retried attempt's discarded text) is withdrawn with `message_discarded`,
+	 * not committed: the loop does not keep a switched reply, and a log one message longer than the
+	 * loop's view puts the compaction boundary one message off (see `TurnResult.held`). The
+	 * reconnect line is closed honestly: not recovered, switched.
 	 */
 	const letGo = async (message: AssistantMessage): Promise<TurnResult> => {
-		if (started) await emit({ type: "message_end", message });
+		if (started) await emit({ type: "message_discarded", message });
 		if (pending) {
 			const to = modelConfig.liveModel?.current()?.model.name;
-			await emit({ type: "retry_settled", outcome: "switched", attempts: retries, ...(to ? { switchedTo: to } : {}) });
+			await emit({ type: "retry_settled", outcome: "switched", attempts: attempts(), ...(to ? { switchedTo: to } : {}) });
 		}
 		return { message, switched: true };
 	};
@@ -216,7 +233,7 @@ export async function streamTurn(modelConfig: AgentModelContext, context: LlmCon
 				latest = event.partial;
 				if (pending) {
 					pending = false;
-					await emit({ type: "retry_settled", outcome: "recovered", attempts: retries });
+					await emit({ type: "retry_settled", outcome: "recovered", attempts: attempts() });
 				}
 				await emit({ type: "message_update", message: marked(event.partial), delta: event });
 				break;

@@ -1738,6 +1738,7 @@ export const zhCN = {
 	"hiccup.recoveredAfter": "重试 {n} 次后恢复",
 	"hiccup.switchedTo": "重试 {n} 次后换成 {model} 接着问",
 	"hiccup.switched": "重试 {n} 次后换了模型接着问",
+	"hiccup.stopped": "重试 {n} 次时停下了",
 	"hiccup.retryIn": "{n} 秒后重试",
 	"hiccup.retrying": "正在重试",
 	"hiccup.dropped": "连接中断",

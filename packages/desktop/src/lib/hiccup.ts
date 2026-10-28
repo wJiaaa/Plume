@@ -19,7 +19,7 @@ const LINE_MAX = 40;
 /** 悬停气泡里放多少。气泡最宽 360px，塞一页 JSON 只会得到一堵墙。 */
 const TIP_MAX = 220;
 
-type HiccupOutcome = "waiting" | "recovered" | "gave_up" | "switched";
+type HiccupOutcome = "waiting" | "recovered" | "gave_up" | "switched" | "stopped";
 
 export interface Hiccup {
 	/** 一次中断一条。同一条里次数往上加，不新开。 */
@@ -106,7 +106,7 @@ export interface HiccupFailure {
 /** 那一条等着的记录，收场了。 */
 export function settleHiccups(
 	hiccups: Hiccup[],
-	event: { outcome: "recovered" | "gave_up" | "switched"; attempts: number; failure?: HiccupFailure; switchedTo?: string },
+	event: { outcome: "recovered" | "gave_up" | "switched" | "stopped"; attempts: number; failure?: HiccupFailure; switchedTo?: string },
 	/** 只有下面那条凭空补出来的失败用得上——它没有「正在等」的记录可以接着。见 `Hiccup.at`。 */
 	at: number,
 ): Hiccup[] {
@@ -167,6 +167,8 @@ export function describeHiccup(hiccup: Hiccup, now: number): string {
 	if (hiccup.outcome === "gave_up") {
 		return clip(hiccup.summary, LINE_MAX);
 	}
+	// 等重试的时候人按了停：不是接上了，也不是没救了，照实说停在哪儿。
+	if (hiccup.outcome === "stopped") return translate("hiccup.stopped", { n: hiccup.attempts });
 	if (hiccup.outcome === "switched") {
 		return hiccup.switchedTo
 			? translate("hiccup.switchedTo", { model: hiccup.switchedTo, n: hiccup.attempts })
