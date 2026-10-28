@@ -11,7 +11,7 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import { rm } from "node:fs/promises";
+import { rename, rm } from "node:fs/promises";
 import { homedir, uptime } from "node:os";
 import { basename, join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
@@ -715,6 +715,25 @@ export class SessionStore implements SessionStorage {
 	async sizes(): Promise<Record<string, number>> {
 		const rows = this.db.prepare("SELECT session_id, SUM(length(CAST(body AS BLOB))) AS bytes FROM records GROUP BY session_id").all() as { session_id: string; bytes: number }[];
 		return Object.fromEntries(rows.map((row) => [row.session_id, row.bytes]));
+	}
+
+	/**
+	 * `VACUUM INTO`, not a copy of the file: what the WAL holds and the main file does not yet is
+	 * in the copy, and the copy is one snapshot even while a reply is streaming in.
+	 *
+	 * It will not write over a file, so it writes beside `path` and is renamed in; a copy that fails
+	 * halfway leaves whatever was at `path` as it was.
+	 */
+	async exportTo(path: string): Promise<void> {
+		const partial = `${path}.${process.pid}.partial`;
+		await rm(partial, { force: true });
+		try {
+			this.db.prepare("VACUUM INTO ?").run(partial);
+			await rename(partial, path);
+		} catch (error) {
+			await rm(partial, { force: true });
+			throw error;
+		}
 	}
 
 	/**

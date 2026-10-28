@@ -398,3 +398,26 @@ test("deleted space is handed back to the file system", async () => {
 		assert.ok(onDisk() < before / 2, `${before} bytes before, ${onDisk()} after`);
 	});
 });
+
+test("an export is a database of its own, written over what was at the path", async () => {
+	await withStore(async (store, root) => {
+		const meta = await store.create(root, "m");
+		await store.append(meta, { type: "message", message: user("keep me") });
+		await store.recordUsage({ source: "memory-extract", providerId: "p", modelId: "m", usage: { ...emptyUsage(), input: 5 } });
+		const target = join(root, "export.db");
+		await writeFile(target, "an older export");
+
+		await store.exportTo(target);
+
+		assert.ok(!existsSync(`${target}-wal`), "nothing of it lives in a WAL beside it");
+		const copy = new DatabaseSync(target, { readOnly: true });
+		try {
+			assert.deepEqual(copy.prepare("SELECT id FROM sessions").all().map((row) => row.id), [meta.id]);
+			assert.equal(copy.prepare("SELECT COUNT(*) AS n FROM records WHERE body LIKE '%keep me%'").get()?.n, 1);
+			assert.equal(copy.prepare("SELECT COUNT(*) AS n FROM spend").get()?.n, 1);
+		} finally {
+			copy.close();
+		}
+		assert.equal(await store.get(meta.id).then((each) => each?.id), meta.id, "the original is untouched");
+	});
+});

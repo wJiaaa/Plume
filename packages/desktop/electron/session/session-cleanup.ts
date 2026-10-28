@@ -14,7 +14,7 @@ import type { SessionMeta, SessionStorage } from "@plume/core";
 import type { ClearRange, ClearResult, StorageDay, StorageUse } from "@plume/contract";
 
 /** 本地日期键，和用量页、扫描器用的是同一个口径——不是 ISO/UTC。 */
-function dayKey(ms: number): string {
+export function dayKey(ms: number): string {
 	const date = new Date(ms);
 	const month = `${date.getMonth() + 1}`.padStart(2, "0");
 	const day = `${date.getDate()}`.padStart(2, "0");

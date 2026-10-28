@@ -168,6 +168,12 @@ export interface UsageApi {
 	 * 正在写东西的 agent，也不假装它被删掉了。**没有回收站**，调用方负责在此之前问过。
 	 */
 	clear(range: ClearRange): Promise<ClearResult>;
+	/**
+	 * 把整个会话库另存为一个 SQLite 文件：所有会话、连同花销表。
+	 *
+	 * 存到哪由主进程的保存对话框问，渲染进程不递路径。返回写到的路径，取消了是 null。
+	 */
+	export(): Promise<string | null>;
 }
 
 export interface GalleryApi {

@@ -14,7 +14,7 @@
  * 个样子。`Row` 是明确的两列：说明在左，控件在右，右边那列 `shrink-0`，什么都不会跳。
  */
 
-import { Trash2 } from "../../ui/icons/index.ts";
+import { Download, Trash2 } from "../../ui/icons/index.ts";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { bridge } from "../../services/index.ts";
@@ -42,6 +42,9 @@ export function StorageSettings() {
 	const [busy, setBusy] = useState(false);
 	const [done, setDone] = useState<Done | null>(null);
 	const confirm = useConfirmer();
+	const [exporting, setExporting] = useState(false);
+	/** 导出完说的那句话：写到了哪，或者为什么没写成。 */
+	const [exported, setExported] = useState<{ path: string } | { error: string } | null>(null);
 
 	const load = useCallback(async () => {
 		/*
@@ -107,6 +110,19 @@ export function StorageSettings() {
 		}
 	};
 
+	const exportAll = async () => {
+		setExporting(true);
+		setExported(null);
+		try {
+			const path = await bridge.usage.export();
+			if (path) setExported({ path });
+		} catch (error) {
+			setExported({ error: error instanceof Error ? error.message : String(error) });
+		} finally {
+			setExporting(false);
+		}
+	};
+
 	return (
 		<div className="pt-2">
 			<PageHeader title={t("storage.title")} intro={t("storage.intro")} />
@@ -120,6 +136,31 @@ export function StorageSettings() {
 						<span data-usage-total="true" className="text-label text-ink tabular-nums">
 							{use === null ? "—" : t("storage.sizeAndCount", { size: formatBytes(use.bytes), n: use.sessions })}
 						</span>
+					}
+				/>
+				<Row
+					title={t("storage.exportTitle")}
+					detail={
+						<>
+							{t("storage.exportDetail")}
+							{exported && (
+								<span data-usage-exported="true" className={`block break-all ${"error" in exported ? "text-danger" : "text-ink-muted"}`}>
+									{"error" in exported ? t("storage.exportFailed", { reason: exported.error }) : t("storage.exported", { path: exported.path })}
+								</span>
+							)}
+						</>
+					}
+					control={
+						<Button
+							variant="ghost"
+							size="sm"
+							onClick={() => void exportAll()}
+							disabled={exporting || use === null || empty}
+							data-usage-export="true"
+							icon={exporting ? <ActionSpinner size={12} /> : <Download size={12} strokeWidth={1.9} aria-hidden />}
+						>
+							{exporting ? t("storage.exporting") : t("storage.export")}
+						</Button>
 					}
 				/>
 				<Row

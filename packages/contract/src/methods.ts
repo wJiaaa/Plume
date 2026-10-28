@@ -62,6 +62,7 @@ export const METHODS = {
 		scan: "usage:scan",
 		storage: "usage:storage",
 		clear: "usage:clear",
+		export: "usage:export",
 	},
 	gallery: {
 		list: "gallery:list",

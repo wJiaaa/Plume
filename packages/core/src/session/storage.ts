@@ -105,6 +105,8 @@ export interface SessionStorage extends PartialSink, CallSink {
 	usageRecords(sessionId: string, afterSeq: number): AsyncGenerator<SessionRecord & { copy?: boolean }>;
 	/** Bytes each session's records take. */
 	sizes(): Promise<Record<string, number>>;
+	/** Write a copy of everything stored — every conversation, and what was spent — to `path`, replacing what is there. */
+	exportTo(path: string): Promise<void>;
 	/**
 	 * Sessions with a result of this tool among their messages, and how far each has been written.
 	 *

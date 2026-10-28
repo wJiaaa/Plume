@@ -112,6 +112,7 @@ export function observeSessionStorage(store: SessionStorage, announce: (change: 
 		usageCursors: () => store.usageCursors(),
 		usageRecords: (sessionId, afterSeq) => store.usageRecords(sessionId, afterSeq),
 		sizes: () => store.sizes(),
+		exportTo: (path) => store.exportTo(path),
 		sessionsWithResultOf: (toolName) => store.sessionsWithResultOf(toolName),
 	};
 }

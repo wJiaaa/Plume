@@ -32,10 +32,16 @@ interface Harness {
 	calls: ClearRange[];
 	/** 问了几次占用情况。删完要再问一次，否则屏幕上还挂着删之前的数字。 */
 	reads: number;
+	/** 导出被要了几次。 */
+	exports: number;
 }
 
-async function open(use: StorageUse | null = USE, result: ClearResult = { removed: 12, freed: 4096, skipped: 0 }): Promise<Harness> {
-	const harness: Harness = { view: null as unknown as Mounted, calls: [], reads: 0 };
+async function open(
+	use: StorageUse | null = USE,
+	result: ClearResult = { removed: 12, freed: 4096, skipped: 0 },
+	exported: () => Promise<string | null> = async () => "/Users/me/Downloads/plume-sessions-2026-09-29.db",
+): Promise<Harness> {
+	const harness: Harness = { view: null as unknown as Mounted, calls: [], reads: 0, exports: 0 };
 	Object.defineProperty(window, "plume", {
 		configurable: true,
 		value: {
@@ -48,6 +54,10 @@ async function open(use: StorageUse | null = USE, result: ClearResult = { remove
 				clear: async (range: ClearRange) => {
 					harness.calls.push(range);
 					return result;
+				},
+				export: () => {
+					harness.exports += 1;
+					return exported();
 				},
 			},
 		},
@@ -112,7 +122,7 @@ describe("StorageCleanup", () => {
 		const { view } = await open();
 		try {
 			const rows = view.all("[data-settings-row]");
-			assert.equal(rows.length, 3, "占用、范围、清除各一行");
+			assert.equal(rows.length, 4, "占用、导出、范围、清除各一行");
 			const tops = rows.map((row) => row.getBoundingClientRect().top);
 			await click(inPanel("[data-ly-date-range]"));
 			await click(inPanel(`[data-ly-day="2026-09-05"]`));
@@ -120,7 +130,7 @@ describe("StorageCleanup", () => {
 			assert.deepEqual(
 				view.all("[data-settings-row]").map((row) => row.getBoundingClientRect().top),
 				tops,
-				"选完日期，三行还在原来的位置上",
+				"选完日期，四行还在原来的位置上",
 			);
 		} finally {
 			await view.unmount();
@@ -247,6 +257,53 @@ describe("StorageCleanup", () => {
 			await click(inPanel(`[data-ly-day="2026-09-10"]`));
 			assert.equal(view.find<HTMLButtonElement>("[data-usage-clear]").disabled, true);
 			assert.match(view.text(), /这段时间里没有会话/);
+		} finally {
+			await view.unmount();
+		}
+	});
+
+	it("导出完说清楚存到了哪，不碰任何一条会话", async () => {
+		const harness = await open();
+		try {
+			await click(harness.view.find("[data-usage-export]"));
+			await settle();
+			assert.equal(harness.exports, 1);
+			assert.equal(harness.calls.length, 0, "导出不是删除");
+			assert.match(harness.view.text(), /已导出到 \/Users\/me\/Downloads\/plume-sessions-2026-09-29\.db/);
+		} finally {
+			await harness.view.unmount();
+		}
+	});
+
+	it("在保存对话框里取消，什么也不说", async () => {
+		const { view } = await open(USE, undefined, async () => null);
+		try {
+			await click(view.find("[data-usage-export]"));
+			await settle();
+			assert.equal(view.all("[data-usage-exported]").length, 0);
+		} finally {
+			await view.unmount();
+		}
+	});
+
+	it("导出失败要把原因摆出来，不是悄悄没反应", async () => {
+		const { view } = await open(USE, undefined, async () => {
+			throw new Error("磁盘已满");
+		});
+		try {
+			await click(view.find("[data-usage-export]"));
+			await settle();
+			assert.match(view.text(), /导出失败：磁盘已满/);
+			assert.equal(view.find<HTMLButtonElement>("[data-usage-export]").disabled, false, "可以再试一次");
+		} finally {
+			await view.unmount();
+		}
+	});
+
+	it("一条会话都没有时，导出也按不动", async () => {
+		const { view } = await open({ bytes: 0, sessions: 0, earliest: null, latest: null, days: [] });
+		try {
+			assert.equal(view.find<HTMLButtonElement>("[data-usage-export]").disabled, true);
 		} finally {
 			await view.unmount();
 		}

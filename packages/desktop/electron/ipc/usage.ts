@@ -14,12 +14,14 @@
  * 的动作——见 `session-cleanup.ts` 开头那段。
  */
 
-import { ipcMain } from "electron";
+import { join } from "node:path";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import type { SessionStorage } from "@plume/core";
 import { settings } from "../app-settings.ts";
+import { nativeTranslator } from "../i18n.ts";
 import { deleteIdleSessions } from "../session/session-hub.ts";
 import type { ClearRange, UsageScan } from "@plume/contract";
-import { clearSessions, storageUse } from "../session/session-cleanup.ts";
+import { clearSessions, dayKey, storageUse } from "../session/session-cleanup.ts";
 import { scanUsage } from "../usage/usage-scan.ts";
 
 let inFlight: Promise<UsageScan> | null = null;
@@ -52,5 +54,19 @@ export function registerUsageIpc({ store: readStore }: UsageIpcDeps): void {
 		 */
 		inFlight = null;
 		return result;
+	});
+
+	ipcMain.handle("usage:export", async (event): Promise<string | null> => {
+		const t = nativeTranslator(settings().uiLocale, app.getLocale());
+		const options = {
+			title: t("storage.exportDialogTitle"),
+			defaultPath: join(app.getPath("downloads"), `plume-sessions-${dayKey(Date.now())}.db`),
+			filters: [{ name: "SQLite", extensions: ["db"] }],
+		};
+		const window = BrowserWindow.fromWebContents(event.sender);
+		const picked = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options);
+		if (picked.canceled || !picked.filePath) return null;
+		await readStore().exportTo(picked.filePath);
+		return picked.filePath;
 	});
 }
