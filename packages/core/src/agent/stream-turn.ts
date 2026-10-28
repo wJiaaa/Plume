@@ -105,6 +105,11 @@ export async function streamTurn(modelConfig: AgentModelContext, context: LlmCon
 	 * number from 1, and passing theirs through made the line on screen count 1, 2, 1, 1, 2.
 	 */
 	let retries = 0;
+	/*
+	 * 最近那次重试还没有下文。接上以后第一段内容一到就说「恢复了」，不等这条回复写完：长回复要写好几
+	 * 分钟，那段时间里屏幕一直说「正在重试」，而连接早就好了。之后再断，就是新的一次。
+	 */
+	let pending = false;
 
 	/*
 	 * Where the prefix first differs from the previous request, stamped on the reply as evidence for
@@ -134,6 +139,7 @@ export async function streamTurn(modelConfig: AgentModelContext, context: LlmCon
 		// Said out loud: seconds of silence while retrying are indistinguishable from a hang.
 		onRetry: ({ delayMs, reason, failure }) => {
 			retries += 1;
+			pending = true;
 			void emit({ type: "retry", attempt: retries, delayMs, reason, failure });
 		},
 	}), stamp);
@@ -156,13 +162,15 @@ export async function streamTurn(modelConfig: AgentModelContext, context: LlmCon
 			: message;
 
 	/*
-	 * How the interruption ended. Only a clean first-try success has nothing to say — a failure
+	 * How the interruption ended. Only a clean success with no retry still pending has nothing to
+	 * say (a recovery already reported on the first delta is not reported twice) — a failure
 	 * that was never retried (bad key, wrong model name) must still be reported, or the window is
 	 * left silent with no record of what happened.
 	 */
 	const settle = async (message: AssistantMessage) => {
 		const failed = message.stopReason === "error";
-		if (retries === 0 && !failed) return;
+		if (!pending && !failed) return;
+		pending = false;
 		await emit({
 			type: "retry_settled",
 			outcome: failed ? "gave_up" : "recovered",
@@ -178,7 +186,7 @@ export async function streamTurn(modelConfig: AgentModelContext, context: LlmCon
 	 */
 	const letGo = async (message: AssistantMessage): Promise<TurnResult> => {
 		if (started) await emit({ type: "message_end", message });
-		if (retries > 0) {
+		if (pending) {
 			const to = modelConfig.liveModel?.current()?.model.name;
 			await emit({ type: "retry_settled", outcome: "switched", attempts: retries, ...(to ? { switchedTo: to } : {}) });
 		}
@@ -206,6 +214,10 @@ export async function streamTurn(modelConfig: AgentModelContext, context: LlmCon
 			case "toolcall_end":
 				said = true;
 				latest = event.partial;
+				if (pending) {
+					pending = false;
+					await emit({ type: "retry_settled", outcome: "recovered", attempts: retries });
+				}
 				await emit({ type: "message_update", message: marked(event.partial), delta: event });
 				break;
 			case "text_end": {
@@ -237,7 +249,7 @@ export async function streamTurn(modelConfig: AgentModelContext, context: LlmCon
 							// The resend that follows is the outcome; a never-retried rejection reports nothing.
 							discard: async () => {
 								if (started) await emit({ type: "message_discarded", message: settled });
-								if (retries > 0) await settle(settled);
+								if (pending) await settle(settled);
 							},
 						},
 					};
