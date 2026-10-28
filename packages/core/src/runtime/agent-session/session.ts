@@ -160,6 +160,8 @@ export class AgentSession {
 	private lastEnd: Extract<AgentEvent, { type: "agent_end" }>["reason"] = "done";
 	/** 正在收尾的这一轮的 `agent_end`：`submit` 开轮前清掉、跑完读走，交给开这一轮的调用方。 */
 	private turnEnd: TurnEnd | undefined;
+	/** 经日志出口发过的 `agent_end` 有几个：一轮抛了异常时，据此知道它自己有没有收场。见 `run`。 */
+	private ends = 0;
 	/** 谁此刻占着历史、怎么停下它。见 `session-activity.ts`。 */
 	private readonly activity = new SessionActivity();
 	/** 忙着的时候进来的话：插话或排队。见 `session-inbox.ts`。 */
@@ -187,6 +189,13 @@ export class AgentSession {
 	private readonly subAgentContexts = new SubAgentContexts();
 	/** 主会话派出去的子代理：派出即放手，跑完一个送回一个。见 `detached-dispatches.ts`。 */
 	private readonly dispatches = new DetachedDispatches((report) => this.deliveries.report(report));
+	/**
+	 * 后台子代理挂的那根线：会话真停下（停止按钮、退出、处置）时断，插话和编辑重发不断。
+	 *
+	 * 不挂在这一轮的信号上：插话停的是这一轮，而派出去的子代理是模型还指着的东西——挂在轮上，
+	 * 「现在就发」一按就把它们连同已经跑完、正等着送回的结果一起断掉，模型却还在等。
+	 */
+	private background = new AbortController();
 	/** 工具在等另一个会话做完时，有人找就放手。见 `spoken-waits.ts`。 */
 	private readonly spokenWaits = new SpokenWaits(() => (this.inbox.spoken ? "person" : this.running && this.letters.length > 0 ? "notice" : null));
 	/** 跑完了、还没送回主会话的后台结果；攒一小会儿再送。见 `session-deliveries.ts`。 */
@@ -265,6 +274,7 @@ export class AgentSession {
 		 */
 		this.log = new SessionLog(options.store, (event) => {
 			if (event.type === "agent_end") {
+				this.ends += 1;
 				this.lastEnd = event.reason;
 				this.turnEnd = { reason: event.reason, ...(event.error ? { error: event.error } : {}) };
 			}
@@ -537,7 +547,8 @@ export class AgentSession {
 	 */
 	private startWatching(): void {
 		this.watcher?.close();
-		if (this.can.watched.length === 0) return;
+		// 处置之后还在跑完的那次重载走到这里，不能再挂一个递归 `fs.watch` 上去——没有人会再关它。
+		if (this.disposed || this.can.watched.length === 0) return;
 		this.watcher = new CapabilityWatcher({
 			dirs: this.can.watched,
 			// 一轮跑到一半绝不换：模型正按当前那份清单做决策。
@@ -567,6 +578,8 @@ export class AgentSession {
 		};
 
 		await this.can.load(this.cwd, this.settings);
+		// 重读的这段时间里会话被处置了：不重挂监听，也不再报变化。
+		if (this.disposed) return;
 		// 目录名单本身也会变——新建了 `.plume/skills/` 之后，它才第一次出现在 `watched` 里。
 		this.startWatching();
 
@@ -867,8 +880,7 @@ export class AgentSession {
 				}
 			}
 			if (this.activity.stoppedSince(mark)) { await this.emit({ type: "agent_end", reason: "aborted" }); return; }
-			await this.run();
-			await this.drainPending();
+			await this.runThenDrain(undefined);
 		};
 		const held = this.activity.hold("resume", resume);
 		void held.finally(() => {
@@ -1011,9 +1023,7 @@ export class AgentSession {
 			await options.title?.();
 
 			if (this.activity.stoppedSince(mark)) { await this.emit({ type: "agent_end", reason: "aborted" }); ended = this.turnEnd; return; }
-			await this.run(options.thinking);
-			ended = this.turnEnd;
-			await this.drainPending();
+			await this.runThenDrain(options.thinking, () => { ended = this.turnEnd; });
 		};
 		try { await this.activity.hold("prompt", accept); }
 		finally {
@@ -1025,12 +1035,27 @@ export class AgentSession {
 	}
 
 	/**
+	 * 这一轮，然后排在它后面的那些。
+	 *
+	 * 这一轮抛了异常，排着的照样发：不发的话它们留在 inbox 里，等到下一次有人开口才被带出来，而且
+	 * 排在那句新话后面。第一个错误照样抛出去。`ran`：这一轮收了场、排着的还没开始的那一刻。
+	 */
+	private async runThenDrain(thinking: ThinkingLevel | undefined, ran: () => void = () => {}): Promise<void> {
+		let failure: { error: unknown } | undefined;
+		try { await this.run(thinking); } catch (error) { failure = { error }; }
+		ran();
+		try { await this.drainPending(); } catch (error) { failure ??= { error }; }
+		if (failure) throw failure.error;
+	}
+
+	/**
 	 * 排在这一轮后面的那些，按进来的顺序发。
 	 *
 	 * 一条 `followUp` 跑完可能又带出下一条，所以是循环而不是一次——而 `run` 本身在跑的时候
 	 * `this.running` 为真，所以循环里不会有第二个回合同时开始。
 	 */
 	private async drainPending(): Promise<void> {
+		let failure: { error: unknown } | undefined;
 		while (!this.inbox.empty) {
 			// Orphaned steering comes out first; see `SessionInbox.next`.
 			const next = this.inbox.next();
@@ -1041,8 +1066,9 @@ export class AgentSession {
 			await this.emit({ type: "message_start", message: next.message });
 			await this.emit({ type: "message_end", message: next.message });
 			if (this.activity.stoppedSince(mark)) break;
-			await this.run(next.thinking);
+			try { await this.run(next.thinking); } catch (error) { failure ??= { error }; }
 		}
+		if (failure) throw failure.error;
 	}
 
 	/**
@@ -1080,6 +1106,8 @@ export class AgentSession {
 		const start = this.log.messages.length;
 
 		const signal = this.activity.beginTurn();
+		const endsBefore = this.ends;
+		let threw: { error: unknown } | undefined;
 		try {
 			await this.preparePruner();
 			const turn = driveTurn({
@@ -1099,6 +1127,7 @@ export class AgentSession {
 				drainSteering: () => [...this.inbox.takeSteering(), ...this.takeLetters()],
 				subAgents: this.subAgents,
 				dispatches: this.dispatches,
+				backgroundSignal: this.background.signal,
 				spokenWaits: this.spokenWaits,
 				liveModel: this.liveModel,
 				profile: parent ? SIDE_CHAT_PROFILE : undefined,
@@ -1108,6 +1137,9 @@ export class AgentSession {
 			});
 			this.activity.trackTurn(turn);
 			await turn;
+		} catch (error) {
+			threw = { error };
+			throw error;
 		} finally {
 			// Whatever the turn's own error was, it is the one that propagates.
 			await this.log.settleOrphan().catch(() => {});
@@ -1119,6 +1151,16 @@ export class AgentSession {
 			 * 收掉就等于替人答了「不行」。它们停下时由登记簿那一头收回（见 `subAgents` 的 `onFinish`）。
 			 */
 			this.approvals.rejectWhere((request) => !request.from);
+			/*
+			 * 抛出来的一轮没有自己收场：循环的 `agent_end` 在它正常走完的那几条路上才发。不补的话
+			 * 「还在收插话」一直是真的，排着的话被当成插话塞进一个已经不在的回合，日志里这一轮也没有
+			 * 结尾。走日志出口，跟循环自己发的那条一样落盘、一样被 `activity` 看到。
+			 */
+			if (threw && this.ends === endsBefore) {
+				const end: AgentEvent = { type: "agent_end", reason: "error", error: threw.error instanceof Error ? threw.error.message : String(threw.error) };
+				// 写盘本身坏了（常见的抛出原因）时日志出口到不了 `activity`，至少让它知道这一轮收了。
+				await this.emit(end).catch(() => this.activity.observe(end));
+			}
 		}
 
 		if (parent) {
@@ -1163,10 +1205,12 @@ export class AgentSession {
 	/**
 	 * Stop the turn that is running.
 	 *
-	 * `revoke` is for the stop button only: it also takes back what the model set up to come back
-	 * by itself — its monitors and its scheduled wakeups. A message that interrupts the turn and an
-	 * edit that rewinds it stop the turn too, but nobody asked for those to go: the conversation
-	 * carries on, and the model still counts on them.
+	 * `revoke` is a real stop — the button, quitting, disposing: it also takes back what the model
+	 * set up to come back by itself — its monitors, its scheduled wakeups, the sub-agents it sent off
+	 * and the queue behind it. A message that interrupts the turn and an edit that rewinds it stop
+	 * the turn too, but nobody asked for those to go: the conversation carries on, and the model
+	 * still counts on them. An edit that cuts a dispatch out of the history stops that one in
+	 * `session-rewind.ts`.
 	 *
 	 * `pressed` is someone actually stopping it. Quitting the app and disposing take back the same
 	 * things, but say nothing: what is said is written into the conversation, and after a restart it
@@ -1190,17 +1234,25 @@ export class AgentSession {
 		 * away, and a sub-agent left running past the session it belongs to has nothing that could
 		 * ever reach it again.
 		 */
-		this.subAgents.abortAll();
-		this.approvals.rejectAll();
-		// 放了手的、攒着没送的都不再送回来；后台命令照跑，只是结束时不再叫醒会话。见 `SessionDeliveries.clear`。
-		this.dispatches.forget();
-		this.deliveries.clear({ monitors: revoke });
+		if (revoke) {
+			this.subAgents.abortAll();
+			this.background.abort();
+			this.background = new AbortController();
+			this.approvals.rejectAll();
+			// 放了手的不再送回来。见 `SessionDeliveries.clear`。
+			this.dispatches.forget();
+		} else {
+			// 后台子代理还在跑，它们停在授权上的问题也还有人等；收的只是这一轮自己的。
+			this.approvals.rejectWhere((request) => !request.from);
+		}
+		// 攒着没送的不再送回来（插话时跑完的子代理和 monitor 照送）；后台命令照跑，只是结束时不再叫醒会话。
+		this.deliveries.clear({ monitors: revoke, subAgents: revoke });
 		const jobs = backgroundJobs(this.can.state);
 		jobs.mute();
 		if (revoke) jobs.stopMonitors();
 		// Stop means stop. Letting the queue carry on after the button was pressed would be
-		// the opposite of what pressing it asks for.
-		void this.tasks.cancelAll();
+		// the opposite of what pressing it asks for. An interrupt is not that: the queue waits its turn.
+		if (revoke) void this.tasks.cancelAll();
 		/*
 		 * 定时唤醒也一起取消，和「停下的会话不再被后台结果叫醒」同一个理由：自动续跑是模型的决定，按停止
 		 * 就是收回它。取消了就说一声——那是模型说过「十分钟后再看」的事，悄悄没了，人会一直等。

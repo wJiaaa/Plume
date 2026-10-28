@@ -119,12 +119,15 @@ export class SessionDeliveries {
 	 * Other background commands that ended meanwhile are still dropped, the same as the running ones
 	 * `mute` just silenced.
 	 *
+	 * Finished sub-agents are the same kind of exception (`subAgents: false`): an interrupt leaves
+	 * the running ones going, so the ones that finished just before still have someone waiting.
+	 *
 	 * Notices from other sessions are not dropped but handed back (`unsent`): nobody waits for an
 	 * answer to one, so a dropped notice is lost without anyone knowing. The next turn reads them.
 	 * Requests are dropped: their sender is waiting, and is told the request never got read.
 	 */
-	clear({ monitors }: { monitors: boolean }): void {
-		this.reports.length = 0;
+	clear({ monitors, subAgents = true }: { monitors: boolean; subAgents?: boolean }): void {
+		if (subAgents) this.reports.length = 0;
 		this.finishedJobs = monitors ? [] : this.finishedJobs.filter((job) => job.kind === "monitor");
 		if (monitors) this.monitorEvents.length = 0;
 		this.finishedSessions.length = 0;
@@ -133,7 +136,7 @@ export class SessionDeliveries {
 		if (notices.length > 0) this.deps.unsent(notices);
 		if (this.timer) clearTimeout(this.timer);
 		this.timer = null;
-		if (this.monitorEvents.length > 0 || this.finishedJobs.length > 0) this.schedule();
+		if (this.monitorEvents.length > 0 || this.finishedJobs.length > 0 || this.reports.length > 0) this.schedule();
 	}
 
 	/**

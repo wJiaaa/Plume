@@ -72,6 +72,8 @@ export interface TurnInputs {
 	subAgents: SubAgentRegistry;
 	/** 这一轮派出去的子代理：派出即放手、跑完送回——见 `detached-dispatches.ts`。 */
 	dispatches: DetachedDispatches;
+	/** 后台子代理挂的线，会话真停下时才断。见 `AgentSession.background`。 */
+	backgroundSignal?: AbortSignal;
 	spokenWaits: SpokenWaits;
 	/** 这场对话此刻设定的模型——一轮之内也会变。见 `AgentModelContext.liveModel`。 */
 	liveModel?: LiveModel;
@@ -372,6 +374,7 @@ async function assembleTurn(input: TurnInputs, hooks: TurnHooks): Promise<{ conf
 			// Where anything this turn delegates registers itself, so it can be watched and steered.
 			subAgents: input.subAgents,
 			dispatches: input.dispatches,
+			backgroundSignal: input.backgroundSignal,
 			spokenWaits: input.spokenWaits,
 			liveModel: input.liveModel,
 			signal: input.signal,

@@ -88,9 +88,15 @@ export function controlMainTool(main: MainSession): Tool<{ action: string; disca
 					await main.discardTaskPlan();
 					return textResult("主会话已停止，旧任务清单已取消。历史记录保留，未完成事项没有被标记为完成。");
 				}
-				if (!main.running) return textResult("主会话现在没有在执行任何东西，不需要暂停。");
+				// 看 `idle` 不看 `running`：这一轮收了尾，派出去的子代理照样在后台跑，主窗口的停止键也停它们。
+				if (main.idle) return textResult("主会话现在没有在执行任何东西，不需要暂停。");
+				const running = main.running;
 				main.abort();
-				return textResult("已经让主会话停下了。它手头的工作已中止，派出的任务也一并中断——需要的话可以让我继续。");
+				return textResult(
+					running
+						? "已经让主会话停下了。它手头的工作已中止，派出的任务也一并中断——需要的话可以让我继续。"
+						: "主会话这一轮已经收尾，但后台还有它派出去的活没回来——已经一并停下。需要的话可以让我继续。",
+				);
 			}
 
 			if (action === "resume") {
@@ -107,6 +113,8 @@ export function controlMainTool(main: MainSession): Tool<{ action: string; disca
 					return textResult(`已把被中断的任务重新排上：${interrupted.text.slice(0, 60)}`);
 				}
 				if (main.running) return textResult("主会话正在执行，不用继续。");
+				// 派出去的还没回来：结果回来时它自己会开一轮。这时让它「接着做」，它多半会把那些活自己重做一遍。
+				if (!main.idle) return textResult("主会话派出去的活还在后台跑，结果回来后它会自己接着做，不用继续。");
 				/*
 				 * `synthetic`, because nobody typed it.
 				 *
@@ -114,7 +122,11 @@ export function controlMainTool(main: MainSession): Tool<{ action: string; disca
 				 * nothing — and keeps the turn's elapsed time and tokens counting from where the work
 				 * actually started rather than restarting at this message.
 				 */
-				await main.prompt([{ type: "text", text: "继续，从中断的地方接着做。" }], { synthetic: true });
+				/*
+				 * 不等：`prompt` 要等主会话这一轮连同排在后面的都跑完才返回，那可能是几十分钟——侧边聊天
+				 * 这次工具调用就一直挂着，人对它说的话只能排在后面。控制是当场生效的，结果在主会话里看。
+				 */
+				void main.prompt([{ type: "text", text: "继续，从中断的地方接着做。" }], { synthetic: true }).catch(() => {});
 				return textResult("已经让主会话接着做了。");
 			}
 
@@ -122,7 +134,7 @@ export function controlMainTool(main: MainSession): Tool<{ action: string; disca
 				const queued = main.taskQueue.filter((t) => t.status === "queued").length;
 				const running = main.taskQueue.find((t) => t.status === "running");
 				const interrupted = main.interruptedTask();
-				const parts = [main.running ? "主会话正在执行" : "主会话当前空闲"];
+				const parts = [main.running ? "主会话正在执行" : main.idle ? "主会话当前空闲" : "主会话这一轮已经收尾，后台还有它派出去的活没回来"];
 				if (running) parts.push(`正在跑派出的任务：${running.text.slice(0, 40)}`);
 				if (queued > 0) parts.push(`队列里还有 ${queued} 个任务在等`);
 				if (interrupted) parts.push(`有一个被中断的任务可以继续：${interrupted.text.slice(0, 40)}`);

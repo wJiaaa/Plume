@@ -11,6 +11,7 @@
  */
 
 import { completedCompaction, interruptedCompaction } from "../../agent/compaction-lifecycle.ts";
+import { stripStaleHandles } from "../../agent/model-switch.ts";
 import { refreshMemorySnapshot } from "../memory/memory-inject.ts";
 import type { PromptContext } from "../../prompt/context.ts";
 import { promptBase } from "../../prompt/update.ts";
@@ -133,16 +134,18 @@ export class SessionLog {
 			this.meta = (await this.store.append(this.meta, { type: "message", message }, stream ? { stream } : undefined)) ?? this.meta;
 		} catch (error) {
 			/*
-			 * A reply that did not get written is not in the transcript either, and its stream stays
-			 * as it was: still saving what is waiting, still there for `settleOrphan` to commit as a
-			 * stopped reply, and still on disk if the process dies first. Forgetting it before the
-			 * write, as this once did, lost the last batch and left nothing to retry with.
+			 * A message that did not get written is not in the transcript either — whatever its role.
+			 * Kept in memory it went out with the next request and shifted the log-tail count the
+			 * compaction boundary is measured by, then vanished on reopen.
+			 *
+			 * A reply's stream stays as it was: still saving what is waiting, still there for
+			 * `settleOrphan` to commit as a stopped reply, and still on disk if the process dies
+			 * first. Forgetting it before the write, as this once did, lost the last batch and left
+			 * nothing to retry with.
 			 */
-			if (message.role === "assistant") {
-				this.committed.delete(message);
-				const at = this.messages.lastIndexOf(message);
-				if (at >= 0) this.messages.splice(at, 1);
-			}
+			this.committed.delete(message);
+			const at = this.messages.lastIndexOf(message);
+			if (at >= 0) this.messages.splice(at, 1);
 			throw error;
 		}
 		// The store dropped the streamed copy in the same transaction that wrote the reply.
@@ -432,6 +435,17 @@ export class SessionLog {
 		// 存储层会把落在工具结果上的截断点往前挪（不拆开调用和结果），按它实际截到的位置算，和重新载入时一致。
 		const cut = truncated.messages.length;
 		/*
+		 * 换过模型的会话，读回来的历史带着旧模型的句柄：日志只追加，换模型时剥掉的只是内存里那份。
+		 * 截到换模型之前，剩下的全是旧模型写的，切换点跟着挪到截断处并写下——不挪的话，重开时会把
+		 * 截断之后新模型自己写的回复也当成换模型之前的剥掉。
+		 */
+		const switchedAt = this.meta.modelSwitchedAt;
+		if (switchedAt !== undefined && switchedAt > cut) {
+			this.meta = { ...this.meta, modelSwitchedAt: cut };
+			await this.append({ type: "meta", meta: this.meta });
+		}
+		const kept = stripStaleHandles(truncated.messages, this.meta.modelSwitchedAt);
+		/*
 		 * A rewind past the compaction boundary retires it.
 		 *
 		 * The boundary says "the model sees the summary, then everything from here on". Cut the
@@ -447,7 +461,7 @@ export class SessionLog {
 		this.commandRuns = this.commandRuns.filter((run) => run.at <= cut);
 		this.hookRuns = this.hookRuns.filter((run) => run.at <= cut);
 		// The marks live at positions too, so a cut tail takes the ones inside it — same rule as the runs above.
-		this.restore(truncated.messages, boundary, this.compactions.filter((at) => at <= cut));
+		this.restore(kept, boundary, this.compactions.filter((at) => at <= cut));
 		return true;
 	}
 }

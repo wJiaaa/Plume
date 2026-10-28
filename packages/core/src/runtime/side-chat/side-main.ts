@@ -12,6 +12,11 @@ export interface MainSession {
 	readonly meta: SessionMeta;
 	readonly messages: Message[];
 	readonly running: boolean;
+	/**
+	 * 真闲着：没在跑，派出去的子代理也都回来了、没有攒着待送和排着的。`running` 为假时后台照样
+	 * 可能在跑、在花钱，跑完还会叫醒主会话——暂停和查状态都得看这个。见 `AgentSession.idle`。
+	 */
+	readonly idle: boolean;
 	readonly taskQueue: QueuedTask[];
 	enqueueTask(text: string, origin?: QueuedTask["origin"], sideId?: string): Promise<QueuedTask>;
 	resumeTask(taskId: string): Promise<boolean>;

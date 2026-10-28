@@ -57,6 +57,8 @@ export interface TurnConfigDeps {
 	subAgents: SubAgentRegistry;
 	/** 派出即放手、跑完送回——见 `detached-dispatches.ts`。 */
 	dispatches: DetachedDispatches;
+	/** 后台子代理挂的线：会话真停下时断，插话停这一轮时不断。不给就挂在这一轮的 `signal` 上。 */
+	backgroundSignal?: AbortSignal;
 	/** 工具在等另一个会话时，有人找就放手——见 `spoken-waits.ts`。 */
 	spokenWaits: SpokenWaits;
 	signal?: AbortSignal;
@@ -137,7 +139,11 @@ export function buildTurnConfig(
 				skills: deps.skills,
 				// 开关重载会替换名单；派发时现读，不能沿用这一轮开始时的数组。
 				agents: (deps.state.get(AGENTS_KEY) as AgentDefinition[] | undefined) ?? deps.agents,
-				signal: deps.signal,
+				/*
+				 * 挂在会话的后台线上，不挂在这一轮上：派出即放手，它活得比这一轮长，插话停掉这一轮不该
+				 * 连带它。这一轮已经停了才派的，照旧交已经断了的那根，`runSubAgent` 据此一步不做。
+				 */
+				signal: deps.signal?.aborted || !deps.backgroundSignal ? deps.signal : deps.backgroundSignal,
 				streamFn: deps.streamFn,
 				requestApproval: (request) => deps.requestApproval(request),
 				emit: (event) => deps.emit(event),
