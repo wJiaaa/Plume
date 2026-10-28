@@ -20,7 +20,7 @@ import { HANDOFF_SCHEMA, runSubAgent, SUB_AGENT_CHECKPOINT_TURNS } from "../src/
 import { SubAgentRegistry } from "../src/runtime/sub-agent/sub-agents.ts";
 import { DetachedDispatches } from "../src/runtime/sub-agent/detached-dispatches.ts";
 import { useCompaction } from "../src/runtime/compaction/compaction.ts";
-import { taskTool } from "../src/tools/task.ts";
+import { stopSubAgentTool, taskTool } from "../src/tools/task.ts";
 import { runTools } from "../src/agent/tool-run.ts";
 import { DispatchGate } from "../src/runtime/policy/dispatch-guard.ts";
 import { TODOS_KEY, todoTool, type TodoItem } from "../src/tools/todo.ts";
@@ -501,7 +501,48 @@ function stoppableTurn(registry: SubAgentRegistry, spawn: ToolContext["spawnSubA
 	);
 }
 
-test("one stopped while still queued has nothing to resume, so the stop says only that it was stopped", async () => {
+test("a newly queued sub-agent stopped with stop_subagent resumes with its original task intact", async () => {
+	const h = harness();
+	const gate = new DispatchGate(1);
+	const release = await gate.acquire();
+	try {
+		const queued = Promise.withResolvers<void>();
+		const run = h.run({ prompt: "原任务：检查登录逻辑" }, () => assert.fail("a stopped queued run sends no request"), {
+			admission: (signal) => {
+				const admitted = gate.acquire(signal);
+				queued.resolve();
+				return admitted;
+			},
+		});
+		await queued.promise;
+		const id = h.registry.list()[0]!.id;
+		assert.equal(h.registry.list()[0]!.status, "queued");
+		assert.equal(gate.queued, 1, "等到真正入队再停止");
+		const stopped = await stopSubAgentTool.execute({ id }, { stopSubAgent: (wanted) => h.registry.stop(wanted) } as ToolContext);
+		assert.match(stopped.content.map((part) => ("text" in part ? part.text : "")).join(""), /resume/);
+		assert.equal((await run).stoppedByUser, true);
+		assert.equal(h.registry.list()[0]!.status, "aborted");
+		assert.equal(h.requests.length, 0);
+		assert.equal(gate.queued, 0, "停止后离队，不占下一次的名额");
+		assert.equal(gate.running, 1, "没有动兄弟的名额");
+		assert.equal(h.registry.list()[0]!.resumable, true);
+
+		release();
+		const resumed = await h.run({ prompt: "现在继续", resume: id }, () => says("检查完了"), { admission: (signal) => gate.acquire(signal) });
+		assert.equal(resumed.id, id);
+		assert.equal(h.requests.length, 1);
+		const messages = h.requests[0]!.messages;
+		assert.equal(messages.filter((message) => text(message) === "原任务：检查登录逻辑").length, 1, "开场任务留着，且没有重复");
+		assert.equal(messages.filter((message) => text(message).startsWith("<env>")).length, 1, "日期随开场保留");
+		assert.equal(text(messages.at(-1)), "现在继续");
+		assert.equal(gate.running, 0);
+	} finally {
+		release();
+		h.registry.abortAll();
+	}
+});
+
+test("stopping the whole parent turn still returns cancellation rather than a resume instruction", async () => {
 	const h = harness();
 	const stop = new AbortController();
 	const gate = new DispatchGate(1);
@@ -518,7 +559,7 @@ test("one stopped while still queued has nothing to resume, so the stop says onl
 	held();
 	const said = text(message as Message);
 	assert.match(said, /^Tool execution was cancelled/);
-	assert.doesNotMatch(said, /resume/, "pointing at a resume that would be refused costs the model a round");
+	assert.doesNotMatch(said, /resume/, "a cancelled parent turn must not tell the model to keep working");
 });
 
 test("the default checkpoint is still sixty rounds — what changed is what happens there, not where it is", () => {

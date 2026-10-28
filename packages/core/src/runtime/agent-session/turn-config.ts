@@ -15,7 +15,7 @@ import type { streamAssistant } from "../../ai/index.ts";
 import type { Settings } from "../../config/settings.ts";
 import type { Skill } from "../../skills/loader.ts";
 import { DispatchGate, normalizeMaxConcurrentSubAgents } from "../policy/dispatch-guard.ts";
-import type { AgentDefinition } from "../../tools/task.ts";
+import { AGENTS_KEY, type AgentDefinition } from "../../tools/task.ts";
 import type {
 	ApprovalDecision,
 	ApprovalRequest,
@@ -135,7 +135,8 @@ export function buildTurnConfig(
 				getSettings: deps.getSettings,
 				tools: deps.tools.filter((tool) => !tool.sessionOnly),
 				skills: deps.skills,
-				agents: deps.agents,
+				// 开关重载会替换名单；派发时现读，不能沿用这一轮开始时的数组。
+				agents: (deps.state.get(AGENTS_KEY) as AgentDefinition[] | undefined) ?? deps.agents,
 				signal: deps.signal,
 				streamFn: deps.streamFn,
 				requestApproval: (request) => deps.requestApproval(request),

@@ -7,6 +7,7 @@
 
 import { randomUUID } from "node:crypto";
 import { resolveSubAgentModel } from "../../config/model-choice.ts";
+import { today, withEnvironment } from "../../prompt/environment.ts";
 import type { ResourceRouter } from "../../resources/router.ts";
 import { SKILLS_KEY } from "../../skills/tool.ts";
 import { AGENTS_KEY, BUILTIN_AGENTS, type AgentDefinition } from "../../tools/task.ts";
@@ -231,8 +232,14 @@ export async function dispatchSubAgent(
 				throw error;
 			}
 			registry.finish(id, { status: "aborted" });
-			// 续跑的那一个还没动过：上一段留下的上下文原样放回去，以后照样能接着跑。
-			if (earlier) registry.keep(id, earlier.conversation);
+			// 新派的也要留住原任务才能续跑；已跑过的保留上一段上下文，不从转录重建。
+			registry.keep(id, earlier?.conversation ?? {
+				agent: definition.name,
+				view: withEnvironment([opening]),
+				state: subState,
+				envDate: today(new Date(opening.timestamp)),
+				model: chosen.model.id,
+			});
 			await options.emit({ type: "subagent_done", id, steps: [], answer: "", status: "aborted" });
 			return {
 				stopped: {
