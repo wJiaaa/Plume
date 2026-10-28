@@ -285,8 +285,9 @@ export interface ApprovalOrigin {
  * 没回答就关掉（`cancel`）——超时、撤回、服务器自己取消了也是 `cancel`。
  *
  * `note` 是选了某个选项之外顺带说的话。选项本身不变：批准计划时附上的注意事项就走这里，批准还是批准。
+ * `modelId` 只有计划的「在新会话里执行」认：那个新会话用哪个模型，不带就是宿主的默认模型。
  */
-export type ApprovalDecision = "once" | "always" | "reject" | "skip" | "cancel" | { answer: string | string[]; skipped?: boolean; note?: string } | { values: FormValues };
+export type ApprovalDecision = "once" | "always" | "reject" | "skip" | "cancel" | { answer: string | string[]; skipped?: boolean; note?: string; modelId?: string } | { values: FormValues };
 
 export interface SubAgentInput {
 	description: string;

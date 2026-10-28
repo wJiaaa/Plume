@@ -14,8 +14,11 @@ import { useI18n } from "../../i18n/index.ts";
  * 灰底胶囊的时候，页面读起来是十四个输入框，而用户要找的是那一两行改过的。
  *
  * `showIcon` 关掉触发器前面的模型记号——智能体页只写模型名。
+ *
+ * `compact` 只剩一枚箭头，贴在它管的那颗按钮旁边当分体按钮：计划审批卡那一排在右栏开着时只余四五十像素，
+ * 装不下一个带名字的选择。选了什么由那颗按钮自己说，这里的悬停提示说全名。
  */
-export function ModelSelect({ ariaLabel, disabled, inheritedModelId, inheritedSource, quiet, showIcon = true, ...selection }: ModelSelection & { ariaLabel: string; disabled?: boolean; inheritedModelId?: string; inheritedSource?: string; quiet?: boolean; showIcon?: boolean }) {
+export function ModelSelect({ ariaLabel, disabled, inheritedModelId, inheritedSource, quiet, showIcon = true, compact, ...selection }: ModelSelection & { ariaLabel: string; disabled?: boolean; inheritedModelId?: string; inheritedSource?: string; quiet?: boolean; showIcon?: boolean; compact?: boolean }) {
 	const { t } = useI18n();
 	const settings = useApp((s) => s.settings);
 	const menu = usePopover();
@@ -27,13 +30,15 @@ export function ModelSelect({ ariaLabel, disabled, inheritedModelId, inheritedSo
 		<button type="button" aria-label={ariaLabel} aria-haspopup="menu" aria-expanded={menu.open} disabled={disabled}
 			onClick={menu.toggle} data-ly-select="" data-ly-tip={selected ? `${selected.provider.name} · ${selected.model.name}${!selection.value ? ` · ${selection.inheritDetail ?? selection.inheritLabel}` : ""}` : selection.value || selection.inheritDetail}
 			data-set={selection.value ? "" : undefined}
-			className={`${quiet ? "ly-field-quiet" : "ly-field"} ly-scroll max-w-[240px] justify-between gap-2 disabled:opacity-60`}>
-			{showIcon && (selected ? <ModelIcon model={selected.model.modelId} name={selected.model.name} size={14} /> : <Box size={14} className="shrink-0 text-ink-muted" />)}
-			{/* 安静的那种把「随主会话」贴在名字后面读成一句，空白留到箭头前；框里那种照旧两端对齐。 */}
-			{/* 挤不下时先让出位置的是「随主会话」，不是模型名——模型名才是这一格要回答的。 */}
-			<span className={`min-w-0 text-left ${quiet ? "shrink" : "flex-1"}`}><ScrollText text={label} /></span>
-			{!selection.value && inheritedSource && <span className={`text-caption ${quiet ? "min-w-0 shrink-[100] truncate text-ink-faint" : "shrink-0 text-ink-muted"}`}>{inheritedSource}</span>}
-			{quiet && <span className="flex-1" />}
+			className={`${quiet || compact ? "ly-field-quiet" : "ly-field"} ly-scroll max-w-[240px] justify-between gap-2 disabled:opacity-60`} style={compact ? { paddingInline: 6 } : undefined}>
+			{!compact && <>
+				{showIcon && (selected ? <ModelIcon model={selected.model.modelId} name={selected.model.name} size={14} /> : <Box size={14} className="shrink-0 text-ink-muted" />)}
+				{/* 安静的那种把「随主会话」贴在名字后面读成一句，空白留到箭头前；框里那种照旧两端对齐。 */}
+				{/* 挤不下时先让出位置的是「随主会话」，不是模型名——模型名才是这一格要回答的。 */}
+				<span className={`min-w-0 text-left ${quiet ? "shrink" : "flex-1"}`}><ScrollText text={label} /></span>
+				{!selection.value && inheritedSource && <span className={`text-caption ${quiet ? "min-w-0 shrink-[100] truncate text-ink-faint" : "shrink-0 text-ink-muted"}`}>{inheritedSource}</span>}
+				{quiet && <span className="flex-1" />}
+			</>}
 			<ChevronDown size={12} className={`shrink-0 text-ink-faint transition-transform duration-[var(--ly-t-quick)] ${menu.open ? "rotate-180" : ""}`} />
 		</button>
 		{menu.open && !disabled && <ModelMenu anchor={menu.anchor} onClose={menu.close} selection={selection} />}

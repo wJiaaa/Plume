@@ -112,7 +112,11 @@ export class ApprovalGate {
 				const said = "note" in decision ? decision.note : undefined;
 				if (said !== undefined && typeof said !== "string") return false;
 				const note = said?.trim();
-				entry.resolve({ answer: typeof value === "string" ? answers[0] : answers, ...(note ? { note } : {}) });
+				// 交接计划时挑的模型也是附带的，同样另走一个字段（见 `ApprovalDecision`）。
+				const picked = "modelId" in decision ? decision.modelId : undefined;
+				if (picked !== undefined && typeof picked !== "string") return false;
+				const modelId = picked?.trim();
+				entry.resolve({ answer: typeof value === "string" ? answers[0] : answers, ...(note ? { note } : {}), ...(modelId ? { modelId } : {}) });
 			} else return false;
 		} else {
 			if (decision !== "once" && decision !== "always" && decision !== "reject") return false;

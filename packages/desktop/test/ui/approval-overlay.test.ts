@@ -433,6 +433,28 @@ test("在新会话里执行：core 给了这一项才画，点了交出这一项
 	} finally { card.release(); await view.unmount(); useApp.setState(previous, true); }
 });
 
+test("在新会话里执行可以挑模型：不挑是默认模型、回答里不带；挑了只交给新会话，当前会话的模型不动", async () => {
+	const { PLAN_HANDOFF } = await import("@plume/core/plan-view");
+	const previous = useApp.getState();
+	const card = await planCard("plan-handoff-model", "auto", ["批准，开始执行", PLAN_HANDOFF, "要改"]);
+	const models = ["qa/0", "qa/1"].map((id, i) => ({ id, modelId: `model-${i}`, providerId: "qa", name: `Model ${i}`, supportsThinking: true, supportsImages: false, supportsTools: true, contextWindow: 128000, maxOutputTokens: 8192 }));
+	let chatChanges = 0;
+	useApp.setState((state) => ({ settings: { ...state.settings!, providers: [{ id: "qa", name: "QA", api: "openai-responses", apiKey: "test", baseUrl: "http://localhost", enabled: true, models }], defaultModelId: "qa/0" }, setModel: async () => { chatChanges++; } }));
+	const view = await card.render();
+	try {
+		const picker = view.find(`[aria-label="${translate("plan.handoffModel")}"]`);
+		assert.match(picker.getAttribute("data-ly-tip") ?? "", /Model 0 · 默认模型/, "不挑时悬停说明会用的默认模型");
+		assert.equal(view.find('[data-plan-action="handoff"]').textContent, translate("plan.handoff"));
+		await click(picker);
+		const target = document.querySelector('[data-model="qa/1"] button'); assert.ok(target);
+		await click(target);
+		assert.equal(view.find('[data-plan-action="handoff"]').textContent, translate("plan.handoffWith", { model: "Model 1" }), "挑了别的，按钮自己说用哪个");
+		await click(view.find('[data-plan-action="handoff"]'));
+		assert.deepEqual(card.answered, [{ answer: PLAN_HANDOFF, modelId: "qa/1" }]);
+		assert.equal(chatChanges, 0);
+	} finally { card.release(); await view.unmount(); useApp.setState(previous, true); }
+});
+
 // 窄窗口右栏一次只摆一格，开面板会把卡片盖住：不替人开，计划照旧画在卡片里。
 test("in a compact window a submitted plan stays drawn in the card as markdown", async () => {
 	const previous = useApp.getState();

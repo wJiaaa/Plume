@@ -130,10 +130,11 @@ export function setReportBack(sessionId: string, on: boolean): Promise<boolean> 
 /** 计划审批卡上的「在新会话里执行」：主会话交出计划后，在它的项目里开一个只带着计划的会话——见 `plan-handoff.ts`。 */
 const planHandoffs = handOffApprovedPlans({
 	meta: (id) => sessions.get(id)?.meta,
-	start: async (parent, toolCallId, title, prompt) => {
-		// 和建议卡片的「开始」同一条路（渲染进程的 `startSession`）：项目而不是 worktree 目录、默认模型、建完就开第一轮。
+	start: async (parent, toolCallId, title, prompt, modelId) => {
+		// 和建议卡片的「开始」同一条路（渲染进程的 `startSession`）：项目而不是 worktree 目录、建完就开第一轮。
+		// 模型是审批卡上挑的那个，没挑才是默认模型。
 		const content = [{ type: "text" as const, text: prompt }];
-		const saved = await createSession(parent.worktree?.project ?? parent.cwd, deps.settings().defaultModelId ?? "", { content, spawnedFrom: { sessionId: parent.id, toolCallId }, title }, parent.project);
+		const saved = await createSession(parent.worktree?.project ?? parent.cwd, modelId ?? deps.settings().defaultModelId ?? "", { content, spawnedFrom: { sessionId: parent.id, toolCallId }, title }, parent.project);
 		await promptSession(saved.meta.id, content, { resumePending: true });
 	},
 	failed: (parentId, message) => broadcast(parentId, { type: "notice", level: "error", message }),

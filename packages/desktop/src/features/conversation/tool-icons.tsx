@@ -13,6 +13,7 @@ import {
 	Globe,
 	Hourglass,
 	Image,
+	ListOrdered,
 	ListTodo,
 	MessageCircleQuestionMark,
 	MessageCircleReply,
@@ -49,6 +50,8 @@ const ICONS: Record<string, typeof FileText> = {
 	bash_output: Terminal,
 	monitor: Terminal,
 	todo_write: ListTodo,
+	// 和输入框上计划模式那颗开关同一枚。
+	submit_plan: ListOrdered,
 	task: Users,
 	stop_subagent: UserX,
 	skill: Sparkles,

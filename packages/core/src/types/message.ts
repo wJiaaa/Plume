@@ -268,6 +268,8 @@ export interface ApprovedPlan {
 	file?: string;
 	/** 人选了「在新会话里执行」：实施在另一个会话里，这个会话不再执行它。 */
 	handoff?: true;
+	/** 交接时人给那个新会话挑的模型。没挑就没有，宿主用默认模型开。 */
+	modelId?: string;
 	approvedAt: number;
 }
 

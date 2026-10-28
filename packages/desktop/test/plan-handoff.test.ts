@@ -17,13 +17,13 @@ const approved = (plan: ApprovedPlan, toolCallId = "call-1"): AgentEvent => ({
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 function host(fail?: string) {
-	const started: { parent: string; toolCallId: string; title: string; prompt: string }[] = [];
+	const started: { parent: string; toolCallId: string; title: string; prompt: string; modelId?: string }[] = [];
 	const failures: { parentId: string; message: string }[] = [];
 	const watcher = handOffApprovedPlans({
 		meta: (id) => (id === PARENT.id ? PARENT : undefined),
-		start: async (parent, toolCallId, title, prompt) => {
+		start: async (parent, toolCallId, title, prompt, modelId) => {
 			if (fail) throw new Error(fail);
-			started.push({ parent: parent.id, toolCallId, title, prompt });
+			started.push({ parent: parent.id, toolCallId, title, prompt, ...(modelId ? { modelId } : {}) });
 		},
 		failed: (parentId, message) => failures.push({ parentId, message }),
 	});
@@ -37,6 +37,14 @@ test("交接的批准开一个挂在主会话下的会话，同一次批准只�
 	await settle();
 	assert.equal(started.length, 1);
 	assert.deepEqual({ ...started[0], prompt: undefined }, { parent: PARENT.id, toolCallId: "call-1", title: "敏感日志分文件", prompt: undefined });
+});
+
+test("审批卡上挑了模型就用它开，没挑不带，由宿主用默认模型", async () => {
+	const { watcher, started } = host();
+	watcher.observe(PARENT.id, approved({ ...PLAN, modelId: "magpie/company/gpt-6-astra" }, "picked"));
+	watcher.observe(PARENT.id, approved(PLAN, "default"));
+	await settle();
+	assert.deepEqual(started.map((one) => one.modelId), ["magpie/company/gpt-6-astra", undefined]);
 });
 
 test("普通批准、打回、出错、没有文件的都不开", async () => {

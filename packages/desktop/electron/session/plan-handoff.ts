@@ -17,8 +17,8 @@ import { peerAddress } from "../peer/index.ts";
 export interface PlanHandoffDeps {
 	/** 交出计划的那个会话此刻的 meta。 */
 	meta(sessionId: string): SessionMeta | undefined;
-	/** 开新会话并让它开始第一轮。 */
-	start(parent: SessionMeta, toolCallId: string, title: string, prompt: string): Promise<void>;
+	/** 开新会话并让它开始第一轮。`modelId` 是审批卡上挑的模型，没挑就不给，用默认模型。 */
+	start(parent: SessionMeta, toolCallId: string, title: string, prompt: string, modelId?: string): Promise<void>;
 	/** 没开出来：主会话那一轮已经按「交出去了」停下，不告诉人的话这份计划就悄悄没人做了。 */
 	failed(parentId: string, message: string): void;
 }
@@ -55,7 +55,7 @@ export function handOffApprovedPlans(deps: PlanHandoffDeps): { observe(sessionId
 			if (!parent) return;
 			started.add(event.toolCallId);
 			const file = plan.file;
-			void deps.start(parent, event.toolCallId, planTitle(plan).slice(0, 60), handoffPrompt({ ...plan, file }, parent)).catch((error: unknown) => {
+			void deps.start(parent, event.toolCallId, planTitle(plan).slice(0, 60), handoffPrompt({ ...plan, file }, parent), plan.modelId).catch((error: unknown) => {
 				const reason = error instanceof Error ? error.message : String(error);
 				deps.failed(sessionId, nativeText("planHandoff.failed", { reason, file }));
 			});

@@ -79,6 +79,7 @@ const KIND: Record<string, MessageKey> = {
 	 * 变成一句废话——`describeRun` 的兜底本来就是给真正没见过的工具准备的，不是给自家工具的。
 	 */
 	skill: "tools.skill",
+	submit_plan: "tools.submitPlan",
 	learn: "tools.learn",
 	recall: "tools.recall",
 	lsp: "tools.lsp",
@@ -127,6 +128,8 @@ const TIMES = new Set<MessageKey>(["tools.browserAct"]);
  * 原样留着——它们本来就是人写的话。
  */
 const ACTIVITY: [RegExp, string, (match: RegExpMatchArray) => string][] = [
+	// core 的 `submit_plan` 的 summarize。
+	[/^Plan: ?(.*)$/, "submit_plan", (m) => m[1]],
 	[/^Suggest session ?(.*)$/, "spawn_session", (m) => m[1]],
 	[/^Archive session$/, "archive_session", () => ""],
 	[/^Review session ?(.*)$/, "review_session", (m) => m[1]],

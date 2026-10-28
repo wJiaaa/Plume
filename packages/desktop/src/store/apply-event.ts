@@ -37,6 +37,7 @@ import { bridge } from "../services/index.ts";
 import { sessionTitle } from "../lib/session-title.ts";
 import { completionNotice } from "../lib/session-notifications.ts";
 import { dropHandoff, takeHandoff } from "./handoff.ts";
+import { noteSessionDoing } from "./session-doing.ts";
 import { setMonitors } from "./session-monitors.ts";
 import { setPeerQueue } from "./peer-queue.ts";
 import { setWakeups } from "./session-wakeups.ts";
@@ -79,6 +80,7 @@ export function applyAgentEvent(sessionId: string, event: AgentEvent, set: Set, 
 	const delegated = event.type === "agent_end" && event.reason === "done" && delegating(useSubAgents.getState().rosters[sessionId]);
 	const completion = delegated ? null : completionNotice(event, get().activity[sessionId] ?? null);
   recordReadEvent(sessionId, event);
+  noteSessionDoing(sessionId, event);
   /*
    * 被「现在就发」停下的那一轮的收尾：转录照样落定，会话不放下——新的一轮几十毫秒后就开始。
    * 下面凡是 `agent_end` 会把会话放下的地方都看它。见 `handoff.ts`。

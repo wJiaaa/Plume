@@ -1,3 +1,5 @@
+import { planTitle } from "@plume/core/plan-view";
+
 /**
  * Human-readable one-liners for tool calls.
  *
@@ -70,6 +72,9 @@ export function summarizeToolCall(name: string, args: Record<string, unknown>): 
 			const prompt = str("prompt")?.trim().split("\n")[0];
 			return prompt ? `Generate image ${prompt.slice(0, 80)}` : "Generate image";
 		}
+		// 和 core 的 `submit_plan` 的 summarize 同一句（标题取法见 `planTitle`），`describeActivity` 认的是它。
+		case "submit_plan":
+			return `Plan: ${planTitle({ plan: str("plan") ?? "" }).slice(0, 40)}`;
 		// The main process's own words for the session-level tools (`electron/session/session-ops.ts`, `review-session.ts`), which `describeActivity` reads.
 		case "spawn_session":
 			return `Suggest session ${(str("title") ?? "").trim()}`.trim();

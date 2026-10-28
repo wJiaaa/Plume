@@ -62,6 +62,19 @@ test("在新会话里执行：计划照批、写出文件，这个会话就此�
 	}
 });
 
+test("交接时挑的模型记在批准的计划上；原地执行的批准带了也不记", async () => {
+	for (const [answer, expected] of [[PLAN_HANDOFF, "p/model-a"], [PLAN_APPROVE, undefined]] as const) {
+		const { gate, ctx, cleanup } = await fixture(true);
+		try {
+			const pending = submitPlanTool.execute(PLAN, ctx);
+			gate.resolve(gate.list()[0]!.id, { answer, modelId: "p/model-a" });
+			assert.equal(((await pending).details as { plan: ApprovedPlan }).plan.modelId, expected);
+		} finally {
+			await cleanup();
+		}
+	}
+});
+
 test("没有临时目录的宿主不给交接这一项，那句话只当打回的理由", async () => {
 	const { gate, state, ctx } = await fixture(false);
 	const pending = submitPlanTool.execute(PLAN, ctx);

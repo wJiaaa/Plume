@@ -24,6 +24,7 @@ import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import { MarkNumber } from "../../ui/primitives/MarkNumber.tsx";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { Markdown } from "../markdown/index.ts";
+import { findModel, ModelSelect } from "../models/index.ts";
 
 /*
  * 一个键一枚键帽，照参考的样子：「⇧ ⌘ ↩」挤在一个框里读不出是三个键。边框取字色的三成，主按钮反色底上
@@ -55,6 +56,8 @@ export function PlanApproval({ request, sessionId, compact, openPlan, tags }: {
 	const [revising, setRevising] = useState(false);
 	const [text, setText] = useState("");
 	const [pending, setPending] = useState(false);
+	// 交给新会话时它用的模型；空着就是默认模型，主进程那边同一个兜底（`session-hub.ts` 的 `planHandoffs`）。
+	const [handoffModel, setHandoffModel] = useState("");
 	const cardRef = useRef<HTMLDivElement>(null);
 	const busy = useRef(false);
 	const first = request.options?.[0];
@@ -95,8 +98,21 @@ export function PlanApproval({ request, sessionId, compact, openPlan, tags }: {
 	const acceptAuto = () => void answer(approval, async () => { if (settings) await saveSettings({ ...settings, permissionMode: "auto" }); });
 	const reject = () => void answer("reject");
 	// 评论照样随着交出去：它们写进计划文件末尾的「执行时注意」，新会话读得到。
-	const handoff = () => void answer({ answer: PLAN_HANDOFF, ...(notes ? { note: notes } : {}) });
-	const handoffButton = offerHandoff && <Button variant="soft" disabled={pending} onClick={handoff} label={t("plan.handoffTip")} data-plan-action="handoff">{t("plan.handoff")}</Button>;
+	const handoff = () => void answer({ answer: PLAN_HANDOFF, ...(notes ? { note: notes } : {}), ...(handoffModel ? { modelId: handoffModel } : {}) });
+	/*
+	 * 模型选择是贴着这颗按钮的一枚箭头：选的只是新会话的模型，接受、原地执行不受它影响，当前会话的模型也不动。
+	 * 不做成带名字的选择框，是因为右栏开着时卡片只有四百多像素宽，那一格会把「接受」挤到第二行；挑了别的
+	 * 模型，按钮自己说用哪个，不挑就是默认模型，悬停在箭头上看全名。挑了以后按钮变长，窄卡片上会换行——
+	 * 那是人自己挑的，换来的是一眼看得见交给了哪个模型，比省下一行要紧。
+	 */
+	const handoffName = handoffModel ? findModel(settings, handoffModel)?.name : undefined;
+	const handoffButton = offerHandoff && (
+		<span className="flex items-center gap-0.5">
+			<Button variant="soft" disabled={pending} onClick={handoff} label={t("plan.handoffTip")} data-plan-action="handoff">{handoffName ? t("plan.handoffWith", { model: handoffName }) : t("plan.handoff")}</Button>
+			<ModelSelect compact ariaLabel={t("plan.handoffModel")} value={handoffModel} onChange={setHandoffModel} disabled={pending}
+				inheritLabel={t("agents.followDefaultModel")} inheritedModelId={settings?.defaultModelId ?? undefined} inheritDetail={t("plan.handoffModelDetail")} />
+		</span>
+	);
 	// 有评论就是在改：评论列在卡上，下面接着写，主按钮是「修订」。没有评论时按 Esc 也进这一态。
 	const editing = revising || comments.length > 0;
 	const feedback = planFeedback(comments, text);

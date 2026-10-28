@@ -76,7 +76,8 @@ export const submitPlanTool: Tool<SubmitPlanArgs> = {
 			const approvedAt = Date.now();
 			const draft: PlanDraft = { ...plan, ...(notes ? { notes } : {}) };
 			const file = ctx.scratchDir ? await savePlan(ctx.scratchDir, draft, approvedAt) : undefined;
-			const approved: ApprovedPlan = { ...draft, ...(file ? { file } : {}), ...(handoff ? { handoff: true } : {}), approvedAt };
+			const modelId = handoff ? decision.modelId : undefined;
+			const approved: ApprovedPlan = { ...draft, ...(file ? { file } : {}), ...(handoff ? { handoff: true } : {}), ...(modelId ? { modelId } : {}), approvedAt };
 			// 开关就地关掉：这一轮剩下的调用走的是同一张工具表，包着的 `execute` 从此放行。
 			ctx.state.set(PLAN_MODE_KEY, false);
 			if (handoff) {

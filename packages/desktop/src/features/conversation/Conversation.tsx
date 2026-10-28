@@ -9,6 +9,7 @@ import { HiccupRow } from "./HiccupTrace.tsx";
 import { ModelSwitchRow } from "./ModelSwitchRow.tsx";
 import { leadsTheTurn, looksLikeAnswer } from "./running-line.ts";
 import { RunningRow } from "./RunningRow.tsx";
+import { HandedOffStrip } from "./HandedOffStrip.tsx";
 import { TaskList } from "../task/index.ts";
 import { environmentCard, useEnvironmentCard } from "../../store/environment-card.ts";
 import { clearTranscriptJump, useTranscriptJump } from "../../store/transcript-jump.ts";
@@ -605,6 +606,14 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
       <div className="relative shrink-0" style={docked ? { marginRight: ENVIRONMENT_LANE } : undefined}>
         <ApprovalOverlay />
         {!side && <HookTrustBanner className={`${gutter} pb-1.5`} />}
+        {/* 交出去的会话的进度，见 `HandedOffStrip`。和清单一样，没有可说的就不垫那道缝。 */}
+        {!side && (
+          <div className={`${gutter} has-[[data-ly-handed-off]]:pb-1.5`}>
+            <div className="mx-auto w-full max-w-[var(--ly-content)]">
+              <HandedOffStrip />
+            </div>
+          </div>
+        )}
         {/*
          * 只有卡片在的时候才留那道缝。清单是空的（或者做完收起了）时这一层什么都不画，
          * 却照样垫着 6px，输入框上方平白多出一截空白。
