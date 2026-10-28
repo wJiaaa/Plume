@@ -86,7 +86,7 @@ export function QueuedMessages({
 }) {
 	const { t } = useI18n();
 	const items = useApp((state) => state.queued[sessionId] ?? NONE);
-	/* 别的会话排进来的请求：只读，摆在人排的那几条上面，见 `QueuedLetter`。 */
+	/* 别的会话发来、还没读到的请求：只读，摆在人排的那几条上面，见 `QueuedLetter`。 */
 	const letters = usePeerQueue((state) => state.bySession[sessionId] ?? NO_LETTERS);
 	const [leaving, setLeaving] = useState<Leaving[]>([]);
 	const previous = useRef(items);

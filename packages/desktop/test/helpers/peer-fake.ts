@@ -37,10 +37,10 @@ export function fakeSession(id: string, cwd: string, mode: PermissionMode = "aut
 			if (idle && (scope === "foreground" || !background)) resolve();
 			else wake.push({ resolve, foreground: scope === "foreground" });
 		}),
-		receive: (letter: PeerLetter, kind: "request" | "notice") => {
-			const index = inbox.push({ letter, kind }) - 1;
-			// 在跑时的通知插进这一轮，不另开，和 `AgentSession.receive` 一样。
-			if (kind === "notice" && active) return;
+		receive: (letter: PeerLetter) => {
+			const index = inbox.push({ letter, kind: letter.request ? "request" : "notice" }) - 1;
+			// 在跑时的信（请求和通知）插进这一轮，不另开，和 `AgentSession.receive` 一样。
+			if (active) return;
 			unread.add(index);
 			// 攒着待送的那四百毫秒也不算闲，和 `AgentSession.idleInForeground` 一样。
 			idle = false;

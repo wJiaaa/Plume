@@ -2,10 +2,13 @@
  * 在跑的会话之间互相发现、递话、拿回答。照 t3code 的线程工具（`t3_thread_send` / `t3_thread_wait`），
  * 但按意图分成三件，不靠一个参数区分：
  *
- * - **问**（`ask`）：发一封请求，就地等处理它的那一轮收场，带回那一轮最后说的话。对方闲着开一轮，
- *   忙着排到手上这一轮之后，每个发件会话单独一轮（core 的 `SessionInbox.next`）。等的只认自己那封
- *   信进的那一轮（`peer-runs.ts`），几家同时来问也不串。等到一半被打断（人开口、超时、对方在等它
- *   的人），信照样在对方那里，记在账上，之后用 `wait` 接着等。
+ * - **问**（`ask`）：发一封请求，就地等对方用 `reply_session` 交回的回答。对方闲着开一轮，忙着在
+ *   两步之间读到——和通知同一条路，不再排到它手上这一轮之后：一轮可以跑二十分钟，问的却常是两步
+ *   之内答得上来的事。对方那一轮收场还没回，拿那一轮最后说的话兜底（`peer-runs.ts` 记着信进了哪
+ *   一次）。等到一半被打断（人开口、超时、对方在等它的人），信照样在对方那里，记在账上，之后用
+ *   `wait` 接着等。
+ * - **回**（`reply`）：收件方交回回答，这个发件方发来、已经读到、还没答的几封一起答。发件方没在等
+ *   的，回答记在账上，同时当作一封通知送过去，不会石沉大海。
  * - **告诉**（`notify`）：一句通知，当场返回——对方在跑就在两步之间读到，闲着就为它开一轮。没有
  *   回答，也就没有等。曾经闲着时攒到对方下一次开工才读（照 codex 的 `trigger_turn = false`）：
  *   协调各路的主会话收到「做完了」一直不动，攒着的几封等人开口才一下子全冒出来。
@@ -16,9 +19,9 @@
  * 那样做的，人看到的是一件事被切成了好几截。对方卡在等它的人回答上时，等待当场返回，让发件方去
  * 告诉人，而不是干等到超时。往来链记在运行上，不按会话只记最近一条。
  *
- * 对方的权限模式比自己宽，不让发（见 `peer-policy.ts`）。对方此刻（直接或转手）正等着自己，不让问：
- * 问出去它要等对方先回答，而对方在等这边——这时该把问题写进自己这一轮的回复里，等着的那一方读的
- * 就是它。
+ * 对方的权限模式比自己宽，不让发（见 `peer-policy.ts`）。对方正等着自己时照样能问：信落进它那一轮，
+ * 和人开口一样放开它的等待，它答完再接着等。曾经因为请求排在对方这一轮之后，这样问会互相死等，
+ * 只好拦下。
  *
  * 路由只在主进程里：桌面端是单实例，所有会话都在 `session-hub.ts` 的那张表里，不需要 socket、
  * token 那一层。只认在跑的会话、目录要重叠（见 `peer-reach.ts`）。设计见
@@ -61,6 +64,9 @@ type Missed =
 	| { kind: "self" }
 	| { kind: "ambiguous"; candidates: string[] };
 
+/** 落定的一段回答，还没截断。 */
+type Ending = Omit<Answer, "cut">;
+
 /** 信没发出去的几种，`ask` 和 `notify` 共用。 */
 export type Refused =
 	| Missed
@@ -69,11 +75,14 @@ export type Refused =
 
 export type NotifyOutcome = Refused | { kind: "delivered"; to: string; busy: boolean };
 
-/** 一次运行给的回答：它最后说的话、怎么收的场，回答的是我发的哪几封（原文）。 */
+/**
+ * 一段回答：对方用 `reply_session` 交回的（`replied`），或读到信的那一次运行收场时最后说的话（兜底）；
+ * 回答的是我发的哪几封（原文）。
+ */
 interface Answer {
 	reply: string;
 	cut: number;
-	reason: RunEnd["reason"];
+	reason: RunEnd["reason"] | "replied";
 	asked: string[];
 }
 
@@ -81,7 +90,12 @@ interface Answer {
 interface Sent {
 	id: string;
 	text: string;
+	/** 对方交回的回答；一次回复答了几封的，几封共用同一个对象，等回来时并成一段。 */
+	reply?: { text: string };
 }
+
+/** 回：没送出去，或者交回去了（`waiting`：对方正等着，当场拿到；否则它作为一封通知读到）。 */
+export type ReplyOutcome = Refused | { kind: "replied"; to: string; waiting: boolean };
 
 export type WaitOutcome =
 	| Missed
@@ -95,8 +109,8 @@ export type WaitOutcome =
 	| { kind: "stopped"; to: string }
 	| { kind: "deadlock"; to: string };
 
-/** 问：要么没发出去，要么发出去了、等到了哪一步。`waited-on`：对方正等着这边，没发。 */
-export type AskOutcome = Refused | Exclude<WaitOutcome, Missed | { kind: "deadlock" }> | { kind: "waited-on"; to: string };
+/** 问：要么没发出去，要么发出去了、等到了哪一步。 */
+export type AskOutcome = Refused | Exclude<WaitOutcome, Missed | { kind: "deadlock" }>;
 
 /** 一个发件方对同一个收件方最多记几封还没等过的信；再多就是没打算等，旧的忘掉。 */
 const OUTSTANDING_PER_PAIR = 8;
@@ -167,16 +181,23 @@ export function createPeerRouter(host: PeerHost) {
 	}
 
 	/**
-	 * 这几封信落定了没有：等到处理它的那一轮收场，还没进对话它却闲了的是丢了。还有没落定的给 null。
+	 * 这几封信落定了没有：对方交回了回答；或者没回，读到它的那一次运行已经收场，拿那一次最后的话
+	 * 兜底；还没进对话它却闲了的是丢了。还有没落定的给 null。
 	 *
 	 * `idle` 时收场事件还没到的（宿主没把事件交过来），不再等，拿对话里最后那句。
 	 */
-	function settle(target: AgentSession, letters: Sent[]): { answers: Map<number, RunEnd & { asked: string[] }>; dropped: number } | null {
+	function settle(target: AgentSession, letters: Sent[]): { answers: Map<unknown, Ending>; dropped: number } | null {
 		const id = target.meta.id;
 		const idle = target.idleInForeground;
-		const answers = new Map<number, RunEnd & { asked: string[] }>();
+		// 同一次回复、或同一次运行兜底的几封并成一段；Map 按第一封出现的先后排，也就是发出的顺序。
+		const answers = new Map<unknown, Ending>();
+		const add = (key: unknown, end: Omit<Ending, "asked">, letter: Sent) => answers.set(key, { ...end, asked: [...(answers.get(key)?.asked ?? []), letter.text] });
 		let dropped = 0;
 		for (const letter of letters) {
+			if (letter.reply) {
+				add(letter.reply, { reply: letter.reply.text, reason: "replied" }, letter);
+				continue;
+			}
 			const run = runs.entry(id, letter.id);
 			if (run === undefined) {
 				// 信还没进对话，它却已经闲了：攒着待送的时候被人按了停，信跟着丢了。
@@ -186,7 +207,7 @@ export function createPeerRouter(host: PeerHost) {
 			}
 			const end = runs.ended(id, run) ?? (idle ? { reason: "done" as const, reply: lastReply(target) } : null);
 			if (!end) return null;
-			answers.set(run, { ...end, asked: [...(answers.get(run)?.asked ?? []), letter.text] });
+			add(run, end, letter);
 		}
 		return { answers, dropped };
 	}
@@ -205,8 +226,8 @@ export function createPeerRouter(host: PeerHost) {
 		if (refusal) return { kind: "paced", to, reason: refusal, length: text.length, chain: chain.length };
 
 		const busy = !target.idleInForeground;
-		const letter: PeerLetter = { id: randomUUID(), sessionId: fromId, from: address(from), text, cwd: from.cwd, chain };
-		target.receive(letter, kind);
+		const letter: PeerLetter = { id: randomUUID(), sessionId: fromId, from: address(from), text, cwd: from.cwd, chain, ...(kind === "request" ? { request: true as const } : {}) };
+		target.receive(letter);
 		return { kind: "posted", sent: { id: letter.id!, text }, busy };
 	}
 
@@ -218,7 +239,7 @@ export function createPeerRouter(host: PeerHost) {
 		const id = target.meta.id;
 		const started = Date.now();
 		const key = pair(fromId, id);
-		const answered = (ends: (RunEnd & { asked?: string[] })[], dropped = 0) => ({
+		const answered = (ends: (Omit<Ending, "asked"> & { asked?: string[] })[], dropped = 0) => ({
 			kind: "done" as const,
 			to,
 			answers: ends.map((end) => ({ ...clip(end.reply), reason: end.reason, asked: end.asked ?? [] })),
@@ -238,11 +259,13 @@ export function createPeerRouter(host: PeerHost) {
 			}
 			const settled = settle(target, letters);
 			if (!settled) return null;
-			const left = (outstanding.get(key) ?? []).filter((one) => !letters.includes(one));
+			// 同一次回复也答了的旧信（上次没等完的那几封）一起划掉，不然下次等会把这段回答再领一遍。
+			const answeredBy = new Set(letters.map((one) => one.reply).filter(Boolean));
+			const left = (outstanding.get(key) ?? []).filter((one) => !letters.includes(one) && !(one.reply && answeredBy.has(one.reply)));
 			if (left.length > 0) outstanding.set(key, left);
 			else outstanding.delete(key);
 			const { answers, dropped } = settled;
-			if (answers.size > 0) return answered([...answers.entries()].sort(([a], [b]) => a - b).map(([, end]) => end), dropped);
+			if (answers.size > 0) return answered([...answers.values()], dropped);
 			return { kind: "dropped" as const, to };
 		};
 
@@ -302,18 +325,53 @@ export function createPeerRouter(host: PeerHost) {
 				.map((session) => ({ address: address(session), sessionId: session.meta.id, cwd: session.cwd, busy: !session.idleInForeground, mode: session.settingsInEffect.permissionMode }));
 		},
 
-		/** 发一封请求，等处理它的那一轮收场。被打断时信留在账上，见 `wait`。 */
+		/** 发一封请求，等对方回答（或读到它的那一次运行收场）。被打断时信留在账上，见 `wait`。 */
 		async ask(fromId: string, input: { to: string; message: string; timeoutSeconds?: number; signal?: AbortSignal }): Promise<AskOutcome> {
 			const found = await lookup(fromId, input.to);
 			if (found.kind !== "found") return found;
 			const { from, target, to } = found;
-			// 对方（直接或转手）正等着这边：问出去它得先等这边答，而这边在等它。
-			if (waitsOn(target.meta.id, fromId)) return { kind: "waited-on", to };
 			const posted = post(from, target, to, input.message, "request");
 			if (posted.kind !== "posted") return posted;
 			const key = pair(fromId, target.meta.id);
 			outstanding.set(key, [...(outstanding.get(key) ?? []), posted.sent].slice(-OUTSTANDING_PER_PAIR));
 			return untilSettled(fromId, target, to, [posted.sent], input);
+		},
+
+		/**
+		 * 回答问过来的会话：它发给这边、读到了、还没答（读到它的那一次也还没收场）的几封一起答。它正
+		 * 等着就当场交给它；不在等了（超时、被人打断），回答照样记在信上，同时当作一封通知送过去——不送
+		 * 它就要等下次 `wait` 才知道；不记，下次 `wait` 拿不到 `done`，审阅会话据此放行改文件的那一步
+		 * （`review-session.ts`）就卡住了。这时不查权限宽窄：回答不是请对方做事。
+		 *
+		 * 没有待答的信也照送，当作通知、照通知的规矩查：先回一句「稍后做」、做完再回结果，第二句就落在
+		 * 这里，报错只会让模型换成 `notify_session` 再发一遍。
+		 */
+		async reply(fromId: string, input: { to: string; message: string }): Promise<ReplyOutcome> {
+			const found = await lookup(fromId, input.to);
+			if (found.kind !== "found") return found;
+			const { from, target, to } = found;
+			const key = pair(target.meta.id, fromId);
+			// 读到了、还没答的。读到它的那一次已经收场的不算：那一次最后的话已经是它的回答（兜底）。
+			const asked = (outstanding.get(key) ?? []).filter((one) => {
+				const run = runs.entry(fromId, one.id);
+				return !one.reply && run !== undefined && !runs.ended(fromId, run);
+			});
+			if (asked.length === 0) {
+				const posted = post(from, target, to, input.message, "notice");
+				return posted.kind === "posted" ? { kind: "replied", to, waiting: false } : posted;
+			}
+			const text = input.message.trim();
+			const chain = [...runs.chain(fromId), fromId];
+			const refusal = pacer.admit(fromId, target.meta.id, text, chain);
+			if (refusal) return { kind: "paced", to, reason: refusal, length: text.length, chain: chain.length };
+			const reply = { text };
+			for (const one of asked) one.reply = reply;
+			if (waiting.get(target.meta.id)?.has(fromId)) {
+				runs.touch(fromId);
+				return { kind: "replied", to, waiting: true };
+			}
+			target.receive({ id: randomUUID(), sessionId: fromId, from: address(from), text, cwd: from.cwd, chain });
+			return { kind: "replied", to, waiting: false };
 		},
 
 		/** 递一句通知：不开轮、不等，见文件头。 */

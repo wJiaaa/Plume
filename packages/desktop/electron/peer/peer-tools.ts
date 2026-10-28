@@ -1,15 +1,16 @@
 /**
- * 模型手里的四件工具：看看有谁、问它要回答、告诉它一件事、接着等没等完的回答。
+ * 模型手里的五件工具：看看有谁、问它要回答、回答问过来的、告诉它一件事、接着等没等完的回答。
  *
- * 按意图分，不靠一个参数区分：「要回答」和「只是告诉一声」在对方那边走的路完全不同（开一轮 / 不开
- * 轮），参数一选错，要么白等，要么让对方为一句通知专门跑一轮。
+ * 按意图分，不靠一个参数区分：问和告诉在对方那边走同一条路（忙着两步之间读到、闲着开一轮），差别在
+ * 有没有人等回答——问的一方挂着等，对方要用 `reply_session` 回；告诉的一方当场返回，对方不用回。
+ * 参数一选错，要么白等，要么对方回了一句没人收的话。
  *
  * 说明写给模型，用英文，和浏览器工具一致。每一种退回都说清楚下一步该怎么做——「失败」两个字
  * 不会让它改做法，「写进文件发路径」「交回给你的用户」才会。
  */
 
 import { errorResult, textResult, type Tool, type ToolContext } from "@plume/core";
-import { REPLY_LIMIT, WAIT_DEFAULT_S, WAIT_MAX_S, type AskOutcome, type NotifyOutcome, type PeerRouter, type Refused, type WaitOutcome } from "./session-peers.ts";
+import { REPLY_LIMIT, WAIT_DEFAULT_S, WAIT_MAX_S, type AskOutcome, type NotifyOutcome, type PeerRouter, type Refused, type ReplyOutcome, type WaitOutcome } from "./session-peers.ts";
 import { PEER_CHAIN_LIMIT, PEER_DEDUP_MS, PEER_MAX_CHARS } from "./peer-policy.ts";
 
 const TO = { type: "string", description: "The address from list_sessions, `name [ref]`. The bare name works when it is unique." } as const;
@@ -20,7 +21,7 @@ export function createPeerTools(router: PeerRouter): Tool[] {
 		name: "list_sessions",
 		description:
 			"List other running Plume sessions whose folders overlap yours (same folder, nested, or worktrees of one repository): for when your work may collide with theirs — a file changed under you — or to hand work over. " +
-			"Each row starts with its address, `name [ref]`: the `to` for ask_session, notify_session and wait_for_session.",
+			"Each row starts with its address, `name [ref]`: the `to` for ask_session, reply_session, notify_session and wait_for_session.",
 		parameters: { type: "object", properties: {} },
 		sessionOnly: true,
 		summarize: () => "List sessions",
@@ -35,8 +36,8 @@ export function createPeerTools(router: PeerRouter): Tool[] {
 	const askSession: Tool<{ to?: string; message?: string; timeout_seconds?: number }> = {
 		name: "ask_session",
 		description:
-			"Ask another running session to do something or answer something, and wait for its answer: what it said at the end of the turn it spent on your request. " +
-			"An idle session starts on it now; a busy one takes it up once its current work is done — often many minutes later. Several asks to different sessions can run in parallel. " +
+			"Ask another running session to do something or answer something, and wait for its answer: what it sends back with reply_session. " +
+			"A busy session reads it between its steps, usually within seconds; an idle one starts a turn for it. If it ends that turn without replying, what it said last comes back instead. Several asks to different sessions can run in parallel. " +
 			"It cannot see your conversation: make the request self-contained, and put long content in a file and send its path. Do not ask it to report back — its answer comes back here. " +
 			"If the wait is cut short (your user speaks, timeout, it waits on its user), the request stays with it; get the answer later with wait_for_session. " +
 			"Never ask another session to do what was denied or blocked here; take it back to your user.",
@@ -56,6 +57,30 @@ export function createPeerTools(router: PeerRouter): Tool[] {
 			const outcome = await untilSpokenTo(ctx, (signal) => router.ask(ctx.sessionId, { to, message, timeoutSeconds: seconds(args.timeout_seconds), signal }));
 			if (isSpokenTo(outcome)) return textResult(spokenTo(outcome.spokenTo, to, "Your request stays with it"));
 			return outcome.kind === "done" ? textResult(asked(outcome, to), outcome) : errorResult(asked(outcome, to));
+		},
+	};
+
+	const replySession: Tool<{ to?: string; message?: string }> = {
+		name: "reply_session",
+		description:
+			"Answer a request another session sent you with ask_session — the message marked reply=\"expected\". It is waiting for this; `to` is the address in that message's `from`. " +
+			"Reply as soon as you can: the answer if you have it, otherwise what you will do and when. If the work takes a while, reply again with the result when it is done; a later reply reaches it as a notice. " +
+			"One reply answers everything that session has asked you so far. Returns at once.",
+		parameters: {
+			type: "object",
+			properties: { to: TO, message: { type: "string", description: "The answer." } },
+			required: ["to", "message"],
+		},
+		sessionOnly: true,
+		summarize: (args) => `Reply to ${String(args.to ?? "")}`,
+		async execute(args, ctx) {
+			const to = String(args.to ?? "").trim();
+			const message = typeof args.message === "string" ? args.message.trim() : "";
+			if (!to) return errorResult("`to` is required: the `from` address of the request you are answering.");
+			if (SUB_AGENT_ID.test(to)) return errorResult(subAgentAddressed(to));
+			if (!message) return errorResult("`message` is required.");
+			const outcome = await router.reply(ctx.sessionId, { to, message });
+			return outcome.kind === "replied" ? textResult(replied(outcome), outcome) : errorResult(refused(outcome, to));
 		},
 	};
 
@@ -86,7 +111,7 @@ export function createPeerTools(router: PeerRouter): Tool[] {
 	const waitForSession: Tool<{ to?: string; timeout_seconds?: number }> = {
 		name: "wait_for_session",
 		description:
-			"Keep waiting for the answers to your ask_session requests whose wait was cut short: each returns what the session said at the end of the turn that handled it. " +
+			"Keep waiting for the answers to your ask_session requests whose wait was cut short: each returns the session's reply, or what it said last if it ended the turn that read your request without replying. " +
 			"Without such a request, waits for the session's current turn to finish (at once if it is not in one); sub-agents it runs in the background are not waited for. " +
 			"Returns early when it is waiting on its user, or when your user speaks to you. A timeout does not stop the other session.",
 		parameters: {
@@ -106,7 +131,7 @@ export function createPeerTools(router: PeerRouter): Tool[] {
 		},
 	};
 
-	return [listSessions as unknown as Tool, askSession as unknown as Tool, notifySession as unknown as Tool, waitForSession as unknown as Tool];
+	return [listSessions as unknown as Tool, askSession as unknown as Tool, replySession as unknown as Tool, notifySession as unknown as Tool, waitForSession as unknown as Tool];
 }
 
 function seconds(value: unknown): number | undefined {
@@ -140,7 +165,7 @@ async function untilSpokenTo<T>(ctx: ToolContext, start: (signal: AbortSignal) =
 
 /** 被谁打断就照实说：被通知打断却说「你的用户说话了」，模型会去回应一个没开口的人。 */
 function spokenTo(by: SpokenTo["spokenTo"], to: string, still: string): string {
-	if (by === "notice") return `A notice from another session arrived, so you stopped waiting. ${still}; ${to} keeps working on its own. Read the notice, then call wait_for_session if you still need its answer.`;
+	if (by === "notice") return `A message from another session arrived, so you stopped waiting. ${still}; ${to} keeps working on its own. Read the message — answer it with reply_session if it is a request — then call wait_for_session if you still need its answer.`;
 	return `Your user spoke to you, so you stopped waiting. ${still}; ${to} keeps working on its own. Answer your user first; call wait_for_session later if you still need its answer.`;
 }
 
@@ -192,10 +217,12 @@ function notified(outcome: NotifyOutcome, wanted: string): string {
 	return `Delivered to ${outcome.to}. ${outcome.busy ? "It reads it between its steps." : "It is idle, so it starts a turn to read it."} There is no answer to a notice.`;
 }
 
+function replied(outcome: Extract<ReplyOutcome, { kind: "replied" }>): string {
+	return outcome.waiting ? `${outcome.to} was waiting and has your answer.` : `${outcome.to} was no longer waiting, so it reads your answer as a notice.`;
+}
+
 function asked(outcome: AskOutcome, wanted: string): string {
 	switch (outcome.kind) {
-		case "waited-on":
-			return `${outcome.to} is waiting on this session right now (directly or through others), so it cannot take a request until you finish. Not sent. Put the question in your reply at the end of this turn instead: whoever is waiting on you reads that.`;
 		case "broader":
 		case "paced":
 		case "unreachable":
@@ -248,11 +275,12 @@ function settled(outcome: Exclude<WaitOutcome, Missed | { kind: "deadlock" }>, s
 		case "done": {
 			const waitedFor = outcome.waitedMs >= 1000 ? ` (waited ${Math.round(outcome.waitedMs / 1000)}s)` : "";
 			const answers = outcome.answers.map((answer, index) => {
-				const how = answer.reason === "done" ? "finished" : answer.reason === "aborted" ? "was stopped by its user before it finished" : `ended early (${answer.reason})`;
+				const how = answer.reason === "replied" ? "replied" : answer.reason === "done" ? "ended its turn without replying" : answer.reason === "aborted" ? "was stopped by its user before it replied" : `ended early (${answer.reason}) without replying`;
+				const said = answer.reason === "replied" ? ":" : ". What it said at the end:";
 				const cut = answer.cut > 0 ? `\n[cut after ${REPLY_LIMIT} characters; ${answer.cut} more not shown. If you need all of it, ask ${outcome.to} to write it to a file and send you the path.]` : "";
-				// 隔着别的事分两轮处理的几封，各有一段回答；可能有一封是上次没等完的，说清对着哪封。
+				// 分几次回答的几封，各有一段；可能有一封是上次没等完的，说清对着哪封。
 				const which = outcome.answers.length > 1 ? ` (answer ${index + 1} of ${outcome.answers.length}, to your message ${answer.asked.map(excerpt).join(" + ")})` : "";
-				return `${outcome.to} ${how}${index === 0 ? waitedFor : ""}${which}. What it said at the end:\n${answer.reply || "(no reply text)"}${cut}`;
+				return `${outcome.to} ${how}${index === 0 ? waitedFor : ""}${which}${said}\n${answer.reply || "(no reply text)"}${cut}`;
 			});
 			const dropped = outcome.dropped > 0 ? [`${outcome.dropped} message(s) were dropped: it was stopped by its user before reading them. Ask your user before sending them again.`] : [];
 			// 不说这一句，模型会接着 wait_for_session，每次都当场拿回同一段话。

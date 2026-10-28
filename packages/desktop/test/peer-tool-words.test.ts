@@ -1,5 +1,5 @@
 /**
- * 会话之间那四个工具在转录里怎么说。
+ * 会话之间那五个工具在转录里怎么说。
  *
  * 跑着时 core 给的摘要是 `Notify 名字 [ref]`，重开的会话里只剩工具名；两条路从前分别画成英文摘要和
  * 光秃秃的 `notify_session`。
@@ -22,6 +22,7 @@ test("跑着的和重开的说同一句：动作加对方的名字，不带 ref"
 	assert.equal(describeOne(notify, summarizeToolCall("notify_session", notify.arguments)), "通知会话 测试用例归档改为删除");
 	assert.equal(describeOne(call("wait_for_session", { to: "修登录" }), "Wait for 修登录"), "等待会话 修登录");
 	assert.equal(describeOne(call("ask_session", { to: "修登录", message: "?" }), "Ask 修登录"), "询问会话 修登录");
+	assert.equal(describeOne(call("reply_session", { to: "修登录 [a1b2c3]", message: "x" }), "Reply to 修登录 [a1b2c3]"), "回复会话 修登录");
 	assert.equal(describeOne(call("list_sessions", {}), "List sessions"), "查看在跑的会话");
 });
 
@@ -50,6 +51,7 @@ test("英文界面", () => {
 	setActiveLocale("en");
 	try {
 		assert.equal(describeOne(call("notify_session", { to: "Fix login [a1b2c3]" }), "Notify Fix login [a1b2c3]"), "Notified session Fix login");
+		assert.equal(describeOne(call("reply_session", { to: "Fix login [a1b2c3]" }), "Reply to Fix login [a1b2c3]"), "Replied to session Fix login");
 	} finally {
 		setActiveLocale("zh-CN");
 	}

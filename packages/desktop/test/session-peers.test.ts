@@ -108,8 +108,8 @@ test("路由：列出目录重叠的、送达时带上地址和链、看不见�
 		await asking(router, b, "aaaaaaaa-1", { to: "bbbb", message: "接着发版" });
 		assert.equal(b.inbox[0]?.kind, "request");
 		const { id, ...letter } = b.inbox[0]!.letter;
-		assert.match(id ?? "", /^[0-9a-f-]{36}$/, "每封信有自己的 id，等待据此钉住那一次运行");
-		assert.deepEqual(letter, { sessionId: "aaaaaaaa-1", from: "aaaa [aaaaaa]", text: "接着发版", cwd: join(root, "api"), chain: ["aaaaaaaa-1"] });
+		assert.match(id ?? "", /^[0-9a-f-]{36}$/, "每封信有自己的 id，回答和兜底都据此认出是哪封");
+		assert.deepEqual(letter, { sessionId: "aaaaaaaa-1", from: "aaaa [aaaaaa]", text: "接着发版", cwd: join(root, "api"), chain: ["aaaaaaaa-1"], request: true });
 
 		// B 为这封信开的那一轮里再去找 A：链接上了。
 		b.read();

@@ -4,10 +4,10 @@
  * Four sources: sub-agents dispatched in the background (`detached-dispatches.ts`), background
  * commands that ended (`tools/background-jobs.ts`), new output from a `monitor` (`tools/monitor.ts`),
  * and conversations started from this one's suggestion that were asked to report back (`FinishedSession`). All are gathered for a moment and
- * handed to the session as one message — mid-turn it is spliced in, idle it starts a turn. Requests
- * and notices from other sessions travel the same way but never in that message: see `flush`. Only
- * notices that arrive while the session is idle or compacting come here; mid-turn ones go into the turn,
- * see `AgentSession.receive`.
+ * handed to the session as one message — mid-turn it is spliced in, idle it starts a turn. Letters
+ * from other sessions travel the same way but never in that message: see `flush`. Only letters that
+ * arrive while the session is idle or compacting come here; mid-turn ones go into the turn, see
+ * `AgentSession.receive`.
  *
  * Kept out of `AgentSession` because it needs four things from it and nothing else: a way to submit,
  * the roster to check a report against, the background-job registry, and the session's activity to
@@ -21,7 +21,7 @@ import type { SubAgentSummary } from "../../types/sub-agent.ts";
 import type { BackgroundJob, BackgroundJobs, MonitorEvents } from "../../tools/background-jobs.ts";
 import { readJob } from "../../tools/bash.ts";
 import type { Message, PeerLetter } from "../../types.ts";
-import { bySender, peerMessage } from "./peer-letters.ts";
+import { peerMessage } from "./peer-letters.ts";
 
 /**
  * How long background results are gathered before they are delivered.
@@ -40,8 +40,8 @@ export interface DeliveryDeps {
 	detail: (id: string) => SubAgentSummary | null;
 	/** 还在后台跑、没回来的子代理：送达消息里点名，模型才知道还在等谁。 */
 	outstanding: () => SubAgentSummary[];
-	/** `followUp` 排到这一轮之后；`notice` 忙时回到专用通知流，打断等待且停止时不丢。 */
-	submit: (message: Message, deliver?: "followUp" | "notice") => Promise<void>;
+	/** `peer`：别的会话的信，忙时回到专用的来信流，打断等待，停止时通知不丢。 */
+	submit: (message: Message, deliver?: "peer") => Promise<void>;
 	/** 人按了停，攒着的通知没送出去：交还会话，下一轮开头读到。通知没人等回答，丢了谁也不知道。 */
 	unsent: (letters: PeerLetter[]) => void;
 	/** 一次送达收了尾（送了或丢了）；会话据此重新看一眼自己是不是空闲了。 */
@@ -53,10 +53,8 @@ export class SessionDeliveries {
 	private finishedJobs: BackgroundJob[] = [];
 	private monitorEvents: MonitorEvents[] = [];
 	private finishedSessions: FinishedSession[] = [];
-	/** 其他会话的请求：排到收件方这一轮之后，每个发件会话单独一轮。 */
-	private requests: PeerLetter[] = [];
-	/** 闲着或压缩时到的通知：几家的并成一条，等能开轮时读。 */
-	private notices: PeerLetter[] = [];
+	/** 闲着或压缩时到的信，请求和通知都在：几家的并成一条，等能开轮时读。 */
+	private letters: PeerLetter[] = [];
 	private timer: ReturnType<typeof setTimeout> | null = null;
 	/** 已经取出、还没交到会话手里的那一次送达；这期间也不算空闲。 */
 	private flushing = false;
@@ -92,21 +90,15 @@ export class SessionDeliveries {
 		this.schedule();
 	}
 
-	/** 另一个会话的请求到了；和同一时刻到的一起送，但不和后台结果、别的会话的请求并成一条。 */
+	/** 闲着或压缩时另一个会话的信到了；和同一时刻到的一起送，不和后台结果并成一条。 */
 	letter(letter: PeerLetter): void {
-		this.requests.push(letter);
-		this.schedule();
-	}
-
-	/** 闲着或压缩时另一个会话的通知到了；和同一时刻到的一起送。 */
-	notice(letter: PeerLetter): void {
-		this.notices.push(letter);
+		this.letters.push(letter);
 		this.schedule();
 	}
 
 	/** 没有攒着待送的东西。会话判断空闲时要看它：攒着的那一条四百毫秒后就会开一轮。 */
 	get empty(): boolean {
-		return this.timer === null && !this.flushing && this.reports.length === 0 && this.finishedJobs.length === 0 && this.monitorEvents.length === 0 && this.finishedSessions.length === 0 && this.requests.length === 0 && this.notices.length === 0;
+		return this.timer === null && !this.flushing && this.reports.length === 0 && this.finishedJobs.length === 0 && this.monitorEvents.length === 0 && this.finishedSessions.length === 0 && this.letters.length === 0;
 	}
 
 	/**
@@ -129,14 +121,16 @@ export class SessionDeliveries {
 	 *
 	 * Notices from other sessions are not dropped but handed back (`unsent`): nobody waits for an
 	 * answer to one, so a dropped notice is lost without anyone knowing. The next turn reads them.
+	 * Requests are dropped: their sender is waiting, and is told the request never got read.
 	 */
 	clear({ monitors }: { monitors: boolean }): void {
 		this.reports.length = 0;
 		this.finishedJobs = monitors ? [] : this.finishedJobs.filter((job) => job.kind === "monitor");
 		if (monitors) this.monitorEvents.length = 0;
 		this.finishedSessions.length = 0;
-		this.requests.length = 0;
-		if (this.notices.length > 0) this.deps.unsent(this.notices.splice(0, this.notices.length));
+		const notices = this.letters.filter((letter) => !letter.request);
+		this.letters.length = 0;
+		if (notices.length > 0) this.deps.unsent(notices);
 		if (this.timer) clearTimeout(this.timer);
 		this.timer = null;
 		if (this.monitorEvents.length > 0 || this.finishedJobs.length > 0) this.schedule();
@@ -183,9 +177,8 @@ export class SessionDeliveries {
 		const monitors = this.takeMonitorEvents();
 		const jobs = this.takeFinishedJobs();
 		const sessions = this.finishedSessions.splice(0, this.finishedSessions.length);
-		const requests = this.requests.splice(0, this.requests.length);
-		const notices = this.notices.splice(0, this.notices.length);
-		if (reports.length === 0 && jobs.length === 0 && monitors.length === 0 && sessions.length === 0 && requests.length === 0 && notices.length === 0) return;
+		const letters = this.letters.splice(0, this.letters.length);
+		if (reports.length === 0 && jobs.length === 0 && monitors.length === 0 && sessions.length === 0 && letters.length === 0) return;
 		const { activity } = this.deps;
 		// A manual compaction is rewriting the history: wait until it has written the boundary
 		// before coming in, the same as a message from the person.
@@ -197,21 +190,20 @@ export class SessionDeliveries {
 		 * except notices, handed back for the reason given at `clear`.
 		 */
 		if (activity.stoppedSince(mark)) {
+			const notices = letters.filter((letter) => !letter.request);
 			if (notices.length > 0) this.deps.unsent(notices);
 			return;
 		}
 		/*
-		 * 一组一条，同步交进去：闲着时第一条开一轮，其余的这时已经算忙，排在后面，顺序就是这里的顺序。
+		 * 同步交进去：闲着时第一条开一轮，其余的这时已经算忙，插进那一轮。
 		 *
-		 * 请求不并进后台结果，不同会话的请求也不并在一起：发件方等回来的是处理它那封信的那一轮最后
-		 * 说的话，几家并成一轮，每一家拿到的都是同一段回答。通知没人等回答，几家并成一条；不排到
-		 * 这一轮之后（没有 `followUp`）：这四百毫秒里会话若开始跑了，它插进去，和在跑时到的通知一样。
+		 * 来信不并进后台结果：两样东西的说明不同，并成一条模型分不清哪段要回复。几家的信并成一条：
+		 * 请求的回答由收件方用 `reply_session` 逐家交回，不再靠「这一轮最后那段话」，所以不必一家一轮。
 		 */
 		const background = reports.length + jobs.length + monitors.length + sessions.length;
-		const parts: { message: Message; deliver?: "followUp" | "notice" }[] = [
+		const parts: { message: Message; deliver?: "peer" }[] = [
 			...(background > 0 ? [{ message: deliveryMessage(reports, jobs, reports.length > 0 ? this.deps.outstanding() : [], sessions, monitors) }] : []),
-			...(notices.length > 0 ? [{ message: peerMessage(notices, "notice"), deliver: "notice" as const }] : []),
-			...bySender(requests).map((group) => ({ message: peerMessage(group), deliver: "followUp" as const })),
+			...(letters.length > 0 ? [{ message: peerMessage(letters), deliver: "peer" as const }] : []),
 		];
 		await Promise.all(parts.map(({ message, deliver }) => this.deps.submit(message, deliver)));
 	}

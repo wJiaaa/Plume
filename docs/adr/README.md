@@ -44,7 +44,7 @@
 | [0035](0035-fork-from-a-message.md) | 从一条消息分叉：撤回做在副本上，分叉带上压缩边界和换模型的位置 |
 | [0038](0038-window-frame-toolbar-rail-cards.md) | 工作区窗口：侧栏铺在毛玻璃上，去处回到侧栏，内容各是一张卡片、彼此隔 4px；顶栏试过又撤回，后退前进在红绿灯旁边 |
 | [0039](0039-agent-core-boundaries.md) | 循环只管一轮的顺序，会话只管谁占着历史；循环不依赖 runtime |
-| [0040](0040-session-messaging.md) | 会话之间可以发消息、等对方做完：照 t3code 拉结果，路由在主进程，目录重叠才能通信 |
+| [0040](0040-session-messaging.md) | 会话之间可以发消息、问对方要回答：请求在两步之间送达、用 `reply_session` 回，路由在主进程，目录重叠才能通信 |
 
 | [0041](0041-native-mobile-shared-runtime.md) | 独立原生手机界面，共享消息与连接逻辑，直连桌面既有会话运行时（已被 0059 取代） |
 | [0042](0042-mobile-relay-speaks-lyra.md) | 手机经中转连接，沿用 Lyra 中转协议，已部署的中转原样可用（已被 0059 取代） |

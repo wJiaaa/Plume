@@ -402,12 +402,15 @@ export interface DeliveredReport {
 /**
  * 另一个会话发来的一条消息。
  *
- * 请求的回答作为发件方那次 `ask_session` 的返回值回来，不由运行时另递回执；通知没有回答
+ * 请求和通知走同一条路：对方在跑就在两步之间读到，闲着就开一轮。请求的回答是收件方用
+ * `reply_session` 交回的那段话，作为发件方那次 `ask_session` 的返回值回来；通知没有回答
  * （见 docs/adr/0040-session-messaging.md）。
  */
 export interface PeerLetter {
-	/** 这一封的 id：发件方等的是收到它的那一次运行，见桌面端的 `peer-runs.ts`。旧记录里没有。 */
+	/** 这一封的 id：发件方据此认出交回的回答、或兜底时它进了哪一次运行，见桌面端的 `session-peers.ts`。旧记录里没有。 */
 	id?: string;
+	/** 请求：发件方在等回答。没有就是通知。 */
+	request?: true;
 	/** 对方会话的 id，界面据此跳过去。 */
 	sessionId: string;
 	/** 寄出那一刻对方的地址，`名字 [ref]`；要再找它时原样当作 `to`。 */

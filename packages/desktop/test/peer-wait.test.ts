@@ -1,7 +1,8 @@
 /**
- * 问了等回答：等的是处理我那封信的那一次运行，不是它下一次空闲；几家同时来问各拿各的回答；对方
- * 正等着我就不问；等到一半被打断的，信留在账上，`wait` 接着等；卡在等人回答上、信被丢了、超时、
- * 被叫停、对方关了、互相等，各自说清楚；人一开口、来了通知就不再等，并说清是哪一种。通知不等；
+ * 问了等回答：对方在两步之间读到，用 `reply` 回了就当场拿到，不等它那一轮收场；读到却没回就收了
+ * 那一轮的，拿那一轮最后的话兜底；几家同时来问各拿各的回答；对方正等着我也照问；等到一半被打断的，
+ * 信留在账上，`wait` 接着等；回答到时问的一方已经不等了，当作通知送过去；卡在等人回答上、信被丢了、
+ * 超时、被叫停、对方关了、互相等，各自说清楚；人一开口、来了信就不再等，并说清是哪一种。通知不等；
  * 闲着的收件方为它开一轮。等只看前台，不等对方放到后台的子代理。
  */
 
@@ -25,101 +26,71 @@ function pending<T>(run: Promise<T>) {
 	return state;
 }
 
-test("问：对方忙着人交代的事，等的是读到我那封信的那一次，不是它下一次说的话", async () => {
+test("问：对方忙着人交代的事，信插进它这一轮；它一回，问的一方当场拿到，不等这一轮收场", async () => {
 	const a = fakeSession("aaaaaaaa-1", "/w/p");
 	const b = fakeSession("bbbbbbbb-1", "/w/p");
 	const { router } = routerWith(a, b);
 	b.start();
-	const waiting = pending((await asking(router, b, "aaaaaaaa-1", { to: "bbbb", message: "接着发版" })).outcome);
+	const waiting = pending((await asking(router, b, "aaaaaaaa-1", { to: "bbbb", message: "版本号多少" })).outcome);
 	assert.equal(b.inbox[0]?.kind, "request");
-	b.finish("人交代的那件改完了。");
-	await flush();
-	assert.ok(!waiting.settled, "它刚做完的是人交代的事，我那封还排着");
 	b.read();
-	b.start();
-	b.finish("v1.2.3 已推送。");
+	await flush();
+	assert.ok(!waiting.settled, "读到了，还没回");
+	assert.deepEqual(await router.reply("bbbbbbbb-1", { to: "aaaa", message: "v1.2.3" }), { kind: "replied", to: "aaaa [aaaaaa]", waiting: true });
 	await flush();
 	assert.equal(waiting.value?.kind, "done");
-	assert.equal(replyOf(waiting.value), "v1.2.3 已推送。");
-	// 拿到了就从账上划掉：再等等的是它手上的事，不会把这段回答再领一遍。
-	b.start();
+	assert.equal(replyOf(waiting.value), "v1.2.3");
+	assert.equal(waiting.value?.kind === "done" && waiting.value.answers[0]?.reason, "replied");
+	// 拿到了就从账上划掉：再等等的是它手上人交代的那件，不会把这段回答再领一遍。
 	const next = pending(router.wait("aaaaaaaa-1", { to: "bbbb" }));
-	b.finish("别的事。");
 	await flush();
-	assert.equal(replyOf(next.value), "别的事。");
+	assert.ok(!next.settled);
+	b.finish("人交代的那件改完了。");
+	await flush();
+	assert.equal(replyOf(next.value), "人交代的那件改完了。");
 });
 
-test("告诉：当场返回、没有要等的回答；闲着的它为通知开一轮，等的就是那一轮", async () => {
-	const a = fakeSession("aaaaaaaa-2", "/w/p");
-	const b = fakeSession("bbbbbbbb-2", "/w/p");
+test("问：对方读到了却没回就收了这一轮，拿那一轮最后说的话兜底；之后再回不会把这封再答一遍", async () => {
+	const a = fakeSession("aaaaaaaa-21", "/w/p");
+	const b = fakeSession("bbbbbbbb-21", "/w/p");
 	const { router } = routerWith(a, b);
-	assert.deepEqual(await router.notify("aaaaaaaa-2", { to: "bbbb", message: "config.ts 我改了" }), { kind: "delivered", to: "bbbb [bbbbbb]", busy: false });
-	assert.equal(b.inbox[0]?.kind, "notice");
-	assert.equal(b.session.idleInForeground, false, "四百毫秒后就为它开一轮");
-	// 通知不记在账上：等的是它手上的事，也就是通知叫起来的那一轮。
-	const waiting = pending(router.wait("aaaaaaaa-2", { to: "bbbb" }));
+	b.start();
+	const waiting = pending((await asking(router, b, "aaaaaaaa-21", { to: "bbbb", message: "版本号多少" })).outcome);
 	b.read();
-	b.start();
+	b.finish("人交代的做完了，版本是 v1.2.3。");
 	await flush();
-	assert.ok(!waiting.settled);
-	b.finish("知道了，我避开 config.ts。");
-	await flush();
-	assert.equal(replyOf(waiting.value), "知道了，我避开 config.ts。");
-	b.start();
-	assert.deepEqual(await router.notify("aaaaaaaa-2", { to: "bbbb", message: "先别动 config.ts" }), { kind: "delivered", to: "bbbb [bbbbbb]", busy: true });
+	assert.equal(replyOf(waiting.value), "人交代的做完了，版本是 v1.2.3。");
+	assert.equal(waiting.value?.kind === "done" && waiting.value.answers[0]?.reason, "done");
+	assert.deepEqual(await router.reply("bbbbbbbb-21", { to: "aaaa", message: "补一句" }), { kind: "replied", to: "aaaa [aaaaaa]", waiting: false }, "没有待答的信，照通知送");
+	assert.equal(a.inbox[0]?.kind, "notice");
 });
 
-test("等待：对方前台做完、只剩后台子代理在跑，不等子代理，当场返回并说清它之后会自己再开一轮", async () => {
-	const a = fakeSession("aaaaaaaa-17", "/w/p");
-	const b = fakeSession("bbbbbbbb-17", "/w/p");
-	const { router, wait, notify } = tools(a, b);
+test("回：问的一方已经不等了，回答当作通知送过去，也记在账上——再等当场拿到；做完再回一次照通知送", async () => {
+	const a = fakeSession("aaaaaaaa-22", "/w/p");
+	const b = fakeSession("bbbbbbbb-22", "/w/p");
+	const { router } = routerWith(a, b);
 	b.start();
-	b.backgrounded(true);
-	const waiting = pending(router.wait("aaaaaaaa-17", { to: "bbbb" }));
-	b.finish("派了子代理去写 interop，回来再整合。");
-	await flush();
-	assert.equal(waiting.value?.kind, "done", "子代理还在跑也不再挂着");
-	assert.equal(replyOf(waiting.value), "派了子代理去写 interop，回来再整合。");
-	assert.equal(waiting.value?.kind === "done" && waiting.value.background, true);
-	assert.equal(b.session.idle, false, "回收会话照旧把后台子代理算作忙");
-	const again = await wait.execute({ to: "bbbb" }, ctxFor("aaaaaaaa-17"));
-	assert.match(text(again), /still has sub-agents running in the background/);
-	assert.match(text(again), /ask it to notify you/);
-	// 通知、列表里的忙闲也只看前台：它的主线停着，通知会叫起它，而不是「两步之间读到」。
-	assert.match(text(await notify.execute({ to: "bbbb", message: "interop 编不过" }, ctxFor("aaaaaaaa-17"))), /It is idle, so it starts a turn to read it/);
-	b.backgrounded(false);
+	const asked = await asking(router, b, "aaaaaaaa-22", { to: "bbbb", message: "能帮我发版吗" });
+	asked.stop();
+	assert.equal((await asked.outcome).kind, "stopped");
 	b.read();
-	b.start();
-	b.finish("修好了。");
-	const done = await router.wait("aaaaaaaa-17", { to: "bbbb" });
-	assert.equal(done.kind === "done" && done.background, undefined, "后台回来以后不再提");
+	assert.deepEqual(await router.reply("bbbbbbbb-22", { to: "aaaa", message: "可以，手上这件做完就发" }), { kind: "replied", to: "aaaa [aaaaaa]", waiting: false });
+	assert.deepEqual(a.inbox.map((one) => [one.kind, one.letter.text, one.letter.from]), [["notice", "可以，手上这件做完就发", "bbbb [bbbbbb]"]]);
+	// 再等当场拿到 done：审阅会话认的就是这个，靠它放行改文件。
+	const again = await router.wait("aaaaaaaa-22", { to: "bbbb" });
+	assert.equal(replyOf(again), "可以，手上这件做完就发");
+	assert.equal(again.kind === "done" && again.answers[0]?.reason, "replied");
+	// 拿到了就从账上划掉：再等等的是它手上这一次。
+	const next = pending(router.wait("aaaaaaaa-22", { to: "bbbb" }));
+	await flush();
+	b.finish("人交代的做完了。");
+	await flush();
+	assert.equal(replyOf(next.value), "人交代的做完了。");
+	assert.deepEqual(await router.reply("bbbbbbbb-22", { to: "aaaa", message: "发好了" }), { kind: "replied", to: "aaaa [aaaaaa]", waiting: false });
+	assert.equal(a.inbox[1]?.letter.text, "发好了");
 });
 
-test("agent_end 已到、前台 hold 尚未释放：问和等都按子代理名单标记后台，不把单纯收尾当成后台", async () => {
-	for (const kind of ["ask", "wait"] as const) for (const background of [false, true]) {
-		const a = fakeSession("aaaaaaaa-20", "/w/p");
-		const b = fakeSession("bbbbbbbb-20", "/w/p");
-		const { router } = routerWith(a, b);
-		// 先完成异步目录检查，保证下面的等待已经订阅，再让运行结束。
-		await router.list("aaaaaaaa-20");
-		const asked = kind === "ask" ? await asking(router, b, "aaaaaaaa-20", { to: "bbbb", message: "接着做" }) : undefined;
-		if (asked) b.read();
-		b.start();
-		b.backgrounded(background);
-		const waiting = pending<AskOutcome | WaitOutcome>(asked?.outcome ?? router.wait("aaaaaaaa-20", { to: "bbbb" }));
-		await flush();
-		assert.ok(!waiting.settled);
-		b.finish("主线已收尾。", "done", false);
-		await flush();
-		assert.equal(b.session.idleInForeground, false, "事件已发出，但真实的前台收尾还没放手");
-		assert.equal(waiting.value?.kind, "done", kind);
-		assert.equal(replyOf(waiting.value), "主线已收尾。");
-		assert.equal(waiting.value?.kind === "done" && waiting.value.background, background ? true : undefined, kind);
-		b.settle();
-	}
-});
-
-test("问：两家同时找忙着的 B，各占一轮，各拿各的回答", async () => {
+test("问：两家同时找忙着的 B，同一轮里读到，各回各的", async () => {
 	const a = fakeSession("aaaaaaaa-13", "/w/p");
 	const b = fakeSession("bbbbbbbb-13", "/w/p");
 	const c = fakeSession("cccccccc-13", "/w/p");
@@ -127,18 +98,15 @@ test("问：两家同时找忙着的 B，各占一轮，各拿各的回答", asy
 	b.start();
 	const forA = pending((await asking(router, b, "aaaaaaaa-13", { to: "bbbb", message: "版本号多少" })).outcome);
 	const forC = pending((await asking(router, b, "cccccccc-13", { to: "bbbb", message: "测试过没过" })).outcome);
-	b.finish("人交代的做完了。");
 	b.read(0);
-	b.start();
-	b.finish("v1.2.3");
-	await flush();
-	assert.equal(replyOf(forA.value), "v1.2.3");
-	assert.ok(!forC.settled, "C 那封还在后面排着");
 	b.read(1);
-	b.start();
-	b.finish("测试全过。");
+	await router.reply("bbbbbbbb-13", { to: "cccc", message: "测试全过。" });
 	await flush();
 	assert.equal(replyOf(forC.value), "测试全过。");
+	assert.ok(!forA.settled, "回 C 的话不算回 A");
+	await router.reply("bbbbbbbb-13", { to: "aaaa", message: "v1.2.3" });
+	await flush();
+	assert.equal(replyOf(forA.value), "v1.2.3");
 });
 
 test("问到一半被打断：信留在账上，wait 一次接回几段回答，按发出的顺序、说得出对着哪封", async () => {
@@ -151,41 +119,45 @@ test("问到一半被打断：信留在账上，wait 一次接回几段回答，
 	first.stop();
 	assert.equal((await first.outcome).kind, "stopped");
 	await asking(router, b, "cccccccc-14", { to: "bbbb", message: "C 的事" });
+	b.read(0);
+	b.read(1);
+	// 第一封读到了没回，这一轮收场：拿收场的话兜底。
+	b.finish("版本是 v1.2.3。");
+	b.start();
 	const second = await asking(router, b, "aaaaaaaa-14", { to: "bbbb", message: "再查测试" });
 	second.stop();
 	await second.outcome;
-	b.finish("人交代的做完了。");
-	for (const [index, reply] of [[0, "v1.2.3"], [1, "C 的做完了"], [2, "测试全过。"]] as const) {
-		b.read(index);
-		b.start();
-		b.finish(reply);
-	}
-	const outcome = await router.wait("aaaaaaaa-14", { to: "bbbb" });
-	assert.equal(outcome.kind, "done");
-	if (outcome.kind !== "done") return;
-	assert.deepEqual(outcome.answers.map((one) => one.reply), ["v1.2.3", "测试全过。"], "没有 C 那一轮的话");
+	b.read(2);
+	const waiting = pending(router.wait("aaaaaaaa-14", { to: "bbbb" }));
+	await flush();
+	assert.ok(!waiting.settled, "第二封还没回");
+	await router.reply("bbbbbbbb-14", { to: "cccc", message: "C 的做完了" });
+	await router.reply("bbbbbbbb-14", { to: "aaaa", message: "测试全过。" });
+	await flush();
+	const outcome = waiting.value;
+	assert.equal(outcome?.kind, "done");
+	if (outcome?.kind !== "done") return;
+	assert.deepEqual(outcome.answers.map((one) => [one.reply, one.reason]), [["版本是 v1.2.3。", "done"], ["测试全过。", "replied"]], "没有回 C 的话");
 	assert.deepEqual(outcome.answers.map((one) => one.asked), [["先查版本号"], ["再查测试"]], "每段回答说得出对着哪封");
 });
 
-test("问：对方（直接或转手）正等着我，不发，说清缘由；别的会话照问", async () => {
+test("问：对方正等着我也照问——信插进它那一轮、放开它的等待，它答完再接着等，不会互相死等", async () => {
 	const a = fakeSession("aaaaaaaa-16", "/w/p");
 	const b = fakeSession("bbbbbbbb-16", "/w/p");
-	const c = fakeSession("cccccccc-16", "/w/p");
-	const { router } = routerWith(a, b, c);
-	a.busy();
-	b.busy();
+	const { router } = routerWith(a, b);
+	a.start();
+	b.start();
 	const stop = new AbortController();
-	// B 等 A，C 等 B：A 问 B、问 C 都会绕回自己头上。
 	void router.wait("bbbbbbbb-16", { to: "aaaa", signal: stop.signal });
-	void router.wait("cccccccc-16", { to: "bbbb", signal: stop.signal });
 	await flush();
-	assert.deepEqual(await router.ask("aaaaaaaa-16", { to: "bbbb", message: "版本号多少" }), { kind: "waited-on", to: "bbbb [bbbbbb]" });
-	assert.deepEqual(await router.ask("aaaaaaaa-16", { to: "cccc", message: "版本号多少" }), { kind: "waited-on", to: "cccc [cccccc]" });
-	assert.equal(b.inbox.length + c.inbox.length, 0, "没发出去");
+	const forA = pending((await asking(router, b, "aaaaaaaa-16", { to: "bbbb", message: "版本号多少" })).outcome);
+	assert.equal(b.inbox[0]?.kind, "request", "发出去了");
+	// 真会话里这封信会放开 B 的等待（`SpokenWaits`），B 读到、回完再接着等 A。
 	stop.abort();
+	b.read();
+	await router.reply("bbbbbbbb-16", { to: "aaaa", message: "v1.2.3" });
 	await flush();
-	await asking(router, b, "aaaaaaaa-16", { to: "bbbb", message: "版本号多少" });
-	assert.equal(b.inbox.length, 1, "不再等着了就照问");
+	assert.equal(replyOf(forA.value), "v1.2.3");
 });
 
 test("等待：同时等两个会话，各自收场不互相抹掉；还在等的那一条照样挡住反过来的死等", async () => {
@@ -310,20 +282,21 @@ test("运行记录：开轮之前就被停下的，信算进那一次，收场�
 
 function tools(...sessions: ReturnType<typeof fakeSession>[]) {
 	const { router } = routerWith(...sessions);
-	const [list, ask, notify, wait] = createPeerTools(router);
-	return { router, list: list!, ask: ask!, notify: notify!, wait: wait! };
+	const [list, ask, reply, notify, wait] = createPeerTools(router);
+	return { router, list: list!, ask: ask!, reply: reply!, notify: notify!, wait: wait! };
 }
 const ctxFor = (sessionId: string, extra: object = {}) => ({ sessionId, cwd: "/w/p", ...extra }) as unknown as Parameters<Tool["execute"]>[1];
 const text = (result: { content: { type: string; text?: string }[] }) => result.content.map((part) => part.text ?? "").join("");
 
-test("工具：按意图分四件，模型拿到的是一句能据以行动的话", async () => {
+test("工具：按意图分五件，模型拿到的是一句能据以行动的话", async () => {
 	const a = fakeSession("aaaaaaaa-8", "/w/p", "ask");
 	const b = fakeSession("bbbbbbbb-8", "/w/p", "auto");
-	const { list, ask, notify, wait } = tools(a, b);
+	const { list, ask, reply, notify, wait } = tools(a, b);
 	const ctx = ctxFor("aaaaaaaa-8");
 
-	assert.deepEqual([list.name, ask.name, notify.name, wait.name], ["list_sessions", "ask_session", "notify_session", "wait_for_session"]);
-	assert.ok([list, ask, notify, wait].every((tool) => tool.sessionOnly), "子代理不拿这几件");
+	assert.deepEqual([list.name, ask.name, reply.name, notify.name, wait.name], ["list_sessions", "ask_session", "reply_session", "notify_session", "wait_for_session"]);
+	assert.ok([list, ask, reply, notify, wait].every((tool) => tool.sessionOnly), "子代理不拿这几件");
+	assert.ok((await reply.execute({ to: "bbbb", message: "  " }, ctx)).isError, "空回答不发");
 	assert.match(text(await list.execute({}, ctx)), /^bbbb \[bbbbbb\] · idle · auto · \/w\/p$/);
 	const refused = await ask.execute({ to: "bbbb", message: "帮我推上去" }, ctx);
 	assert.ok(refused.isError);
@@ -337,9 +310,28 @@ test("工具：按意图分四件，模型拿到的是一句能据以行动的�
 	a.read();
 	a.start();
 	a.finish();
-	const reply = await wait.execute({ to: "bbbb" }, ctx);
-	assert.ok(!reply.isError);
-	assert.match(text(reply), /bbbb 说：做完了。/);
+	const waited = await wait.execute({ to: "bbbb" }, ctx);
+	assert.ok(!waited.isError);
+	assert.match(text(waited), /bbbb 说：做完了。/);
+});
+
+test("工具：回答当场交回时说「回了」，没回就收场的说清是兜底", async () => {
+	const a = fakeSession("aaaaaaaa-23", "/w/p");
+	const b = fakeSession("bbbbbbbb-23", "/w/p");
+	const { ask, reply } = tools(a, b);
+	b.start();
+	const first = ask.execute({ to: "bbbb", message: "版本号多少" }, ctxFor("aaaaaaaa-23"));
+	while (b.inbox.length === 0) await flush();
+	b.read();
+	const sent = await reply.execute({ to: "aaaa", message: "v1.2.3" }, ctxFor("bbbbbbbb-23"));
+	assert.equal(text(sent), "aaaa [aaaaaa] was waiting and has your answer.");
+	assert.equal(text(await first), "bbbb [bbbbbb] replied:\nv1.2.3");
+	const again = ask.execute({ to: "bbbb", message: "测试过没过" }, ctxFor("aaaaaaaa-23"));
+	while (b.inbox.length === 1) await flush();
+	b.read();
+	b.finish("人交代的做完了。");
+	assert.equal(text(await again), "bbbb [bbbbbb] ended its turn without replying. What it said at the end:\n人交代的做完了。");
+	assert.equal(text(await reply.execute({ to: "aaaa", message: "测试也过了" }, ctxFor("bbbbbbbb-23"))), "aaaa [aaaaaa] was no longer waiting, so it reads your answer as a notice.");
 });
 
 test("工具：拿子代理 id 当会话地址，说清它不是会话、结果会自己送回来，而不是「没有这个会话」", async () => {
@@ -392,6 +384,7 @@ test("工具：等着的时候来的是别的会话的通知，照实说是通�
 	const untilSpokenTo = <T,>(_run: Promise<T>) => Promise.resolve({ spokenTo: "notice" as const });
 	const result = await wait.execute({ to: "bbbb" }, ctxFor("aaaaaaaa-18", { untilSpokenTo }));
 	assert.ok(!result.isError);
-	assert.match(text(result), /A notice from another session arrived/);
+	assert.match(text(result), /A message from another session arrived/);
+	assert.match(text(result), /reply_session/, "是请求就提醒它怎么回");
 	assert.doesNotMatch(text(result), /Your user spoke/);
 });

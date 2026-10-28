@@ -6,8 +6,7 @@
  * leave one of the two meanings impossible to say.
  */
 
-import type { Message, PeerLetter, ThinkingLevel } from "../../types.ts";
-import { lettersOnly, peerMessage } from "./peer-letters.ts";
+import type { Message, ThinkingLevel } from "../../types.ts";
 
 export interface Queued {
 	message: Message;
@@ -17,8 +16,8 @@ export interface Queued {
 /**
  * 人说的话：父会话据此不再干等它派出去的子代理和别的会话。
  *
- * 后台结果的送达、别的会话的请求都不算：前者在交差，后者排在这一轮之后，都不是在找正等着的这一方。
- * 别的会话的通知在 `AgentSession.receive` 里直接放手，它不经过这里。
+ * 后台结果的送达不算：它在交差，不是在找正等着的这一方。别的会话的信（请求和通知）在
+ * `AgentSession.receive` 里直接放手，它不经过这里。
  */
 export function addressed(message: Message): boolean {
 	return message.role === "user" && !message.synthetic;
@@ -65,11 +64,6 @@ export class SessionInbox {
 		return this.queued.length === 0 && this.steering.length === 0;
 	}
 
-	/** 排着的那几封别的会话的请求，按轮到的先后。窗口据此画出「有人在等」，见 `peer_queue` 事件。 */
-	get letters(): PeerLetter[] {
-		return this.queued.flatMap((entry) => lettersOnly(entry.message) ?? []);
-	}
-
 	/**
 	 * The next message to run a turn for, once the turn before it has ended.
 	 *
@@ -80,30 +74,10 @@ export class SessionInbox {
 	 * message being replayed. The `steerable` check closes the one known way in; this closes "is
 	 * there another way in" — the kind of failure that should not rest on reasoning that it cannot
 	 * happen. Ahead of the queue, because it was said earlier.
-	 *
-	 * Requests from the same session that queued back to back go out as one message, one turn. They
-	 * arrive minutes apart during a long turn, so the 400ms gathering in `session-deliveries.ts` never
-	 * joins them; run one by one, each is a turn that resends the whole prefix, often to read a letter
-	 * the next one has already made stale. Only adjacent ones: merging past a queued message from the
-	 * person would move letters ahead of what was said before them.
-	 *
-	 * 不同会话的请求不合并：发件方等回来的是处理它那封信的那一轮最后说的话，两家的信并成一轮，
-	 * 两边拿到的就是同一段回答，其中一半在回答别人。
 	 */
 	next(): Queued | undefined {
 		if (this.steering.length > 0) this.queued.unshift(...this.takeSteering().map((message) => ({ message })));
-		const head = this.queued.shift();
-		const letters = head && lettersOnly(head.message);
-		if (!head || !letters) return head;
-		const sender = letters[0]?.sessionId;
-		const merged = [...letters];
-		while (this.queued.length > 0) {
-			const more = lettersOnly(this.queued[0]!.message);
-			if (!more || more.some((letter) => letter.sessionId !== sender)) break;
-			merged.push(...more);
-			this.queued.shift();
-		}
-		return merged.length === letters.length ? head : { ...head, message: peerMessage(merged) };
+		return this.queued.shift();
 	}
 
 	/**

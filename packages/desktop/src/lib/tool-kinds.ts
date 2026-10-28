@@ -98,9 +98,10 @@ const KIND: Record<string, MessageKey> = {
 	browser_tabs: "tools.browserTabs",
 	browser_viewport: "tools.browserViewport",
 	browser_screenshot: "tools.browserScreenshot",
-	// 会话之间那四个（`electron/peer/peer-tools.ts`），见 `PEER_TOOLS`。
+	// 会话之间那五个（`electron/peer/peer-tools.ts`），见 `PEER_TOOLS`。
 	list_sessions: "tools.listSessions",
 	ask_session: "tools.askSession",
+	reply_session: "tools.replySession",
 	notify_session: "tools.notifySession",
 	wait_for_session: "tools.waitForSession",
 	// 模型给这个对话安排的定时唤醒（core 的 `wakeup-tools.ts`），见环境卡片「定时唤醒」那一节。
@@ -111,10 +112,10 @@ const KIND: Record<string, MessageKey> = {
 };
 
 /**
- * 会话之间那四个工具。它们的 `summarize` 是写给模型日志的英文（`Notify 名字 [ref]`），重开的会话里又只剩
+ * 会话之间那五个工具。它们的 `summarize` 是写给模型日志的英文（`Notify 名字 [ref]`），重开的会话里又只剩
  * 工具名，两条路都不是人话，所以一律照 `KIND` 说，对象是参数里的 `to`（`call-words.ts` 的 `subjectOf`）。
  */
-export const PEER_TOOLS = new Set(["list_sessions", "ask_session", "notify_session", "wait_for_session"]);
+export const PEER_TOOLS = new Set(["list_sessions", "ask_session", "reply_session", "notify_session", "wait_for_session"]);
 
 /** 按「次」数、不按「个」数的那几种。 */
 const TIMES = new Set<MessageKey>(["tools.browserAct"]);

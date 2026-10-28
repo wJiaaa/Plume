@@ -15,6 +15,7 @@ import {
 	Image,
 	ListTodo,
 	MessageCircleQuestionMark,
+	MessageCircleReply,
 	MessagesSquare,
 	Monitor,
 	MousePointer2,
@@ -63,9 +64,10 @@ const ICONS: Record<string, typeof FileText> = {
 	browser_tabs: AppWindow,
 	browser_viewport: Monitor,
 	browser_screenshot: Camera,
-	// 会话之间那四个。列会话和收到别的会话来信那一行（`PeerLetterRow`）是同一枚。
+	// 会话之间那五个。列会话和收到别的会话来信那一行（`PeerLetterRow`）是同一枚。
 	list_sessions: MessagesSquare,
 	ask_session: MessageCircleQuestionMark,
+	reply_session: MessageCircleReply,
 	notify_session: Send,
 	wait_for_session: Hourglass,
 	// 定时唤醒：建的两个是闹钟，取消是划掉的闹钟，列出来的和环境卡片那一节同一枚。
