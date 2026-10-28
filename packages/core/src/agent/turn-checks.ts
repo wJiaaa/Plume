@@ -10,6 +10,7 @@
 import { awaitingEmptyNudge, AwaitWatch } from "./awaiting.ts";
 import { originalInView, REPEAT_WARN, repeatHint, repeatNotice, type RepetitionWatch } from "./repetition.ts";
 import type { PlanWatch } from "./plan-watch.ts";
+import { isArgumentsLost } from "./tool-run.ts";
 import type { AgentControlContext, AgentRunResult } from "./run-config.ts";
 import type { AgentEventSink } from "./events.ts";
 import type { AssistantContent, AssistantMessage, Message, ToolResultMessage } from "../types.ts";
@@ -18,6 +19,8 @@ import type { AssistantContent, AssistantMessage, Message, ToolResultMessage } f
 const MAX_NUDGES = 3;
 /** Consecutive replies cut off by the output limit before the run stops and says so. */
 const MAX_TRUNCATED_REPLIES = 3;
+/** 连着这么多轮并行调用的参数都在路上丢光，说明告诉它「一次一个」也绕不开，见 `lostArguments`。 */
+const MAX_LOST_ROUNDS = 3;
 const CONTINUE_AFTER_LENGTH = "（自动继续）上一条回复达到了输出长度上限，在中途被截断。请从断开的地方直接接着写，不要重复已经写出的内容。";
 const EMPTY_REPLY_NUDGE = "（自动继续）上一条回复没有正文。请给出回答；如果需要用户补充信息，请直接提问并等待回复。";
 
@@ -101,6 +104,7 @@ export function turnChecks(control: AgentControlContext, emit: AgentEventSink, p
 			delivered,
 			({ toolCalls, toolResults }) => (plan.settled(toolCalls, toolResults) ? { end: { reason: "done" } } : undefined),
 			limit.tools,
+			lostArguments(),
 			repeats(repetition),
 			({ assistant, toolCalls }) => say(plan.progress(assistant, toolCalls)),
 			() => say(awaiting.afterTools()),
@@ -184,6 +188,22 @@ const delivered: Check<ToolTurn> = ({ toolResults }) =>
 	toolResults.some((result) => result.terminate === true) ? { end: { reason: "done" } } : undefined;
 
 /**
+ * 并行调用的参数连着几轮在路上丢光（`tool-run.ts` 的 `argumentsLost`）。
+ *
+ * 结果里已经说了原因和绕法：一次只调一个。说过还这样，要么模型不听，要么这个服务商单个调用也丢——
+ * 哪一种再跑下去都只是烧钱，所以停下，把换模型的决定交给人。不用 `stalled`：界面上那句「同一个调用
+ * 反复得到相同结果」说的不是这回事。
+ */
+function lostArguments(): Check<ToolTurn> {
+	let streak = 0;
+	return ({ toolResults }) => {
+		streak = toolResults.some(isArgumentsLost) ? streak + 1 : 0;
+		if (streak < MAX_LOST_ROUNDS) return undefined;
+		return { end: { reason: "error", error: `模型服务连续 ${MAX_LOST_ROUNDS} 轮丢失了工具调用的参数，请更换模型或服务商后重试。` } };
+	};
+}
+
+/**
  * Same call, same arguments, same answer — again. Correct first, stop only when correction failed.
  *
  * From the third identical answer on, the model sees "this is the Nth time" instead of the same
@@ -192,6 +212,12 @@ const delivered: Check<ToolTurn> = ({ toolResults }) =>
  */
 function repeats(watch: RepetitionWatch): Check<ToolTurn> {
 	return ({ toolCalls, toolResults, messages }) => {
+		/*
+		 * 参数丢光的那一轮不算。它的每条结果都一样、参数都是 `{}`，照算的话第一轮就够到警告线：那句「同样
+		 * 的参数问了多次」会盖掉结果里已经说中的原因，还把那条原文换成「这是第 N 次」。是否该停由
+		 * `lostArguments` 管。
+		 */
+		if (toolResults.some(isArgumentsLost)) return undefined;
 		const { warn: repeated, kind, repeats: seenCounts } = watch.observe(toolCalls, toolResults);
 		if (watch.exhausted()) return { end: { reason: "stalled" } };
 

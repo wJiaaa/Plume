@@ -203,6 +203,7 @@
 | 纯文本撞输出上限 | 续写 3 次 | 停下，通知 `output-limit` | `turn-checks.ts` `MAX_TRUNCATED_REPLIES` |
 | 工具参数撞输出上限 | 连续 3 次 | `error`，让它拆小 | 同上 |
 | 同一调用、同一结果 | 第 3 次起纠正，第 10 次停 | `stalled` | `repetition.ts` `REPEAT_WARN` / `REPEAT_STOP` |
+| 并行调用的参数全部为空（服务商在路上丢了） | 不执行，当场纠正为一次调一个；连续 3 轮停 | `error`，让人换模型；这几轮不计入重复检测 | `tool-run.ts` `argumentsLost`、`turn-checks.ts` `MAX_LOST_ROUNDS` |
 | 翻页问同一个问题 / 切图测距 | 12 次 / 5 次 | 只提示，不停 | `repetition.ts` `INTENT_WARN` / `PROBE_WARN` |
 | 没汇报进度 | 20 次请求 | 只问，不停 | `plan-watch.ts` `PROGRESS_EVERY` |
 | 收尾时清单还有「正在做」 | 每次运行 1 次，这次跑过清单以外的工具、派出去的子代理都回来了才问 | 问一次，不停；回答空着就结束 | `plan-watch.ts` `closing` / `silent` |

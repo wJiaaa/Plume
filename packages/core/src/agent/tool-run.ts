@@ -71,6 +71,8 @@ export async function runTools(
 		return { call: tool.name === source.name && args === source.arguments ? source : { ...source, name: tool.name, arguments: args }, tool };
 	});
 
+	if (argumentsLost(planned)) return failTruncatedCalls(toolCalls, emit, ARGUMENTS_LOST_REASON, { [ARGUMENTS_LOST]: true });
+
 	const execute = async ({ call, tool, refusal }: (typeof planned)[number]): Promise<ToolResultMessage> => {
 		const startedAt = Date.now();
 		await emit({
@@ -131,6 +133,35 @@ export async function runTools(
 		results.push(...(await Promise.all(group.map(execute))));
 	}
 	return results;
+}
+
+const ARGUMENTS_LOST = "argumentsLost";
+const ARGUMENTS_LOST_REASON =
+	"every call in this reply arrived with empty arguments. That is the provider dropping the arguments of parallel tool calls, not something you left out. Make one tool call per reply from now on";
+
+/**
+ * 一次回复里好几个调用，参数全是空的，而这些工具都要必填参数——参数是在路上丢的，不是模型漏写的。
+ *
+ * 实测过的中转（`gpt-6.1-sol` 经 Responses）并行调用 36 次全是 `{}`，单个调用 95 次正常。逐个照跑，
+ * 模型拿到的是各自一句「path is required」，以为自己漏写了，换个说法照样并行重发；重复检测又把这堆一样
+ * 的报错算成「同样的参数问了好多遍」，最后停掉这一轮——前后五轮，没有一句话说中原因。
+ *
+ * 只认「全部为空、而且每个都有必填参数」。单个空调用、或混着正常调用的，更可能是模型自己漏了，照常跑、
+ * 照常报缺了哪个参数。
+ */
+function argumentsLost(planned: readonly { call: ToolCall; tool: Tool | undefined; refusal?: string }[]): boolean {
+	return (
+		planned.length >= 2 &&
+		planned.every(
+			({ call, tool, refusal }) =>
+				refusal === undefined && tool !== undefined && (tool.parameters.required?.length ?? 0) > 0 && Object.keys(call.arguments).length === 0,
+		)
+	);
+}
+
+/** 这条结果是不是 `argumentsLost` 那一轮的。整轮要么全是、要么全不是。 */
+export function isArgumentsLost(result: ToolResultMessage): boolean {
+	return (result.details as Record<string, unknown> | undefined)?.[ARGUMENTS_LOST] === true;
 }
 
 function executionMode(tool: Tool, args: Record<string, unknown>): "parallel" | "sequential" {
@@ -385,11 +416,12 @@ export async function failTruncatedCalls(
 	toolCalls: ToolCall[],
 	emit: AgentEventSink,
 	reason = "the response hit the output token limit, so its arguments may be incomplete",
+	details?: Record<string, unknown>,
 ): Promise<ToolResultMessage[]> {
 	const results: ToolResultMessage[] = [];
 	for (const call of toolCalls) {
 		const startedAt = Date.now();
-		const result = errorResult(`"${call.name}" was not executed: ${reason}. Re-issue the call.`);
+		const result = { ...errorResult(`"${call.name}" was not executed: ${reason}. Re-issue the call.`), details };
 		await emit({ type: "tool_start", toolCallId: call.id, toolName: call.name, args: call.arguments, summary: call.name });
 		await emit({ type: "tool_end", toolCallId: call.id, toolName: call.name, result, isError: true });
 		const finishedAt = Date.now();
@@ -400,6 +432,7 @@ export async function failTruncatedCalls(
 			toolCallId: call.id,
 			toolName: call.name,
 			content: result.content,
+			...(details ? { details } : {}),
 			isError: true,
 			timestamp: finishedAt,
 		};
