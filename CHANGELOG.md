@@ -2,6 +2,65 @@
 
 这个文件由 `pnpm release` 生成，条目来自提交信息。写得含糊的提交在这里也含糊，所以值得在提交时就写清楚。
 
+## [0.9.54](https://github.com/wJiaaa/Plume/releases/tag/v0.9.54) - 2026-10-28
+
+<!-- plume:notes en -->
+
+### New
+
+- **Comment on lines in the Git changes view**, by clicking a line number, dragging across several numbers or Shift-clicking a range, then send the collected comments to the agent with the selected repository's directory, file paths, line numbers and original diff attached.
+- **Turn individual subagents off in Settings, including the built-in ones**, and they disappear from the agent's available choices and the `/` and `@` menus without deleting their definitions; toggling one no longer dims and flashes the whole page.
+- **The main agent can stop a sub-agent it dispatched**, whether queued or running, and resume it later with its context intact.
+
+### Changes
+
+- Adding a model provider opens the form directly, without a preset-provider picker; you fill in the name, API format and Base URL, and the API key is optional.
+- **Phone access has been removed**, including pairing, the relay connection and the Phone connection page in Settings; the desktop app no longer runs the service that accepted phone connections.
+
+### Fixes
+
+- **Some Responses API relays caused the same tool call to run twice**, repeating shell commands and making the second file edit fail; calls are now matched even when the relay changes their item IDs.
+- **Notices from other chats no longer sit unread until you speak**, and a notice that interrupts an agent waiting on another chat is identified as a notice, rather than as you speaking.
+- Waiting for another chat now returns its main turn's answer without hanging on background sub-agents, while notices exchanged during long-running work no longer consume the message-chain limit one hop at a time.
+- Requests from other chats that are waiting for the current turn appear above the input box, and incoming messages and session-tool rows show the chat's current title when available.
+- When you ask the agent to split your task across separate chats, it is now instructed to have each part report its result back to the original chat.
+- **A new side chat no longer shows tasks dispatched by a previous side chat.**
+- Sending a message no longer moves its bubble up after it has settled, a reply that used no tools no longer disappears and fades back in when finished, and the running line no longer jumps down as the first reply text arrives.
+- Consecutive reasoning sections are shown as one thinking row instead of a stack of short rows.
+- Finished sub-agents leave the bar above the input box one at a time, and the edited-files card waits until background sub-agents have reported back rather than appearing and disappearing between turns.
+- Incoming messages have space between them, the "From a new chat" label no longer crowds the text below it, and selecting across three or more list items keeps the selection menu centered over the selected words.
+
+<!-- plume:notes zh-CN -->
+
+<details>
+<summary>中文（简体）</summary>
+
+### 新功能
+
+- **Git 面板的改动可以逐行评论**，点行号评一行，按住拖动或 Shift 点选评一段，攒好后一次发给 agent，附上所选仓库目录、文件路径、行号和原来的 diff。
+- **智能体可以逐个关掉，内置的也一样**，在设置里关掉后，agent 可派发的名单和 `/`、`@` 菜单都不再列出它，定义仍然保留，随时可以再打开，开关时整页也不再变淡、闪一下。
+- **主 agent 可以自己停掉派出去的子 Agent**，还在排队或已经在跑的都能停，上下文保留，以后可以接着跑。
+
+### 调整
+
+- 添加模型供应商直接打开表单，不再先挑预设模板，名称、API 格式和 Base URL 自己填，API Key 选填。
+- **移除了手机连接**，包括配对、中转连接和设置里的「手机连接」页，桌面端也不再启动供手机接入的服务。
+
+### 修复
+
+- **部分 Responses 中转会让同一个工具调用执行两遍**，命令跟着跑两次，文件编辑第二遍报错，现在中转换了调用条目的 ID 也能认出是同一次调用。
+- **其他会话的通知不用再等你开口才读到**，通知打断 agent 对另一个会话的等待时，也会照实说是来了通知，不再说成你开口了。
+- 等待其他会话会拿回它主线这一轮的回答，不再被后台子 Agent 拖到超时，几个长回合互相递通知时，也不再每封都给往来链加一跳，最后被误拦。
+- 其他会话发来、正在等这一轮结束的请求会列在输入框上方，来信和会话工具那一行有标题就显示当前标题，不再只摆一串 ref。
+- 让 agent 把你的任务拆到几个独立会话时，现在会提醒它让每一份都把结果交回原会话。
+- **新开的侧边聊天不再挂着上一个侧边聊天派出去的任务。**
+- 发消息后，气泡不再落定了又往上挪一截，没调工具的回答写完时不再整段闪没再淡出来，第一段回答开始出字时，运行行也不再被推下去一行。
+- 连着的几段推理并成一行，不再堆出一串「思考了几秒」。
+- 子 Agent 跑完一个就从输入框上方那一行退一个，「已编辑文件」卡片会等后台子 Agent 交回结果，不再提前出现、接着又收掉。
+- 几封来信之间留出了间距，「来自新会话」不再贴着下面那段话，跨三条以上列表项划选时，划词菜单也不再偏到栏的右边。
+
+</details>
+
 ## [0.9.53](https://github.com/wJiaaa/Plume/releases/tag/v0.9.53) - 2026-10-25
 
 <!-- plume:notes en -->
