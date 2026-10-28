@@ -76,7 +76,7 @@ export function WindowControls({
 				<span className="relative flex items-center justify-center">
 					<SidebarIcon open={navOpen} />
 					{unread && (
-						<span aria-hidden="true" className={`absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ${unread === "waiting" ? "bg-accent" : unread === "failed" ? "bg-danger" : "bg-ok"}`} />
+						<span aria-hidden="true" className={`absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ${unread === "waiting" ? "bg-amber-500" : unread === "failed" ? "bg-danger" : "bg-ok"}`} />
 					)}
 				</span>
 			</ToolbarButton>

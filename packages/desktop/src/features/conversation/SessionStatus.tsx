@@ -78,7 +78,7 @@ export function SessionStatus({ activity, unread = false, worktree }: { activity
 					data-ly-status-mark={activity ?? (unread ? "unread" : "idle")}
 					className={`box-border block h-[7px] w-[7px] rounded-full transition-colors duration-[var(--ly-t-quick)] ${
 						activity === "waiting"
-							? "ly-pulse bg-accent"
+							? "bg-amber-500"
 							: activity === "done"
 								? "bg-ok"
 								: activity === "failed"

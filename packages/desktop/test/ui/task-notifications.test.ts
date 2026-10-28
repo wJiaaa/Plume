@@ -165,7 +165,7 @@ test("task toasts offer one action and keep the source session ID", async () => 
 test("collapsed sidebar distinguishes waiting, failed and done without animating the badge", async () => {
 	const view = await mount(h(WindowControls, { navOpen: false, onToggleNav() {} }));
 	try {
-		for (const [activity, label, color] of [["done", "有任务已完成", "bg-ok"], ["failed", "有任务执行失败", "bg-danger"], ["waiting", "有任务等待处理", "bg-accent"]] as const) {
+		for (const [activity, label, color] of [["done", "有任务已完成", "bg-ok"], ["failed", "有任务执行失败", "bg-danger"], ["waiting", "有任务等待处理", "bg-amber-500"]] as const) {
 			await act(async () => { useApp.setState({ activity: { a: "waiting", b: activity } }); });
 			assert.match(view.find("button").getAttribute("aria-label") ?? "", new RegExp(label));
 			assert.ok(view.host.querySelector(`span.${color}`));

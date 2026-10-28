@@ -51,7 +51,7 @@ export function useNotices(): Notices {
 
 /** The tile carries the state, so the text beside it does not have to say it again. */
 const TILE: Record<Attention | "scheduled", { Icon: typeof Check; tint: string }> = {
-	waiting: { Icon: Hand, tint: "bg-accent/12 text-accent" },
+	waiting: { Icon: Hand, tint: "bg-amber-500/12 text-amber-500" },
 	failed: { Icon: AlertTriangle, tint: "bg-danger/10 text-danger" },
 	done: { Icon: Check, tint: "bg-ok/12 text-ok" },
 	scheduled: { Icon: Clock, tint: "bg-danger/10 text-danger" },
@@ -127,7 +127,7 @@ function Notice({ kind, title, status, meta, onClick }: { kind: Attention | "sch
 				</span>
 				{(status || meta) && (
 					<span className="mt-0.5 block truncate text-caption leading-snug text-ink-faint">
-						{status && <span className="text-accent">{status}</span>}
+						{status && <span className="text-amber-500">{status}</span>}
 						{status && meta && " · "}
 						{meta}
 					</span>
@@ -144,7 +144,7 @@ export function NoticeDot({ top }: { top: Notices["top"] }) {
 		<span
 			aria-hidden
 			data-ly-notice-dot={top}
-			className={`absolute top-1 right-1 h-1.5 w-1.5 rounded-full ${top === "waiting" ? "bg-accent" : top === "failed" ? "bg-danger" : "bg-ok"}`}
+			className={`absolute top-1 right-1 h-1.5 w-1.5 rounded-full ${top === "waiting" ? "bg-amber-500" : top === "failed" ? "bg-danger" : "bg-ok"}`}
 		/>
 	);
 }
