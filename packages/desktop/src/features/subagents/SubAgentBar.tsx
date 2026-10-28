@@ -47,6 +47,8 @@ export function SubAgentBar({ onOpen }: { onOpen: () => void }) {
 	const queued = agents.filter((one) => one.status === "queued").length;
 	const avatarOf = useAgentAvatars();
 	const menu = usePopover();
+	// 只剩一个时菜单会卸载，也要清掉挂点，否则最后一个完成后状态条仍被 menu.open 撑着。
+	if (agents.length < 2 && menu.open) menu.close();
 	const focused = useSubAgents((s) => s.focused);
 	/*
 	 * The bar opens the pane when work is delegated, not only when clicked.

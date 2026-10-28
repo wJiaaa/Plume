@@ -53,6 +53,7 @@ export function AgentsSettings() {
 	const [capabilities, setCapabilities] = useState<AgentCapabilities | null>(null);
 	const [saving, setSaving] = useState(false);
 	const savingRef = useRef(false);
+	const saves = useRef(Promise.resolve());
 	const [error, setError] = useState("");
 
 	useEffect(() => {
@@ -68,17 +69,23 @@ export function AgentsSettings() {
 		return () => { cancelled = true; };
 	}, [activeSessionId, sharedCapabilities]);
 
-	async function persist(next: Settings) {
-		if (savingRef.current) return;
-		savingRef.current = true; setSaving(true); setError("");
-		try { await useApp.getState().saveSettings(next); }
+	async function persist(update: (current: Settings) => Settings, quiet = false) {
+		if (!quiet && savingRef.current) return;
+		if (!quiet) { savingRef.current = true; setSaving(true); }
+		setError("");
+		// 整份设置的保存要串行，并在轮到时读最新值，连续开关才不会互相覆盖；开关仍不让整页变灰。
+		const saved = saves.current.then(async () => {
+			const current = useApp.getState().settings;
+			if (current) await useApp.getState().saveSettings(update(current));
+		});
+		saves.current = saved.catch(() => {});
+		try { await saved; }
 		catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
-		finally { savingRef.current = false; setSaving(false); }
+		finally { if (!quiet) { savingRef.current = false; setSaving(false); } }
 	}
 
 	function save(name: string, profile: SubAgentProfile) {
-		const current = useApp.getState().settings;
-		if (current) void persist(withAgentProfile(current, name, profile));
+		void persist((current) => withAgentProfile(current, name, profile));
 	}
 
 	const agents: Agent[] = useMemo(
@@ -119,15 +126,14 @@ export function AgentsSettings() {
 	const count = installed.length + builtin.length;
 	const create = () => setEditor({ projectId: catalogue.projectId });
 	// 只记关掉的，按名字；内置的一样能关。会话当场重载，见 `AgentSession.updateSettings`。
-	// 不走 `persist`：它让整页进入保存中，8 行的开关和下拉一起变淡再弹回来，点一下闪一下。
+	// 静默排队保存：不让 8 行的开关和下拉一起变淡再弹回来，点一下闪一下。
 	const disabledAgents = settings?.disabledAgents ?? [];
 	const setAgentOn = (name: string, on: boolean) => {
-		const current = useApp.getState().settings;
-		if (!current) return;
-		const next = new Set(current.disabledAgents);
-		if (on) next.delete(name); else next.add(name);
-		void useApp.getState().saveSettings({ ...current, disabledAgents: [...next] })
-			.catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)));
+		void persist((current) => {
+			const next = new Set(current.disabledAgents);
+			if (on) next.delete(name); else next.add(name);
+			return { ...current, disabledAgents: [...next] };
+		}, true);
 	};
 	const row = (agent: Agent) => {
 		const record = recordOf(agent.name);
@@ -178,20 +184,20 @@ export function AgentsSettings() {
 					<AgentList>
 						<SettingRow name={t("agents.sidechatModel")} detail={t("agents.sidechatModelDetail")}>
 							<ModelSelect ariaLabel={t("agents.sidechatModel")} showIcon={false} value={settings.sideChatModelId ?? ""} inheritLabel={t("agents.followMain")} inheritedModelId={mainModelId ?? settings.defaultModelId ?? undefined} inheritedSource={t("agents.followMainShort")} inheritDetail={t("agents.sidechatModelDetail")} disabled={saving}
-								onChange={(modelId) => { const current = useApp.getState().settings; if (current) void persist({ ...current, sideChatModelId: modelId || null }); }} />
+								onChange={(modelId) => { void persist((current) => ({ ...current, sideChatModelId: modelId || null })); }} />
 						</SettingRow>
 						<SettingRow name={t("agents.titleModel")} detail={t("agents.titleModelDetail")}>
 							<ModelSelect ariaLabel={t("agents.titleModel")} showIcon={false} value={settings.titleModelId ?? ""} inheritLabel={t("agents.followMain")} inheritedModelId={mainModelId ?? settings.defaultModelId ?? undefined} inheritedSource={t("agents.followMainShort")} inheritDetail={t("agents.titleModelDetail")} disabled={saving}
-								onChange={(modelId) => { const current = useApp.getState().settings; if (current) void persist({ ...current, titleModelId: modelId || null }); }} />
+								onChange={(modelId) => { void persist((current) => ({ ...current, titleModelId: modelId || null })); }} />
 						</SettingRow>
 						<SettingRow name={t("agents.summaryModel")} detail={t("agents.summaryModelDetail")}>
 							<ModelSelect ariaLabel={t("agents.summaryModel")} showIcon={false} value={settings.summaryModelId ?? ""} inheritLabel={t("agents.followMain")} inheritedModelId={mainModelId ?? settings.defaultModelId ?? undefined} inheritedSource={t("agents.followMainShort")} inheritDetail={t("agents.summaryModelDetail")} disabled={saving}
-								onChange={(modelId) => { const current = useApp.getState().settings; if (current) void persist({ ...current, summaryModelId: modelId || null }); }} />
+								onChange={(modelId) => { void persist((current) => ({ ...current, summaryModelId: modelId || null })); }} />
 						</SettingRow>
 						{/* 记忆整理不在哪个会话里跑，没选时用的是新会话的默认模型，不是「主会话」。 */}
 						<SettingRow name={t("agents.memoryModel")} detail={t("agents.memoryModelDetail")}>
 							<ModelSelect ariaLabel={t("agents.memoryModel")} showIcon={false} value={settings.memoryModelId ?? ""} inheritLabel={t("agents.followDefaultModel")} inheritedModelId={settings.defaultModelId ?? undefined} inheritedSource={t("common.default")} inheritDetail={t("agents.memoryModelDetail")} disabled={saving}
-								onChange={(modelId) => { const current = useApp.getState().settings; if (current) void persist({ ...current, memoryModelId: modelId || null }); }} />
+								onChange={(modelId) => { void persist((current) => ({ ...current, memoryModelId: modelId || null })); }} />
 						</SettingRow>
 						{/*
 						  * 出图不跟随对话模型——对话模型画不了图。不选就是第一个生图模型，加一个就能画；
@@ -199,7 +205,7 @@ export function AgentsSettings() {
 						  */}
 						<SettingRow name={t("agents.imageModel")} detail={imageModels[0] ? t("agents.imageModelDetail") : t("agents.imageModelNone")}>
 							<ModelSelect kind="image" ariaLabel={t("agents.imageModel")} showIcon={false} value={settings.imageModelId ?? ""} inheritLabel={t("agents.imageModelAuto")} inheritedModelId={imageModels[0]?.model.id} inheritedSource={t("agents.imageModelAutoShort")} inheritDetail={t("agents.imageModelDetail")} disabled={saving || !imageModels[0]}
-								onChange={(modelId) => { const current = useApp.getState().settings; if (current) void persist({ ...current, imageModelId: modelId || null }); }} />
+								onChange={(modelId) => { void persist((current) => ({ ...current, imageModelId: modelId || null })); }} />
 						</SettingRow>
 					</AgentList>
 				</section>}

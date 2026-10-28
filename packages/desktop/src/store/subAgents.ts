@@ -42,6 +42,8 @@ export interface SubAgentState {
 	 * reading a long run impossible. `focused` is set only by a person.
 	 */
 	rosters: Record<string, SubAgentSummary[]>;
+	/** 最后一个子代理交差的到达时间；晚挂载的交付卡片也要等后台结果送达。 */
+	settledAt: Record<string, number>;
 
 	/**
 	 * Take the roster the session in the live slot just broadcast, or just read back.
@@ -86,6 +88,7 @@ export const useSubAgents = create<SubAgentState>((set, get) => ({
 	focused: null,
 	loading: [],
 	rosters: {},
+	settledAt: {},
 	revealed: null,
 	announced: null,
 
@@ -94,7 +97,7 @@ export const useSubAgents = create<SubAgentState>((set, get) => ({
 	},
 
 	retain(sessionId, agents) {
-		set({ rosters: { ...get().rosters, [sessionId]: agents } });
+		set(rosterUpdate(get(), sessionId, agents));
 	},
 
 	sync(agents, sessionId, live) {
@@ -103,7 +106,7 @@ export const useSubAgents = create<SubAgentState>((set, get) => ({
 		set({
 			// 每次一个新对象：听的那一头按引用认「又派了一次」，同一毫秒里的两次也分得开。
 			...(fresh ? { announced: { sessionId } } : {}),
-			rosters: { ...get().rosters, [sessionId]: agents },
+			...rosterUpdate(get(), sessionId, agents),
 		});
 	},
 
@@ -162,6 +165,15 @@ export const useSubAgents = create<SubAgentState>((set, get) => ({
 		set({ transcripts: {}, hookRuns: {}, focused: null, loading: [] });
 	},
 }));
+
+function rosterUpdate(state: SubAgentState, sessionId: string, agents: SubAgentSummary[]) {
+	return {
+		rosters: { ...state.rosters, [sessionId]: agents },
+		settledAt: delegating(state.rosters[sessionId]) && !delegating(agents)
+			? { ...state.settledAt, [sessionId]: Date.now() }
+			: state.settledAt,
+	};
+}
 
 /** 同一条钩子先报开始、再报结局，按 id 换掉；两次的位置运行时盖的是同一个（`SubAgentRegistry.hookRun`）。 */
 function upsert(runs: readonly HookRun[], run: HookRun): HookRun[] {

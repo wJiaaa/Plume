@@ -33,15 +33,15 @@ let view: Mounted | undefined;
 beforeEach(() => {
 	previous = useApp.getState();
 	useApp.setState({ activeSessionId: "a", running: false, activity: {} });
-	useSubAgents.setState({ rosters: { a: [agent("running")] } });
-	mock.timers.enable({ apis: ["setTimeout"] });
+	useSubAgents.setState({ rosters: { a: [agent("running")] }, settledAt: {} });
+	mock.timers.enable({ apis: ["setTimeout", "Date"], now: Date.now() });
 });
 
 afterEach(async () => {
 	mock.timers.reset();
 	await view?.unmount();
 	view = undefined;
-	useSubAgents.setState({ rosters: {} });
+	useSubAgents.setState({ rosters: {}, settledAt: {} });
 	useApp.setState(previous, true);
 });
 
@@ -49,7 +49,7 @@ test("子智能体交差的那一刻仍算在干，过了送达的空档才放�
 	view = await screen("a");
 	assert.equal(view.host.textContent, "true");
 
-	await act(async () => useSubAgents.setState({ rosters: { a: [agent("done")] } }));
+	await act(async () => useSubAgents.getState().sync([agent("done")], "a", true));
 	assert.equal(view.host.textContent, "true", "交差当帧就放开，交付卡片会在送达开轮前闪出来");
 
 	await act(async () => mock.timers.tick(999));
@@ -65,4 +65,18 @@ test("换到另一个会话不借上一个会话的余量", async () => {
 	// 同一棵树换会话（切屏时就是这样），状态留着；乙没派过子智能体，不该被当成「刚交差」。
 	await view.rerender(h(SessionScope.Provider, { value: "b" }, h(Probe)));
 	assert.equal(view.host.textContent, "false");
+});
+
+test("交差后才挂载的卡片和切回的会话共享送达余量，不会重新计满一秒", async () => {
+	await act(async () => useSubAgents.getState().retain("a", [agent("done")]));
+	await act(async () => mock.timers.tick(100));
+	view = await screen("a");
+	assert.equal(view.text(), "true", "新挂载的消费者也要等结果送达");
+	await act(async () => mock.timers.tick(899));
+	assert.equal(view.text(), "true");
+	await act(async () => mock.timers.tick(1));
+	assert.equal(view.text(), "false", "余量从交差开始计，不从挂载开始计");
+	await view.unmount();
+	view = await screen("a");
+	assert.equal(view.text(), "false", "过了余量后重新挂载不再进入等待");
 });

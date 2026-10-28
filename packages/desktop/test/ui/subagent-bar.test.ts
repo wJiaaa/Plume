@@ -215,3 +215,16 @@ test("跑完一个就从这一行退一个，不等这一轮收尾；都跑完�
 		await view.unmount();
 	}
 });
+
+test("菜单开着时两个子代理依次交差，不留下撑开的状态条", async () => {
+	await roster([summary({ id: "a" }), summary({ id: "b" })]);
+	const view = await mount(h(SubAgentBar, { onOpen: () => {} }));
+	try {
+		await act(async () => view.find<HTMLButtonElement>("[data-ly-subagent-bar]").click());
+		assert.ok(document.querySelector("[data-sub-menu]"));
+		await roster([summary({ id: "a", status: "done" }), summary({ id: "b" })]);
+		assert.equal(document.querySelector("[data-sub-menu]"), null, "只剩一个，菜单收起");
+		await roster([summary({ id: "a", status: "done" }), summary({ id: "b", status: "done" })]);
+		assert.equal(view.find<HTMLElement>(".ly-reveal").dataset.open, "false", "最后一个交差后状态条也收起");
+	} finally { await view.unmount(); }
+});

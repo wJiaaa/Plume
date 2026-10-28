@@ -139,23 +139,18 @@ export function useScopedWorking(): boolean {
 	const running = useScopedRunning();
 	const background = useScopedFromSubAgents(delegating);
 	/*
-	 * 最后一个子智能体交差、送达还没开出下一轮的那一下也算在干：core 把结果攒 400ms 再开一轮
-	 * （`DELIVERY_GATHER_MS`），这段空档里主回合和名册都是空闲的，交付卡片、「继续」会闪出来又收回去。
-	 * core 的 `idle` 算着这段，可它不到界面，所以这里按那个数留余量。没有送达（刚按了停止）只是晚
-	 * 这么一会儿才显示，不会卡住。在渲染里比对上一次，不放进 effect：effect 晚一帧，那一帧就是闪的那一下。
+	 * core 把结果攒 400ms 再开轮，期间也算在干。交差时间记在共享名册，不记在 hook 内：交付卡片
+	 * 可能在主回合收尾时才挂载，届时已经看不到「刚从运行变成完成」的那次转换。
 	 */
-	const [seen, setSeen] = useState({ id, background });
-	const [settling, setSettling] = useState(false);
-	if (seen.id !== id || seen.background !== background) {
-		setSeen({ id, background });
-		setSettling(seen.id === id && seen.background && !background);
-	}
+	const settledAt = useSubAgents((state) => id ? state.settledAt[id] ?? 0 : 0);
+	const [, redraw] = useState(0);
 	useEffect(() => {
-		if (!settling) return;
-		const timer = setTimeout(() => setSettling(false), DELIVERY_SETTLE_MS);
+		const remaining = settledAt + DELIVERY_SETTLE_MS - Date.now();
+		if (!settledAt || remaining <= 0) return;
+		const timer = setTimeout(() => redraw((tick) => tick + 1), remaining);
 		return () => clearTimeout(timer);
-	}, [settling]);
-	return running || background || settling;
+	}, [id, settledAt]);
+	return running || background || (settledAt > 0 && Date.now() < settledAt + DELIVERY_SETTLE_MS);
 }
 
 /** 见 `useScopedWorking`：core 攒送达的 400ms，加上开轮、事件过 IPC 的余量。 */

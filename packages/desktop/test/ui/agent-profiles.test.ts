@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createElement as h } from "react";
+import { act, createElement as h } from "react";
 import { BUILTIN_AGENTS, DEFAULT_SETTINGS, type ModelConfig, type Settings } from "@plume/core";
 import { AgentsSettings } from "../../src/features/settings/AgentsSettings.tsx";
 import { useApp } from "../../src/store/index.ts";
@@ -73,5 +73,43 @@ test("unavailable profiles stay visibly invalid and a failed save preserves the 
 		assert.match(view.find('[role="alert"]').textContent ?? "", /disk full/);
 		assert.equal(useApp.getState().settings?.subAgentProfiles?.explore.modelId, "removed/model");
 		assert.equal(view.find<HTMLFieldSetElement>("fieldset").disabled, false);
+	} finally { await view.unmount(); }
+});
+
+test("前一次保存还没返回时连关两个智能体，两次开关都保留且不让整页变灰", async () => {
+	let finish: ((value: Settings) => void) | undefined;
+	const pending: Settings[] = [];
+	setup(settings, async (next) => {
+		pending.push(next);
+		if (pending.length === 1) return new Promise<Settings>((resolve) => { finish = resolve; });
+		return next;
+	});
+	const view = await mount(h(I18nProvider, { locale: "zh-CN", children: h(AgentsSettings) }));
+	try {
+		await click(view.find('[data-agent-profile="general"] [role="switch"]'));
+		await click(view.find('[data-agent-profile="explore"] [role="switch"]'));
+		assert.equal(pending.length, 1, "后一次等前一次落盘，不并发写旧快照");
+		assert.equal(view.find<HTMLFieldSetElement>("fieldset").disabled, false, "开关不让整页控件变灰");
+		await act(async () => finish?.(pending[0]!));
+		assert.deepEqual(pending[1]?.disabledAgents, ["general", "explore"]);
+		assert.deepEqual(useApp.getState().settings?.disabledAgents, ["general", "explore"]);
+	} finally { await view.unmount(); }
+});
+
+test("开关排队期间修改模型，从最新设置合并而不覆盖开关", async () => {
+	let finish: ((value: Settings) => void) | undefined;
+	const pending: Settings[] = [];
+	setup(settings, async (next) => {
+		pending.push(next);
+		if (pending.length === 1) return new Promise<Settings>((resolve) => { finish = resolve; });
+		return next;
+	});
+	const view = await mount(h(I18nProvider, { locale: "zh-CN", children: h(AgentsSettings) }));
+	try {
+		await click(view.find('[data-agent-profile="general"] [role="switch"]'));
+		await click(view.find('[aria-label="explore 模型"]')); await choose("Fast");
+		await act(async () => finish?.(pending[0]!));
+		assert.deepEqual(pending[1]?.disabledAgents, ["general"]);
+		assert.equal(pending[1]?.subAgentProfiles?.explore.modelId, "qa/fast");
 	} finally { await view.unmount(); }
 });
