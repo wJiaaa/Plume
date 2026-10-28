@@ -28,8 +28,11 @@ export function describeCalls(calls: Call[]): string {
 
 function counted(calls: Call[]): Call[] {
   const commands = calls.some(({ block }) => block.name === "bash" || block.name === "monitor");
+  // 清单并在一段活里时不点名：那一行说的是干了什么活，勾到哪一项清单面板上有。只有清单时照旧说它。
+  const work = calls.some(({ block }) => block.name !== "todo_write");
   const jobs = new Set<unknown>();
   return calls.filter(({ block }) => {
+    if (work && block.name === "todo_write") return false;
     if (block.name !== "bash_output") return true;
     const job = (block.arguments as { id?: unknown } | undefined)?.id;
     if (commands || jobs.has(job)) return false;

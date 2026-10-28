@@ -83,7 +83,16 @@ test("浏览器的几个工具是同一类", () => {
 
 test("收进过程的预览和命令接成一段：改一次、检查一次，不再一行命令一行预览地交替", () => {
 	const blocks = turnBlocks([ask("画一只鹈鹕", 0), work(["bash"]), think(2), work(["preview"]), work(["bash", "bash"]), work(["preview", "preview"]), work(["todo_write"]), work(["preview"])]);
-	assert.deepEqual(items(blocks[1]), ["step(bash,think,preview,bash,bash,preview,preview)", "step(todo_write)", "step(preview)"]);
+	assert.deepEqual(items(blocks[1]), ["step(bash,think,preview,bash,bash,preview,preview,todo_write,preview)"]);
+});
+
+test("更新清单并进前后的那段活，不自己占一行", () => {
+	// 截图里那一轮：先勾清单、想一下、查符号搜内容、再勾一次——从前是三行。
+	const blocks = turnBlocks([ask("查一下", 0), work(["todo_write"]), think(2), work(["symbol", "grep"]), think(4), work(["todo_write"])]);
+	assert.deepEqual(items(blocks[1]), ["step(todo_write,think,symbol,grep,think,todo_write)"]);
+	const step = blocks[1].items[0];
+	assert.ok(step.kind === "step" && step.step.category === "explore", "清单开的头，这一段按后面的活归类");
+	assert.deepEqual(items(turnBlocks([ask("列个计划", 0), work(["todo_write"]), work(["skill"])])[1]), ["step(todo_write)", "step(skill)"], "只有清单时照旧一行；不并进 Skill");
 });
 
 test("一段活往后长，它的 key 不变", () => {
@@ -149,7 +158,7 @@ test("探索、终端、文件更改挨在一起合成一行：改失败了读�
 	const solo = [ask("改一下", 0), work(["read", "skill", "skill", "edit", "todo_write", "todo_write", "ask_user", "notify_session", "notify_session", "ask_session", "recall", "image_generate", "list_sessions", "read"])];
 	assert.deepEqual(
 		items(turnBlocks(solo)[1]),
-		["step(read)", "step(skill,skill)", "step(edit)", "step(todo_write,todo_write)", "step(ask_user)", "step(notify_session,notify_session)", "step(ask_session)", "step(recall)", "step(image_generate)", "step(list_sessions)", "step(read)"],
+		["step(read)", "step(skill,skill)", "step(edit,todo_write,todo_write)", "step(ask_user)", "step(notify_session,notify_session)", "step(ask_session)", "step(recall)", "step(image_generate)", "step(list_sessions)", "step(read)"],
 		"其余工具只和同一种合",
 	);
 	const mcp = [ask("查一下", 0), work(["mcp__a__x", "mcp__b__y", "read", "mcp__a__x"])];
@@ -354,8 +363,8 @@ test("在读、跑、改、操作网页那一段中间回来的后台命令结�
 	assert.deepEqual(items(blocks[1]), ["step(bash,job,think,read,browser_act)", "assistant"]);
 });
 
-test("回来时不在那样一段里的后台命令结果自己一行：清单这类调用后面、说完话之后", () => {
-	assert.deepEqual(items(turnBlocks([ask("跑一下", 0), work(["bash", "todo_write"]), returned(2), work(1)])[1]), ["step(bash)", "step(todo_write)", "user", "step(read)"]);
+test("回来时不在那样一段里的后台命令结果自己一行：Skill 这类调用后面、说完话之后", () => {
+	assert.deepEqual(items(turnBlocks([ask("跑一下", 0), work(["bash", "skill"]), returned(2), work(1)])[1]), ["step(bash)", "step(skill)", "user", "step(read)"]);
 	assert.deepEqual(items(turnBlocks([ask("跑一下", 0), work(1), say("等测试。", 2), returned(3), work(1)])[1]), ["step(read)", "assistant", "user", "step(read)"]);
 });
 

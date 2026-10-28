@@ -167,15 +167,24 @@ function kindOf(category: string): string {
 }
 
 /**
+ * 更新清单是这段活的记账，不是一件单独的事：它跟 `MERGES` 那几类接成一段，不自己占一行。
+ *
+ * 它从前和 Skill、问人一样单独一行，理由是并进去回头找不到。可勾到哪一项清单面板上一直看得到，转录里
+ * 每勾一次就横一行「更新清单 3/3」，把一段连着的活切成好几截。
+ */
+const TODO = "todo_write";
+
+/**
  * 这次调用接不接在这一段后面。
  *
  * `MERGES` 里的几类互相接；浏览器从前只和浏览器合，边改边在页面上验的一段就是「读文件 → 操作网页 → 改文件 →
- * 操作网页」来回跳的几行，所以它也进了这里。其余的只和同一种接：连着两次清单、连着通知几个会话是一件事，
- * 清单夹在两段活中间、Skill 跟着一次问人，各是一件要单独看见的事，并进一段活里回头就找不到了。
+ * 操作网页」来回跳的几行，所以它也进了这里。清单跟着它们走（`TODO`）。其余的只和同一种接：连着通知几个
+ * 会话是一件事，Skill 跟着一次问人，各是一件要单独看见的事，并进一段活里回头就找不到了。
  * 派发也是这样：子代理那一行带着它们的脸，人是盯着它看的。
  */
 function joins(step: Step, category: string): boolean {
-	if (MERGES.has(step.category) && MERGES.has(category)) return true;
+	const work = (one: string) => MERGES.has(one) || one === TODO;
+	if (work(step.category) && work(category)) return true;
 	return kindOf(step.category) === kindOf(category);
 }
 
@@ -281,6 +290,8 @@ function itemsOf(body: Run[]): TurnItem[] {
 				const before = thoughts.map((thought) => ({ kind: "thinking" as const, run: thought }));
 				thoughts = [];
 				if (step && joins(step, category)) {
+					// 清单开的头、接着来了活：这一段从此是那一类活，后台命令的结果也挂得上来（`jobReturn`）。
+					if (step.category === TODO) step.category = category;
 					step.calls.push(call);
 					step.members.push(...before, { kind: "call", call });
 					continue;
