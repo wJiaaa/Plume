@@ -69,9 +69,9 @@ test("一轮有过程：一块，过程在前，最后那句话是回答", () =>
 	assert.equal(blocks[1].runs.length, 5, "开口那句话之外的全在这一块");
 });
 
-test("读、跑、改、操作网页挨在一起合成一行；其余只和同一种合", () => {
+test("读、跑、改、操作网页、抓取网络挨在一起合成一行；其余只和同一种合", () => {
 	const blocks = turnBlocks([ask("改一下", 0), work(["read", "browser_open", "browser_act", "edit"]), work(["web_fetch"]), think(3), work(["web_search", "read"]), work(["task", "task"]), work(["read"]), say("好了。", 5)]);
-	assert.deepEqual(items(blocks[1]), ["step(read,browser_open,browser_act,edit)", "step(web_fetch,think,web_search)", "step(read)", "step(task,task)", "step(read)", "assistant"]);
+	assert.deepEqual(items(blocks[1]), ["step(read,browser_open,browser_act,edit,web_fetch,think,web_search,read)", "step(task,task)", "step(read)", "assistant"]);
 	const keys = blocks[1].items.filter((item) => item.kind === "step").map((item) => item.key);
 	assert.equal(new Set(keys).size, keys.length, "每一段一个 key");
 });
