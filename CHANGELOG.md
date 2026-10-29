@@ -2,6 +2,75 @@
 
 这个文件由 `pnpm release` 生成，条目来自提交信息。写得含糊的提交在这里也含糊，所以值得在提交时就写清楚。
 
+## [0.9.55](https://github.com/wJiaaa/Plume/releases/tag/v0.9.55) - 2026-10-29
+
+<!-- plume:notes en -->
+
+### New
+
+- **Pick the model when handing a plan to a new session**: the arrow next to "Run in a new session" on the approval card chooses it, and without a choice the default model is used. The session that handed it off pins a line above the input box with the step the new session is on, or that it is waiting for you, finished or failed; click it to go there. Suggested new sessions and review sessions get the same line.
+- **Every plan approved in a session can be reopened**, not only the last one. Switch between them with "N approved" at the top of the plan panel, or open one from the new Plans section of the Environment card.
+- **Export all session records as one SQLite file** from Settings › Storage. The file is a consistent snapshot even while a reply is being written, and a failed export leaves any file already at that location untouched.
+
+### Changes
+
+- A session waiting for your answer or approval shows a steady yellow dot in the sidebar instead of the pulsing blue dot of a running session, and the notification menu and badges use the same yellow.
+- "Updated the plan" rows join the reading, running and editing around them instead of each taking its own line in the transcript.
+
+### Fixes
+
+- **A question from another session is answered at the recipient's next step**, instead of after its whole turn, which could run twenty minutes and made `ask_session` time out. With the other session taking 8 seconds per step, the answer came back in 5.9 seconds.
+- A side chat asking about the main session no longer reports it idle while its background sub-agents are still running.
+- **A damaged memory.json no longer wipes your memories.** Adding or deleting an entry in Settings used to write the file back with only the new entry; it now reports the error and leaves the file alone. A memory extraction cut off by the output limit no longer deletes the entries after the cut from MEMORY.md.
+- **"Send now" and editing a queued message no longer stop background sub-agents** or drop the results they were about to deliver. Only Stop, quitting and closing the session stop background work.
+- After switching to a model from another provider, undoing or editing an earlier message no longer sends the old model's data along and gets the whole request rejected.
+- **A retried request shows as recovered as soon as text arrives again**, rather than reading "retrying" until the reply finished, which once lasted nearly three minutes. Pressing Stop during a retry now reads "Stopped while retrying" instead of recovered, and retries are counted per interruption.
+- Switching models while a retry is waiting no longer leaves an empty "Stopped" reply, and a connection that drops after text has arrived no longer keeps the session on the old model.
+- **A misspelled or unfinished tool argument no longer crashes the whole turn**; the model gets an error result and can correct the call. A reply that hits the output limit ends that step, instead of being requested again up to seven times at full length.
+- When a provider drops the arguments of parallel tool calls, so that every call arrives as `{}`, the model is told to make one call at a time, rather than resending the same batch until the session stalls.
+- Stopping while a PreToolUse hook waits for confirmation is no longer reported to the model as your rejection.
+- **A second compaction no longer invalidates the prompt cache.** In one measured session the next request cost $0.88 instead of about $0.10. After pruning, the agent also no longer runs an unneeded separate summary, which in the same session cost $1.65 and 169 seconds of waiting.
+- Compaction no longer treats `package.json` and `apps/cli/package.json` as the same file, and no longer clears an earlier successful result because a later identical call failed.
+- Undoing to before a `task resume` stops that resumed sub-agent, and a message sent to a sub-agent while it is wrapping up is shown as undeliverable instead of quietly disappearing.
+- When plan mode turns out not to need a plan, the agent finishes without leaving a "No plan needed" line in the conversation.
+- Relative file links in replies of sessions outside a project, such as chats and PR reviews, are clickable again instead of showing as plain text.
+
+<!-- plume:notes zh-CN -->
+
+<details>
+<summary>中文（简体）</summary>
+
+### 新功能
+
+- **计划交给新会话时可以挑模型**，审批卡上「在新会话里执行」旁边多了一枚箭头，不挑就用默认模型。交出去以后，原会话的输入框上方钉着一行，写着那边正在做哪一步，在等你、跑完了或出错了也写在这里，点一下就过去。建议的新会话和审阅会话也有这一行。
+- **一个会话批准过的每份计划都能翻到**，不再只能看最后一份。计划面板顶上点「批准过 N 份」切换，或者在环境卡片新加的「计划」一节里点开。
+- **设置 › 存储里可以把全部会话导出成一个 SQLite 文件**。回复正写着的时候导出，拿到的也是同一时刻的完整快照，导出失败时目标位置原有的文件不受影响。
+
+### 调整
+
+- 会话停下来等你回答或批准时，侧栏行首是常亮的黄点，不再和运行中一样闪蓝，通知菜单和角标也一起换成了黄色。
+- 「更新清单」并进前后读、跑、改的那一段里，不再每勾一项就在转录里单独占一行。
+
+### 修复
+
+- **别的会话问过来的问题，对方下一步就读到并回答**，不用等它这一轮做完。一轮可能跑二十分钟，`ask_session` 常常因此超时；实测对方每步 8 秒时，5.9 秒就拿到了回答。
+- 侧边聊天问主会话的情况时，主会话的后台子 Agent 还在跑，就不会再说它空闲。
+- **memory.json 坏了不再把记忆清空**。以前在设置里增删一条，文件会被整个写成只剩新条目；现在会报错，原文件不动。记忆抽取的回复被输出上限截断时，也不再删掉 MEMORY.md 里截断处之后的条目。
+- **「现在就发」和编辑排队消息不再停掉后台子 Agent**，它们跑完正要送回的结果也不会丢。只有按停止、退出和关闭会话才停后台的活。
+- 换成别家服务商的模型以后，撤回或编辑之前的消息不再捎上旧模型的数据，导致整条请求被拒。
+- **重试接上、重新出字就显示已恢复**，不再「正在重试」一直挂到回复写完，有一次挂了将近三分钟。重试时按停止，现在写的是「重试 N 次时停下了」，不再记成已恢复；重试次数按每一次中断分开计。
+- 等重试时切模型，不再留下一条空的「已停止」；出过字之后才断线的，切模型也不再卡在旧模型上。
+- **工具参数写错或没写完不再让整轮崩掉**，模型会拿到一条错误结果，改好再调。回复撞上输出上限就结束这一步，不再按上限的长度连着再请求七次。
+- 服务商把并行调用的参数弄丢、每个调用都变成 `{}` 时，会直接告诉模型改成一次调一个，不再让它原样重发，直到会话卡住停下。
+- PreToolUse 钩子等确认时按停止，不再告诉模型是你拒绝了。
+- **第二次压缩后缓存不再整段失效**。量过的一个会话里，下一次请求因此花了 $0.88，命中缓存只要 $0.10 左右。剪枝之后也不再白做一次单独的摘要，同一个会话里那次花了 $1.65、干等 169 秒。
+- 压缩时不再把 `package.json` 和 `apps/cli/package.json` 当成同一个文件；同样参数的调用后来失败了，也不再把之前成功的那次结果当重复清掉。
+- 撤回到 `task resume` 之前，那段续跑的子 Agent 会停下；子 Agent 收尾时发给它的话会显示送不到，不再悄悄没了。
+- 计划模式下发现不需要计划时直接收尾，对话里不再留一句「无需计划」。
+- 不在项目里的会话（聊天、PR 评审），回复里相对路径的文件链接又能点了，不再退成纯文字。
+
+</details>
+
 ## [0.9.54](https://github.com/wJiaaa/Plume/releases/tag/v0.9.54) - 2026-10-28
 
 <!-- plume:notes en -->
