@@ -154,6 +154,14 @@ function FlowTrail({ children, from }: { children?: ReactNode; from?: number }) 
 				void box.offsetWidth;
 				box.style.width = `${last}px`;
 			}
+		} else {
+			/*
+			 * 从 `Activity` 回来时（后台标签里的侧边聊天，见 `RetainedPanel`）effect 重跑，外层上可能还钉着收起前
+			 * 那次过渡的终点：`display: none` 只发 `transitioncancel`、不发 `transitionend`，钉宽没被放开；收起期间
+			 * 尾巴没了（思考跑完），观察器又断着，回来后第一次回调只记数——于是字后面空着一截，箭头悬在远处。
+			 * 先放开，再交给观察器。
+			 */
+			box.style.width = "";
 		}
 		const observer = new ResizeObserver(([entry]) => {
 			const width = entry.borderBoxSize?.[0]?.inlineSize ?? content.offsetWidth;
