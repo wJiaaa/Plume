@@ -22,6 +22,9 @@ export interface Followup {
  *
  * 「不写也行」放在最前：这段每次请求都在，模型容易把它读成「每条回复都要有」，于是收尾一律挂上
  * 「继续」。宁缺毋滥是这个功能能不能用的分界。
+ *
+ * 「是人说的话，不是你的提问」单列一条：模型有话要问人时，会把那句问话写成「告诉我……我帮你……」
+ * 塞进标记里——标记不画，问题从回复里消失了，灰字又成了模型在说话。
  */
 export const FOLLOWUPS_PROMPT = `
 
@@ -31,6 +34,7 @@ When your final reply of a turn leaves an obvious next step the user is likely t
 It is not shown in your reply: the app puts it in the user's empty input box as a hint they can accept with Tab. Most replies need none; a generic one is worse than none.
 - Take it from what this reply leaves open: a step not yet verified, the option they would most likely pick among those you offered, the next item of what they asked for.
 - Write it as they would: one complete sentence in their language, specific enough to act on ("Run the login page e2e and paste the first failure", not "run the tests").
+- It is their message to you, never your question or request to them. If you need something from them, ask it in the reply itself and write no hint: their answer is not yours to guess.
 - Never: "continue", thanks or praise, things they did not ask about, or anything after a failure you have not explained.
 - Only in the last reply of a turn, never in a reply that calls tools. Inside it, write \\] for a closing bracket.`;
 
