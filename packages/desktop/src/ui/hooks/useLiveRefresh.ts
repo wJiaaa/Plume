@@ -13,6 +13,8 @@
  *
  * Refreshes once on mount and once more when the turn settles, so the final state is never a
  * poll's width out of date — and on `touchWorkingTree`, for what changes the tree between turns.
+ * And whenever the window comes back to the front: a checkout or an edit made in a terminal beside
+ * it happens while nothing polls, and coming back is when the person looks.
  */
 
 import { useEffect } from "react";
@@ -71,16 +73,19 @@ export function useLiveRefresh(refresh: () => void | Promise<void>, running: boo
 
 		const reread = () => void tick();
 		mounted.add(reread);
+		window.addEventListener("focus", reread);
 		void tick();
 		if (!running) return () => {
 			alive = false;
 			mounted.delete(reread);
+			window.removeEventListener("focus", reread);
 		};
 
 		const timer = setInterval(() => void tick(), ms);
 		return () => {
 			alive = false;
 			mounted.delete(reread);
+			window.removeEventListener("focus", reread);
 			clearInterval(timer);
 		};
 	}, [refresh, running, ms]);

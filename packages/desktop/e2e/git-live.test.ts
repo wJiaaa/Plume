@@ -178,6 +178,27 @@ test("a further edit moves the count again, still mid-turn", async () => {
 	);
 });
 
+/*
+ * The branch chip, from the same reads.
+ *
+ * It was read when the project opened and after a switch from its own menu, and never otherwise —
+ * an agent's `git switch -c` left it naming a branch git had already left, for as long as the
+ * project stayed open. `git switch` here rather than through a tool, for the same reason as the
+ * files above: what is checked out is git's answer, whoever moved it.
+ */
+const chipShows = (branch: string) =>
+	app.evaluate<boolean>(`[...document.querySelectorAll("main button")].some((b) => b.textContent?.trim() === ${JSON.stringify(branch)})`);
+
+test("a branch switched mid-turn reaches the chip before the turn ends", async () => {
+	assert.ok(await chipShows("main"), "the chip starts on main");
+	await exec("git", ["switch", "-c", "feat/mid-turn"], { cwd: project });
+	assert.ok(await poll(() => chipShows("feat/mid-turn"), Boolean, 10_000, 300), "the chip names the new branch");
+	assert.ok(
+		await app.evaluate<boolean>(`Boolean(document.querySelector("main [data-ly-running]"))`),
+		"while the turn is still running",
+	);
+});
+
 test("the polling stops once the turn does", async () => {
 	// Stop the turn, then change the tree and confirm the settled state is still correct.
 	await app.evaluate(`(() => {
@@ -202,4 +223,13 @@ test("the polling stops once the turn does", async () => {
 		after.includes("+5") || after.includes("+6"),
 		`a settled window is not re-reading on a timer (${after.slice(0, 200)})`,
 	);
+});
+
+test("a branch switched in a terminal while idle shows when the window comes back", async () => {
+	await exec("git", ["switch", "-c", "feat/from-terminal"], { cwd: project });
+	// Nothing polls while idle: the chip has no way to know until something asks.
+	await new Promise((r) => setTimeout(r, 2500));
+	assert.ok(await chipShows("feat/mid-turn"), "still the old name with nothing asking");
+	await app.evaluate(`window.dispatchEvent(new Event("focus"))`);
+	assert.ok(await poll(() => chipShows("feat/from-terminal"), Boolean, 5_000, 200), "coming back to the window reads it");
 });

@@ -6,6 +6,7 @@ import { useLiveRefresh } from "../../ui/hooks/useLiveRefresh.ts";
 import { openScopedPanel } from "../dock/index.ts";
 import { useDockScope, useScopedRunning, useScopedWorkspace } from "../../app/session-scope.tsx";
 import { bridge } from "../../services/index.ts";
+import { useApp } from "../../store/index.ts";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 
 /**
@@ -43,6 +44,8 @@ export function ChangeBar() {
 
   const cwd = workspace?.path;
   const isRepo = workspace?.isGitRepo ?? false;
+  const branch = workspace?.branch ?? null;
+  const refreshWorkspace = useApp((s) => s.refreshWorkspace);
 
   const refresh = useCallback(async () => {
     if (!cwd || !isRepo) {
@@ -51,7 +54,15 @@ export function ChangeBar() {
     }
     const next = await bridge.git.stat(cwd);
     setStat({ added: next.added, removed: next.removed, files: next.files });
-  }, [cwd, isRepo]);
+    /*
+     * The branch chip's only news of a checkout made anywhere but the branch menu.
+     *
+     * `workspace.branch` is read when a project opens and after a switch from the menu, nothing
+     * else — so an agent's `git switch -c` or a checkout in a terminal left the chip on the branch
+     * git had already left. This read answers the question anyway (`--branch`), on every tick.
+     */
+    if (next.branch !== branch) void refreshWorkspace(cwd);
+  }, [cwd, isRepo, branch, refreshWorkspace]);
 
   useLiveRefresh(refresh, running);
 
