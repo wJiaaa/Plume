@@ -2,6 +2,53 @@
 
 这个文件由 `pnpm release` 生成，条目来自提交信息。写得含糊的提交在这里也含糊，所以值得在提交时就写清楚。
 
+## [0.10.0](https://github.com/wJiaaa/Plume/releases/tag/v0.10.0) - 2026-11-02
+
+<!-- plume:notes en -->
+
+### New
+
+- **Turn skill groups on or off together in Settings**, and clicking a row no longer opens its `SKILL.md` by accident.
+
+### Changes
+
+- Related work in a turn is shown as one step: browsing and web searches, skill loading, and messages to other sessions no longer split the transcript into one line per call.
+- The line for a loaded skill names the skill, so you can tell which one was used.
+
+### Fixes
+
+- **Export one session's raw records as a `.db` file** from its menu, instead of putting a path on the clipboard.
+- Opening a project folder from Plume now opens that folder in Finder.
+- Branch labels update after a branch switch made outside Plume.
+- The arrow in a side chat no longer sits far away after you return to it.
+- After an interruption while an approval is waiting, the approval reminder stays until it is resolved.
+- Suggested next steps stay in the agent's reply instead of becoming a question that looks like it came from you.
+
+<!-- plume:notes zh-CN -->
+
+<details>
+<summary>中文（简体）</summary>
+
+### 新功能
+
+- **设置里的技能可以按组一键全开或全关**，点一行时不会再误打开它的 `SKILL.md`。
+
+### 调整
+
+- 一轮里的连续工作现在并成一段，浏览器、网络搜索和抓取、加载技能、询问或通知其他会话，不会再把一件活切成一行一行。
+- 加载技能的那一行会写技能名，不再只显示「使用技能」。
+
+### 修复
+
+- **导出单个会话的原始记录时，保存为只含这条会话的 `.db` 文件**，不再把路径塞进剪贴板。
+- 从 Plume 里显示项目文件夹时，访达会直接打开该文件夹。
+- 在终端或其他地方切换分支后，Plume 的分支标签会更新。
+- 侧边聊天切回来后，箭头不再隔着一段空白。
+- 等待批准时被插话打断，插入的工作完成后，仍会提醒原来的批准还在等你。
+- 下一步建议会留在模型的回复里，不再变成一个看起来像你说的提问。
+
+</details>
+
 ## [0.9.55](https://github.com/wJiaaa/Plume/releases/tag/v0.9.55) - 2026-10-29
 
 <!-- plume:notes en -->
