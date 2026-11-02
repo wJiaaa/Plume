@@ -82,7 +82,7 @@ beforeEach(() => {
 					return true;
 				},
 			},
-			git: { generalScratch: async () => "/scratch", stat: async () => ({ added: 0, removed: 0, files: 0 }), branches: async () => ({ local: [], remote: [], current: null }) },
+			git: { generalScratch: async () => "/scratch", stat: async () => ({ branch: "main", added: 0, removed: 0, files: 0 }), branches: async () => ({ local: [], remote: [], current: null }) },
 			workspace: { info: async () => WORKSPACE, reveal: async () => {} },
 			sessions: {
 				transcript: async (): Promise<SessionSnapshot | null> => null,

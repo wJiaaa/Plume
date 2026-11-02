@@ -60,7 +60,7 @@ beforeEach(() => {
 			},
 			subAgents: { list: async () => [] },
 			commands: { list: async () => ({ commands: [], skills: [], agents: [] }) },
-			git: { stat: async () => ({ added: 0, removed: 0, files: 0 }) },
+			git: { stat: async (path: string) => ({ branch: path === BETA.path ? BETA.branch : ALPHA.branch, added: 0, removed: 0, files: 0 }) },
 		},
 	});
 	useApp.setState({
