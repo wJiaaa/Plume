@@ -100,6 +100,23 @@ export function registerSessionsIpc({
 		return picked.filePath;
 	});
 
+	// 同上，路径只从保存对话框来。存成一个只有这条会话的会话库，而不是一份 JSONL：表结构、续写中的片段、花销都在里面。
+	ipcMain.handle("sessions:exportDatabase", async (event, sessionId: string): Promise<string | null> => {
+		const meta = await store.get(sessionId);
+		if (!meta) throw new Error(nativeText("sessions.notFound"));
+		const t = nativeTranslator(readSettings().uiLocale, app.getLocale());
+		const options = {
+			title: t("export.recordsDialogTitle"),
+			defaultPath: join(app.getPath("downloads"), markdownFileName(meta.title, t("export.untitled"), "db")),
+			filters: [{ name: "SQLite", extensions: ["db"] }],
+		};
+		const window = BrowserWindow.fromWebContents(event.sender);
+		const picked = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options);
+		if (picked.canceled || !picked.filePath) return null;
+		await store.exportTo(picked.filePath, sessionId);
+		return picked.filePath;
+	});
+
 	ipcMain.handle("sessions:list", async () => store.listSessions());
 
 	ipcMain.handle("sessions:summary", (_event, sessionId: string) => readSummary(sessionId));

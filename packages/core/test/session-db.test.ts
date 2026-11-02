@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -419,5 +419,37 @@ test("an export is a database of its own, written over what was at the path", as
 			copy.close();
 		}
 		assert.equal(await store.get(meta.id).then((each) => each?.id), meta.id, "the original is untouched");
+	});
+});
+
+test("a session's export holds that session and nothing of the others", async () => {
+	await withStore(async (store, root) => {
+		const meta = await store.create(root, "m");
+		await store.append(meta, { type: "message", message: user("keep me") });
+		const other = await store.create(root, "m");
+		await store.append(other, { type: "message", message: user("leave me") });
+		const target = join(root, "session.db");
+
+		await store.exportTo(target, meta.id);
+
+		assert.ok(!existsSync(`${target}-wal`), "nothing of it lives in a WAL beside it");
+		const copy = new DatabaseSync(target, { readOnly: true });
+		try {
+			assert.deepEqual(copy.prepare("SELECT id FROM sessions").all().map((row) => row.id), [meta.id]);
+			assert.equal(copy.prepare("SELECT COUNT(*) AS n FROM records WHERE body LIKE '%keep me%'").get()?.n, 1);
+			assert.equal(copy.prepare("SELECT COUNT(*) AS n FROM records WHERE session_id <> ?").get(meta.id)?.n, 0);
+		} finally {
+			copy.close();
+		}
+		await mkdir(join(root, "reopened"));
+		const reopened = new SessionStore(join(root, "reopened"));
+		await rename(target, reopened.path);
+		try {
+			assert.equal((await reopened.messages(meta.id)).length, 1, "Plume reads the copy as a session database");
+		} finally {
+			reopened.close();
+		}
+		await assert.rejects(store.exportTo(join(root, "none.db"), "missing"));
+		assert.ok(!existsSync(join(root, "none.db")) && !existsSync(join(root, `none.db.${process.pid}.partial`)), "a failed export leaves nothing behind");
 	});
 });

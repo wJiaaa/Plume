@@ -295,7 +295,7 @@ const RESERVED = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
  * 会话标题当文件名。三个平台里 Windows 最严：`<>:"/\|?*` 和控制字符不能用，结尾不能是点或空格，
  * `CON`、`NUL` 这些名字带不带扩展名都是设备。按最严的来，在哪台机器上存都是同一个名字。
  */
-export function markdownFileName(title: string, fallback: string): string {
+export function markdownFileName(title: string, fallback: string, extension = "md"): string {
 	// 换行、制表先变成空格；剩下的控制字符 Windows 不许有，直接去掉。
 	// oxlint-disable-next-line no-control-regex -- 控制字符正是要去掉的那一类。
 	let name = title.replace(/\s+/g, " ").replace(/[\u0000-\u001f\u007f]/g, "").replace(/[<>:"/\\|?*]/g, "_").trim();
@@ -304,5 +304,5 @@ export function markdownFileName(title: string, fallback: string): string {
 	name = Array.from(name).slice(0, 120).join("").replace(/[. ]+$/, "");
 	if (!name) name = fallback;
 	if (RESERVED.test(name)) name = `_${name}`;
-	return `${name}.md`;
+	return `${name}.${extension}`;
 }

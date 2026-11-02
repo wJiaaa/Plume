@@ -89,6 +89,7 @@ export const METHODS = {
 		trajectoryChanges: "sessions:trajectoryChanges",
 		exportTrajectory: "sessions:exportTrajectory",
 		exportMarkdown: "sessions:exportMarkdown",
+		exportDatabase: "sessions:exportDatabase",
 		forkBefore: "sessions:forkBefore",
 		forkAfter: "sessions:forkAfter",
 		remove: "sessions:remove",

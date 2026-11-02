@@ -724,15 +724,45 @@ export class SessionStore implements SessionStorage {
 	 * It will not write over a file, so it writes beside `path` and is renamed in; a copy that fails
 	 * halfway leaves whatever was at `path` as it was.
 	 */
-	async exportTo(path: string): Promise<void> {
+	async exportTo(path: string, sessionId?: string): Promise<void> {
 		const partial = `${path}.${process.pid}.partial`;
 		await rm(partial, { force: true });
 		try {
-			this.db.prepare("VACUUM INTO ?").run(partial);
+			if (sessionId) this.copySession(sessionId, partial);
+			else this.db.prepare("VACUUM INTO ?").run(partial);
 			await rename(partial, path);
 		} catch (error) {
-			await rm(partial, { force: true });
+			closeSessionDb(partial);
+			for (const suffix of ["", "-wal", "-shm"]) await rm(`${partial}${suffix}`, { force: true });
 			throw error;
+		}
+	}
+
+	/**
+	 * A database of the same shape holding one session's rows, so what opens a whole export opens it.
+	 *
+	 * The copy's own connection reads this file attached, not the other way round: writing from this
+	 * connection would hold the write lock every session queues on for the length of the copy.
+	 */
+	private copySession(sessionId: string, path: string): void {
+		if (!this.metaOf(sessionId)) throw new Error(`会话不存在：${sessionId}`);
+		const out = sessionDb(path);
+		try {
+			out.prepare("ATTACH DATABASE ? AS src").run(this.path);
+			try {
+				// Parents before children: the copy enforces its foreign keys.
+				transaction(out, () => {
+					out.prepare("INSERT INTO sessions SELECT * FROM src.sessions WHERE id = ?").run(sessionId);
+					for (const table of ["records", "partials", "partial_chunks", "live_calls", "spend"]) {
+						out.prepare(`INSERT INTO ${table} SELECT * FROM src.${table} WHERE session_id = ?`).run(sessionId);
+					}
+				});
+			} finally {
+				out.exec("DETACH DATABASE src");
+			}
+		} finally {
+			// Closing folds the WAL into the file, so the one file renamed into place is the whole copy.
+			closeSessionDb(path);
 		}
 	}
 

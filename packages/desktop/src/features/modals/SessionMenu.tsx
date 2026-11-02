@@ -333,10 +333,14 @@ export function SessionMenu({
 						</MenuItem>
 					)}
 					<MenuItem
-						icon={<Copy size={13} strokeWidth={1.8} />}
-						onClick={() =>
-							void copy(bridge.sessions.exportTrajectory(session.id, "jsonl"), t("sessionMenu.recordsExported")).catch((error) => notify(String(error), "error"))
-						}
+						icon={<FileDown size={13} strokeWidth={1.8} />}
+						onClick={() => {
+							onClose();
+							void bridge.sessions
+								.exportDatabase(session.id)
+								.then((path) => path && notify(t("sessionMenu.recordsExported"), "info", undefined, { reveal: path }))
+								.catch((error) => notify(String(error), "error"));
+						}}
 					>
 						{t("sessionMenu.exportRecords")}
 					</MenuItem>

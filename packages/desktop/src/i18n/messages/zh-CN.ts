@@ -1637,7 +1637,7 @@ export const zhCN = {
 	"sessionMenu.copyCwd": "复制工作目录",
 	"sessionMenu.cwdCopied": "已复制工作目录路径",
 	"sessionMenu.exportRecords": "导出原始记录",
-	"sessionMenu.recordsExported": "已导出，文件路径已复制",
+	"sessionMenu.recordsExported": "已导出原始记录",
 	"sessionMenu.exportMarkdown": "导出为 Markdown",
 	"sessionMenu.markdownExported": "已导出为 Markdown",
 	"sessionMenu.copySessionId": "复制会话 ID",

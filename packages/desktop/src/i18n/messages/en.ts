@@ -1458,7 +1458,7 @@ export const en = {
 	"sessionMenu.copyCwd": "Copy the working directory",
 	"sessionMenu.cwdCopied": "Working directory copied",
 	"sessionMenu.exportRecords": "Export raw records",
-	"sessionMenu.recordsExported": "Exported — file path copied",
+	"sessionMenu.recordsExported": "Raw records exported",
 	"sessionMenu.exportMarkdown": "Export as Markdown",
 	"sessionMenu.markdownExported": "Exported as Markdown",
 	"sessionMenu.copySessionId": "Copy the session ID",
