@@ -1191,7 +1191,7 @@ export const zhCN = {
 	"tools.preview": "生成预览",
 	"tools.generateImage": "生成图片",
 	"tools.symbol": "查找符号",
-	"tools.skill": "运行技能",
+	"tools.skill": "使用技能",
 	"tools.learn": "学习",
 	"tools.recall": "回忆",
 	"tools.lsp": "查符号",

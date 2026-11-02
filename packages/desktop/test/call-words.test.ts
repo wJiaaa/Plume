@@ -37,3 +37,9 @@ test("清单并在一段活里时那一行不点名它；只有清单时照旧�
 	assert.equal(describeCalls([call(todos([])), bash("a"), call(todos([]))]), "执行命令");
 	assert.equal(describeCalls([call(todos([])), call(todos([]))]), "更新清单 2 个");
 });
+
+test("Skill 并在一段活里时那一行说出是哪一份", () => {
+	const skill = (id: string, name: string) => ({ block: { type: "toolCall", id, name: "skill", arguments: { name } }, stopReason: "toolUse" }) as Call;
+	assert.equal(describeCalls([skill("s", "code-style"), bash("a")]), "使用技能 code-style、执行命令");
+	assert.equal(describeCalls([skill("s", "code-style"), skill("t", "review")]), "使用技能 2 个");
+});

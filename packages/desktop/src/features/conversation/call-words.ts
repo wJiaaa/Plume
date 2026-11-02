@@ -171,7 +171,9 @@ function describeTodos(args: unknown): string {
 
 /** The file a call is about, when it is about one — the part worth naming in a summary. */
 function subjectOf(block: ToolCallBlock): string | undefined {
-  const { path, url, to } = (block.arguments ?? {}) as { path?: unknown; url?: unknown; to?: unknown };
+  const { path, url, to, name } = (block.arguments ?? {}) as { path?: unknown; url?: unknown; to?: unknown; name?: unknown };
+  // Skill 并在一段活里时，那一行只剩「使用技能」，说不出加载的是哪一份。
+  if (block.name === "skill") return typeof name === "string" && name.trim() ? name.trim() : undefined;
   // Either separator: a Windows path split on "/" alone came back whole, drive letter and all.
   if (typeof path === "string") return baseName(path);
   // 只认会话之间那几个：MCP 工具也常有 `to`（收件人），单独一次调用时会被说成「使用工具 alice@…」。

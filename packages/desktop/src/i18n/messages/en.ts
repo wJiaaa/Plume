@@ -1012,7 +1012,7 @@ export const en = {
 	"tools.preview": "Built previews",
 	"tools.generateImage": "Generated images",
 	"tools.symbol": "Looked up symbols",
-	"tools.skill": "Ran skill",
+	"tools.skill": "Used skill",
 	"tools.learn": "Learned",
 	"tools.recall": "Recalled",
 	"tools.lsp": "Looked up",

@@ -92,7 +92,7 @@ test("更新清单并进前后的那段活，不自己占一行", () => {
 	assert.deepEqual(items(blocks[1]), ["step(todo_write,think,symbol,grep,think,todo_write)"]);
 	const step = blocks[1].items[0];
 	assert.ok(step.kind === "step" && step.step.category === "explore", "清单开的头，这一段按后面的活归类");
-	assert.deepEqual(items(turnBlocks([ask("列个计划", 0), work(["todo_write"]), work(["skill"])])[1]), ["step(todo_write)", "step(skill)"], "只有清单时照旧一行；不并进 Skill");
+	assert.deepEqual(items(turnBlocks([ask("列个计划", 0), work(["todo_write"]), work(["recall"])])[1]), ["step(todo_write)", "step(recall)"], "只有清单时照旧一行；不并进单独成行的工具");
 });
 
 test("一段活往后长，它的 key 不变", () => {
@@ -155,17 +155,23 @@ test("探索、终端、文件更改挨在一起合成一行：改失败了读�
 	// b784f76e 那一段：edit 失败 → sed -n 看一眼 → python 改 → edit 失败 → read → edit。
 	const list = [ask("改一下", 0), work(["edit"]), shell("sed -n 168,172p help.ts"), shell("python3 - <<'EOF'\nopen('help.ts','w')\nEOF"), work(["edit", "read", "edit"]), work(["browser_open"]), work(["grep"])];
 	assert.deepEqual(items(turnBlocks(list)[1]), ["step(edit,bash,bash,edit,read,edit,browser_open,grep)"], "接着去页面上看一眼，也还是这一段");
-	const solo = [ask("改一下", 0), work(["read", "skill", "skill", "edit", "todo_write", "todo_write", "ask_user", "recall", "image_generate", "read"])];
+	const solo = [ask("改一下", 0), work(["read", "recall", "recall", "edit", "todo_write", "todo_write", "ask_user", "image_generate", "read"])];
 	assert.deepEqual(
 		items(turnBlocks(solo)[1]),
-		["step(read)", "step(skill,skill)", "step(edit,todo_write,todo_write)", "step(ask_user)", "step(recall)", "step(image_generate)", "step(read)"],
+		["step(read)", "step(recall,recall)", "step(edit,todo_write,todo_write)", "step(ask_user)", "step(image_generate)", "step(read)"],
 		"其余工具只和同一种合",
 	);
-	const peer = [ask("交给它", 0), work(["read", "list_sessions", "notify_session", "edit", "ask_session", "wait_for_session", "reply_session", "bash", "skill", "notify_session"])];
+	const peer = [ask("交给它", 0), work(["read", "list_sessions", "notify_session", "edit", "ask_session", "wait_for_session", "reply_session", "bash", "recall", "notify_session"])];
 	assert.deepEqual(
 		items(turnBlocks(peer)[1]),
-		["step(read,list_sessions,notify_session,edit,ask_session,wait_for_session,reply_session,bash)", "step(skill)", "step(notify_session)"],
+		["step(read,list_sessions,notify_session,edit,ask_session,wait_for_session,reply_session,bash)", "step(recall)", "step(notify_session)"],
 		"和别的会话往来也是这段活里的一步",
+	);
+	const skill = [ask("照规范改", 0), work(["skill", "read", "skill", "edit", "ask_user", "skill", "skill"])];
+	assert.deepEqual(
+		items(turnBlocks(skill)[1]),
+		["step(skill,read,skill,edit)", "step(ask_user)", "step(skill,skill)"],
+		"加载 Skill 也是这段活里的一步",
 	);
 	const mcp = [ask("查一下", 0), work(["mcp__a__x", "mcp__b__y", "read", "mcp__a__x"])];
 	assert.deepEqual(items(turnBlocks(mcp)[1]), ["step(mcp__a__x,mcp__b__y)", "step(read)", "step(mcp__a__x)"], "MCP 不论哪个服务器都是一类，只和 MCP 合");
@@ -369,19 +375,19 @@ test("在读、跑、改、操作网页那一段中间回来的后台命令结�
 	assert.deepEqual(items(blocks[1]), ["step(bash,job,think,read,browser_act)", "assistant"]);
 });
 
-test("回来时不在那样一段里的后台命令结果自己一行：Skill 这类调用后面、说完话之后", () => {
-	assert.deepEqual(items(turnBlocks([ask("跑一下", 0), work(["bash", "skill"]), returned(2), work(1)])[1]), ["step(bash)", "step(skill)", "user", "step(read)"]);
+test("回来时不在那样一段里的后台命令结果自己一行：回忆这类调用后面、说完话之后", () => {
+	assert.deepEqual(items(turnBlocks([ask("跑一下", 0), work(["bash", "recall"]), returned(2), work(1)])[1]), ["step(bash)", "step(recall)", "user", "step(read)"]);
 	assert.deepEqual(items(turnBlocks([ask("跑一下", 0), work(1), say("等测试。", 2), returned(3), work(1)])[1]), ["step(read)", "assistant", "user", "step(read)"]);
 });
 
 test("挨着自己一行的后台命令结果并成一行，key 跟第一条走", () => {
-	const blocks = turnBlocks([ask("跑一下", 0), work(["skill"]), returned(2), returned(3), returned(4), work(1)]);
-	assert.deepEqual(items(blocks[1]), ["step(skill)", "user", "step(read)"]);
+	const blocks = turnBlocks([ask("跑一下", 0), work(["recall"]), returned(2), returned(3), returned(4), work(1)]);
+	assert.deepEqual(items(blocks[1]), ["step(recall)", "user", "step(read)"]);
 	const row = blocks[1].items[1];
 	assert.ok(row.kind === "run" && row.run.kind === "message" && row.run.message.role === "user");
 	assert.deepEqual(row.run.message.delivery?.map((report) => report.id), ["j2", "j3", "j4"], "三条都在这一行里");
 	assert.equal(row.key, runKey(returned(2)), "再回来一条，这一行不卸掉重挂");
-	assert.deepEqual(items(turnBlocks([ask("派出去", 0), work(["skill"]), returned(2), returned(3, true)])[1]), ["step(skill)", "user", "user"], "子代理的结果不并进来");
+	assert.deepEqual(items(turnBlocks([ask("派出去", 0), work(["recall"]), returned(2), returned(3, true)])[1]), ["step(recall)", "user", "user"], "子代理的结果不并进来");
 });
 
 test("子代理的结果照旧单独一行：后面那段话是就着它说的", () => {
