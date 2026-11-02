@@ -97,7 +97,7 @@ export interface DocumentData {
 }
 
 export interface WorkspaceApi {
-	/** Show the project directory in the OS file manager. */
+	/** Open a directory in the OS file manager; a file is shown selected in its folder. */
 	reveal(path: string): Promise<void>;
 	pick(): Promise<WorkspaceInfo | null>;
 	info(path: string): Promise<WorkspaceInfo | null>;

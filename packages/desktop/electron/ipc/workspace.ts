@@ -6,6 +6,7 @@
  * a list of things to remember to update.
  */
 
+import { stat } from "node:fs/promises";
 import { app, ipcMain, dialog, shell } from "electron";
 import type { Settings } from "@plume/core";
 import type { WorkspaceInfo } from "@plume/contract";
@@ -37,6 +38,8 @@ export function registerWorkspaceIpc({ workspaceInfo }: WorkspaceIpcDeps): void 
 	ipcMain.handle("workspace:info", async (_event, path: string) => workspaceInfo(path));
 
 	ipcMain.handle("workspace:reveal", async (_event, path: string) => {
-		shell.showItemInFolder(path);
+		// 文件夹直接打开进去：`showItemInFolder` 只在上一级里把它选中，要找项目里的东西还得再双击一次。
+		if ((await stat(path).catch(() => null))?.isDirectory()) await shell.openPath(path);
+		else shell.showItemInFolder(path);
 	});
 }
