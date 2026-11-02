@@ -1,6 +1,8 @@
 import type { Plugin, Skill, SkillCandidate } from "@plume/core";
-import { Sparkles, WandSparkles } from "../../ui/icons/index.ts";
+import { ExternalLink, Sparkles, WandSparkles } from "../../ui/icons/index.ts";
 import { useCallback, useEffect, useState } from "react";
+import { Button } from "../../ui/primitives/Button.tsx";
+import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import { RowDeleteButton } from "../../ui/primitives/RowDeleteButton.tsx";
 import { useDefinitionRemoval } from "./useDefinitionRemoval.tsx";
 import { ScrollText } from "../../ui/scroll/ScrollText.tsx";
@@ -68,14 +70,17 @@ export function SkillsSettings({ filter }: { filter: string }) {
 	 */
 	const disabledSkills = settings?.disabledSkills ?? [];
 	const skillOn = (skill: ScannedSkill) => !disabledSkills.includes(skill.path) && !(skill.disabledBy && disabledSkills.includes(skill.disabledBy));
-	const setSkillOn = (skill: ScannedSkill, on: boolean) => {
+	// 一组一起拨也走这里：一次写设置，而不是每行各存一遍、后一次盖掉前一次。
+	const setSkillsOn = (targets: ScannedSkill[], on: boolean) => {
 		if (!settings) return;
 		const next = new Set(settings.disabledSkills);
-		if (on) {
-			next.delete(skill.path);
-			if (skill.disabledBy) next.delete(skill.disabledBy);
-		} else {
-			next.add(skill.path);
+		for (const skill of targets) {
+			if (on) {
+				next.delete(skill.path);
+				if (skill.disabledBy) next.delete(skill.disabledBy);
+			} else {
+				next.add(skill.path);
+			}
 		}
 		void saveSettings({ ...settings, disabledSkills: [...next] });
 	};
@@ -177,55 +182,67 @@ export function SkillsSettings({ filter }: { filter: string }) {
 				/*
 				 * 技能页：每组一张卡片，行之间一条细线，名字不用等宽；插件的技能用插件自己的
 				 * 图标，其余用同一个魔杖。`仅手动调用` 仍然挨着名字——它改变模型会不会用，不是来源。
-				 * 插件的技能没有单独开关，跟着插件走。
+				 * 插件的技能没有单独开关，跟着插件走，所以组标题上的「全部关闭」也只给散装技能的组。
+				 *
+				 * 行本身不可点：整行点开 SKILL.md 时，想去拨开关、想选中描述的那一下都会误开一个编辑器。
+				 * 打开文件是悬停才出现的那颗按钮，和删除并排。
 				 */
 				<div className="space-y-6">
-					{groupSkills(skills, scan?.plugins ?? []).map((group) => (
-						<section key={group.key} className="space-y-3" data-skill-group={group.key}>
-							<h3 className="flex h-7 items-center gap-1.5 text-body font-medium text-ink">
-								{group.title}
-								<span className="text-label font-normal text-ink-muted tabular-nums">{group.skills.length}</span>
-							</h3>
-							<Card>
-								{group.skills.map((skill, index) => (
-									<div key={skill.path}>
-										{index > 0 && <div aria-hidden className="h-px bg-line" />}
-										<ListRow
-											flush
-											icon={
-												group.plugin ? (
-													<PluginIcon logo={group.plugin.manifest.interface?.logo} brandColor={group.plugin.manifest.interface?.brandColor} kind="plugin" size={36} />
-												) : (
-													<span className="flex size-9 items-center justify-center rounded-lg bg-shell text-ink-muted">
-														<WandSparkles size={16} strokeWidth={1.8} />
+					{groupSkills(skills, scan?.plugins ?? []).map((group) => {
+						const anyOn = group.skills.some(skillOn);
+						return (
+							<section key={group.key} className="space-y-3" data-skill-group={group.key}>
+								<div className="flex h-7 items-center gap-1.5">
+									<h3 className="flex items-center gap-1.5 text-body font-medium text-ink">
+										{group.title}
+										<span className="text-label font-normal text-ink-muted tabular-nums">{group.skills.length}</span>
+									</h3>
+									{!group.plugin && (
+										<Button variant="ghost" size="sm" className="ml-auto" onClick={() => setSkillsOn(group.skills, !anyOn)}>
+											{anyOn ? t("skills.disableAll") : t("skills.enableAll")}
+										</Button>
+									)}
+								</div>
+								<Card>
+									{group.skills.map((skill, index) => (
+										<div key={skill.path}>
+											{index > 0 && <div aria-hidden className="h-px bg-line" />}
+											<ListRow
+												flush
+												icon={
+													group.plugin ? (
+														<PluginIcon logo={group.plugin.manifest.interface?.logo} brandColor={group.plugin.manifest.interface?.brandColor} kind="plugin" size={36} />
+													) : (
+														<span className="flex size-9 items-center justify-center rounded-lg bg-shell text-ink-muted">
+															<WandSparkles size={16} strokeWidth={1.8} />
+														</span>
+													)
+												}
+												title={
+													<span className="flex min-w-0 items-center gap-2">
+														<ScrollText text={skill.name} className="min-w-0 font-medium" />
+														{skill.disableModelInvocation && <Badge tone="accent">{t("skills.manualOnly")}</Badge>}
 													</span>
-												)
-											}
-											title={
-												<span className="flex min-w-0 items-center gap-2">
-													<ScrollText text={skill.name} className="min-w-0 font-medium" />
-													{skill.disableModelInvocation && <Badge tone="accent">{t("skills.manualOnly")}</Badge>}
-												</span>
-											}
-											detail={skill.description}
-											actions={
-												skill.pluginId ? undefined : (
+												}
+												detail={skill.description}
+												actions={
 													<>
-														<Toggle checked={skillOn(skill)} onChange={(on) => setSkillOn(skill, on)} ariaLabel={t("market.enableNamed", { name: skill.name })} />
-														{skill.source !== "builtin" && (
+														<span className="ly-row-action relative flex shrink-0">
+															<IconButton label={t("skills.openNamed", { name: skill.name })} icon={<ExternalLink size={14} strokeWidth={1.8} />} onClick={() => void bridge.system.openPath(skill.path)} />
+														</span>
+														{!skill.pluginId && skill.source !== "builtin" && (
 															<RowDeleteButton label={t("skills.deleteNamed", { name: skill.name })} pending={removal.pending.has(skill.path)} onClick={() => removal.ask(skill.name, skill.path)} />
 														)}
 													</>
-												)
-											}
-											onOpen={() => void bridge.system.openPath(skill.path)}
-											openLabel={t("skills.openNamed", { name: skill.name })}
-										/>
-									</div>
-								))}
-							</Card>
-						</section>
-					))}
+												}
+												control={skill.pluginId ? undefined : <Toggle checked={skillOn(skill)} onChange={(on) => setSkillsOn([skill], on)} ariaLabel={t("market.enableNamed", { name: skill.name })} />}
+											/>
+										</div>
+									))}
+								</Card>
+							</section>
+						);
+					})}
 				</div>
 			)}
 			{removal.element}

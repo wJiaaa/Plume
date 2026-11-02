@@ -885,6 +885,8 @@ export const en = {
 	"skills.deleteNamed": "Delete the skill {name}",
 	"skills.openNamed": "Open {name}",
 	"skills.manualOnly": "Only when asked for",
+	"skills.disableAll": "Turn all off",
+	"skills.enableAll": "Turn all on",
 	"common.search": "Search",
 	"common.more": "More",
 	"common.plugins": "Plugins",

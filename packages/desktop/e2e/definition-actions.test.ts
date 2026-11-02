@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { after, afterEach, before, test, type TestContext } from "node:test";
 import { startApp, type RunningApp } from "./app.ts";
-import { click, frames, shot, until, withTouchViewport } from "./drive.ts";
+import { click, frames, poll, shot, until, withTouchViewport } from "./drive.ts";
 import { settleSharedWindow } from "./shared-window.ts";
 
 let app: RunningApp;
@@ -123,11 +123,27 @@ test("loose skill rows delete their own definitions while MCP servers and hooks 
 	await click(app, 'button[aria-label="查看的项目"]'); await click(app, '[role="menuitem"]', "行操作验证");
 	await select("技能", false, true);
 	await until(app, `document.querySelector('[aria-label="删除技能 loose-qa"]')`);
+	// 行本身不再是打开 SKILL.md 的按钮，打开文件是悬停出现的那颗，和删除并排。
+	const row = `[...document.querySelectorAll('[data-row-actions]')].find(row=>row.textContent.includes('loose-qa'))`;
+	assert.equal(await app.evaluate(`!!${row}.querySelector(':scope > button')`), false);
+	assert.ok(await app.evaluate(`!!${row}.querySelector('.ly-row-action [aria-label="打开 loose-qa"]')`));
+	// 组标题上的一颗按钮关掉整组，再点一次全部打开。
+	await app.evaluate(`${row}.closest('[data-skill-group]').setAttribute('data-test-group','')`);
+	const switches = `[...document.querySelectorAll('[data-test-group] [role="switch"]')]`;
+	const ours = (paths: string[]) => paths.some((path) => path.includes(`${id}-skill`));
+	const disabled = async () => (JSON.parse(await readFile(join(app.home, "settings.json"), "utf8")).disabledSkills ?? []) as string[];
+	await click(app, "[data-test-group] button", "全部关闭");
+	await until(app, `${switches}.every(s=>s.getAttribute('aria-checked')==='false')`);
+	assert.ok(ours(await poll(disabled, ours)));
+	await shot(app, "skills-group-off");
+	await click(app, "[data-test-group] button", "全部开启");
+	await until(app, `${switches}.every(s=>s.getAttribute('aria-checked')==='true')`);
+	assert.ok(!ours(await poll(disabled, (paths) => !ours(paths))));
 	trashed.push(basename(dirname(skill)));
 	await click(app, '[aria-label="删除技能 loose-qa"]'); await select(TO_TRASH);
 	await until(app, `!document.querySelector('[aria-label="删除技能 loose-qa"]')`);
 	await assert.rejects(access(dirname(skill)));
-	assert.equal(await app.evaluate(`[...document.querySelectorAll('[data-row-actions]')].filter(row=>row.textContent.includes('内置')).some(row=>row.querySelector('.ly-row-action'))`), false);
+	assert.equal(await app.evaluate(`[...document.querySelectorAll('[data-row-actions]')].filter(row=>row.textContent.includes('内置')).some(row=>row.querySelector('[aria-label^="删除技能"]'))`), false);
 	/*
 	 * A server is a card now (McpSettings' ServerCard), and its delete is a row of the card's ⋯ menu
 	 * rather than a button that shows on hover. The dialog is named so that a click landing on some

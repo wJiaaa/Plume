@@ -1064,6 +1064,8 @@ export const zhCN = {
 	"skills.deleteNamed": "删除技能 {name}",
 	"skills.openNamed": "打开 {name}",
 	"skills.manualOnly": "仅手动调用",
+	"skills.disableAll": "全部关闭",
+	"skills.enableAll": "全部开启",
 	"common.search": "搜索",
 	"common.more": "更多操作",
 	"common.plugins": "插件",
