@@ -178,6 +178,7 @@ export function describeCall(toolName: string, summary: string | undefined, subj
  */
 export function toolCategory(toolName: string, args?: unknown): string {
 	if (toolName.startsWith("browser_")) return "browser";
+	if (PEER_TOOLS.has(toolName)) return "peer";
 	if (toolName === "bash") {
 		const command = (args as { command?: unknown } | undefined)?.command;
 		return typeof command === "string" && isShellRead(command) ? "explore" : "terminal";

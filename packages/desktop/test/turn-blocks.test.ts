@@ -155,11 +155,17 @@ test("探索、终端、文件更改挨在一起合成一行：改失败了读�
 	// b784f76e 那一段：edit 失败 → sed -n 看一眼 → python 改 → edit 失败 → read → edit。
 	const list = [ask("改一下", 0), work(["edit"]), shell("sed -n 168,172p help.ts"), shell("python3 - <<'EOF'\nopen('help.ts','w')\nEOF"), work(["edit", "read", "edit"]), work(["browser_open"]), work(["grep"])];
 	assert.deepEqual(items(turnBlocks(list)[1]), ["step(edit,bash,bash,edit,read,edit,browser_open,grep)"], "接着去页面上看一眼，也还是这一段");
-	const solo = [ask("改一下", 0), work(["read", "skill", "skill", "edit", "todo_write", "todo_write", "ask_user", "notify_session", "notify_session", "ask_session", "recall", "image_generate", "list_sessions", "read"])];
+	const solo = [ask("改一下", 0), work(["read", "skill", "skill", "edit", "todo_write", "todo_write", "ask_user", "recall", "image_generate", "read"])];
 	assert.deepEqual(
 		items(turnBlocks(solo)[1]),
-		["step(read)", "step(skill,skill)", "step(edit,todo_write,todo_write)", "step(ask_user)", "step(notify_session,notify_session)", "step(ask_session)", "step(recall)", "step(image_generate)", "step(list_sessions)", "step(read)"],
+		["step(read)", "step(skill,skill)", "step(edit,todo_write,todo_write)", "step(ask_user)", "step(recall)", "step(image_generate)", "step(read)"],
 		"其余工具只和同一种合",
+	);
+	const peer = [ask("交给它", 0), work(["read", "list_sessions", "notify_session", "edit", "ask_session", "wait_for_session", "reply_session", "bash", "skill", "notify_session"])];
+	assert.deepEqual(
+		items(turnBlocks(peer)[1]),
+		["step(read,list_sessions,notify_session,edit,ask_session,wait_for_session,reply_session,bash)", "step(skill)", "step(notify_session)"],
+		"和别的会话往来也是这段活里的一步",
 	);
 	const mcp = [ask("查一下", 0), work(["mcp__a__x", "mcp__b__y", "read", "mcp__a__x"])];
 	assert.deepEqual(items(turnBlocks(mcp)[1]), ["step(mcp__a__x,mcp__b__y)", "step(read)", "step(mcp__a__x)"], "MCP 不论哪个服务器都是一类，只和 MCP 合");
