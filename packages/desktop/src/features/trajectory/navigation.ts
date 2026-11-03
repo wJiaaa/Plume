@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { openScopedPanel } from "../../dock/index.ts";
+import { openScopedPanel } from "../dock/index.ts";
 
 export const useTraceFocus = create<{ sessionId: string; correlationId: string; nonce: number }>(() => ({ sessionId: "", correlationId: "", nonce: 0 }));
 

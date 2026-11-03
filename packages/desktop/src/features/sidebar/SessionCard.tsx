@@ -23,7 +23,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 
 import type { SessionMeta, Usage } from "@plume/core";
 import { freshTokens } from "@plume/core/tokens";
-import { formatTokens } from "../conversation/index.ts";
+import { formatTokens } from "../../lib/format-tokens.ts";
 import { formatCost } from "../settings/index.ts";
 import { hoverLayersSuppressed, onHoverLayersDismissed } from "../../ui/overlay/hover-layers.ts";
 import { chromeTop } from "../../ui/overlay/chrome-top.ts";

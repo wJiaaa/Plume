@@ -2,9 +2,9 @@
  * Colouring the two things these panels actually show: a shell command, and a JSON argument.
  *
  * The editor's highlighter is a CodeMirror grammar loaded on demand — right for a file, wrong here.
- * A panel row must colour a twenty-character command the instant it opens, and CodeMirror ships no
- * shell grammar at all, so the alternative was a dependency and an async load for something a small
- * scanner does synchronously and exactly.
+ * A panel row must colour a twenty-character command the instant it opens, and the editor's shell
+ * grammar is a legacy mode loaded on demand — an async load for something a small scanner does
+ * synchronously and exactly.
  *
  * The categories are deliberately few. A command line is worth reading for four things: what is
  * being run, what is being passed to it, which parts are literal text, and where one command ends

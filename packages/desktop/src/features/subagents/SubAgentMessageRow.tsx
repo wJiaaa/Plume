@@ -10,7 +10,7 @@
  *
  * 用户那一侧分两种人说的话。派它出去的那个 Agent 说的（开头那份任务、续跑时补的一句）画成一张
  * 任务卡片——它不是看着面板的人说的，画成右边的气泡等于替人认领了一段他没写过的话。人自己在操控
- * 框里说的，画成和侧边聊天同一个气泡：认得 `displayText`，附件是句子里的标签，不是整篇正文。
+ * 框里说的，画成 `SpokenBubble`：认得 `displayText`，附件是句子里的标签，不是整篇正文。
  */
 
 import { translate } from "../../i18n/translate.ts";
@@ -26,7 +26,7 @@ import {
 	runKey,
 	segments,
 	SpokenBubble,
-	spokenText,
+	stepsOf,
 	ToolRun,
 	turnBlocks,
 	TurnWork,
@@ -34,6 +34,7 @@ import {
 	WorkStep,
 	type Run,
 } from "../conversation/index.ts";
+import { spokenText } from "../../lib/spoken.ts";
 import { useApp } from "../../store/index.ts";
 import { Markdown } from "../markdown/index.ts";
 import { ThinkingBlock } from "../conversation/index.ts";
@@ -91,11 +92,7 @@ export const SubAgentTranscript = memo(function SubAgentTranscript({
 	const draw = (run: Run): ReactNode => {
 		if (run.kind === "model") return <ModelSwitchRow key={runKey(run)} from={run.from} to={run.to} />;
 
-		if (run.kind === "tools") {
-			// Which run is being worked on is `grouping.ts`'s answer; whether anyone is working on
-			// it at all is this panel's. The same pair as in `Conversation`.
-			return <ToolRun key={runKey(run)} calls={run.calls} live={Boolean(isLive && run.live)} runs={toolRuns} shown={run.shown} />;
-		}
+		if (run.kind === "tools") return <ToolRun key={runKey(run)} calls={run.calls} runs={toolRuns} />;
 
 		// 压缩命令和重连标记只在主会话里有：`runs(messages)` 没给它们。
 		if (run.kind !== "message") return null;
@@ -117,7 +114,7 @@ export const SubAgentTranscript = memo(function SubAgentTranscript({
 			}
 			return (
 				<div key={runKey(run)} className="group/msg ly-enter flex flex-col items-end">
-					{/* 和侧边聊天同一个气泡——见 `SpokenBubble`。 */}
+					{/* 人在操控框里说的话——见 `SpokenBubble`。 */}
 					<SpokenBubble message={message} />
 					<MessageActions timestamp={message.timestamp} text={spokenText(message)} className="mt-1 pr-1" />
 				</div>
@@ -126,7 +123,7 @@ export const SubAgentTranscript = memo(function SubAgentTranscript({
 
 		if (message.role === "assistant") {
 			/*
-			 * 按段画，和主会话的 `rows.tsx` 一样：夹在两段话中间的那几次调用收成一行。
+			 * 按段画：夹在两段话中间的那几次调用和排在最后的一样，收成一段活（`WorkStep`）。
 			 *
 			 * 这里从前只认思考和文字，别的一律 `null`——而一条回复里「先说两句、调几个工具、再说两
 			 * 句、再调」是常事，排在最后的那几次归下面那一行画，夹在中间的就这么不见了。面板上看起来
@@ -136,12 +133,11 @@ export const SubAgentTranscript = memo(function SubAgentTranscript({
 				<div key={runKey(run)} className="ly-enter flex flex-col gap-2.5">
 					{segments(message.content.slice(from, upTo)).map((segment, position) => {
 						if (segment.kind === "tools") {
+							const calls = segment.blocks.map((block) => ({ block, stopReason: message.stopReason }));
 							return (
-								<ToolRun
-									key={`tools-${from + position}`}
-									calls={segment.blocks.map((block) => ({ block, stopReason: message.stopReason }))}
-									runs={toolRuns}
-								/>
+								<Fragment key={`tools-${from + position}`}>
+									{stepsOf(calls).map((step) => <WorkStep key={step.key} step={step} live={false} draw={draw} runs={toolRuns} />)}
+								</Fragment>
 							);
 						}
 						const { block, index, last } = segment;

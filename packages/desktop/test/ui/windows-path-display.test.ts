@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createElement as h } from "react";
 
-import { ToolRun } from "../../src/features/conversation/runs.tsx";
+import { WorkStep } from "../../src/features/conversation/WorkStep.tsx";
 import { SessionCard } from "../../src/features/sidebar/SessionCard.tsx";
 import { I18nProvider } from "../../src/i18n/index.ts";
 import { mount } from "../helpers/mount.ts";
@@ -38,11 +38,14 @@ test("会话悬停卡片的文件夹行只写文件夹名", async () => {
 });
 
 test("工具折叠头只写文件名", async () => {
+	// 一次调用前面想过，这一段才折成一行、说的是总的那句；只有一次调用的那一行说的是相对工作区的路径。
 	const call = {
-		block: { type: "toolCall", id: "read-1", name: "read", arguments: { path: "C:\\repo\\src\\foo.ts" } },
-		stopReason: "toolUse",
+		block: { type: "toolCall" as const, id: "read-1", name: "read", arguments: { path: "C:\\repo\\src\\foo.ts" } },
+		stopReason: "toolUse" as const,
 	};
-	const view = await mount(h(I18nProvider, { locale: "zh-CN", children: h(ToolRun, { calls: [call] as never }) }));
+	const thought = { kind: "thinking" as const, run: { kind: "message", message: { role: "assistant", content: [] }, upTo: 0 } as never };
+	const step = { key: "step-read-1", category: "explore", calls: [call], members: [thought, { kind: "call" as const, call }] };
+	const view = await mount(h(I18nProvider, { locale: "zh-CN", children: h(WorkStep, { step, live: false, draw: () => null }) }));
 	try {
 		assert.ok(view.text().includes("foo.ts"), view.text());
 		assert.ok(!view.text().includes("C:\\"), `整条路径漏出来了：${view.text()}`);

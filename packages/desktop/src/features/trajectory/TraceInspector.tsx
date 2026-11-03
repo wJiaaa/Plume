@@ -1,14 +1,14 @@
-import { translate } from "../../../i18n/translate.ts";
+import { translate } from "../../i18n/translate.ts";
 import { useEffect, useRef, useState } from "react";
 import { SourceIcon } from "./SourceIcon.tsx";
-import { ArrowUpRight, ArrowLeft, ChevronLeft, ChevronRight, Ellipsis, FileText, ScrollText as OutputIcon } from "../../../ui/icons/index.ts";
-import { openViewer } from "../../image/index.ts";
+import { ArrowUpRight, ArrowLeft, ChevronLeft, ChevronRight, Ellipsis, FileText, ScrollText as OutputIcon } from "../../ui/icons/index.ts";
+import { openViewer } from "../image/index.ts";
 import { SOURCE_LABEL, STATUS_LABEL, entryKey, type Entry } from "@plume/core/trajectory-view";
-import { IconButton } from "../../../ui/primitives/IconButton.tsx";
-import { ScrollText } from "../../../ui/scroll/ScrollText.tsx";
-import { Popover, MenuBody, MenuItem, usePopover, type Anchor } from "../../../ui/overlay/Popover.tsx";
-import { TraceText } from "../detail/TraceText.tsx";
-import { useI18n } from "../../../i18n/index.ts";
+import { IconButton } from "../../ui/primitives/IconButton.tsx";
+import { ScrollText } from "../../ui/scroll/ScrollText.tsx";
+import { Popover, MenuBody, MenuItem, usePopover, type Anchor } from "../../ui/overlay/Popover.tsx";
+import { TraceText } from "../conversation/index.ts";
+import { useI18n } from "../../i18n/index.ts";
 
 export function TraceInspector({ anchor, entry, all, query, onSelect, onClose, onExport, onOutput, previous, next }: {
 	anchor: Anchor; previous?: () => void; next?: () => void;

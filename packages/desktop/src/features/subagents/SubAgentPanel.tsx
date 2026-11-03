@@ -23,7 +23,7 @@ import { useI18n } from "../../i18n/index.ts";
 import { useApp } from "../../store/index.ts";
 import { rosterOrder, useSubAgents } from "../../store/subAgents.ts";
 import { useScopedSessionId, useScopedSubAgents } from "../../app/session-scope.tsx";
-import { BackToLatest } from "../conversation/index.ts";
+import { BackToLatest } from "../../ui/scroll/BackToLatest.tsx";
 import {
 	attachmentMeta,
 	ComposerSend,

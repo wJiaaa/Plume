@@ -41,8 +41,9 @@ async function load(nonce: number, cwd: string): Promise<void> {
  * invites callers to iterate over every server on every render.
  */
 export function useMcpMark(): (toolName: string) => McpMark | null {
-	const settings = useApp((s) => s.settings) as Settings | null;
-	const workspace = useApp((s) => s.workspace);
+	// 只订阅用得上的那两样：订阅整份设置，改任何一项设置都会把转录里每一行工具重画一遍。
+	const servers = useApp((s) => (s.settings as Settings | null)?.mcpServers);
+	const cwd = useApp((s) => s.workspace?.path ?? "");
 	const nonce = useApp((s) => s.extensionsNonce);
 	const [, redraw] = useState(0);
 
@@ -55,7 +56,7 @@ export function useMcpMark(): (toolName: string) => McpMark | null {
 			 * server whose bundle shipped no icon. Nothing in a transcript should depend on this
 			 * succeeding, so there is nothing to report and nothing to retry.
 			 */
-			inFlight = load(nonce, workspace?.path ?? "")
+			inFlight = load(nonce, cwd)
 				.catch(() => {})
 				.finally(() => {
 					inFlight = null;
@@ -64,8 +65,7 @@ export function useMcpMark(): (toolName: string) => McpMark | null {
 		return () => {
 			listeners.delete(listener);
 		};
-	}, [nonce, workspace?.path]);
+	}, [nonce, cwd]);
 
-	const servers = settings?.mcpServers ?? [];
-	return (toolName: string) => markFor(toolName, servers, cached?.marks ?? {});
+	return (toolName: string) => markFor(toolName, servers ?? [], cached?.marks ?? {});
 }

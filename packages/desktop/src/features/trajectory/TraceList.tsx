@@ -1,12 +1,12 @@
-import { translate } from "../../../i18n/translate.ts";
-import { ArrowDown, ChevronRight } from "../../../ui/icons/index.ts";
+import { translate } from "../../i18n/translate.ts";
+import { ArrowDown, ChevronRight } from "../../ui/icons/index.ts";
 import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { entryKey, SOURCE_LABEL, STATUS_LABEL, type Entry } from "@plume/core/trajectory-view";
 import { SourceIcon } from "./SourceIcon.tsx";
-import { Scroller } from "../../../ui/scroll/Scroller.tsx";
-import { ScrollText } from "../../../ui/scroll/ScrollText.tsx";
+import { Scroller } from "../../ui/scroll/Scroller.tsx";
+import { ScrollText } from "../../ui/scroll/ScrollText.tsx";
 
-import { overscanFor } from "../../../lib/overscan.ts";
+import { overscanFor } from "../../lib/overscan.ts";
 type Row = { id: string; entry: Entry } | { id: string; turn: number; count: number };
 
 export const TraceList = memo(function TraceList({ entries, selected, onSelect, resetKey, collapsed, onCollapse, target, focused: timeFocus, paused = false, onFollowing }: {
@@ -44,7 +44,10 @@ export const TraceList = memo(function TraceList({ entries, selected, onSelect, 
 			if (!el.clientHeight) return;
 			const pad = overscanFor(el.scrollTop - lastTop.current, Math.ceil(el.clientHeight / height), height);
 			lastTop.current = el.scrollTop;
-			setRange({ start: Math.max(0, Math.floor(el.scrollTop / height) - pad), end: Math.min(rows.length, Math.ceil((el.scrollTop + el.clientHeight) / height) + pad) });
+			const start = Math.max(0, Math.floor(el.scrollTop / height) - pad);
+			const end = Math.min(rows.length, Math.ceil((el.scrollTop + el.clientHeight) / height) + pad);
+			// 每个滚动事件都会到这里，而一行有几十像素高：可见的那几行没变就不重画整张列表。
+			setRange((range) => (range.start === start && range.end === end ? range : { start, end }));
 		};
 		measure(); const observer = new ResizeObserver(measure); observer.observe(el);
 		el.addEventListener("scroll", measure, { passive: true });

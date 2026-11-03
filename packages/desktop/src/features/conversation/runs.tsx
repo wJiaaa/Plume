@@ -9,9 +9,8 @@ import { memo, useMemo } from "react";
 import type { AssistantContent, AssistantMessage } from "@plume/core";
 import { PreviewCall, type PreviewInfo } from "../files/index.ts";
 import { ToolCard } from "./ToolCard.tsx";
-import { DispatchFaces, useDelegation, useDispatches } from "./DelegationCard.tsx";
+import { useDelegation, useDispatches } from "./DelegationCard.tsx";
 import { ReviewSessionRow, SessionSuggestionCard } from "./SessionSuggestionCard.tsx";
-import { ToolGroup } from "./ToolGroup.tsx";
 import type { ToolRun as ToolRunState } from "../../store/index.ts";
 import { useScopedFromMeta, useScopedFromToolRuns, useScopedRunning } from "../../app/session-scope.tsx";
 import { useWriteDraft } from "./write-draft.ts";
@@ -19,22 +18,7 @@ import type { Dispatch } from "../../lib/dispatches.ts";
 import { toolCardFallback } from "./tool-status.ts";
 import { sameRun, type Call } from "./grouping.ts";
 import type { PageState } from "./preview-pages.ts";
-import { describeCalls, describeOne, describePolls, diffOf, pollOutput, polledJob, startedJob } from "./call-words.ts";
-
-/**
- * How much of a long transcript is mounted at once, and how much each "show more" adds — **in turns**.
- *
- * Counted in turns rather than in rows, and that unit is the whole point. The window used to step by
- * 60 `Run`s while the transcript draws in `TurnBlock`s (`turn-blocks.ts`), and a turn can hold hundreds
- * of runs: one session had 400 tool calls between two things the user typed. Paging by row into a
- * turn like that loads 60 rows straight into an already-collapsed block, so the only thing that
- * changes on screen is the number in 「调用工具 N 个」 — four clicks in a row, and the transcript does
- * not move. Now one click always brings whole turns, so it always brings something you can see.
- *
- * Twenty rather than sixty because a turn is worth several rows: its question, its answer, and the
- * lines its work folded into.
- */
-export const WINDOW_TURNS = 20;
+import { describeOne, describePolls, diffOf, pollOutput, polledJob, startedJob } from "./call-words.ts";
 
 /**
  * How many lines a stretch of calls added and removed.
@@ -180,103 +164,32 @@ function PlainToolCard({ block, run: own, stopReason, runs, turnRunning, thinkin
 
 
 /**
- * One run of tool work: always a line, never a row of cards.
- *
- * The threshold that used to decide between the two forms is gone. It was the source of the
- * unevenness — the same kind of work looked like two different things depending on how many
- * calls happened to fall together, and the boundary moved as the model chose to batch or not.
+ * Tool calls drawn as cards of their own: a page put up for the reader (`Run.shown`), or the calls
+ * inside one reply where the turn line above already says what the turn did (`flat`). Everything
+ * else is folded into a `WorkStep` by `turnBlocks`.
  */
-const ToolRunGroup = function ToolRun({
-  calls,
-  live,
-  runs,
-  flat,
-  shown,
-}: {
-  calls: Call[];
-  /** Whether this is the run being worked on right now — decided in `grouping.ts`, not here. */
-  live?: boolean;
-  /**
-   * Draw the calls as rows of their own, with no summary line over them.
-   *
-   * The main transcript's turn line already says what the whole turn did, so a second summary per
-   * stretch of work was a fold inside a fold — open the turn and you still saw no calls. Panels that
-   * have no turn line (sub-agents, side chat) keep the grouped form.
-   */
-  flat?: boolean;
-  /** Records for a transcript outside the main session — see `LiveToolCard`. */
-  runs?: Record<string, ToolRunState>;
-  /** A page put up for the reader: drawn as itself, with no line over it in either layout. See `Run`. */
-  shown?: boolean;
+function ToolRunCards({ calls, runs, flat }: {
+	calls: Call[];
+	/** Records for a transcript outside the main session — see `LiveToolCard`. */
+	runs?: Record<string, ToolRunState>;
+	/** Lay the cards into the surrounding column rather than as a fragment. */
+	flat?: boolean;
 }) {
-  /*
-   * The glide asks one question: is this the run that is happening now.
-   *
-   * It used to also light up whenever a call in the group counted as live, and that turned out to
-   * mean something else entirely: a call with no recorded result counts as live while its message
-   * is still `pending`, so several groups qualified at once and the conversation shimmered in
-   * places nothing was happening. Answering it with "the last run in the transcript" was the next
-   * attempt, and it was wrong in the other direction — the last run stays the last run after you
-   * ask something else, so a finished stretch of work glided through the whole of the next reply.
-   *
-   * The question is about the turn, so it is answered where the turn's shape is known. See
-   * `liveWork` in `grouping.ts`.
-   */
-
-  /*
-   * One sentence, growing — never a different sentence while it works.
-   *
-   * A running group used to say what the live call was doing, or "执行 N 个操作" when several
-   * were going at once, and go back to describing itself when they finished. Now that a run
-   * keeps taking on the calls of the replies that follow it, that line is the *same* line all
-   * turn: it would read "读取文件 3 个", then "执行 npm install", then "执行 6 个操作", then
-   * "读取文件 3 个、执行命令 2 个" — one row rewriting itself in two different languages while
-   * you try to read it. Built from the calls alone, it only ever gains a clause. That the run is
-   * still going is said by the highlight gliding along it, which is the one thing a count of
-   * events nobody witnessed was standing in for.
-   */
-  const summary = describeCalls(calls);
-  // Totals across the run, so a fold does not hide how much changed — counted from this screen's records.
-  const { added, removed } = useDiffTotals(calls, runs);
-
-  // 这一段里派出去的子智能体：整组一起对号，收起时行尾摆一排它们的脸。见 `useDispatches`。
-  const dispatches = useDispatches(calls.map(({ block }) => block), runs);
-  const byCall = new Map(dispatches.map((one) => [one.callId, one]));
-
-  const cards = calls.map(({ block, stopReason, page }) => (
-    <LiveToolCard key={block.id} block={block} stopReason={stopReason} runs={runs} dispatch={byCall.get(block.id)} page={page} />
-  ));
-
-  if (shown) return <>{cards}</>;
-  // `contents`, so each call sits in the surrounding column's own gap; the attribute keeps the run findable.
-  if (flat) return <div data-ly-run={live ? "running" : "done"} className="contents">{cards}</div>;
-
-  return (
-    <ToolGroup stateKey={runs ? undefined : `tools-${calls[0].block.id}`} summary={summary} added={added} removed={removed} running={Boolean(live)}
-      extra={dispatches.length > 0 ? <DispatchFaces dispatches={dispatches} /> : undefined}>
-      {cards}
-    </ToolGroup>
-  );
+	// 这一段里派出去的子智能体：整组一起对号。见 `useDispatches`。
+	const dispatches = useDispatches(calls.map(({ block }) => block), runs);
+	const byCall = new Map(dispatches.map((one) => [one.callId, one]));
+	const cards = calls.map(({ block, stopReason, page }) => (
+		<LiveToolCard key={block.id} block={block} stopReason={stopReason} runs={runs} dispatch={byCall.get(block.id)} page={page} />
+	));
+	// `contents`, so each call sits in the surrounding column's own gap; the attribute keeps the run findable.
+	return flat ? <div data-ly-run="done" className="contents">{cards}</div> : <>{cards}</>;
 }
+
 /**
- * A settled group of tool calls never changes again — but whether it is the *current* one does.
- *
- * Compared by what the group is made of rather than by the array it arrives in: the array is
- * rebuilt on every render of the transcript, but the calls in it are the same objects with the
- * same ids, and a group whose calls are unchanged has nothing new to draw.
- *
- * `live` has to be in here too, and leaving it out is the whole of a bug that survived two
- * attempts at fixing it. It is the one prop that changes *without the calls changing*: a group
- * stops being the current one the moment another begins, and stops being live the moment the turn
- * ends — and in both cases its own calls are exactly as they were. Compared on calls alone, React
- * was told nothing had changed and skipped the render, so the highlight stayed on every group that
- * had ever been the current one, and stayed lit after the turn was over.
- *
- * It also explains why this twice looked fixed when it was not: switching conversations remounts
- * these, and a fresh mount never consults a memo comparison. The failure only shows in the one
- * situation the comparison exists for — a transcript being added to in place.
+ * A settled group of tool calls never changes again: compared by what the group is made of rather
+ * than by the array it arrives in, which is rebuilt on every render of the transcript.
  *
  * The comparison itself is `sameRun`, in `grouping.ts`, so that the tests can check the one that
  * actually runs instead of a copy of it. See the note there.
  */
-export const ToolRun = memo(ToolRunGroup, sameRun);
+export const ToolRun = memo(ToolRunCards, sameRun);

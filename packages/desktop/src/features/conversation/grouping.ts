@@ -69,19 +69,13 @@ export type Run =
 	 * 它和那句话是同一条消息、同一段（`from`..`upTo`），只画页脚和交付卡片，不画正文。
 	 */
 	| { kind: "message"; message: Message; index: number; upTo: number; from?: number; lead?: boolean; turnStats?: TurnStats; closes?: true; newest?: true; pauses?: true; trailer?: true; key?: string }
-	/**
-	 * A stretch of tool work, and whether it is the stretch being worked on right now.
-	 *
-	 * `live` is set on at most one run in the transcript — see `liveWork` for which. It is a fact
-	 * about the shape of the conversation, not about whether the agent is currently running, so the
-	 * caller still asks that separately: a run can be the newest work in a turn that has since ended.
-	 */
+	/** A stretch of tool work. */
 	/*
 	 * `shown` is a run of one: a page the agent put up for the reader with `preview`, or a suggested
 	 * session waiting on the reader's Start (`spawn_session`). Either is for the reader rather than
 	 * the turn's work, so it is never folded away with the work — see `turnBlocks`.
 	 */
-	| { kind: "tools"; calls: Call[]; live?: boolean; shown?: true };
+	| { kind: "tools"; calls: Call[]; shown?: true };
 
 /** 一条回复是谁答的。同一个模型名挂在两家服务商底下是两个模型，所以两样一起比。 */
 export type ModelUsed = { provider: string; model: string };
@@ -100,51 +94,6 @@ export function runKey(run: Run): string {
 	if (run.kind === "tools") return `tools-${run.calls[0]?.block.id ?? "empty"}`;
 	// 按第一次画出来时的时间戳：乐观的那条换成落盘的那条，行不该跟着卸掉重挂，见 `drawnAt`。
 	return run.key ?? `${run.message.role}-${drawnAt(run.message)}-${run.index}`;
-}
-
-/**
- * The run of tool work being pushed forward right now, or -1 for none.
- *
- * Not "the last run in the transcript", which is what this used to be and is a different claim
- * entirely. The two agree for as long as a turn keeps calling tools, and part company the moment
- * you ask something else: the newest run is then a piece of finished work from the turn before,
- * and calling it current lit it back up — a line describing work that ended minutes ago, gliding
- * for the whole of a reply that never touched a tool.
- *
- * So it is answered from the replies rather than from the rows. Walking back from the newest one:
- *
- * - a reply that made calls is the answer, and the row those calls landed in is the run;
- * - a reply that has *said* something and made no calls ends the search — the answer is being
- *   written, and the work above it is over;
- * - a reply that has done neither yet is passed over, which is the beat between `message_start`
- *   and the first block of a new reply. Stopping there would drop the highlight for a few hundred
- *   milliseconds between every batch of a turn, which reads as a flicker rather than as an end;
- * - anything the person actually said ends the search. Their question is the boundary: whatever
- *   was done before it belongs to what they asked before it.
- *
- * Where the walk *starts* is what separates two transcripts that look identical — a person's
- * message at the end, a reply before it. If that reply is still `pending` the message is
- * steering typed into a turn that is running, and the work it is doing goes on; if it has settled,
- * the message is a new question and there is nothing in flight to point at.
- */
-function liveWork(messages: Message[], live: number, rowOfCalls: (at: number) => number | undefined): number {
-	if (live < 0) return -1;
-	const latest = messages[live];
-	const inFlight = latest.role === "assistant" && latest.stopReason === "pending";
-	for (let at = inFlight ? live : messages.length - 1; at >= 0; at--) {
-		const message = messages[at];
-		if (message.role === "user") {
-			// The runtime's own messages are not the person speaking; see `opensTurn`.
-			if (!opensTurn(message)) continue;
-			return -1;
-		}
-		// A tool result is the contents of a card, not a step of its own.
-		if (message.role !== "assistant") continue;
-		const row = rowOfCalls(at);
-		if (row !== undefined) return row;
-		if (spoken(message.content) > 0) return -1;
-	}
-	return -1;
 }
 
 /**
@@ -194,25 +143,6 @@ function beforeTrailingCalls(content: AssistantContent[]): number {
 }
 
 /**
- * How far into a reply the model was still addressing you.
- *
- * Counted to the end of the last block of actual text. Everything after it is the model working,
- * and work joins the work around it — the sentence that introduces a batch of calls and the calls
- * themselves are one thought, and the next batch continues it. Text is the one thing that ends a
- * run, because that is the model stopping to say something and a group must not swallow it.
- *
- * Whether the message is still streaming is deliberately not consulted. That answer changes
- * halfway through a turn, and any grouping derived from it changes with it.
- */
-function spoken(content: AssistantContent[]): number {
-	let end = 0;
-	for (const [index, block] of content.entries()) {
-		if (block.type === "text" && block.text.trim()) end = index + 1;
-	}
-	return end;
-}
-
-/**
  * Whether a drawn run has anything new to show — the memo comparison behind `ToolRun`.
  *
  * It lives here, in a file the tests can load, rather than inline in the component. That is not
@@ -227,12 +157,9 @@ function spoken(content: AssistantContent[]): number {
  * Returns true when React may skip the render.
  */
 export function sameRun(
-	before: { calls: Call[]; live?: boolean; runs?: object; shown?: boolean },
-	after: { calls: Call[]; live?: boolean; runs?: object; shown?: boolean },
+	before: { calls: Call[]; runs?: object },
+	after: { calls: Call[]; runs?: object },
 ): boolean {
-	if (before.live !== after.live) return false;
-	// A preview that failed stops being a page and joins the work, keeping its key — the one change here that leaves `calls` alone.
-	if (before.shown !== after.shown) return false;
 	// Injected records are rebuilt whenever their transcript grows, and a new map is the only sign
 	// that a call in this group has finished — nothing there subscribes to them.
 	if (before.runs !== after.runs) return false;
@@ -274,7 +201,6 @@ export interface RunsCheckpoint {
 	hiccups: Hiccup[];
 	openTodos: boolean;
 	used: ModelUsed | null;
-	rowOfCalls: ReadonlyMap<number, number>;
 }
 
 /**
@@ -282,14 +208,13 @@ export interface RunsCheckpoint {
  *
  * 从检查点接着走时，工具结果、页面状态只从 `from.at` 往后数：一轮里的页面只和同一轮里的发布配对（见
  * `previewPages`），前面那几轮的调用在后面有结果的（插话时偶尔有）由调用方认出来、改为从头走。
- * `working` 是 `live` 落在第几行，调用方据此知道前面的行有没有换掉一行。
  */
 export function walkRuns(
 	messages: Message[],
 	commands: CommandRun[],
 	hiccups: Hiccup[],
 	options: { from?: RunsCheckpoint; mark?: number } = {},
-): { rows: Run[]; mark?: RunsCheckpoint; working: number } {
+): { rows: Run[]; mark?: RunsCheckpoint } {
 	const { from: resume } = options;
 	const start = resume?.at ?? 0;
 	const out: Run[] = resume ? resume.rows.slice() : [];
@@ -310,15 +235,6 @@ export function walkRuns(
 	for (let at = messages.length - 1; at >= 0 && live < 0; at--) {
 		if (messages[at].role === "assistant") live = at;
 	}
-	/**
-	 * Which row each reply's calls ended up in.
-	 *
-	 * A run gathers calls from several replies, so "the row this reply is working in" is not
-	 * something the rows can be asked afterwards — it is only known here, as they are placed.
-	 * `liveWork` walks back through the replies and reads it off.
-	 */
-	const rowOfCalls = new Map<number, number>();
-	const rowOf = (at: number) => rowOfCalls.get(at) ?? resume?.rowOfCalls.get(at);
 	let mark: RunsCheckpoint | undefined;
 
 	/*
@@ -344,7 +260,7 @@ export function walkRuns(
 	};
 
 	/** Extend the run this lands in, or start one. Empty batches leave the transcript alone. */
-	const work = (calls: Call[], from: number) => {
+	const work = (calls: Call[]) => {
 		if (calls.length === 0) return;
 		for (const call of calls) {
 			const last = out[out.length - 1];
@@ -352,16 +268,8 @@ export function walkRuns(
 			else if (last?.kind === "tools" && !last.shown) last.calls.push(call);
 			else out.push({ kind: "tools", calls: [call] });
 		}
-		rowOfCalls.set(from, out.length - 1);
 	};
 
-	/*
-	 * What the turn in progress has spent, carried down the transcript as it is walked.
-	 *
-	 * The same answer `computeTurnStats` gives — the same `saw` — arrived at in one pass instead of
-	 * one backward scan per row. On a session of several thousand messages that difference is the
-	 * whole cost: the scan was being run for every visible reply, on every render of the transcript.
-	 */
 	/*
 	 * 上一条回复是哪个模型答的。换了就落一条分隔：换在两轮之间的，落在开这一轮的那句话上面——
 	 * 人是先换模型再开口的；换在一轮当中的（跑着的时候换，下一步才生效），落在第一条新回复上面。
@@ -409,6 +317,13 @@ export function walkRuns(
 		closer = row;
 	};
 
+	/*
+	 * What the turn in progress has spent, carried down the transcript as it is walked.
+	 *
+	 * The same answer `computeTurnStats` gives — the same `saw` — arrived at in one pass instead of
+	 * one backward scan per row. On a session of several thousand messages that difference is the
+	 * whole cost: the scan was being run for every visible reply, on every render of the transcript.
+	 */
 	let clock = resume ? newClock(start, resume.openTodos) : newClock();
 	for (let index = start; index < messages.length; index++) {
 		const message = messages[index];
@@ -426,7 +341,6 @@ export function walkRuns(
 					at: index, rows: out.slice(), nextCommand, nextHiccup,
 					commands: commandMarks.slice(0, nextCommand), hiccups: hiccupMarks.slice(0, nextHiccup),
 					openTodos: clock.openTodos, used,
-					rowOfCalls: resume ? new Map([...resume.rowOfCalls, ...rowOfCalls]) : new Map(rowOfCalls),
 				};
 			}
 		}
@@ -549,7 +463,7 @@ export function walkRuns(
 			const call: Call = { block: routedBlock(block), stopReason: message.stopReason, page: pages.get(block.id) };
 			if (!shows(call)) continue;
 			if (at > from) out.push({ kind: "message", message, index, upTo: at, from, lead: true, key: `part-${at}-${message.timestamp}-${index}` });
-			work([call], index);
+			work([call]);
 			from = at + 1;
 		}
 		// `own` never ends on a call, so the reply keeps a piece of its own after the last page.
@@ -567,7 +481,7 @@ export function walkRuns(
 			consider(row);
 		}
 
-		work(calls, index);
+		work(calls);
 	}
 
 	const latest = messages[live];
@@ -578,20 +492,7 @@ export function walkRuns(
 	// 还在等的那一条数出来正好落在这里——它确实正在此刻发生，末尾就是它的位置。
 	while (nextHiccup < hiccupMarks.length) out.push({ kind: "hiccup", hiccup: hiccupMarks[nextHiccup++] });
 
-	/*
-	 * Which run is being pushed forward, answered once the whole transcript is known.
-	 *
-	 * Rows are only ever appended by the walk above — nothing is inserted after the fact any more —
-	 * so the indices `work` recorded still point where they did.
-	 */
-	const working = liveWork(messages, live, rowOf);
-
-	if (working >= 0) {
-		const row = out[working];
-		// 换一份而不是原地改：这一行可能是检查点里那几轮的，它们由下一拍接着用，不该带着这一拍的 `live`。
-		if (row.kind === "tools") out[working] = { ...row, live: true };
-	}
-	return { rows: out, mark, working };
+	return { rows: out, mark };
 }
 
 /** 这一行有话：时间和复制那一行只挂在有话的回复下面（`rows.tsx` 的 `text.trim()`）。 */

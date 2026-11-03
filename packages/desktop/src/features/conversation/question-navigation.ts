@@ -1,7 +1,7 @@
 import { activeLocale, translate } from "../../i18n/translate.ts";
 import type { ResolvedUiLocale } from "../../i18n/index.ts";
 import type { Message } from "@plume/core";
-import { readable } from "../../lib/spoken.ts";
+import { readable, spokenText } from "../../lib/spoken.ts";
 
 export type Question = { index: number; text: string; answer: string };
 
@@ -26,7 +26,7 @@ export function ask(message: Message, index: number, questions: Question[]): voi
 		return;
 	}
 	if (message.role !== "user" || message.synthetic) return;
-	const text = message.content.filter((block) => block.type === "text").map((block) => block.text).join(" ").trim();
+	const text = spokenText(message).trim();
 	questions.push({ index, text: text || translate("questionNav.imageMessage"), answer: "" });
 }
 

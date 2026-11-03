@@ -24,8 +24,9 @@ import { CircleX, Layers } from "../../ui/icons/index.ts";
 import { Collapse } from "../../ui/layout/Collapse.tsx";
 import { useScopedFromMeta, useScopedFromToolRuns } from "../../app/session-scope.tsx";
 import { translate } from "../../i18n/translate.ts";
-import { StepDispatchFaces } from "./DelegationCard.tsx";
-import { FlowRow } from "./FlowRow.tsx";
+import { DispatchFaces, StepDispatches } from "./DelegationCard.tsx";
+import type { Dispatch } from "../../lib/dispatches.ts";
+import { DiffCount, FlowRow } from "./FlowRow.tsx";
 import { LiveThought } from "./LiveThought.tsx";
 import { LiveToolCard, useDiffTotals } from "./runs.tsx";
 import { ToolIcon } from "./tool-icons.tsx";
@@ -39,13 +40,15 @@ import { useTranscriptDisclosure } from "./view-state.ts";
 import { useWriteDraft } from "./write-draft.ts";
 
 /** 一次调用画成的那一行：和它单独成行时是同一张工具卡。 */
-function drawCall({ block, stopReason, page }: Call, runs: Record<string, ToolRunState> | undefined, line?: { thinking?: ReactNode; extra?: ReactNode; polls?: string[] }) {
-	return <LiveToolCard block={block} stopReason={stopReason} page={page} runs={runs} thinking={line?.thinking} extra={line?.extra} polls={line?.polls} />;
+function drawCall({ block, stopReason, page }: Call, runs: Record<string, ToolRunState> | undefined, line?: { thinking?: ReactNode; extra?: ReactNode; polls?: string[]; dispatch?: Dispatch }) {
+	return <LiveToolCard block={block} stopReason={stopReason} page={page} runs={runs} thinking={line?.thinking} extra={line?.extra} polls={line?.polls} dispatch={line?.dispatch} />;
 }
+
+const NO_DISPATCHES: Dispatch[] = [];
 
 /**
  * 只在这一段自己变了时重画，见 `sameStep`。`draw` 只在它画出来的东西会变时才换引用（见 `Conversation`）。
- * 漏比 `live` 的后果见 `ToolRun` 上那段：高亮会一直留在当过「正在做」的每一段上。
+ * 漏比 `live`，扫光会一直留在当过「正在做」的每一段上：这一段不再是当前那段时，它的内容一点没变。
  */
 export const WorkStep = memo(WorkStepRow, (a, b) => a.live === b.live && a.draw === b.draw && a.runs === b.runs && sameStep(a.step, b.step));
 
@@ -147,55 +150,57 @@ function StepGroup({ step, thought, live, thinking, from, draw, runs: own }: {
 	const words = said ? describeOne(said, saidSummary, { job: saidJob, root }) : parts.join(translate("step.separator"));
 	// 换一次调用、或者从跑着换成总的，就是换了一句话，滚一下；同一次调用的参数还在流进来，只缓宽度。
 	const rollKey = said ? `call-${said.id}` : STEP;
-	const faces = step.category === "task" ? <StepDispatchFaces calls={calls.map(({ block }) => block)} /> : null;
 	// 一次调用的那一行后面只接上了推理：句子还是原地那一句，从旧宽度缓过来就够，不滚。
 	const sameWords = from !== null && calls.length === 1;
 
-	return (
-		<div data-ly-step={step.category} data-ly-run={live ? "running" : "done"}>
-			<FlowRow
-				// 跑着时说的是某一次调用，图标跟一次调用那一行是同一枚；收成总的那一句时说的是好几样，换成叠层。
-				icon={said ? <ToolIcon name={calls[0].block.name} /> : <Layers size={13} strokeWidth={1.8} className="shrink-0" />}
-				/*
-				 * 跑着时挂上的这一行滚进来（`enter`）：它接替的是原地那段推理，或者一次调用的那一行而这里已经是下一次
-				 * 了，说的都是另一句话；从旧的宽度缓过去（`from`）。历史里挂上的不滚。光挂在字上而不是经 `running`
-				 * 挂在外层，见 `RollWords`。
-				 */
-				summary={
-					<RollWords rollKey={rollKey} text={words} from={from?.words} glide={live && !thinking} enter={live && !sameWords}>
-						{words}
-					</RollWords>
-				}
-				trailFrom={from?.trail}
-				trailing={thinking || failed || added + removed > 0 || faces || lines ? (
-					<span className="flex items-center gap-2">
-						{faces}
-						{lines && <span className="tabular-nums text-caption">{lines}</span>}
-						{thinking}
-						{failed && <CircleX size={13} strokeWidth={1.9} className="text-danger/85" />}
-						{added + removed > 0 && (
-							<span className="font-mono text-caption">
-								<span className="text-ok">+{added}</span> <span className="text-danger">-{removed}</span>
-							</span>
-						)}
-					</span>
-				) : undefined}
-				open={open}
-				onToggle={() => setOpen((value) => !value)}
-				label={translate("tools.run")}
-			/>
-			{/* 竖线在行首图标的正下方，挂在上面的每一行读起来都属于这一行。 */}
-			<Collapse open={open} bodyClassName="pt-2.5">
-				<div data-ly-step-rail="" className="ml-[7px] flex flex-col gap-2.5 border-l border-line-soft pl-[14px]">
-					{foldPolls(step.members).map((line) =>
-						line.kind === "call" ? <Fragment key={line.call.block.id}>{drawCall(line.call, own)}</Fragment>
-						// 连着查同一个任务的几次是一行，key 跟第一次走：再查一次，这一行不卸掉重挂。
-						: line.kind === "polls" ? <Fragment key={line.calls[0].block.id}>{drawCall(line.calls[0], own, { polls: line.calls.map(({ block }) => block.id) })}</Fragment>
-						: draw(line.run))}
-				</div>
-			</Collapse>
-		</div>
-	);
+	const body = (dispatches: Dispatch[]) => {
+		const faces = dispatches.length > 0 ? <DispatchFaces dispatches={dispatches} /> : null;
+		const byCall = new Map(dispatches.map((one) => [one.callId, one]));
+		return (
+			<div data-ly-step={step.category} data-ly-run={live ? "running" : "done"}>
+				<FlowRow
+					// 跑着时说的是某一次调用，图标跟一次调用那一行是同一枚；收成总的那一句时说的是好几样，换成叠层。
+					icon={said ? <ToolIcon name={calls[0].block.name} /> : <Layers size={13} strokeWidth={1.8} className="shrink-0" />}
+					/*
+					 * 跑着时挂上的这一行滚进来（`enter`）：它接替的是原地那段推理，或者一次调用的那一行而这里已经是下一次
+					 * 了，说的都是另一句话；从旧的宽度缓过去（`from`）。历史里挂上的不滚。光挂在字上而不是经 `running`
+					 * 挂在外层，见 `RollWords`。
+					 */
+					summary={
+						<RollWords rollKey={rollKey} text={words} from={from?.words} glide={live && !thinking} enter={live && !sameWords}>
+							{words}
+						</RollWords>
+					}
+					trailFrom={from?.trail}
+					trailing={thinking || failed || added + removed > 0 || faces || lines ? (
+						<span className="flex items-center gap-2">
+							{faces}
+							{lines && <span className="tabular-nums text-caption">{lines}</span>}
+							{thinking}
+							{failed && <CircleX size={13} strokeWidth={1.9} className="text-danger/85" />}
+							{added + removed > 0 && <DiffCount added={added} removed={removed} />}
+						</span>
+					) : undefined}
+					open={open}
+					onToggle={() => setOpen((value) => !value)}
+					label={translate("tools.run")}
+				/>
+				{/* 竖线在行首图标的正下方，挂在上面的每一行读起来都属于这一行。 */}
+				<Collapse open={open} bodyClassName="pt-2.5">
+					<div data-ly-step-rail="" className="ml-[7px] flex flex-col gap-2.5 border-l border-line-soft pl-[14px]">
+						{foldPolls(step.members).map((line) =>
+							line.kind === "call" ? <Fragment key={line.call.block.id}>{drawCall(line.call, own, { dispatch: byCall.get(line.call.block.id) })}</Fragment>
+							// 连着查同一个任务的几次是一行，key 跟第一次走：再查一次，这一行不卸掉重挂。
+							: line.kind === "polls" ? <Fragment key={line.calls[0].block.id}>{drawCall(line.calls[0], own, { polls: line.calls.map(({ block }) => block.id) })}</Fragment>
+							: draw(line.run))}
+					</div>
+				</Collapse>
+			</div>
+		);
+	};
+	return step.category === "task" ? (
+		<StepDispatches calls={calls.map(({ block }) => block)} runs={own}>{body}</StepDispatches>
+	) : body(NO_DISPATCHES);
 }
 
 function startedAt(run: Extract<Run, { kind: "message" }>): number | undefined {

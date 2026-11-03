@@ -135,11 +135,30 @@ export function saw(clock: Clock, message: Message): void {
 }
 
 /** 两份账说的是不是同一组数：分组每次重做都给一份新的副本，比引用永远不等。 */
-export function sameStats(a: TurnStats | undefined, b: TurnStats | undefined): boolean {
+function sameStats(a: TurnStats | undefined, b: TurnStats | undefined): boolean {
 	if (a === b) return true;
 	if (!a || !b) return false;
 	return a.durationMs === b.durationMs && a.requestMs === b.requestMs && a.sseDurationMs === b.sseDurationMs
 		&& a.outputTokens === b.outputTokens && a.requestCount === b.requestCount && a.startIndex === b.startIndex;
+}
+
+/**
+ * `memo`'s own comparison, except that `turnStats` is compared by what it says.
+ *
+ * The grouping is redone whenever the transcript changes — every streamed token — and it hands each
+ * row a fresh `TurnStats` snapshot even when none of its figures moved. Compared by identity, every
+ * assistant row in the window looked changed on every token and the whole window re-rendered with
+ * the one row that was being written. The figures are what the footer reads, so they are what is
+ * compared.
+ */
+export function sameRow<P extends { turnStats?: TurnStats }>(a: Readonly<P>, b: Readonly<P>): boolean {
+	const keys = Object.keys(a) as (keyof P)[];
+	if (keys.length !== Object.keys(b).length) return false;
+	for (const key of keys) {
+		if (key === "turnStats") continue;
+		if (!Object.is(a[key], b[key])) return false;
+	}
+	return sameStats(a.turnStats, b.turnStats);
 }
 
 /** 此刻为止这一轮的账，一份定下来的副本。 */

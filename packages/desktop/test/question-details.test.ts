@@ -32,3 +32,12 @@ test("time labels separate pauses and calendar days without dividing continuous 
 	assert.match(conversationTime(day, day + 86_400_000), /^昨天 /);
 	assert.match(conversationTime(day, day + 2 * 86_400_000), /^9月6日 /);
 });
+
+test("问题导航读的是人打的那句话，不是写给模型的引用和附件正文", () => {
+	const [withRefs, oldWithFile] = questionsIn([
+		{ role: "user", timestamp: 0, displayText: "看看这个会话", content: [{ type: "text", text: "看看这个会话\n\n[Referenced context]\n- \"x\": read session://x" }] },
+		{ role: "user", timestamp: 1, content: [{ type: "text", text: "\n\n### Attached file: a.md\n\n正文" }, { type: "text", text: "总结一下" }] },
+	]);
+	assert.equal(withRefs.text, "看看这个会话");
+	assert.equal(oldWithFile.text, "总结一下");
+});

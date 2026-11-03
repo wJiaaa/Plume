@@ -14,24 +14,14 @@
 
 import { CARRY_ON_PROMPTS, carryOnPrompt } from "../../store/derive.ts";
 import { translate } from "../../i18n/translate.ts";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useNow } from "../../ui/motion/useNow.ts";
 import { ArrowLeftRight, ChevronRight, CircleAlert, CircleCheck, CircleStop, Play, Settings2 } from "../../ui/icons/index.ts";
 import { StatusSpinner } from "../../ui/motion/loaders.tsx";
 import { describeHiccup, hiccupTip, type Hiccup } from "../../lib/hiccup.ts";
 import { useScopedSessionId } from "../../app/session-scope.tsx";
 import { useApp } from "../../store/index.ts";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
-
-/** 等待时每秒重画一次，就为了那个数字；不等待时一次都不用。 */
-function useTick(active: boolean): number {
-	const [now, setNow] = useState(() => Date.now());
-	useEffect(() => {
-		if (!active) return;
-		const timer = setInterval(() => setNow(Date.now()), 500);
-		return () => clearInterval(timer);
-	}, [active]);
-	return now;
-}
 
 /**
  * 一条记录，画在它发生的那个位置上。
@@ -46,7 +36,7 @@ function useTick(active: boolean): number {
  */
 export function HiccupRow({ hiccup }: { hiccup: Hiccup }) {
 	// 只有还在等的那条要数秒；其余的一次都不用重画。
-	const now = useTick(hiccup.outcome === "waiting");
+	const now = useNow(hiccup.outcome === "waiting", 500);
 	const [open, setOpen] = useState(false);
 	const line = describeHiccup(hiccup, now);
 	const tip = hiccupTip(hiccup);

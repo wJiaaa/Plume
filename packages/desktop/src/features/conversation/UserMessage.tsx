@@ -1,27 +1,24 @@
 import { translate } from "../../i18n/translate.ts";
-import type { SkillEntry, UserContent, UserMessage as UserMessageType } from "@plume/core";
-import { MessageSquarePlus, Pencil, Boxes, MessagesSquare } from "../../ui/icons/index.ts";
-import { attachToComposer, openFromEvent, openViewer } from "../image/index.ts";
-import { AttachmentMenu, AttachmentStrip, displayName, KIND_LABEL, previewableInPanel, sentKind, type FileKind, type StripFile } from "../composer/index.ts";
-import { useAttachmentActions } from "../composer/index.ts";
-import { TokenGlyph, tokenLook } from "../../ui/fileIcon.tsx";
-import { openFilePane } from "../dock/index.ts";
+import type { UserContent, UserMessage as UserMessageType } from "@plume/core";
+import { MessageSquarePlus, Pencil } from "../../ui/icons/index.ts";
+import { attachToComposer, openFromEvent } from "../image/index.ts";
+import { AttachmentStrip, KIND_LABEL } from "../composer/index.ts";
 import { isAttachmentBody } from "../../lib/attachment-placeholders.ts";
 import { useMemo, useRef, useState } from "react";
 import { BubbleText } from "./BubbleText.tsx";
-import { jumpToSession } from "./jump-to-session.ts";
 import { MessageActions } from "./MessageActions.tsx";
 import { ForkAction } from "./ForkAction.tsx";
 import { RevertAction } from "./RevertAction.tsx";
-import { filesBackPlan, useFilesBack } from "./files-back.tsx";
+import { useFilesBack } from "./files-back.tsx";
 import { MessageEditor } from "./message/MessageEditor.tsx";
+import { hasCapsules, MessageCapsules } from "./MessageCapsules.tsx";
+import { attachmentsOf, sentFiles, type ImageBlock } from "./sent-attachments.ts";
+import { useSentAttachmentToken } from "./SentAttachmentToken.tsx";
 import { useApp } from "../../store/index.ts";
-import { useDockScope, useScopedFromMessages, useScopedFromMeta, useScopedRunning, useScopedSessionId } from "../../app/session-scope.tsx";
-import { bridge } from "../../services/index.ts";
+import { useScopedFromMessages, useScopedFromMeta, useScopedRunning, useScopedSessionId } from "../../app/session-scope.tsx";
 import { useI18n } from "../../i18n/index.ts";
 import { lastUserMessageIndex } from "../../lib/revert-draft.ts";
-import { SESSION_THUMB_EDGE } from "../../../shared/session-image.ts";
-import { imageBlockSrc } from "./image-block.ts";
+import { spokenText } from "../../lib/spoken.ts";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 /**
  * A message you sent, with the two things you want from one afterwards: to copy it, and to
@@ -32,136 +29,7 @@ import { IconButton } from "../../ui/primitives/IconButton.tsx";
  * wording any more. Leaving it would put an answer to a question nobody asked directly under
  * the question that replaced it.
  */
-type ImageBlock = Extract<UserContent, { type: "image" }>;
-
-function imageSrc(block: ImageBlock | undefined, path: string | undefined): { src?: string; full?: string } {
-	const refs = block && imageBlockSrc(block, SESSION_THUMB_EDGE);
-	if (refs) return refs;
-	if (path) {
-		const url = bridge.files.mediaUrl(path);
-		return { src: url, full: url };
-	}
-	return {};
-}
-
-/**
- * Where a conversation runs, read at the moment it is needed rather than subscribed to.
- *
- * The answer `useScopedWorkspace` gives, as a directory: the live slot's project — or its directory
- * outside any project — for the conversation holding it; the directory a parked conversation works
- * in, which is its project or its project-less directory, the same path either way; and for a blank
- * screen away from the live slot, where it was opened. Read on a press, because every message in
- * every transcript would otherwise carry the subscriptions.
- */
-function directoryOf(sessionId: string | null): string {
-	const state = useApp.getState();
-	if (sessionId === state.activeSessionId) return state.workspace?.path ?? state.scratchCwd ?? "";
-	if (sessionId === null) return state.parkedDraft?.workspace?.path ?? state.parkedDraft?.scratchCwd ?? "";
-	return (state.sessionCache[sessionId]?.meta ?? state.sessions.find((one) => one.id === sessionId))?.cwd ?? "";
-}
-
-/**
- * 带了哪几个文件，认回成一排。
- *
- * 同一批附件在消息里是分开存的：图片的像素在 `content` 的 image 块里，名字和门类在 `attachments`
- * 里，后者故意不带正文（见 `UserMessage.attachments` 的说明）。要画成一排就得先把两边配回去，
- * 按次序：第 n 个门类是图片的附件，配第 n 个图片块。
- *
- * 配不齐也不能把图弄丢。转录里躺着的老消息可能根本没有 `attachments` 这一项，那时只有图片块，
- * 于是剩下的一律补在后面——少画一个附件，比多画一个要命得多。
- */
-function attachmentsOf(
-  message: UserMessageType,
-  images: ImageBlock[],
-  label: (kind: FileKind) => string,
-  regionShot: string,
-): StripFile[] {
-  const files: StripFile[] = [];
-  let at = 0;
-  /* 「图片 2」里的那个 2 数的是同门类里的第几个，和输入框那边、和提示词里是同一个数。 */
-  const seen = new Map<FileKind, number>();
-  for (const [index, file] of (message.attachments ?? []).entries()) {
-    // 转录里躺着的是一段没人再校验过的数据，缺了一项的整条跳过，别让它把整段对话一起带走。
-    if (!file || typeof file !== "object") continue;
-    /*
-     * 记下来的门类要复核一遍，见 `sentKind`。一份被记成图片的文档，在下面会去配一个本不属于它的图片块，
-     * 把后面的每一张图都往后错一位。
-     */
-    const kind = sentKind(file);
-    const kindIndex = (seen.get(kind) ?? 0) + 1;
-    seen.set(kind, kindIndex);
-    const block = kind === "image" ? images[at] : undefined;
-    if (block) at++;
-    /*
-     * 像素只属于图片。
-     *
-     * `imageSrc` 的最后一档是「没有图片块，就按路径去磁盘上取」——那是给图片兜底的：像素万一没跟着消息
-     * 走，磁盘上那一份就是它。这一问一度对每份附件都问，于是一份带着路径的 `.md` 也拿到了一个
-     * `ly-media://` 地址：气泡外面多出一张裂开的图，alt 是它的文件名；句子里那枚标记被当成图片，点它、
-     * 点「预览」都去查看器里找一张不存在的图，什么都不发生；菜单里还多出一行「复制图片」。
-     */
-    const refs: { src?: string; full?: string } = kind === "image" ? imageSrc(block, file.path) : {};
-    files.push({
-      key: `${index}-${file.name}`,
-      name: file.name,
-      kind,
-      /*
-       * 正文里那枚标记写的名字：图片和没有真名的是「图片 1」，其余是真名。
-       *
-       * 存下来的优先，没存的按**和输入框同一套规则**现算（见 `Composer` 的 `relabel`）。这条规则错
-       * 开过两次，两次的表现是一样的：气泡里那些标记配不上任何一份附件，整句话的标签退化成一串方
-       * 括号。两处必须是同一条。
-       */
-      label: file.label ?? displayName({ name: file.name, kind, kindLabel: label(kind), kindIndex }, regionShot),
-      tip: `${file.name}\n${label(kind)}`,
-      ...(refs.src ? { src: refs.src } : {}),
-      ...(refs.full ? { full: refs.full } : {}),
-      /*
-       * 发送时它在哪儿。
-       *
-       * 老消息没有这一项——那时字段还不存在——于是那些附件只剩一个名字，能做的事跟着少几件。这是
-       * 对的降级：offer nothing rather than offer something that fails。
-       */
-      ...(file.path ? { path: file.path } : {}),
-    });
-  }
-  for (; at < images.length; at++) {
-    const refs = imageSrc(images[at], undefined);
-    files.push({
-      key: `image-${at}`,
-      name: "",
-      kind: "image",
-      ...(refs.src ? { src: refs.src } : {}),
-      ...(refs.full ? { full: refs.full } : {}),
-    });
-  }
-  return files;
-}
-
-/**
- * 这份附件进提示词的，是不是只有它的名字。
- *
- * 看消息里实际装了什么，不按门类猜：一份 PDF 抽得出字就整篇进了提示词，扫描件和压缩包才只剩一行
- * `[… — contents not included]`（见 `attachmentStub`）。按门类猜的那一版把每一份 PDF、每一张表格都画成
- * 「只有文件名」，而那句悬停说明对一份模型明明读完了的合同是错的。
- */
-function onlyNameSent(content: UserContent[], name: string): boolean {
-  return content.some(
-    (block) =>
-      block.type === "text" &&
-      isAttachmentBody(block.text) &&
-      block.text.includes(`: ${name}`) &&
-      block.text.trimEnd().endsWith("contents not included]"),
-  );
-}
-
-export function UserMessage({
-  message,
-  index,
-}: {
-  message: UserMessageType;
-  index: number;
-}) {
+export function UserMessage({ message, index }: { message: UserMessageType; index: number }) {
 	const { t } = useI18n();
 	/*
 	 * This screen's conversation, for what the two buttons below show and for whom they act.
@@ -172,8 +40,6 @@ export function UserMessage({
 	 * beside it, on disk.
 	 */
 	const sessionId = useScopedSessionId();
-	// And the screen a file this message names opens in — the same fault, for the file pane.
-	const screen = useDockScope();
 	const running = useScopedRunning();
 	/*
 	 * 侧边聊天里只有编辑重问。撤回要把话放回输入框、分叉要开一个新会话，两样都是对着主对话那个
@@ -182,444 +48,212 @@ export function UserMessage({
 	const aside = useScopedFromMeta((meta) => meta?.parentId !== undefined);
 	const editMessage = useApp((s) => s.editMessage);
 	const lastUser = useScopedFromMessages(lastUserMessageIndex);
-  const attachmentActions = useAttachmentActions();
-  /** 这条消息自己的元素：分屏时另一屏同一序号的消息也在文档里。 */
-  const root = useRef<HTMLDivElement>(null);
-  /** 从句子里那枚标记打开查看器。起点取气泡外那一排里对应的格子，没有就从点击/右键的位置长。 */
-  const previewImage = (src: string, originRect?: DOMRect) => {
-    const pictures = files.filter((file) => file.kind === "image" && (file.full || file.src));
-    const imgIndex = pictures.findIndex((file) => file.full === src || file.src === src);
-    if (imgIndex < 0) return;
-    // 只在这条消息里找：分屏下按序号全文档查，会先找到另一屏的格子，图从那边起飞、把那边的缩略图藏起来。
-    const tile = root.current?.querySelectorAll<HTMLElement>(".ly-attachment-body")[imgIndex] ?? null;
-    const origin = originRect ?? tile?.getBoundingClientRect() ?? new DOMRect(markMenu?.point.x ?? 0, markMenu?.point.y ?? 0, 1, 1);
-    openViewer(
-      // 标注完按「完成」，带标注的副本回到这个对话的输入框。
-      pictures.map((file) => ({ src: file.full ?? file.src!, onAttach: attachToComposer(sessionId) })),
-      imgIndex,
-      origin,
-      tile,
-    );
-  };
+	/** 这条消息自己的元素：分屏时另一屏同一序号的消息也在文档里。 */
+	const root = useRef<HTMLDivElement>(null);
+	const images = useMemo(
+		() => message.content.filter((block): block is ImageBlock => block.type === "image"),
+		[message.content],
+	);
+	const files = useMemo(() => attachmentsOf(message, images, (kind) => t(KIND_LABEL[kind]), t("composer.regionShot")), [message, images, t]);
+	const text = spokenText(message);
+	/*
+	 * 认得出的 `【图片 1】` 画成一枚标签，认不出的原样留着。
+	 *
+	 * 它一度是被整个剥掉的，理由是「同一个文件说两遍」——气泡里一遍名字，气泡外那排附件上又一遍。
+	 * 那个理由只在标记是一串裸方括号时成立：外面那排答的是「这条消息带了什么」，句子里这一枚答的是
+	 * 「我这句话说的是哪一个」，剥掉之后「照着它改一版」里的「它」就没有着落了。
+	 *
+	 * 「这个【重要】」不会被误认：方括号在中文里是普通标点，配不上任何一个附件的名字就当作人打的字。
+	 */
+	/*
+	 * 气泡外面那一排只有图片。
+	 *
+	 * 文件不上这一排，和输入框那边同一条规矩：一份表格的全部信息就是它的名字，而名字已经在句子里那
+	 * 枚标记上了；再在上面摆一个同样写着名字的格子，是同一件事说两遍。图片留着，因为缩略图答的是
+	 * 「是哪一张」——那是文件名答不了的。
+	 */
+	const shown = useMemo(() => files.filter((file) => file.src), [files]);
+	const spokenFiles = useMemo(() => sentFiles(files, message.content), [files, message.content]);
+	const token = useSentAttachmentToken(files, root);
+	const said = text.trim();
 
-  /**
-   * 在右边的文件面板里打开一份发出去的文件——句子里那枚标记的左键，和它菜单里的「预览」，都是这一个。
-   *
-   * 项目外的也打得开：主进程认得转录里记下的附件路径，面板可以只读地读它们（见
-   * `electron/files/attachment-reads.ts`）。先问一句它还在不在：转录活得比文件久，挪走了的文件在面板里只是
-   * 一句「无法读取」，而这里说得清是它不在原处了。
-   *
-   * 标签页叫它在磁盘上的名字，不叫句子里那枚标记的名字：面板按扩展名决定怎么画，`.md` 才渲染成文档。
-   */
-  const previewFile = async (file: { name: string; label?: string; path?: string }) => {
-    const path = file.path;
-    if (!path) return;
-    if (!(await attachmentActions.ensureThere({ name: file.label ?? file.name, path }))) return;
-    void openFilePane(path, screen ?? undefined);
-  };
+	const [editing, setEditing] = useState(false);
+	const [draft, setDraft] = useState(text);
+	const filesBack = useFilesBack();
+	function submit() {
+		const trimmed = draft.trim();
+		/*
+		 * Unchanged text still sends.
+		 *
+		 * This used to return early when the wording had not moved, on the reasoning that there was
+		 * nothing to do. But re-sending the same message is exactly what you want after a turn died
+		 * on a dropped connection — and pressing 发送 and having nothing at all happen reads as a
+		 * broken button, not as a considerate no-op. Cancel is right there for changing your mind.
+		 */
+		if (!trimmed) {
+			setEditing(false);
+			return;
+		}
+		/*
+		 * Everything that was attached is carried over: the edit is to the wording, not to the files.
+		 *
+		 * Images always were. The file bodies are new here and are not optional — the editor works on
+		 * `displayText`, which deliberately leaves them out, so rebuilding from the edited text alone
+		 * would resend 【report.md】 with the document gone and the model answering about a file it can
+		 * no longer see. They go ahead of the new wording rather than back where they were: an edit is
+		 * a redo, and keeping the contents matters more than keeping the interleaving.
+		 */
+		const bodies = message.content.filter(
+			(block): block is Extract<UserContent, { type: "text" }> =>
+				block.type === "text" && isAttachmentBody(block.text),
+		);
+		/*
+		 * 附了哪几个文件，和气泡里该显示什么，跟着一起过去。
+		 *
+		 * 不带的那一版等于每编辑一次就把附件从界面上抹掉一次——文件其实还在 `content` 里，模型照样
+		 * 读得到，只有人看不见了。而 `displayText` 一旦没有，气泡就退回原文，附件正文重新整个铺进
+		 * 自己发出的那条消息里，那正是 `displayText` 存在的全部理由。
+		 */
+		const content: UserContent[] = [...images, ...bodies, { type: "text", text: trimmed }];
+		const meta = { displayText: trimmed, ...(message.attachments?.length ? { attachments: message.attachments } : {}) };
+		const send = (files: boolean) => {
+			setEditing(false);
+			void editMessage(index, content, files ? { ...meta, files: true } : meta, sessionId ?? undefined);
+		};
+		// 侧边聊天改不了主对话的文件，它截的也不是那几轮。
+		if (aside) return send(false);
+		// 取消就回到编辑框，改好的字还在。
+		void filesBack.check(
+			sessionId,
+			index,
+			(n) => ({
+				title: t("revert.editTitle"),
+				detail: t("revert.editDetail", { n }),
+				blocked: t("revert.editBlocked"),
+				withFiles: t("revert.editWithFiles"),
+				without: t("revert.editOnly"),
+			}),
+			send,
+			() => send(false),
+		);
+	}
 
-  /**
-   * 这一份文件能不能在面板里预览，不论它在不在项目里——项目外附件的放行在桌面主进程里
-   * （`electron/files/attachment-reads.ts`）。
-   */
-  const panelPreview = (file: { name: string; kind: FileKind; path?: string }) =>
-    Boolean(file.path) && previewableInPanel(file.kind, file.name);
+	if (editing) {
+		return (
+			<div ref={root} data-question-index={index} className="ly-enter flex justify-end">
+				<MessageEditor
+					value={draft}
+					onChange={setDraft}
+					onSubmit={submit}
+					onCancel={() => {
+						setEditing(false);
+						setDraft(text);
+					}}
+					// 侧边面板只有两三百像素宽，320 会把它吞掉；按钮也照侧边聊天一直的说法叫「重新提问」。
+					{...(aside ? { confirmLabel: t("sideMessage.reask"), maxHeight: 220 } : {})}
+				/>
+				{filesBack.element}
+			</div>
+		);
+	}
 
-  /** 右键点在句子里某一枚标记上时，那份附件和菜单该弹在哪儿。 */
-  const [markMenu, setMarkMenu] = useState<{
-    point: { x: number; y: number };
-    file: { name: string; label?: string; kind: FileKind; path?: string; src?: string };
-  } | null>(null);
+	return (
+		<div ref={root} data-question-index={index} data-ly-quote="user" className="group/msg ly-enter flex flex-col items-end">
+			{/*
+			 * Always visible, not folded into the hover row below.
+			 *
+			 * This message was written by the side chat, not by the person reading it. Finding
+			 * an instruction in your own voice that you have no memory of writing is disorienting
+			 * enough that the explanation cannot be something you have to go looking for.
+			 */}
+			{message.origin === "side-chat" && (
+				<span className="mb-1 flex items-center gap-1 pr-1 text-caption text-ink-faint">
+					<MessageSquarePlus size={11} strokeWidth={1.9} />
+					{translate("userMessage.fromSideChat")}
+				</span>
+			)}
 
-  const rawText = message.content
-    .filter(
-      (block): block is Extract<UserContent, { type: "text" }> =>
-        block.type === "text",
-    )
-    .map((block) => block.text)
-    .join("\n");
+			{/*
+			 * 全部附件，在气泡外面，一排。
+			 *
+			 * 图片是缩略图不是原图：一张已发出的图在这里要回答的只是「是哪一张」，看清楚它是一次
+			 * 点击的事，而查看器比一个消息气泡称职得多。三张全尺寸的截图会把它们底下的回复整个顶
+			 * 出屏幕——地方被图占了，对话把它丢了。
+			 *
+			 * 文件也在这里，而不是在气泡里当一段行内文字。从前只有图片站在外面，文档的名字嵌在句
+			 * 子中间，于是同一条消息里两种附件是两种东西；更糟的是图片两样都占：外面一张缩略图，
+			 * 里面还有一遍它的文件名。现在一个文件只画一次，画在同一个地方。
+			 *
+			 * 能点开，但不能改：这一份已经发出去了。查看器认得出没有 `onReplace`，于是把标注过的
+			 * 那份放进剪贴板，而不是悄悄改写一条已经是记录的消息。
+			 */}
+			{shown.length > 0 && (
+				<AttachmentStrip
+					files={shown}
+					align="end"
+					thumbnail={80}
+					/*
+					 * 铺开，不滚。
+					 *
+					 * 这一条已经发出去了：它带了九个文件就该看见九个，下面没有什么在等着被挤走。横滚在这里
+					 * 还会藏东西——翻旧消息的人不会想到要去横着拨一下。
+					 */
+					layout="wrap"
+					className="ly-user-images mb-2 max-w-[85%]"
+					onOpen={(index, event) =>
+						openFromEvent(
+							event,
+							shown.map((file) => ({ src: file.full ?? file.src!, onAttach: attachToComposer(sessionId) })),
+							index,
+						)
+					}
+				/>
+			)}
+			{(said || hasCapsules(message)) && (
+				<div className="ly-user-bubble max-w-[85%] rounded-2xl bg-card px-4 py-2.5 sm:max-w-[75%]">
+					<MessageCapsules message={message} sessionId={sessionId} />
+					{/*
+					 * 气泡里只有人自己打的那些字。
+					 *
+					 * 认不出来的 `【…】` 原样留着：中文里方括号是普通标点，一句「这个【重要】」不是在引用
+					 * 任何东西。
+					 */}
+					{said && <BubbleText text={text} files={spokenFiles} className="text-label leading-6 text-ink" renderFile={token.renderFile} />}
+				</div>
+			)}
+			{token.menu}
 
-  const skillRef = message.skillRef;
-  /*
-   * 附件不在这里面了。
-   *
-   * 它们从前算一份「胶囊」，跟技能和会话引用一样住在气泡里；于是一条只附了几个文件、一个字
-   * 没打的消息，气泡里装的全是文件名——气泡是「我说的那句话」的容器，它不该盛这个。附件整体
-   * 搬到气泡外面那一排上之后，只剩这两样还要气泡：它们确实是这句话的一部分。
-   *
-   * 顺带修掉一个空壳：附件还算在里面时，正文为空的那条消息会渲染出一个只有内边距的气泡。
-   */
-  const hasCapsules = Boolean(skillRef || message.sessionRefs?.length);
-  const images = useMemo(
-    () => message.content.filter((block): block is ImageBlock => block.type === "image"),
-    [message.content],
-  );
-  const files = useMemo(
-    () =>
-      attachmentsOf(
-        message,
-        images,
-        (kind) => t(KIND_LABEL[kind]),
-        t("composer.regionShot"),
-      ),
-    [message, images, t],
-  );
-  const text = message.displayText ?? rawText;
-  /*
-   * 认得出的 `【图片 1】` 画成一枚标签，认不出的原样留着。
-   *
-   * 它一度是被整个剥掉的，理由是「同一个文件说两遍」——气泡里一遍名字，气泡外那排附件上又一遍。
-   * 那个理由只在标记是一串裸方括号时成立：外面那排答的是「这条消息带了什么」，句子里这一枚答的是
-   * 「我这句话说的是哪一个」，剥掉之后「照着它改一版」里的「它」就没有着落了。
-   *
-   * 「这个【重要】」不会被误认：方括号在中文里是普通标点，配不上任何一个附件的名字就当作人打的字。
-   */
-  /*
-   * 气泡外面那一排只有图片。
-   *
-   * 文件不上这一排，和输入框那边同一条规矩：一份表格的全部信息就是它的名字，而名字已经在句子里那
-   * 枚标记上了；再在上面摆一个同样写着名字的格子，是同一件事说两遍。图片留着，因为缩略图答的是
-   * 「是哪一张」——那是文件名答不了的。
-   */
-  const shown = useMemo(() => files.filter((file) => file.src), [files]);
-  /*
-   * 交给气泡的那份附件清单。
-   *
-   * 从前这里就地 `placeAttachments` 切好段再画。现在切段在 `BubbleText` 里——它要先知道有没有
-   * 标记，才能决定这段正文走 markdown 还是走行内。这里只负责把消息里存的附件整理成它认得的
-   * 形状。
-   */
-  const spokenFiles = useMemo(
-    () =>
-      (
-        files.map((file) => ({
-          name: file.name,
-          label: file.label,
-          kind: file.kind,
-          src: file.full ?? file.src,
-          /*
-           * 它在磁盘上的位置也要带过来。
-           *
-           * 这一行漏了很久，而漏掉它的表现不是「少一行菜单」：右键点在气泡里一枚文件标记上，弹出
-           * 来的是一个**空框**——没有路径就没有「打开」「在访达中显示」「复制路径」，而文件又没有
-           * 像素可复制、已经发出去的也没有「移除」，于是一行都不剩。消息里本来就存着这个路径
-           * （`MessageAttachment.path`），只是没走到这儿。
-           */
-          ...(file.path ? { path: file.path } : {}),
-          // 图片的像素、文件的正文，两样都没有的才是「只有名字」——正文有没有，看消息里装了什么。
-          bodiless: !file.src && onlyNameSent(message.content, file.name),
-        }))
-      ),
-    [files, message.content],
-  );
-  const said = text.trim();
-
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(text);
-  const filesBack = useFilesBack();
-  // 演算还没回来时再按一次回车，会弹两个框、发两遍。
-  const checking = useRef(false);
-  async function submit() {
-    const trimmed = draft.trim();
-    /*
-     * Unchanged text still sends.
-     *
-     * This used to return early when the wording had not moved, on the reasoning that there was
-     * nothing to do. But re-sending the same message is exactly what you want after a turn died
-     * on a dropped connection — and pressing 发送 and having nothing at all happen reads as a
-     * broken button, not as a considerate no-op. Cancel is right there for changing your mind.
-     */
-    if (!trimmed) {
-      setEditing(false);
-      return;
-    }
-    /*
-     * Everything that was attached is carried over: the edit is to the wording, not to the files.
-     *
-     * Images always were. The file bodies are new here and are not optional — the editor works on
-     * `displayText`, which deliberately leaves them out, so rebuilding from the edited text alone
-     * would resend 【report.md】 with the document gone and the model answering about a file it can
-     * no longer see. They go ahead of the new wording rather than back where they were: an edit is
-     * a redo, and keeping the contents matters more than keeping the interleaving.
-     */
-    const bodies = message.content.filter(
-      (block): block is Extract<UserContent, { type: "text" }> =>
-        block.type === "text" && isAttachmentBody(block.text),
-    );
-    /*
-     * 附了哪几个文件，和气泡里该显示什么，跟着一起过去。
-     *
-     * 不带的那一版等于每编辑一次就把附件从界面上抹掉一次——文件其实还在 `content` 里，模型照样
-     * 读得到，只有人看不见了。而 `displayText` 一旦没有，气泡就退回原文，附件正文重新整个铺进
-     * 自己发出的那条消息里，那正是 `displayText` 存在的全部理由。
-     */
-    const content: UserContent[] = [...images, ...bodies, { type: "text", text: trimmed }];
-    const meta = { displayText: trimmed, ...(message.attachments?.length ? { attachments: message.attachments } : {}) };
-    const send = (files: boolean) => {
-      setEditing(false);
-      void editMessage(index, content, files ? { ...meta, files: true } : meta, sessionId ?? undefined);
-    };
-    // 侧边聊天改不了主对话的文件，它截的也不是那几轮。
-    if (aside) return send(false);
-    if (checking.current) return;
-    checking.current = true;
-    const plan = await filesBackPlan(sessionId, index).finally(() => {
-      checking.current = false;
-    });
-    if (!plan) return send(false);
-    // 取消就回到编辑框，改好的字还在。
-    filesBack.ask(plan, {
-      title: t("revert.editTitle"),
-      detail: t("revert.editDetail", { n: plan.files.length }),
-      blocked: t("revert.editBlocked"),
-      withFiles: t("revert.editWithFiles"),
-      without: t("revert.editOnly"),
-    }, send);
-  }
-
-  if (editing) {
-    return (
-      <div ref={root} data-question-index={index} className="ly-enter flex justify-end">
-        <MessageEditor
-          value={draft}
-          onChange={setDraft}
-          onSubmit={() => void submit()}
-          onCancel={() => {
-            setEditing(false);
-            setDraft(text);
-          }}
-          // 侧边面板只有两三百像素宽，320 会把它吞掉；按钮也照侧边聊天一直的说法叫「重新提问」。
-          {...(aside ? { confirmLabel: t("sideMessage.reask"), maxHeight: 220 } : {})}
-        />
-        {filesBack.element}
-      </div>
-    );
-  }
-
-  return (
-    <div ref={root} data-question-index={index} data-ly-quote="user" className="group/msg ly-enter flex flex-col items-end">
-      {/*
-       * Always visible, not folded into the hover row below.
-       *
-       * This message was written by the side chat, not by the person reading it. Finding
-       * an instruction in your own voice that you have no memory of writing is disorienting
-       * enough that the explanation cannot be something you have to go looking for.
-       */}
-      {message.origin === "side-chat" && (
-        <span className="mb-1 flex items-center gap-1 pr-1 text-caption text-ink-faint">
-          <MessageSquarePlus size={11} strokeWidth={1.9} />
-          {translate("userMessage.fromSideChat")}
-        </span>
-      )}
-
-        {/*
-         * 全部附件，在气泡外面，一排。
-         *
-         * 图片是缩略图不是原图：一张已发出的图在这里要回答的只是「是哪一张」，看清楚它是一次
-         * 点击的事，而查看器比一个消息气泡称职得多。三张全尺寸的截图会把它们底下的回复整个顶
-         * 出屏幕——地方被图占了，对话把它丢了。
-         *
-         * 文件也在这里，而不是在气泡里当一段行内文字。从前只有图片站在外面，文档的名字嵌在句
-         * 子中间，于是同一条消息里两种附件是两种东西；更糟的是图片两样都占：外面一张缩略图，
-         * 里面还有一遍它的文件名。现在一个文件只画一次，画在同一个地方。
-         *
-         * 能点开，但不能改：这一份已经发出去了。查看器认得出没有 `onReplace`，于是把标注过的
-         * 那份放进剪贴板，而不是悄悄改写一条已经是记录的消息。
-         */}
-        {shown.length > 0 && (
-          <AttachmentStrip
-            files={shown}
-            align="end"
-            thumbnail={80}
-            /*
-             * 铺开，不滚。
-             *
-             * 这一条已经发出去了：它带了九个文件就该看见九个，下面没有什么在等着被挤走。横滚在这里
-             * 还会藏东西——翻旧消息的人不会想到要去横着拨一下。
-             */
-            layout="wrap"
-            className="ly-user-images mb-2 max-w-[85%]"
-            onOpen={(index, event) =>
-              openFromEvent(
-                event,
-                shown.map((file) => ({ src: file.full ?? file.src!, onAttach: attachToComposer(sessionId) })),
-                index,
-              )
-            }
-          />
-        )}
-      {(said || hasCapsules) && <div className="ly-user-bubble max-w-[85%] rounded-2xl bg-card px-4 py-2.5 sm:max-w-[75%]">
-        {/* Render interactive Skill capsule if present */}
-        {skillRef && (
-          <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-            <button
-              type="button"
-              data-ly-tip={t("userMessage.openSkill")}
-              onClick={async () => {
-                // Listed from this conversation's directory; the live slot's is the focused screen's.
-                const cmdCwd = directoryOf(sessionId);
-                const list = await bridge.commands.list(cmdCwd).catch(() => null);
-                const targetPath = list?.skills?.find((skill: SkillEntry) => skill.name === skillRef.name && skill.pluginId === skillRef.pluginId)?.path;
-                if (targetPath) {
-                  void openFilePane(targetPath, screen ?? undefined);
-                } else {
-                  useApp.getState().notify(t("userMessage.skillMissing", { name: skillRef?.name ?? "" }), "warn");
-                }
-              }}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-line-soft bg-card-hover/80 px-2.5 py-1 text-label font-medium text-accent transition-colors hover:bg-card-hover active:scale-[0.98]"
-            >
-              <Boxes size={13} strokeWidth={2} className="text-accent" />
-              <span>{skillRef.name}</span>
-            </button>
-          </div>
-        )}
-
-        {/* Render interactive Session mention capsules if present */}
-        {message.sessionRefs && message.sessionRefs.length > 0 && (
-          <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-            {message.sessionRefs.map((sRef) => (
-              <button
-                key={sRef.id}
-                type="button"
-                data-ly-tip={t("userMessage.jumpToSession")}
-                onClick={() => {
-                  if (!jumpToSession(sessionId, sRef.id)) useApp.getState().notify(t("userMessage.sessionMissing", { title: sRef.title }), "warn");
-                }}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-line-soft bg-card-hover/80 px-2 py-0.5 text-caption font-medium text-ink-muted transition-colors hover:bg-card-hover hover:text-ink active:scale-[0.98]"
-              >
-                <MessagesSquare size={12} strokeWidth={1.8} className="text-ink-faint" />
-                <span className="max-w-[180px] truncate">{sRef.title}</span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/*
-          * 气泡里只有人自己打的那些字。
-          *
-          * 认不出来的 `【…】` 原样留着：中文里方括号是普通标点，一句「这个【重要】」不是在引用
-          * 任何东西。
-          */}
-        {said && (
-          <BubbleText
-            text={text}
-            files={spokenFiles}
-            className="text-label leading-6 text-ink"
-            renderFile={(file, at) => {
-              const segment = { file };
-              const look = tokenLook(segment.file.name, segment.file.kind);
-              return (
-                <span
-                  key={at}
-                  className="ly-attachment-token"
-                  data-kind={segment.file.kind}
-                  data-glyph={look ? "" : undefined}
-                  /* 只有名字进了提示词的那些：图标淡一档。气泡里还多一句悬停说明。 */
-                  data-bodiless={segment.file.bodiless ? "" : undefined}
-                  data-ly-tip={segment.file.bodiless ? t("composer.filenameOnly") : undefined}
-                  onClick={(event) => {
-                    const rect = event.currentTarget.getBoundingClientRect();
-                    attachmentActions.openOrPreview(
-                      {
-                        name: segment.file.label ?? segment.file.name,
-                        path: segment.file.path,
-                        src: segment.file.src,
-                        isImage: Boolean(segment.file.src || segment.file.kind === "image"),
-                        isFolder: segment.file.kind === "folder",
-                        /*
-                         * 发出去的文件，项目外的也进得了面板——面板打开它看得到东西的话。其余的照旧：项目里
-                         * 的进面板，项目外的在访达中指出来。
-                         */
-                        panelReadable: panelPreview(segment.file),
-                        onPreviewImage: (originRect?: DOMRect) => {
-                          if (segment.file.src) {
-                            previewImage(segment.file.src, originRect);
-                          }
-                        },
-                        onOpenFile: () => void previewFile(segment.file),
-                      },
-                      rect,
-                    );
-                  }}
-                  /*
-                   * 右键点这一枚，和右键点输入框里那一枚、点附件条上那一格，弹的是同一份菜单。
-                   *
-                   * 已经发出去的消息里没有「移除」——那一份是记录。其余几行照旧，靠的是消息里存下的
-                   * 路径（`MessageAttachment.path`）；存之前发的那些没有路径，菜单会自己把它们画成
-                   * 灰的并说明为什么。
-                   */
-                  onContextMenu={(event) => {
-                    event.preventDefault();
-                    setMarkMenu({ point: { x: event.clientX, y: event.clientY }, file: segment.file });
-                  }}
-                >
-                  {look && <TokenGlyph look={look} />}
-                  {segment.file.label ?? segment.file.name}
-                </span>
-              );
-            }}
-          />
-        )}
-      </div>}
-
-      <AttachmentMenu
-        anchor={markMenu?.point ?? null}
-        file={
-          markMenu
-            ? {
-                name: markMenu.file.label ?? markMenu.file.name,
-                ...(markMenu.file.path ? { path: markMenu.file.path } : {}),
-                ...(markMenu.file.src ? { src: markMenu.file.src } : {}),
-                /*
-                 * 「预览」：图片进查看器，像素就在消息里，查看器要的只是一个放大的起点；文件进右边的文件
-                 * 面板。
-                 *
-                 * 文件这一半从前不给，理由是面板读不到项目外的东西，而附件绝大多数来自项目外。现在主进程
-                 * 认得消息里记下的附件路径（`electron/files/attachment-reads.ts`），面板只读地打得开它们——只要
-                 * 打开之后看得到的是它本身，见 `previewableInPanel`。
-                 */
-                ...(markMenu.file.src
-                  ? { onPreview: () => previewImage(markMenu.file.src ?? "") }
-                  : panelPreview(markMenu.file)
-                    ? { onPreview: () => void previewFile(markMenu.file) }
-                    : {}),
-              }
-            : null
-        }
-        onClose={() => setMarkMenu(null)}
-      />
-
-      {/* Editing is the one thing a sent message offers that a reply does not. */}
-      <MessageActions
-        timestamp={message.timestamp}
-        text={text}
-        className="mt-1 pr-1"
-      >
-        {!aside && <RevertAction index={index} sessionId={sessionId} running={running} last={index === lastUser} />}
-        {/*
-          * 只有最后一条能编辑，同 ZCode：改一条更早的话，等于把它之后几轮连同那几轮改过的文件一起作废，
-          * 这件事交给撤回去做，它会先问清楚。按钮留着、置灰并说明，不因为位置不同而时有时无。
-          */}
-        <IconButton
-          label={running ? t(aside ? "sideMessage.busy" : "userMessage.turnRunning") : index !== lastUser ? t("userMessage.editNotLast") : t(aside ? "sideMessage.editAndReask" : "userMessage.editResend")}
-          ariaLabel={t(aside ? "sideMessage.editAndReask" : "userMessage.editResend")}
-          explainDisabled
-          disabled={running || index !== lastUser}
-          onClick={() => {
-            if (running || index !== lastUser) return;
-            setDraft(text);
-            setEditing(true);
-          }}
-          icon={<Pencil size={12.5} strokeWidth={1.8} />}
-        />
-        {/*
-          * 撤回's sibling, done to a copy: a new conversation from just before this message, with the
-          * message back in its composer — this one stays as it is. Last in the row, where Claude Code
-          * puts its "Fork from here". Offered while a turn runs, unlike the two beside it: it changes
-          * nothing here.
-          */}
-        {sessionId && !aside && <ForkAction index={index} message={message} sessionId={sessionId} />}
-      </MessageActions>
-    </div>
-  );
+			{/* Editing is the one thing a sent message offers that a reply does not. */}
+			<MessageActions
+				timestamp={message.timestamp}
+				text={text}
+				className="mt-1 pr-1"
+			>
+				{!aside && <RevertAction index={index} sessionId={sessionId} running={running} last={index === lastUser} />}
+				{/*
+				 * 只有最后一条能编辑，同 ZCode：改一条更早的话，等于把它之后几轮连同那几轮改过的文件一起作废，
+				 * 这件事交给撤回去做，它会先问清楚。按钮留着、置灰并说明，不因为位置不同而时有时无。
+				 */}
+				<IconButton
+					label={running ? t(aside ? "sideMessage.busy" : "userMessage.turnRunning") : index !== lastUser ? t("userMessage.editNotLast") : t(aside ? "sideMessage.editAndReask" : "userMessage.editResend")}
+					ariaLabel={t(aside ? "sideMessage.editAndReask" : "userMessage.editResend")}
+					explainDisabled
+					disabled={running || index !== lastUser}
+					onClick={() => {
+						if (running || index !== lastUser) return;
+						setDraft(text);
+						setEditing(true);
+					}}
+					icon={<Pencil size={12.5} strokeWidth={1.8} />}
+				/>
+				{/*
+				 * 撤回's sibling, done to a copy: a new conversation from just before this message, with the
+				 * message back in its composer — this one stays as it is. Last in the row, where Claude Code
+				 * puts its "Fork from here". Offered while a turn runs, unlike the two beside it: it changes
+				 * nothing here.
+				 */}
+				{sessionId && !aside && <ForkAction index={index} message={message} sessionId={sessionId} />}
+			</MessageActions>
+		</div>
+	);
 }

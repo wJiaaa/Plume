@@ -1,5 +1,6 @@
 import type { ImageGenerateDetails, ToolResult } from "@plume/core";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useNow } from "../../ui/motion/useNow.ts";
 import { useScopedFromToolRuns, useScopedSessionId } from "../../app/session-scope.tsx";
 import { translate } from "../../i18n/index.ts";
 import { expectedMs, progressAt, stageAt } from "../../lib/image-progress.ts";
@@ -43,17 +44,6 @@ function GeneratedImage({ callId }: { callId: string }) {
 
 const HEIGHT = 240;
 
-/** 只在画的时候走的钟：百分比是读数，不是节拍。 */
-function useNow(active: boolean): number {
-	const [now, setNow] = useState(() => Date.now());
-	useEffect(() => {
-		if (!active) return;
-		const timer = window.setInterval(() => setNow(Date.now()), 400);
-		return () => window.clearInterval(timer);
-	}, [active]);
-	return active ? now : Date.now();
-}
-
 function ImageCanvas({ callId, args, result, running, startedAt, summary }: { callId: string; args: Record<string, unknown>; result?: ToolResult; running: boolean; startedAt: number; summary: string }) {
 	const images = (result?.content ?? []).flatMap((block) => {
 		const refs = block.type === "image" ? imageBlockSrc(block, HEIGHT * 2) : null;
@@ -70,7 +60,8 @@ function ImageCanvas({ callId, args, result, running, startedAt, summary }: { ca
 	const [live] = useState(running);
 	const menu = useContextMenu<GeneratedImageTarget>();
 	const sessionId = useScopedSessionId();
-	const now = useNow(running);
+	// 只在画的时候走的钟：百分比是读数，不是节拍。
+	const now = useNow(running, 400);
 	const count = Math.max(1, Math.min(4, Math.round(Number(details?.count ?? args.count) || 1)));
 
 	if (images.length === 0) {

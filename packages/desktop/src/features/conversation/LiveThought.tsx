@@ -1,5 +1,5 @@
 import { formatElapsed } from "./running-line.ts";
-import { useEffect, useState } from "react";
+import { useNow } from "../../ui/motion/useNow.ts";
 import { translate } from "../../i18n/translate.ts";
 import { RollWords } from "../../ui/motion/RollWords.tsx";
 
@@ -51,12 +51,7 @@ function liveWord(elapsedMs: number): (typeof LIVE_STEPS)[number][1] {
  * 说不出开始时刻时不报秒，词停在第一个。
  */
 export function LiveThought({ startedAt }: { startedAt: number | undefined }) {
-	const [now, setNow] = useState(() => Date.now());
-	useEffect(() => {
-		if (startedAt === undefined) return;
-		const timer = setInterval(() => setNow(Date.now()), 250);
-		return () => clearInterval(timer);
-	}, [startedAt]);
+	const now = useNow(startedAt !== undefined, 250);
 
 	const elapsed = startedAt === undefined ? 0 : now - startedAt;
 	const word = translate(liveWord(elapsed));

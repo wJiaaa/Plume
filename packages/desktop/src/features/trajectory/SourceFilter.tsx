@@ -1,10 +1,10 @@
-import { translate } from "../../../i18n/translate.ts";
-import { Check, Circle, ListFilter, RotateCcw } from "../../../ui/icons/index.ts";
+import { translate } from "../../i18n/translate.ts";
+import { Check, Circle, ListFilter, RotateCcw } from "../../ui/icons/index.ts";
 import { useState } from "react";
 import { SOURCE_LABEL, SOURCE_ORDER, STATUS_LABEL, type Source, type TrajectoryFilter } from "@plume/core/trajectory-view";
-import { IconButton } from "../../../ui/primitives/IconButton.tsx";
-import { MenuBody, MenuLabel, MenuItem } from "../../../ui/overlay/Menu.tsx";
-import { Popover } from "../../../ui/overlay/Popover.tsx";
+import { IconButton } from "../../ui/primitives/IconButton.tsx";
+import { MenuBody, MenuLabel, MenuItem } from "../../ui/overlay/Menu.tsx";
+import { Popover } from "../../ui/overlay/Popover.tsx";
 import { SourceIcon } from "./SourceIcon.tsx";
 
 /** Detailed filters belong to a menu, leaving the ledger available at narrow pane widths. */

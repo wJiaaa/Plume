@@ -1,9 +1,11 @@
 import type { DiffHunk, ImageContent, ToolResult } from "@plume/core";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { ArrowUpRight, Ban, CircleX } from "../../ui/icons/index.ts";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useRef } from "react";
+import { useNow } from "../../ui/motion/useNow.ts";
+import { formatElapsed } from "./running-line.ts";
 import { Collapse } from "../../ui/layout/Collapse.tsx";
-import { FlowRow } from "./FlowRow.tsx";
+import { DiffCount, FlowRow } from "./FlowRow.tsx";
 import { ToolIcon } from "./tool-icons.tsx";
 import { RollWords } from "../../ui/motion/RollWords.tsx";
 import { CodeText } from "./detail/CodeText.tsx";
@@ -59,7 +61,6 @@ interface ToolCardProps {
 export function ToolCard({ toolName, summary, args, status, result, stateKey, startedAt, mark, aside, onOpen, openLabel, pending, thinking, extra }: ToolCardProps) {
 	const { t } = useI18n();
 	const [open, setOpen] = useTranscriptDisclosure(stateKey);
-	const [elapsed, setElapsed] = useState(0);
 	const details = result?.details as Record<string, unknown> | undefined;
 	const hasDiff = Array.isArray(details?.hunks) && (details.hunks as DiffHunk[]).length > 0;
 	const running = status === "running";
@@ -72,12 +73,8 @@ export function ToolCard({ toolName, summary, args, status, result, stateKey, st
 	const shown = running && result?.content.length === 0 ? undefined : result;
 
 	// A visible timer is the honest signal that a long command is still going.
-	useEffect(() => {
-		if (!running || startedAt === undefined) return;
-		setElapsed(Math.floor((Date.now() - startedAt) / 1000));
-		const timer = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 250);
-		return () => clearInterval(timer);
-	}, [running, startedAt]);
+	const now = useNow(running && startedAt !== undefined, 250);
+	const elapsed = startedAt === undefined ? 0 : now - startedAt;
 
 	const live = running && !pending;
 	const started = startedAt !== undefined;
@@ -142,18 +139,14 @@ export function ToolCard({ toolName, summary, args, status, result, stateKey, st
 		thinking ? <Fragment key="thinking">{thinking}</Fragment> : null,
 		aside ? <Fragment key="aside">{aside}</Fragment> : null,
 		running && pending ? <span key="pending" className="text-caption text-ink-faint">{pending}</span> : null,
-		live && started && elapsed > 0 ? <span key="elapsed" className="tabular-nums text-caption">{elapsed}s</span> : null,
+		live && started && elapsed >= 1000 ? <span key="elapsed" className="tabular-nums text-caption">{formatElapsed(elapsed)}</span> : null,
 		failed ? <CircleX key="failed" size={13} strokeWidth={1.9} className={`${pop}text-danger/85`} /> : null,
 		stopped ? (
 			<span key="stopped" data-ly-tip={t("toolCard.stopped")} aria-label={t("toolCard.stopped")} className={`${pop}flex`}>
 				<Ban size={13} strokeWidth={1.9} aria-hidden />
 			</span>
 		) : null,
-		hasDiff ? (
-			<span key="diff" className={`${pop}font-mono text-caption`}>
-				<span className="text-ok">+{String(details?.added ?? 0)}</span> <span className="text-danger">-{String(details?.removed ?? 0)}</span>
-			</span>
-		) : null,
+		hasDiff ? <DiffCount key="diff" added={Number(details?.added ?? 0)} removed={Number(details?.removed ?? 0)} className={pop} /> : null,
 		onOpen ? <ArrowUpRight key="open" size={12} strokeWidth={2} aria-hidden /> : null,
 	].filter(Boolean);
 

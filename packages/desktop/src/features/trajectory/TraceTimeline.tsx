@@ -1,8 +1,8 @@
-import { ChevronDown, RotateCcw, X, ZoomIn, ZoomOut } from "../../../ui/icons/index.ts";
+import { ChevronDown, RotateCcw, X, ZoomIn, ZoomOut } from "../../ui/icons/index.ts";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { entryKey, SOURCE_LABEL, type Entry } from "@plume/core/trajectory-view";
-import { IconButton } from "../../../ui/primitives/IconButton.tsx";
-import { useI18n } from "../../../i18n/index.ts";
+import { IconButton } from "../../ui/primitives/IconButton.tsx";
+import { useI18n } from "../../i18n/index.ts";
 import { draggedRange, LANE_HEIGHT, timelineDomain, timelineHit, timelineLane, type TimeRange } from "./timeline-geometry.ts";
 export type { TimeRange } from "./timeline-geometry.ts";
 

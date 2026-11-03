@@ -1,10 +1,10 @@
-import { translate } from "../../../i18n/translate.ts";
-import { ChevronsDownUp, ChevronsUpDown, Download, FileText, MoreHorizontal, RefreshCw } from "../../../ui/icons/index.ts";
-import { ActionSpinner } from "../../../ui/motion/loaders.tsx";
+import { translate } from "../../i18n/translate.ts";
+import { ChevronsDownUp, ChevronsUpDown, Download, FileText, MoreHorizontal, RefreshCw } from "../../ui/icons/index.ts";
+import { ActionSpinner } from "../../ui/motion/loaders.tsx";
 import { useState } from "react";
-import { IconButton } from "../../../ui/primitives/IconButton.tsx";
-import { MenuBody, MenuItem } from "../../../ui/overlay/Menu.tsx";
-import { Popover } from "../../../ui/overlay/Popover.tsx";
+import { IconButton } from "../../ui/primitives/IconButton.tsx";
+import { MenuBody, MenuItem } from "../../ui/overlay/Menu.tsx";
+import { Popover } from "../../ui/overlay/Popover.tsx";
 
 export function TraceActions({ collapsed, refreshing, onCollapse, onRefresh, onExport }: {
 	collapsed: boolean;

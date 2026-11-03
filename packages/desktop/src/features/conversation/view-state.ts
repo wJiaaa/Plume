@@ -74,4 +74,17 @@ export function useTranscriptDisclosure(key?: string): [boolean, (update: (open:
 			setLocal({ id, key, open: next });
 		},
 	];
-}
+}/**
+ * How much of a long transcript is mounted at once, and how much each "show more" adds — **in turns**.
+ *
+ * Counted in turns rather than in rows, and that unit is the whole point. The window used to step by
+ * 60 `Run`s while the transcript draws in `TurnBlock`s (`turn-blocks.ts`), and a turn can hold hundreds
+ * of runs: one session had 400 tool calls between two things the user typed. Paging by row into a
+ * turn like that loads 60 rows straight into an already-collapsed block, so the only thing that
+ * changes on screen is the number in 「调用工具 N 个」 — four clicks in a row, and the transcript does
+ * not move. Now one click always brings whole turns, so it always brings something you can see.
+ *
+ * Twenty rather than sixty because a turn is worth several rows: its question, its answer, and the
+ * lines its work folded into.
+ */
+export const WINDOW_TURNS = 20;

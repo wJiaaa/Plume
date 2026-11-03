@@ -25,7 +25,7 @@ import { UserMessage } from "./UserMessage.tsx";
 import { useScopedFromMeta, useScopedSessionId } from "../../app/session-scope.tsx";
 import { useI18n } from "../../i18n/index.ts";
 import { useApp } from "../../store/index.ts";
-import { sameStats, type TurnStats } from "./turns.ts";
+import { sameRow, type TurnStats } from "./turns.ts";
 import { ToolRun as ToolRunGroup } from "./runs.tsx";
 import { segments } from "./reply-segments.ts";
 
@@ -108,25 +108,6 @@ export const MessageRow = memo(function MessageRow({
     <AssistantRow message={message} index={index} upTo={upTo} from={from} continued={continued} pauses={pauses} trailer={trailer} turnStats={turnStats} viewKey={viewKey} />
   );
 }, sameRow);
-
-/**
- * `memo`'s own comparison, except that `turnStats` is compared by what it says.
- *
- * The grouping is redone whenever the transcript changes — every streamed token — and it hands each
- * row a fresh `TurnStats` snapshot even when none of its figures moved. Compared by identity, every
- * assistant row in the window looked changed on every token and the whole window re-rendered with
- * the one row that was being written. The figures are what the footer reads, so they are what is
- * compared.
- */
-export function sameRow<P extends { turnStats?: TurnStats }>(a: Readonly<P>, b: Readonly<P>): boolean {
-  const keys = Object.keys(a) as (keyof P)[];
-  if (keys.length !== Object.keys(b).length) return false;
-  for (const key of keys) {
-    if (key === "turnStats") continue;
-    if (!Object.is(a[key], b[key])) return false;
-  }
-  return sameStats(a.turnStats, b.turnStats);
-}
 
 /**
  * The date over a message that follows a pause.

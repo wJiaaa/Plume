@@ -1,8 +1,7 @@
 /**
  * 一次调用、一段调用在行上用的那几个词和数，纯数据。
  *
- * 从 `runs.tsx` 拆出来：`WorkStep` 要用它们，而 `runs.tsx` 经文件预览连回转录，从 `WorkStep` 引它就是
- * 一条新的循环依赖。
+ * 工具卡（`runs.tsx`）和一段活那一行（`WorkStep`）共用：同一次调用在两种行上是同一种说法。
  */
 
 import type { AssistantContent } from "@plume/core";

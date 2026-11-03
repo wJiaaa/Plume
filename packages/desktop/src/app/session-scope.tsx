@@ -178,6 +178,7 @@ function useScopedSlot<K extends keyof CachedSessionState>(key: K): CachedSessio
 }
 
 export const useScopedStopped = () => useScopedSlot("stopped");
+export const useScopedPendingMessage = () => useScopedSlot("pendingUserMessage");
 export const useScopedTodos = () => useScopedSlot("todos");
 export const useScopedApprovals = (): AppState["approvals"] => useScopedSlot("approvals");
 export const useScopedCompactions = () => useScopedSlot("compactions");

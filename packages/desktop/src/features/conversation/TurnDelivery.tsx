@@ -82,7 +82,7 @@ function Checked({ verification }: { verification: TurnDelivery["verification"] 
 	return <span data-delivery-check={state} data-ly-tip={text} className={"min-w-0 truncate " + tone}>{text}</span>;
 }
 
-function FileName({ path }: { path: string }) {
+export function FileName({ path }: { path: string }) {
 	const split = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1;
 	return <span className="min-w-0 flex-1 truncate"><span className="text-ink-muted">{path.slice(0, split)}</span><span className="text-ink">{path.slice(split)}</span></span>;
 }

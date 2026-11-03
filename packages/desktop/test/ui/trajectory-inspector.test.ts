@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createElement as h, useState } from "react";
 import type { Entry } from "@plume/core/trajectory-view";
-import { TraceInspector } from "../../src/features/conversation/trajectory/TraceInspector.tsx";
+import { TraceInspector } from "../../src/features/trajectory/TraceInspector.tsx";
 import { click, mount } from "../helpers/mount.ts";
 
 const first: Entry = { id: "first", seq: 1, ts: 0, source: "request", summary: "第一条记录", detail: "完整正文" };

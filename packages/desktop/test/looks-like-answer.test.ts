@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Message } from "@plume/core/client-types";
-import { ANSWER_CHARS, leadsTheTurn, looksLikeAnswer } from "../src/features/conversation/running-line.ts";
+import { ANSWER_CHARS, answeredCleanly, leadsTheTurn, looksLikeAnswer } from "../src/features/conversation/running-line.ts";
 
 type Block = Extract<Message, { role: "assistant" }>["content"][number];
 
@@ -62,4 +62,12 @@ test("nothing streaming, nothing to lead", () => {
 	assert.equal(leadsTheTurn([user, reply("pending", text("  "))]), false, "an empty block opened before the first word");
 	assert.equal(leadsTheTurn([user, reply("stop", text("在。"))]), false);
 	assert.equal(leadsTheTurn([user]), false);
+});
+
+test("正常写完的回答才算答完：以正文收尾、停在 stop 上", () => {
+	assert.equal(answeredCleanly([user, reply("stop", text("做完了。"))]), true);
+	assert.equal(answeredCleanly([user, reply("pending", text("做完了。"))]), false, "还在写");
+	assert.equal(answeredCleanly([user, reply("stop", text("先看看"), call)]), false, "以调用收尾");
+	assert.equal(answeredCleanly([user, reply("stop", text("  "))]), false, "空白不是回答");
+	assert.equal(answeredCleanly([user]), false);
 });

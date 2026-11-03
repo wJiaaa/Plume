@@ -1,4 +1,5 @@
 import { memo, useEffect, useState } from "react";
+import { useNow } from "../../ui/motion/useNow.ts";
 import { useI18n } from "../../i18n/index.ts";
 import type { MessageKey } from "../../i18n/messages/index.ts";
 import { translate } from "../../i18n/translate.ts";
@@ -40,11 +41,7 @@ const KIND_LABEL: Record<string, MessageKey> = {
  * is where an answer is being typed.
  */
 function Expiry({ at }: { at: number }) {
-	const [now, setNow] = useState(() => Date.now());
-	useEffect(() => {
-		const timer = setInterval(() => setNow(Date.now()), 1000);
-		return () => clearInterval(timer);
-	}, []);
+	const now = useNow(true, 1000);
 	const left = at - now;
 	/*
 	 * 走到零就不说了。

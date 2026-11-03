@@ -13,7 +13,8 @@ import { afterEach, beforeEach, test } from "node:test";
 import { createElement as h } from "react";
 import type { AssistantMessage, Message, SessionMeta } from "@plume/core";
 import { SessionScope } from "../../src/app/session-scope.tsx";
-import { LiveToolCard, ToolRun } from "../../src/features/conversation/runs.tsx";
+import { LiveToolCard } from "../../src/features/conversation/runs.tsx";
+import { WorkStep } from "../../src/features/conversation/WorkStep.tsx";
 import { I18nProvider } from "../../src/i18n/index.ts";
 import { useApp, type AppState } from "../../src/store/index.ts";
 import type { Cache } from "../../src/store/derive.ts";
@@ -87,7 +88,9 @@ test("a preview made under a screen without focus draws the page there", async (
 });
 
 test("a folded run under a screen without focus counts that screen's changed lines", async () => {
-	view = await under("b", h(ToolRun, { calls: [{ block: ls, stopReason: "toolUse" }, { block: edit, stopReason: "toolUse" }], live: false }));
+	const calls = [{ block: ls, stopReason: "toolUse" as const }, { block: edit, stopReason: "toolUse" as const }];
+	const step = { key: "step-b-ls", category: "edit", calls, members: calls.map((one) => ({ kind: "call" as const, call: one })) };
+	view = await under("b", h(WorkStep, { step, live: false, draw: () => null }));
 	assert.match(view.text(), /\+5/, `the run lost its added lines: ${view.text().slice(0, 160)}`);
 	assert.match(view.text(), /-2|−2/, "the run lost its removed lines");
 });

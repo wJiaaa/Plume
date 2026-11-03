@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { act, createElement as h } from "react";
 import type { AssistantContent, SubAgentSummary } from "@plume/core";
-import { ToolRun } from "../../src/features/conversation/runs.tsx";
+import { WorkStep } from "../../src/features/conversation/WorkStep.tsx";
 import { useApp } from "../../src/store/index.ts";
 import { useSubAgents } from "../../src/store/subAgents.ts";
 import { click, mount } from "../helpers/mount.ts";
@@ -44,7 +44,9 @@ async function draw() {
 		toolRuns: Object.fromEntries(calls.map((call) => [call.id, { toolCallId: call.id, toolName: "task", summary: String(call.arguments.description), args: call.arguments, status: "running" as const, startedAt: started }])),
 	});
 	useSubAgents.setState({ rosters: { dispatch: [summary({ id: "sub:1", description: "找登录入口", startedAt: started + 100 })] }, transcripts: {}, focused: null, loading: [] });
-	return mount(h(ToolRun, { calls: calls.map((block) => ({ block, stopReason: "toolUse" as const })), live: true }));
+	const steps = calls.map((block) => ({ block, stopReason: "toolUse" as const }));
+	const step = { key: "step-c1", category: "task" as const, calls: steps, members: steps.map((call) => ({ kind: "call" as const, call })) };
+	return mount(h(WorkStep, { step, live: true, draw: () => null }));
 }
 
 test("the folded line shows who was sent, and which of them are still waiting their turn", async () => {
@@ -64,7 +66,7 @@ test("the folded line shows who was sent, and which of them are still waiting th
 test("each card wears its agent's face; a queued one says so instead of spinning; a running one opens its page in the panel", async () => {
 	const view = await draw();
 	try {
-		await click(view.find("[data-ly-run] > button"));
+		await click(view.find("[data-ly-run] button[aria-expanded]"));
 		// 卡片是带着脸的那几块 div；行尾那排脸是 span，不算。
 		const cards = view.all<HTMLElement>("[data-ly-run] div[data-ly-avatar-host]");
 		assert.equal(cards.length, 3, "three delegation cards");

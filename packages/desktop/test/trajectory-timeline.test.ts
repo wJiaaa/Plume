@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Entry } from "@plume/core/trajectory-view";
-import { draggedRange, timelineHit } from "../src/features/conversation/trajectory/timeline-geometry.ts";
+import { draggedRange, timelineHit } from "../src/features/trajectory/timeline-geometry.ts";
 
 const span = { start: 0, end: 1000 };
 const entry = (source: Entry["source"], start: number, end: number): Entry => ({ seq: start, ts: start, startedAt: start, finishedAt: end, source, summary: source, detail: source });

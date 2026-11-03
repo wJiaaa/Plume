@@ -96,8 +96,8 @@
 - 末尾的推理还在写：句尾接一句 `正在思考 · 5s`（`LiveThought`），句子本身不动。推理不另起一行，所以不会有一行冒出来、
   几秒后又被收进上面那一行——旧样子跳的就是这个。
 
-行高锁死在 `FlowRow` 那一个值，跑着时只有字在变。子 agent 面板与侧边聊天仍用工具组
-（`ToolGroup`）。规则守在 `test/turn-blocks.test.ts` 与 `test/ui/turn-process.test.ts`，真窗口里的样子见
+行高锁死在 `FlowRow` 那一个值，跑着时只有字在变。子 agent 面板同一套：回复末尾的调用经 `turnBlocks`，
+夹在两段话中间的经 `stepsOf`，都收成 `WorkStep`。规则守在 `test/turn-blocks.test.ts` 与 `test/ui/turn-process.test.ts`，真窗口里的样子见
 `e2e/tool-flow-demo.ts`，没有锚、过程跑完照样摊着见 `e2e/turn-no-anchor-demo.ts`。
 
 `preview` 工具放出来的页面是这一轮的结果，不是过程：`runs()` 让它自成一段（`shown`），不收进工具组；

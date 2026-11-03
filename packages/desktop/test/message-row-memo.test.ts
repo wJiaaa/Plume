@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { AssistantMessage } from "@plume/core";
-import { sameRow } from "../../src/features/conversation/rows.tsx";
+import { sameRow } from "../src/features/conversation/turns.ts";
 
 const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
 const message: AssistantMessage = { role: "assistant", content: [{ type: "text", text: "做完了。" }], api: "anthropic-messages", provider: "qa", model: "qa", usage, stopReason: "stop", timestamp: 10 };

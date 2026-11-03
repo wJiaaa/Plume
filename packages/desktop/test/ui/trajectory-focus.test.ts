@@ -6,8 +6,8 @@ import type { Entry } from "@plume/core/trajectory-view";
 import { useApp } from "../../src/store/index.ts";
 import { useOpenFile } from "../../src/store/openFile.ts";
 import { provideScope, usePaneDock } from "../../src/features/dock/index.ts";
-import { consumeTraceFocus, showTrace, useTraceFocus } from "../../src/features/conversation/trajectory/navigation.ts";
-import { TrajectoryPanel } from "../../src/features/conversation/trajectory/TrajectoryPanel.tsx";
+import { consumeTraceFocus, showTrace, useTraceFocus } from "../../src/features/trajectory/navigation.ts";
+import { TrajectoryPanel } from "../../src/features/trajectory/TrajectoryPanel.tsx";
 import { click, mount } from "../helpers/mount.ts";
 
 const target: Entry = { id: "focused-tool", seq: 2, ts: 2, source: "tool-call", correlationId: "call-focus", summary: "目标工具调用", detail: "完整调用正文", metadata: { outputPath: "/tmp/trace-output.txt" } };

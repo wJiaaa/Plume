@@ -9,7 +9,7 @@ import type { DeliveredReport } from "@plume/core";
 import { toolCategory } from "../../lib/tool-kinds.ts";
 import { runKey, type Call, type Run } from "./grouping.ts";
 import { samePage } from "./preview-pages.ts";
-import { opensTurn, sameStats, settled } from "./turns.ts";
+import { opensTurn, sameRow, settled } from "./turns.ts";
 
 /**
  * 一轮：开口的那句话之后，到下一句之前的全部。
@@ -83,14 +83,8 @@ export function sameStep(before: Step, after: Step): boolean {
 		if (member.kind === "call" && other.kind === "call") {
 			return member.call.block === other.call.block && member.call.stopReason === other.call.stopReason && samePage(member.call.page, other.call.page);
 		}
-		return member.kind !== "call" && other.kind !== "call" && sameMessageRun(member.run, other.run);
+		return member.kind !== "call" && other.kind !== "call" && sameRow(member.run, other.run);
 	});
-}
-
-function sameMessageRun(a: Extract<Run, { kind: "message" }>, b: Extract<Run, { kind: "message" }>): boolean {
-	const keys = Object.keys(a) as (keyof typeof a)[];
-	if (keys.length !== Object.keys(b).length) return false;
-	return keys.every((key) => key === "turnStats" || Object.is(a[key], b[key])) && sameStats(a.turnStats, b.turnStats);
 }
 
 /**
@@ -280,6 +274,11 @@ export function blocksFrom(list: Run[], live = false, from?: BlockStart, prefix:
 	// 刚发出、或者还在想：这一轮还什么也没有（推理不画时推理行已经拿掉），先占住 `work` 的位置。
 	if (live && asked && list.length > 0 && opensBlock(list[list.length - 1])) out.push({ kind: "work", runs: [], items: [], turn });
 	return { blocks: out, starts };
+}
+
+/** 一回复里夹在两段话中间的几次调用，照同样的规矩分成几段活：子智能体面板按段画回复时用。 */
+export function stepsOf(calls: Call[]): Step[] {
+	return itemsOf([{ kind: "tools", calls }]).flatMap((item) => (item.kind === "step" ? [item.step] : []));
 }
 
 /**

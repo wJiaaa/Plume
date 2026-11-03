@@ -2,7 +2,7 @@
 
 - 状态：已采纳
 - 日期：2026-09-07
-- 相关：`features/conversation/trajectory`、`e2e/trajectory.test.ts`
+- 相关：`features/trajectory`、`e2e/trajectory.test.ts`
 
 ## 背景
 

@@ -64,8 +64,7 @@ export class RunsCache {
 		if (walked.mark) this.remember(messages, walked.mark);
 		const mark = walked.mark ?? from;
 		if (showThinking) return walked.rows;
-		// `live` 换掉了前面的一行：这一拍前面那段不能用存着的。
-		if (!mark || (walked.working >= 0 && walked.working < mark.rows.length)) return withoutThinking(walked.rows);
+		if (!mark) return withoutThinking(walked.rows);
 		if (this.thin?.mark !== mark) this.thin = { mark, rows: withoutThinking(mark.rows) };
 		return this.thin.rows.concat(withoutThinking(walked.rows.slice(mark.rows.length)));
 	}

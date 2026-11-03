@@ -4,7 +4,7 @@ import { act, createElement as h } from "react";
 import type { AgentEvent, SessionMeta, TrajectoryChanges } from "@plume/core";
 import type { Entry } from "@plume/core/trajectory-view";
 import { useApp } from "../../src/store/index.ts";
-import { useTrajectory } from "../../src/features/conversation/trajectory/useTrajectory.ts";
+import { useTrajectory } from "../../src/features/trajectory/useTrajectory.ts";
 import { click, mount } from "../helpers/mount.ts";
 
 function Probe() {

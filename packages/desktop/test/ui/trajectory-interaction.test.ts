@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test, type TestContext } from "node:test";
 import { createElement as h, useState, type ComponentProps } from "react";
 import { entryKey, type Entry } from "@plume/core/trajectory-view";
-import { TraceTimeline } from "../../src/features/conversation/trajectory/TraceTimeline.tsx";
+import { TraceTimeline } from "../../src/features/trajectory/TraceTimeline.tsx";
 import { click, fire, mount, press } from "../helpers/mount.ts";
 
 const entry: Entry = { id: "request", seq: 1, ts: 0, source: "request", summary: "模型请求", detail: "", startedAt: 0, finishedAt: 1000 };

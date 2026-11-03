@@ -9,14 +9,15 @@ import { useOnceAnswer } from "./useOnceAnswer.ts";
 
 const EMPTY_OPTIONS: NonNullable<QuestionFields["options"]> = [];
 
-function rowTone(on: boolean): string {
+/** 一个选项行：提问卡和表单卡（`FormChoices`）同一套，同一个卡片体系里，单选长得一样。 */
+export function choiceRow(on: boolean): string {
 	// Same idle wash as `.ly-user-bubble`. Selected is only a quieter accent fill: no mark, no index.
 	/*
 	 * `relative` 不是装饰：它让行里那颗 `sr-only` 的 input 以这一行为包含块。没有它，input 挂到滚动区外
 	 * 那层 `relative` 上，不跟着列表滚；列表滚下去再点下面的选项，聚焦要把它滚进视野，能滚的只剩卡片
 	 * 外层 overflow:hidden 的容器——问题和前几项被推出卡顶，底下空出一大块，滚得多时整张卡是空的。
 	 */
-	return `group relative flex w-full min-w-0 cursor-pointer gap-3 rounded-lg px-3 py-2 text-left text-label transition-colors duration-[var(--ly-t-quick)] ${on ? "bg-accent/[0.08]" : "bg-card hover:bg-card-hover"}`;
+	return `group relative flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-left text-label transition-colors duration-[var(--ly-t-quick)] ${on ? "bg-accent/[0.08]" : "bg-card hover:bg-card-hover"}`;
 }
 
 export function QuestionChoices({ options = EMPTY_OPTIONS, allowCustomInput, selectionMode = "single", allowSkip = false, defaultOptionIndex, children, answer }: QuestionFields & {
@@ -77,7 +78,7 @@ export function QuestionChoices({ options = EMPTY_OPTIONS, allowCustomInput, sel
 				<legend className="sr-only">{translate(selectionMode === "multi" ? "question.selectMany" : "question.selectOne")}</legend>
 				{choices.map((option, index) => {
 					const on = selected.includes(index);
-					return <label key={option.label} data-ly-question-option className={`${rowTone(on)} items-center`}>
+					return <label key={option.label} data-ly-question-option className={choiceRow(on)}>
 						<input type={kind} name="question-choice" checked={on} className="sr-only" onChange={() => pick(index)} />
 						<span className="min-w-0 flex-1">
 							<span data-ly-question-label className="block break-words text-ink">{option.label}</span>
@@ -89,7 +90,7 @@ export function QuestionChoices({ options = EMPTY_OPTIONS, allowCustomInput, sel
 			</fieldset>
 		</Scroller>
 		{allowCustomInput && <div className="shrink-0 px-4 pb-1 pt-1">
-			<label data-ly-question-other className={`${rowTone(otherOn)} items-center`}>
+			<label data-ly-question-other className={choiceRow(otherOn)}>
 				<input type={kind} name="question-choice" checked={otherOn} className="sr-only" onChange={() => { selectOther(); customRef.current?.focus(); }} />
 				<span className="shrink-0 leading-[1.5] text-ink">{translate("question.other")}</span>
 				<Input ref={customRef} aria-label={translate("question.custom")} placeholder={translate("question.customPlaceholder")} value={text} disabled={pending}

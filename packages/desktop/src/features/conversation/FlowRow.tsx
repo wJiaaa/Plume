@@ -194,3 +194,12 @@ function FlowTrail({ children, from }: { children?: ReactNode; from?: number }) 
 		</span>
 	);
 }
+
+/** 过程行尾的「+N -M」：一次改动，或一段活加总的增删行数。 */
+export function DiffCount({ added, removed, className = "" }: { added: number; removed: number; className?: string }) {
+	return (
+		<span className={`${className}font-mono text-caption`}>
+			<span className="text-ok">+{added}</span> <span className="text-danger">-{removed}</span>
+		</span>
+	);
+}

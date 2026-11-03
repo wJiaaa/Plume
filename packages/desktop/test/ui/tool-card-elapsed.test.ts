@@ -25,10 +25,10 @@ const running = (extra: Record<string, unknown>) =>
 		...extra,
 	} as never);
 
-/** The elapsed counter is the only `\d+s` the header draws. */
+/** The elapsed counter is the only `[Nm ]Ns` the header draws, the same format as the turn's running line. */
 const seconds = (text: string): number | null => {
-	const match = text.match(/(\d+)s/);
-	return match ? Number(match[1]) : null;
+	const match = text.match(/(?:(\d+)m )?(\d+)s/);
+	return match ? Number(match[1] ?? 0) * 60 + Number(match[2]) : null;
 };
 
 test("a card mounted late still counts from when the command started", async () => {

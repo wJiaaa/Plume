@@ -8,7 +8,7 @@
  */
 
 import type { RevertPlan } from "@plume/contract";
-import { useCallback } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { useConfirmer } from "../../ui/overlay/Confirm.tsx";
 import { useI18n } from "../../i18n/index.ts";
@@ -34,7 +34,7 @@ export interface FilesBackWords {
  *
  * 读不出来当没碰过：只动对话照样做得成，真要写文件时主进程会再查一遍。
  */
-export async function filesBackPlan(sessionId: string | null, index: number): Promise<RevertPlan | null> {
+async function filesBackPlan(sessionId: string | null, index: number): Promise<RevertPlan | null> {
 	const id = sessionId ?? useApp.getState().activeSessionId;
 	if (!id) return null;
 	try {
@@ -52,7 +52,7 @@ export function useFilesBack() {
 	const confirmAsk = confirm.ask;
 
 	const ask = useCallback(
-		(plan: RevertPlan, words: FilesBackWords, choose: (files: boolean) => void, onCancel?: () => void) => {
+		(plan: RevertPlan, words: FilesBackWords, choose: (files: boolean) => void) => {
 			const safe = !plan.unrecorded && plan.files.every((file) => file.problem === null);
 			confirmAsk({
 				title: words.title,
@@ -60,7 +60,6 @@ export function useFilesBack() {
 				confirmLabel: safe ? words.withFiles : words.without,
 				onConfirm: () => choose(safe),
 				...(safe ? { alternate: { label: words.without, onConfirm: () => choose(false) } } : {}),
-				...(onCancel ? { onCancel } : {}),
 				children: (
 					<Scroller className="max-h-48" contentClassName="flex flex-col gap-1.5 text-label" top="fade" bottom="fade">
 						{plan.files.map((file) => (
@@ -77,7 +76,26 @@ export function useFilesBack() {
 		[confirmAsk, t, workspace],
 	);
 
-	return { ask, confirm, element: confirm.element };
+	// 演算还没回来时再按一次，会弹两个框、做两遍。挡第二遍靠 ref：state 要等下一次渲染才看得到。
+	const busy = useRef(false);
+	const [checking, setChecking] = useState(false);
+	/** 先问主进程那几轮碰过哪些文件：碰过就让人选，没碰过走 `orElse`。 */
+	const check = useCallback(
+		async (sessionId: string | null, index: number, words: (count: number) => FilesBackWords, choose: (files: boolean) => void, orElse: () => void) => {
+			if (busy.current) return;
+			busy.current = true;
+			setChecking(true);
+			const plan = await filesBackPlan(sessionId, index).finally(() => {
+				busy.current = false;
+				setChecking(false);
+			});
+			if (plan) ask(plan, words(plan.files.length), choose);
+			else orElse();
+		},
+		[ask],
+	);
+
+	return { check, checking, confirm, element: confirm.element };
 }
 
 /**

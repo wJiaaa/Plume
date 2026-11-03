@@ -1,5 +1,6 @@
 import { translate } from "../../i18n/translate.ts";
-import { memo, useEffect, useState } from "react";
+import { memo } from "react";
+import { useNow } from "../../ui/motion/useNow.ts";
 import { useCountUp } from "../../ui/primitives/useCountUp.ts";
 import { StatusSpinner } from "../../ui/motion/loaders.tsx";
 import { moodFor, phraseFor } from "../../lib/thinking-words.ts";
@@ -20,13 +21,6 @@ import type { ToolRun } from "../../store/tool-run.ts";
 import { ThinkingOrb } from "./ThinkingOrb.tsx";
 
 /**
- * What the agent is spending while it works: elapsed time and tokens so far.
- *
- * A long turn is otherwise mostly silence — tool cards scroll past with no sense of whether
- * this has been going for ten seconds or ten minutes, or what it has cost. Three dots said
- * "something is happening"; this says what.
- */
-/**
  * How long a finished tool keeps the line after it ends.
  *
  * Most calls are far shorter than this, so without it the mark they stand for is never actually
@@ -45,6 +39,13 @@ const COMPACTED_NOTICE_MS = 8000;
 /** 换一句的间隔：按这一轮已经跑了多久算，不另开一只钟。 */
 const PHRASE_MS = 4200;
 
+/**
+ * What the agent is spending while it works: elapsed time and tokens so far.
+ *
+ * A long turn is otherwise mostly silence — tool cards scroll past with no sense of whether
+ * this has been going for ten seconds or ten minutes, or what it has cost. Three dots said
+ * "something is happening"; this says what.
+ */
 // 没有 props，记住它就和转录的重画脱开：转录流式输出时每一拍都重画，这一行要的全是自己订阅的。
 export const RunningIndicator = memo(function RunningIndicator() {
 	/*
@@ -73,7 +74,8 @@ export const RunningIndicator = memo(function RunningIndicator() {
 	 * 「等待你的回答」放在计划卡下面，读着像还有一道题没看见。
 	 */
 	const waitingKind = !waiting ? null : waiting.kind === "interactive" && waiting.subject === "submit_plan" ? "plan" : waiting.kind === "interactive" || waiting.kind === "form" ? "question" : "approval";
-	const [now, setNow] = useState(() => Date.now());
+	// Quarter-second so the seconds digit never appears to skip one.
+	const now = useNow(Boolean(startedAt), 250);
 	/**
 	 * The newest call, running or just finished, as `name \0 summary \0 finishedAt`.
 	 *
@@ -111,12 +113,6 @@ export const RunningIndicator = memo(function RunningIndicator() {
 	// 这一轮此刻产出了多少字——主 Agent 的加上委派出去的。只在心跳上读，不订阅，见 `useProducedChars`。
 	const readProduced = useProducedChars();
 
-	useEffect(() => {
-		if (!startedAt) return;
-		// Quarter-second so the seconds digit never appears to skip one.
-		const timer = setInterval(() => setNow(Date.now()), 250);
-		return () => clearInterval(timer);
-	}, [startedAt]);
 
 	// The reply still streaming has usage of its own; counting it keeps the number moving
 	// between finished messages rather than jumping in steps.

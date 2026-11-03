@@ -108,7 +108,7 @@ export const SETTLE_MS = 1200;
  *
  * 和 `@plume/core/tokens` 的 `estimateTokens` 是同一把尺（那边是 `chars / 3.5`）。提成常量是因为
  * 现在两个方向都要用：这条线按字符走，而子代理的产出只报 token——它的消息要等 `message_end` 才
- * 到，中途没有字符可数——所以接进来之前得先乘回去。见 `RunningIndicator` 里 `subChars` 那一段。
+ * 到，中途没有字符可数——所以接进来之前得先乘回去。见 `useLiveRate` 里 `delegated` 那一段。
  */
 export const CHARS_PER_TOKEN = 3.5;
 

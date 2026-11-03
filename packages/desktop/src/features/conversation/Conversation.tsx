@@ -1,13 +1,13 @@
 import { ChevronDown, ChevronUp } from "../../ui/icons/index.ts";
 import { translate } from "../../i18n/translate.ts";
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ButtonHTMLAttributes, type ComponentType, type ReactNode } from "react";
 import { ApprovalOverlay } from "./ApprovalOverlay.tsx";
-import { BackToLatest } from "./BackToLatest.tsx";
+import { BackToLatest } from "../../ui/scroll/BackToLatest.tsx";
 import { Composer } from "../composer/index.ts";
 import { ResumeRow } from "./ResumeRow.tsx";
 import { HiccupRow } from "./HiccupTrace.tsx";
 import { ModelSwitchRow } from "./ModelSwitchRow.tsx";
-import { leadsTheTurn, looksLikeAnswer } from "./running-line.ts";
+import { answeredCleanly, leadsTheTurn, looksLikeAnswer } from "./running-line.ts";
 import { RunningRow } from "./RunningRow.tsx";
 import { HandedOffStrip } from "./HandedOffStrip.tsx";
 import { TaskList } from "../task/index.ts";
@@ -20,7 +20,7 @@ import { ActionSpinner } from "../../ui/motion/loaders.tsx";
 import { runKey, type Run } from "./grouping.ts";
 import { NavigationCache, RunsCache, TurnBlocksCache } from "./transcript-shape.ts";
 import { intact } from "../../lib/transcript.ts";
-import { ToolRun as ToolRunGroup, WINDOW_TURNS } from "./runs.tsx";
+import { ToolRun as ToolRunGroup } from "./runs.tsx";
 import { CommandRunRow } from "./CommandRunRow.tsx";
 import { HookTrustBanner } from "./HookTrustBanner.tsx";
 import { QuestionNav } from "./QuestionNav.tsx";
@@ -28,7 +28,7 @@ import { QuoteMenu } from "./QuoteMenu.tsx";
 import { MessageRow } from "./rows.tsx";
 import { TurnWork } from "./TurnWork.tsx";
 import { WorkStep } from "./WorkStep.tsx";
-import { useTranscriptWindow } from "./view-state.ts";
+import { useTranscriptWindow, WINDOW_TURNS } from "./view-state.ts";
 import { flash, settleReveal, useDrawingReveal } from "./reveal.ts";
 import { motionReduced } from "../../ui/motion/reduced.ts";
 import { useFollowBottom } from "../../ui/scroll/useFollowBottom.ts";
@@ -41,6 +41,7 @@ import {
 	useScopedHiccups,
 	useScopedLoading,
 	useScopedMessages,
+	useScopedPendingMessage,
 	useScopedRunning,
 	useScopedSessionId,
 	useScopedFromToolRuns,
@@ -64,6 +65,15 @@ const NARROW_COLUMN = 520;
  */
 const ENVIRONMENT_CARD = 300;
 const ENVIRONMENT_LANE = ENVIRONMENT_CARD + 24;
+
+/** 窗口挂上目标之后要滚到哪：`block` 是目标所在的块，`lead` 是目标上方留的空，`"middle"` 放在正中间。 */
+interface Jump {
+  sessionId: string | null;
+  selector: string;
+  block: number;
+  lead: number | "middle";
+  flash?: boolean;
+}
 
 /**
  * Nothing about the window's shape belongs to the transcript.
@@ -138,29 +148,31 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
   const separators = useMemo(() => new Set(separatorKey ? separatorKey.split(",").map(Number) : []), [separatorKey]);
   const questions = useMemo(() => shape.navigation.questionsIn(messages), [shape, messages]);
   // 一个 Run 画成哪一行。依赖齐了它才换，`WorkStep` 的 memo 拿它的引用判断画出来的推理行会不会变。
-  const draw = useCallback((run: Run) =>
-  run.kind === "command" ? <CommandRunRow key={`${activeSessionId}:${runKey(run)}`} command={run.command} /> : run.kind === "hiccup" ? (
-    <HiccupRow key={`${activeSessionId}:${runKey(run)}`} hiccup={run.hiccup} />
-  ) : run.kind === "model" ? (
-    <ModelSwitchRow key={`${activeSessionId}:${runKey(run)}`} from={run.from} to={run.to} />
-  ) : run.kind === "message" ? (
-    <MessageRow
-      key={`${activeSessionId}:${runKey(run)}`}
-      viewKey={runKey(run)}
-      showTime={separators.has(run.index)}
-      message={run.message}
-      index={run.index}
-      upTo={run.upTo}
-      from={run.from}
-      /* 页脚只给一轮的最后一句；还在跑的那一轮谁是最后一句还没定，见 `Run.newest`。 */
-      continued={!run.closes || (running && run.newest === true)}
-      pauses={run.pauses}
-      trailer={run.trailer}
-      /* Computed with the grouping, so its identity changes only when the transcript
-       * does — see `Run` in `grouping.ts` for what recomputing it here used to cost. */
-      turnStats={run.turnStats}
-    />
-  ) : (
+  const draw = useCallback((run: Run) => {
+    const key = `${activeSessionId}:${runKey(run)}`;
+    if (run.kind === "command") return <CommandRunRow key={key} command={run.command} />;
+    if (run.kind === "hiccup") return <HiccupRow key={key} hiccup={run.hiccup} />;
+    if (run.kind === "model") return <ModelSwitchRow key={key} from={run.from} to={run.to} />;
+    if (run.kind === "message") {
+      return (
+        <MessageRow
+          key={key}
+          viewKey={runKey(run)}
+          showTime={separators.has(run.index)}
+          message={run.message}
+          index={run.index}
+          upTo={run.upTo}
+          from={run.from}
+          /* 页脚只给一轮的最后一句；还在跑的那一轮谁是最后一句还没定，见 `Run.newest`。 */
+          continued={!run.closes || (running && run.newest === true)}
+          pauses={run.pauses}
+          trailer={run.trailer}
+          /* Computed with the grouping, so its identity changes only when the transcript
+           * does — see `Run` in `grouping.ts` for what recomputing it here used to cost. */
+          turnStats={run.turnStats}
+        />
+      );
+    }
     /*
      * Keyed on the first call, not the position: inserting anything above must not
      * make React tear this run down and build it again.
@@ -168,8 +180,8 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
      * 走到这里的工具段只有 `shown` 的那种（一页预览、一张会话建议）：其余的都在 `turnBlocks`
      * 里收成了 `WorkStep`，正在做的那一步的光也由那边给。
      */
-    <ToolRunGroup key={`${activeSessionId}:${runKey(run)}`} calls={run.calls} shown={run.shown} />
-  ), [activeSessionId, running, separators]);
+    return <ToolRunGroup key={key} calls={run.calls} />;
+  }, [activeSessionId, running, separators]);
   /*
    * 先分块，再开窗——顺序反过来就是那个「点了没反应」的 bug。
    *
@@ -186,11 +198,8 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
     [shape, allRuns, running],
   );
   const range = useTranscriptWindow(activeSessionId, WINDOW_TURNS, allBlocks.length);
-  /*
-   * 窗口挂上目标之后要滚到哪：问题导航点的那一问，或画廊要看的那张图。`lead` 是目标上方留的空，
-   * 图放在正中间。
-   */
-  const [jump, setJump] = useState<{ sessionId: string | null; selector: string; block: number; lead: number | "middle"; flash?: boolean } | null>(null);
+  // 问题导航点的那一问，或画廊要看的那张图。
+  const [jump, setJump] = useState<Jump | null>(null);
   const { compact } = useLayout();
   const gutter = compact ? "ly-content-gutter-compact" : "ly-content-gutter";
   /*
@@ -232,12 +241,7 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
   /** 末尾那段正文上一次变长的时刻：一阵子不长了，运行行就回来说耗时和速度，见 `RunningRow`。 */
   const grewAt = useMemo(() => proseGrewAt(messages[messages.length - 1]), [messages]);
   /** 最后一条是一段正常写完的回答：底下的操作行在这时长出来，运行行在同一帧让位，见 `RunningRow`。 */
-  const answered = useMemo(() => {
-    const last = messages[messages.length - 1];
-    if (last?.role !== "assistant" || last.stopReason !== "stop") return false;
-    const block = last.content[last.content.length - 1];
-    return block?.type === "text" && block.text.trim().length > 0;
-  }, [messages]);
+  const answered = useMemo(() => answeredCleanly(messages), [messages]);
 
   /*
    * Following the bottom, and everything that decides whether to.
@@ -270,10 +274,7 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
    * it arrives at the end — so staying where you were means watching a screen on which nothing
    * appears to happen. Your own message is the one thing you can be certain you want to see.
    */
-  const pending = useApp((s) => {
-    if (!activeSessionId || s.activeSessionId === activeSessionId) return s.pendingUserMessage;
-    return s.sessionCache[activeSessionId]?.state?.pendingUserMessage ?? null;
-  });
+  const pending = useScopedPendingMessage();
   const { returnToBottom } = follow;
   useLayoutEffect(() => {
     if (!pending && !compacting) return;
@@ -285,6 +286,8 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
 
 
   const hidden = range.start;
+  // 窗口下面还有几块没画，「显示更晚」一次放出来几块。
+  const more = Math.min(WINDOW_TURNS, allBlocks.length - range.end);
   /*
    * 分块只在转录变了的时候算一次。
    *
@@ -293,14 +296,16 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
    */
   const blocks = useMemo(() => allBlocks.slice(range.start, range.end), [allBlocks, range.start, range.end]);
   const { scrollTo, detach } = follow;
-  const jumpToQuestion = (index: number) => {
-    // 窗口按块走，所以要的是「那条消息在哪个块里」，不是它在 Run 序列里的位置。
-    const at = allBlocks.findIndex((block) => block.runs.some((run) => run.kind === "message" && run.index === index));
+  // 窗口按块走，所以跳过去要的是「目标在哪个块里」，不是它在 Run 序列里的位置。
+  const goTo = (has: (run: Run) => boolean, target: Omit<Jump, "sessionId" | "block">) => {
+    const at = allBlocks.findIndex((block) => block.runs.some(has));
     if (at < 0) return;
     detach();
     range.reveal(at);
-    setJump({ sessionId: activeSessionId, selector: `[data-question-index="${index}"]`, block: at, lead: 40 });
+    setJump({ ...target, sessionId: activeSessionId, block: at });
   };
+  const jumpToQuestion = (index: number) =>
+    goTo((run) => run.kind === "message" && run.index === index, { selector: `[data-question-index="${index}"]`, lead: 40 });
   // 从转录以外要求跳到某一问（环境卡片里的「第 N 轮」）：照问题导航那条路走。
   const externalJump = useTranscriptJump((state) => state.jump);
   useEffect(() => {
@@ -317,12 +322,12 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
   useLayoutEffect(() => {
     if (!reveal || loadingSession) return;
     settleReveal(reveal.nonce);
-    const at = allBlocks.findIndex((block) => block.runs.some((run) => run.kind === "tools" && run.calls.some(({ block: call }) => call.id === reveal.toolCallId)));
-    if (at < 0) return;
-    detach();
-    range.reveal(at);
-    setJump({ sessionId: activeSessionId, selector: `[data-ly-image-call="${CSS.escape(reveal.toolCallId)}"]`, block: at, lead: "middle", flash: true });
-    // `range.reveal` is rebuilt every render; a new request or a finished read is what this answers.
+    goTo((run) => run.kind === "tools" && run.calls.some(({ block: call }) => call.id === reveal.toolCallId), {
+      selector: `[data-ly-image-call="${CSS.escape(reveal.toolCallId)}"]`,
+      lead: "middle",
+      flash: true,
+    });
+    // `goTo` is rebuilt every render; a new request or a finished read is what this answers.
     // oxlint-disable-next-line exhaustive-deps
   }, [reveal, loadingSession, allBlocks, activeSessionId, detach]);
   useLayoutEffect(() => {
@@ -473,25 +478,17 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
              * 一整行的宽度本来就摆在那儿，写完这句话绰绰有余。
              */
             <div className="mb-4 flex items-center justify-center">
-              <button
-                type="button"
-                data-ly-show-earlier
-                onClick={range.earlier}
-                className="group/earlier inline-flex h-7 items-center gap-1.5 rounded-full border border-line-soft bg-card/40 px-3.5 text-detail text-ink-faint shadow-xs transition-colors duration-[var(--ly-t-quick)] hover:border-line hover:bg-card hover:text-ink-muted active:scale-[0.98]"
-              >
-                <ChevronUp size={12} strokeWidth={2} aria-hidden className="transition-transform duration-[var(--ly-t-quick)] group-hover/earlier:-translate-y-0.5" />
+              <PagerButton direction="earlier" data-ly-show-earlier onClick={range.earlier}>
                 {/*
                  * 「共 N 条」只在它确实是另一个数字时才出现。
                  *
                  * 最后一页里 n 和 total 是同一个数，「显示更早的 60 条（共 60 条）」把同一件事说了
                  * 两遍——而读到括号的人会以为里面有新消息。
                  */}
-                <span className="tabular-nums">
-                  {hidden > WINDOW_TURNS
-                    ? translate("conversation.showEarlier", { n: WINDOW_TURNS, total: hidden })
-                    : translate("conversation.showEarlierRest", { n: hidden })}
-                </span>
-              </button>
+                {hidden > WINDOW_TURNS
+                  ? translate("conversation.showEarlier", { n: WINDOW_TURNS, total: hidden })
+                  : translate("conversation.showEarlierRest", { n: hidden })}
+              </PagerButton>
             </div>
           )}
 
@@ -542,18 +539,16 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
           })}
           </div>
 
-          {range.end < allBlocks.length && (
+          {more > 0 && (
             <div className="my-3 flex items-center justify-center">
-              <button
-                type="button"
-                data-ly-tip={translate("conversation.showLaterN", { n: Math.min(WINDOW_TURNS, allBlocks.length - range.end) })}
-                aria-label={translate("conversation.showLaterN", { n: Math.min(WINDOW_TURNS, allBlocks.length - range.end) })}
+              <PagerButton
+                direction="later"
+                data-ly-tip={translate("conversation.showLaterN", { n: more })}
+                aria-label={translate("conversation.showLaterN", { n: more })}
                 onClick={range.later}
-                className="group/later inline-flex h-7 items-center gap-1.5 rounded-full border border-line-soft bg-card/40 px-3.5 text-detail text-ink-faint shadow-xs transition-colors duration-[var(--ly-t-quick)] hover:border-line hover:bg-card hover:text-ink-muted active:scale-[0.98]"
               >
-                <ChevronDown size={12} strokeWidth={2} aria-hidden className="transition-transform duration-[var(--ly-t-quick)] group-hover/later:translate-y-0.5" />
-                <span className="tabular-nums">{Math.min(WINDOW_TURNS, allBlocks.length - range.end)}</span>
-              </button>
+                {more}
+              </PagerButton>
             </div>
           )}
           {range.end === allBlocks.length && <>
@@ -633,6 +628,26 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
 });
 
 /** 工具调用一共几个、停下了几个，见 `toolProgress`。 */
+/** 「显示更早 / 更晚」那颗胶囊：箭头朝要去的方向，悬停时往那边挪一点。 */
+function PagerButton({ direction, children, ...attrs }: { direction: "earlier" | "later"; children: ReactNode } & ButtonHTMLAttributes<HTMLButtonElement>) {
+  const Arrow = direction === "earlier" ? ChevronUp : ChevronDown;
+  return (
+    <button
+      type="button"
+      {...attrs}
+      className="group/pager inline-flex h-7 items-center gap-1.5 rounded-full border border-line-soft bg-card/40 px-3.5 text-detail text-ink-faint shadow-xs transition-colors duration-[var(--ly-t-quick)] hover:border-line hover:bg-card hover:text-ink-muted active:scale-[0.98]"
+    >
+      <Arrow
+        size={12}
+        strokeWidth={2}
+        aria-hidden
+        className={`transition-transform duration-[var(--ly-t-quick)] ${direction === "earlier" ? "group-hover/pager:-translate-y-0.5" : "group-hover/pager:translate-y-0.5"}`}
+      />
+      <span className="tabular-nums">{children}</span>
+    </button>
+  );
+}
+
 function toolProgressOf(toolRuns: Record<string, ToolRun>): string {
   let total = 0;
   let settled = 0;

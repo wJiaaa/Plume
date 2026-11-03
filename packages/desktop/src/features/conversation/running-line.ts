@@ -60,3 +60,11 @@ export function leadsTheTurn(messages: Message[]): boolean {
 	}
 	return true;
 }
+
+/** 最后一条是一段正常写完的回答：以正文收尾、停在 `stop` 上。 */
+export function answeredCleanly(messages: Message[]): boolean {
+	const last = messages[messages.length - 1];
+	if (last?.role !== "assistant" || last.stopReason !== "stop") return false;
+	const block = last.content[last.content.length - 1];
+	return block?.type === "text" && block.text.trim().length > 0;
+}

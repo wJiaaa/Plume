@@ -1,23 +1,23 @@
-import { translate } from "../../../i18n/translate.ts";
-import { History, Coins, Crosshair, Terminal, Zap } from "../../../ui/icons/index.ts";
+import { translate } from "../../i18n/translate.ts";
+import { History, Coins, Crosshair, Terminal, Zap } from "../../ui/icons/index.ts";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { freshTokens } from "@plume/core/tokens";
 import { countBySource, entryKey, filterTrajectory, type Entry, type Source, type TrajectoryFilter } from "@plume/core/trajectory-view";
-import { PanelEmpty } from "../../../ui/layout/PanelEmpty.tsx";
-import { SearchField } from "../../../ui/inputs/SearchField.tsx";
-import { formatTokens } from "../../../lib/format-tokens.ts";
+import { PanelEmpty } from "../../ui/layout/PanelEmpty.tsx";
+import { SearchField } from "../../ui/inputs/SearchField.tsx";
+import { formatTokens } from "../../lib/format-tokens.ts";
 import { TraceActions } from "./TraceActions.tsx";
-import { useApp } from "../../../store/index.ts";
-import { useDockScope, useScopedMeta } from "../../../app/session-scope.tsx";
-import { openFilePane } from "../../dock/index.ts";
+import { useApp } from "../../store/index.ts";
+import { useDockScope, useScopedMeta } from "../../app/session-scope.tsx";
+import { openFilePane } from "../dock/index.ts";
 import { SourceFilter } from "./SourceFilter.tsx";
 import { useTrajectory } from "./useTrajectory.ts";
 import { TraceList } from "./TraceList.tsx";
 import { TraceInspector } from "./TraceInspector.tsx";
 import { TraceTimeline, type TimeRange } from "./TraceTimeline.tsx";
 import { consumeTraceFocus, useTraceFocus } from "./navigation.ts";
-import { bridge } from "../../../services/index.ts";
-import { useI18n } from "../../../i18n/index.ts";
+import { bridge } from "../../services/index.ts";
+import { useI18n } from "../../i18n/index.ts";
 
 export function TrajectoryPanel() {
 	const { t } = useI18n();

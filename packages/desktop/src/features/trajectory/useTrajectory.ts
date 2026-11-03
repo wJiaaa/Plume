@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import type { Entry } from "@plume/core/trajectory-view";
-import { useScopedMeta } from "../../../app/session-scope.tsx";
-import { bridge } from "../../../services/index.ts";
+import { useScopedMeta } from "../../app/session-scope.tsx";
+import { bridge } from "../../services/index.ts";
 
 import { applyTrajectoryChanges } from "./trajectory-state.ts";
 

@@ -11,12 +11,18 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 import { act, createElement as h } from "react";
 import { SessionScope } from "../../src/app/session-scope.tsx";
-import { ToolGroup } from "../../src/features/conversation/ToolGroup.tsx";
+import { WorkStep } from "../../src/features/conversation/WorkStep.tsx";
 import { I18nProvider } from "../../src/i18n/index.ts";
 import { useApp, type AppState } from "../../src/store/index.ts";
 import { click, mount, type Mounted } from "../helpers/mount.ts";
 
-/** Two screens, each with one finished stretch of work — keyed the way the transcript keys it. */
+/** One finished stretch of two reads, keyed the way `turnBlocks` keys it. */
+function step(id: string) {
+	const calls = ["1", "2"].map((n) => ({ block: { type: "toolCall" as const, id: `${id}-${n}`, name: "read", arguments: { path: `/tmp/${id}${n}.ts` } }, stopReason: "toolUse" as const }));
+	return { key: `step-${id}-1`, category: "explore", calls, members: calls.map((call) => ({ kind: "call" as const, call })) };
+}
+
+/** Two screens, each with one finished stretch of work. */
 function screens(): Promise<Mounted> {
 	return mount(
 		h(I18nProvider, {
@@ -25,7 +31,7 @@ function screens(): Promise<Mounted> {
 				h(
 					SessionScope.Provider,
 					{ key: id, value: id },
-					h("section", { "data-screen": id }, h(ToolGroup, { summary: "读取文件", stateKey: `${id}:tools-${id}-call`, children: h("p", null, `${id} 的过程`) })),
+					h("section", { "data-screen": id }, h(WorkStep, { step: step(id), live: false, draw: () => null })),
 				),
 			),
 		}),

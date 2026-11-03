@@ -35,9 +35,8 @@ import type { McpMark } from "./mcp-marks.ts";
 import { useMcpMark } from "./useMcpMark.ts";
 
 /*
- * 工具行行首那枚图标，从 `ToolCard` 拆出来：一段几次调用合成的那一行（`WorkStep`）用的是它第一次调用的
- * 图标，和它只有一次调用时那一行是同一枚——从一次长到两次，行首不换。`ToolCard` 经 diff 视图连回转录，
- * 从 `WorkStep` 引它就是一条循环依赖。
+ * 工具行行首那枚图标，`ToolCard` 和 `WorkStep` 共用：一段几次调用合成的那一行用的是它第一次调用的
+ * 图标，和它只有一次调用时那一行是同一枚——从一次长到两次，行首不换。
  */
 
 const ICONS: Record<string, typeof FileText> = {

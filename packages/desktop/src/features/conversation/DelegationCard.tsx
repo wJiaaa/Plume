@@ -81,12 +81,18 @@ export function DispatchFaces({ dispatches }: { dispatches: Dispatch[] }) {
 }
 
 /**
- * 连着派出去的几个合成了一行（`WorkStep`）：行尾就是这一排脸。单独一个组件，只有派发那一段才去订阅登记簿。
+ * 连着派出去的几个合成了一行（`WorkStep`）：整段一起对一次号，行尾那一排脸和展开后的每张卡片用同一份结果。
+ * 单独一个组件，只有派发那一段才去订阅登记簿。
  *
  * 合成一行以后，一行行的派发卡片默认收在里面，不摆这排脸的话，谁在干、谁还在排队，在对话里就看不见了。
+ * 卡片从前各自对号：两个同名同描述、还在跑的派发会抢同一条登记，展开后两张卡指向同一个子智能体。
  */
-export function StepDispatchFaces({ calls }: { calls: readonly ToolCall[] }) {
-	return <DispatchFaces dispatches={useDispatches(calls)} />;
+export function StepDispatches({ calls, runs, children }: {
+	calls: readonly ToolCall[];
+	runs?: Record<string, ToolRun>;
+	children: (dispatches: Dispatch[]) => ReactNode;
+}) {
+	return children(useDispatches(calls, runs));
 }
 
 /**

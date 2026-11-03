@@ -3,11 +3,10 @@ import { ContextMenu } from "../../ui/overlay/ContextMenu.tsx";
 import { MenuItem, MenuSeparator } from "../../ui/overlay/Menu.tsx";
 import { useI18n } from "../../i18n/index.ts";
 import { bridge } from "../../services/index.ts";
-import { useApp } from "../../store/index.ts";
-import { useDockScope } from "../../app/session-scope.tsx";
+import { useDockScope, useScopedSessionId } from "../../app/session-scope.tsx";
 import { openFilePane } from "../dock/index.ts";
 import { useRevealLabel } from "../../store/open-targets.ts";
-import { copyImage, imageDataUrl, notifyExportFailed, saveImage } from "../image/index.ts";
+import { attachToComposer, copyImage, imageDataUrl, notifyExportFailed, saveImage } from "../image/index.ts";
 
 const ICON = { size: 13, strokeWidth: 1.8 } as const;
 
@@ -24,6 +23,7 @@ export function GeneratedImageMenu({ anchor, image, onClose }: { anchor: { x: nu
 	const reveal = useRevealLabel();
 	// 和正文里的本地链接一样，在这张图所在的那块屏幕里开文件面板。
 	const screen = useDockScope();
+	const sessionId = useScopedSessionId();
 	if (!anchor || !image) return null;
 
 	const openInPane = (path: string) => {
@@ -31,13 +31,10 @@ export function GeneratedImageMenu({ anchor, image, onClose }: { anchor: { x: nu
 	};
 
 	const addToChat = async () => {
-		const parsed = /^data:([^;,]+);base64,(.*)$/s.exec((await imageDataUrl(image.src)) ?? "");
-		if (!parsed) return notifyExportFailed();
-		const { activeSessionId, setComposerDraft } = useApp.getState();
-		setComposerDraft("", {
-			sessionId: activeSessionId,
-			attachments: [{ id: `generated-${Date.now()}`, name: image.path?.split(/[\\/]/).pop() ?? "image.png", mimeType: parsed[1]!, kind: "image", data: parsed[2]!, isText: false }],
-		});
+		const dataUrl = await imageDataUrl(image.src);
+		if (!dataUrl || !/^data:[^;,]+;base64,/.test(dataUrl)) return notifyExportFailed();
+		// 交给这张图所在那一屏的输入框，不是有焦点的那一屏。
+		attachToComposer(sessionId, undefined, image.path?.split(/[\\/]/).pop() ?? "image.png")(dataUrl);
 	};
 
 	return (

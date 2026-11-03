@@ -6,8 +6,24 @@
  * 管这叫新的环。判断本身只看消息，不需要任何界面，放在 `lib` 里两边都够得着。
  */
 
-import type { Message } from "@plume/core";
-import { stripPlaceholders } from "./attachment-placeholders.ts";
+import type { Message, UserMessage } from "@plume/core";
+import { isAttachmentBody, stripPlaceholders } from "./attachment-placeholders.ts";
+
+/**
+ * 一条用户消息里人打的那些字：气泡、编辑框、问题导航、输入历史读的都是这一份。
+ *
+ * `displayText` 是发出时一并存下的那一份；升级之前发的老消息没有它，退回来把文本块拼起来——但
+ * 附件正文不拼：那是写给模型的，少一枚胶囊，总好过把一整篇文件摊在气泡里。从前几处各取各的，
+ * 问题导航不看 `displayText`，悬停预览里就露出了写给模型的 `[Referenced context]`。
+ */
+export function spokenText(message: UserMessage): string {
+	return (
+		message.displayText ??
+		message.content
+			.flatMap((block) => (block.type === "text" && !isAttachmentBody(block.text) ? [block.text] : []))
+			.join("\n")
+	);
+}
 
 /** 人说过的一句话，连同它当初那条消息。 */
 export interface Spoken {
@@ -48,11 +64,7 @@ export function spokenByPerson(messages: readonly Message[]): Spoken[] {
 	for (const message of messages) {
 		if (!readable(message)) continue;
 		if (message.role !== "user" || message.synthetic) continue;
-		const body = message.content
-			.filter((block): block is Extract<typeof block, { type: "text" }> => block.type === "text")
-			.map((block) => block.text)
-			.join("\n\n");
-		const text = stripPlaceholders(message.displayText ?? body, message.attachments ?? []).trim();
+		const text = stripPlaceholders(spokenText(message), message.attachments ?? []).trim();
 		if (text || message.attachments?.length) said.push({ text, message });
 	}
 	return said.reverse();
