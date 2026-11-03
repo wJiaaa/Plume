@@ -114,7 +114,22 @@ export function useScopedFromMessages<T>(read: (messages: Message[]) => T): T {
  */
 export function useScopedUserMessages(): Message[] {
 	const id = useScopedSessionId();
-	return useApp(useShallow((s) => scopedMessages(s, id).filter((message) => message.role === "user")));
+	return useApp(useShallow((s) => userMessagesOf(scopedMessages(s, id))));
+}
+
+/**
+ * 按转录数组记下筛出来的那份。选择器在每次 store 变动时都跑，大多数变动（活动状态、面板开合）
+ * 不换转录数组，用不着把整段对话再过一遍。
+ */
+const userMessagesCache = new WeakMap<Message[], Message[]>();
+
+function userMessagesOf(messages: Message[]): Message[] {
+	let users = userMessagesCache.get(messages);
+	if (!users) {
+		users = messages.filter((message) => message.role === "user");
+		userMessagesCache.set(messages, users);
+	}
+	return users;
 }
 
 export function useScopedRunning(): boolean {

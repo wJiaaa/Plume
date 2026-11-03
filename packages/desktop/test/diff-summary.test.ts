@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { parseNumstat } from "../electron/git/git-parse.ts";
-import { withContents } from "../src/features/git/diff-merge.ts";
+import { keepUnchangedHunks, withContents } from "../src/features/git/diff-merge.ts";
 import type { WorkspaceDiffFile } from "@plume/contract";
 
 /** `--numstat -z` terminates every field with a NUL, including the last. */
@@ -77,4 +77,19 @@ test("a file the diff could not read stays listed", () => {
 test("diffs arriving before the list are used as they are", () => {
 	const loaded = [file("only.ts", { added: 5 })];
 	assert.deepEqual(withContents([], loaded), loaded);
+});
+
+/*
+ * 每次刷新整份 diff 都是新对象，而语法高亮按 hunks 的身份缓存：没改过的文件也会先画一帧无色、再
+ * 同步 tokenize 一遍。内容相同就沿用手里那份 hunks。
+ */
+test("a re-read diff keeps the hunks of files whose diff did not change", () => {
+	const hunk = (text: string) => ({ oldStart: 1, newStart: 1, lines: [{ type: "context" as const, text: "a", oldLine: 1, newLine: 1 }, { type: "add" as const, text, newLine: 2 }] });
+	const held = [file("same.ts", { hunks: [hunk("x")] }), file("moved.ts", { hunks: [hunk("y")] })];
+	const next = keepUnchangedHunks(held, [file("same.ts", { hunks: [hunk("x")], added: 1 }), file("moved.ts", { hunks: [hunk("z")] }), file("new.ts", { hunks: [hunk("n")] })]);
+	assert.equal(next[0].hunks, held[0].hunks, "内容没变的文件换了一份 hunks");
+	assert.equal(next[0].added, 1, "其余字段照新读到的");
+	assert.notEqual(next[1].hunks, held[1].hunks);
+	assert.equal(next[1].hunks[0].lines[1].text, "z");
+	assert.equal(next[2].hunks[0].lines[1].text, "n");
 });

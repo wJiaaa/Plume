@@ -3,7 +3,7 @@ import { History, ScrollText as OutputIcon } from "../../ui/icons/index.ts";
 import type { ToolRun } from "../../store/index.ts";
 import { useApp } from "../../store/index.ts";
 import { useDockScope, useScopedMeta, useScopedSessionId } from "../../app/session-scope.tsx";
-import { TraceText, showTrace } from "../conversation/index.ts";
+import { TraceText, imageBlockSrc, showTrace } from "../conversation/index.ts";
 import { bridge } from "../../services/index.ts";
 import { openFilePane } from "../dock/index.ts";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
@@ -33,6 +33,10 @@ export function RunDetail({ run, query = "" }: { run: ToolRun; query?: string })
 		<TraceText title={t("common.arguments")} kind="json" text={JSON.stringify(run.args, null, 2)} query={query} />
 		<TraceText title={t(run.status === "error" ? "common.error" : "common.result")} text={output || t(run.status === "running" ? "runDetail.waiting" : "runDetail.noText")} query={query} />
 		{run.result?.details !== undefined && <TraceText title={t("runDetail.title")} kind="json" text={JSON.stringify(run.result.details, null, 2)} query={query} />}
-		{run.result?.content.filter(part => part.type === "image").map((part, index) => <img key={index} alt={t("runDetail.resultImage", { n: index + 1 })} src={`data:${part.mimeType};base64,${part.data}`} className="mx-3 my-2 max-h-40 max-w-[calc(100%-24px)] rounded-lg object-contain" />)}
+		{/* 大图过 IPC 前停放成了文件（`media`），小图还内联着：两种都要认，见 `imageBlockSrc`。 */}
+		{run.result?.content.flatMap(part => {
+			const refs = part.type === "image" ? imageBlockSrc(part, 0) : null;
+			return refs ? [refs.full] : [];
+		}).map((src, index) => <img key={index} alt={t("runDetail.resultImage", { n: index + 1 })} src={src} className="mx-3 my-2 max-h-40 max-w-[calc(100%-24px)] rounded-lg object-contain" />)}
 	</>;
 }

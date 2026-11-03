@@ -33,3 +33,11 @@ transition，生命周期清理也必须释放这份临时正文，不能一直�
 
 组件回归覆盖首次读取、空缓存、Activity 恢复、乱序响应与慢请求；Electron E2E 从可见 DOM
 逐帧采样，区分当前视图与仍保留在 DOM 中的隐藏视图。
+
+## 按需加载的大依赖
+
+启动时只执行首屏用得到的代码。KaTeX（约 1MB）在第一条公式出现时才取，取到之前公式显示源码，
+和解析不了的 TeX 同一种呈现（`lib/markdown/math.ts`）。xterm（约 0.5MB）跟着终端面板和任务输出
+懒加载，终端面板的代码在空闲时随预热的 shell 一起取（`features/terminal/LazyTerminalPane.tsx`）。
+CodeMirror 只有核心进 `editor` chunk，各语言的语法各自成包，打开那种文件时才取——`manualChunks`
+点名的包会把它动态引入的东西一并吞进去（`electron.vite.config.ts`）。

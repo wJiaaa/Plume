@@ -4,7 +4,7 @@
 
 import { createPortal } from "react-dom";
 import { Folder, MessageSquare } from "../../ui/icons/index.ts";
-import type { DraggingItem } from "./reorder-context.ts";
+import { useReorderState, type DraggingItem } from "./reorder-context.ts";
 
 export function DropLineIndicator({ placement }: { placement: "before" | "after" }) {
 	return (
@@ -18,7 +18,9 @@ export function DropLineIndicator({ placement }: { placement: "before" | "after"
 	);
 }
 
-export function CarriedPill({ item, pointer }: { item: DraggingItem; pointer: { x: number; y: number } }) {
+// The only thing that follows every pointermove, so the only thing subscribed to the pointer.
+export function CarriedPill({ item }: { item: DraggingItem }) {
+	const pointer = useReorderState((state) => state.pointer);
 	return createPortal(
 		<div
 			style={{

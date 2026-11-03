@@ -9,7 +9,7 @@ import { useApp } from "../../store/index.ts";
 import { openFilePane, useSide } from "../dock/index.ts";
 import { savedTerminal, useTerminals } from "../../store/terminals.ts";
 import { useTerminalScope } from "./scope.ts";
-import { rememberTerminalSize } from "./prewarm.ts";
+import { rememberTerminalSize } from "./terminal-size.ts";
 import { paletteFromTheme, typography } from "../../ui/terminal/palette.ts";
 import { terminalKey, windowsPtyFor } from "./terminal-keys.ts";
 import { TerminalMenu } from "./TerminalMenu.tsx";

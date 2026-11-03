@@ -2215,7 +2215,6 @@ export const en = {
 	"sideChat.dontAskAgain": "Don't ask again",
 	"applyEvent.task": "The task",
 	"applyEvent.named": "“{title}”",
-	"applyEvent.refreshFailed": "Could not refresh the conversation list: {reason}",
 	"applyEvent.skillsDelta": "skills {delta}",
 	"applyEvent.agentsDelta": "sub-agents {delta}",
 	"applyEvent.changesNamed": "{changes}: {names}",

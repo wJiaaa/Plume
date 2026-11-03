@@ -1,10 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { useI18n } from "../../i18n/index.ts";
 import { bridge } from "../../services/index.ts";
 import { useApp } from "../../store/index.ts";
-import { OutputTerminal, type OutputSource, type TerminalLook } from "../../ui/terminal/OutputTerminal.tsx";
+import type { OutputSource, TerminalLook } from "../../ui/terminal/OutputTerminal.tsx";
 import { CODE_DEFAULTS, onAppearanceApplied } from "../settings/index.ts";
 import { redirectTargets } from "../../lib/redirect-targets.ts";
+
+/*
+ * xterm only when a job's output is opened. Imported statically it rode along with the task panel
+ * and was parsed on every launch, for a view most sessions never expand.
+ */
+const OutputTerminal = lazy(() => import("../../ui/terminal/OutputTerminal.tsx").then((module) => ({ default: module.OutputTerminal })));
 
 /** The shell's look: the same settings and the same moment of change as `TerminalPane`. */
 const LOOK: TerminalLook = {
@@ -84,5 +90,5 @@ export function JobOutput({ sessionId, jobId, command }: { sessionId: string; jo
 			{targets.length > 0 ? t("services.redirected", { path: targets.join(t("services.pathSeparator")) }) : t("services.noOutput")}
 		</p>;
 	}
-	return <div className="mt-1 pl-3"><OutputTerminal source={source} look={LOOK} maxHeight={220} label={t("services.outputLabel", { command })} /></div>;
+	return <div className="mt-1 pl-3"><Suspense fallback={null}><OutputTerminal source={source} look={LOOK} maxHeight={220} label={t("services.outputLabel", { command })} /></Suspense></div>;
 }

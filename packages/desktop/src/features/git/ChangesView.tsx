@@ -13,6 +13,7 @@ import { PanelEmpty } from "../../ui/layout/PanelEmpty.tsx";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
 
 import { DiffCommentsProvider } from "./DiffComments.tsx";
+import { keepUnchangedHunks } from "./diff-merge.ts";
 import { FileDiffList } from "./FileDiffList.tsx";
 import { FileDiffTree } from "./FileDiffTree.tsx";
 
@@ -104,7 +105,7 @@ export function ChangesView({
       bridge.diff.workspaceDiff(cwd, "index"),
     ]).then(([indexDiff, treeDiff]) => {
       if (!live) return;
-      setHunks({ staged: indexDiff.files, unstaged: treeDiff.files });
+      setHunks((held) => ({ staged: keepUnchangedHunks(held.staged, indexDiff.files), unstaged: keepUnchangedHunks(held.unstaged, treeDiff.files) }));
     });
     return () => {
       live = false;

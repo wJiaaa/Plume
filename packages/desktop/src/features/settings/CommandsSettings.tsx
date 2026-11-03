@@ -5,7 +5,7 @@
 import type { BuiltinCommand } from "@plume/core/commands-builtin";
 import type { SlashCommand } from "@plume/core/commands-view";
 import { FolderOpen, Plus, RefreshCw, SquareTerminal } from "../../ui/icons/index.ts";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useApp } from "../../store/index.ts";
 import { ProjectScope } from "./ProjectScope.tsx";
 import { Card, PageHeader } from "./layout.tsx";
@@ -59,8 +59,13 @@ function SlashCommands() {
 	const [query, setQuery] = useState("");
 	const [creating, setCreating] = useState(false);
 
+	// 换了项目以后，上一个项目晚到的列表不能落在这一个下面。
+	const currentCwd = useRef(cwd);
+	currentCwd.current = cwd;
 	const refresh = useCallback(() => {
-		void bridge.commands.list(cwd).then(setList);
+		void bridge.commands.list(cwd).then((next) => {
+			if (currentCwd.current === cwd) setList(next);
+		});
 	}, [cwd]);
 	const removal = useDefinitionRemoval("command", cwd, refresh);
 

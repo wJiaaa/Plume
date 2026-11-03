@@ -7,7 +7,7 @@
 
 import type { HookDraft, HookScope } from "@plume/core";
 import { Anchor, Plus, RefreshCw, ShieldCheck, TriangleAlert } from "../../ui/icons/index.ts";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { HookView, HooksView } from "@plume/contract";
 import { useI18n } from "../../i18n/index.ts";
 import { bridge } from "../../services/index.ts";
@@ -42,14 +42,20 @@ export function HooksSettings() {
 	const [editing, setEditing] = useState<HookView | null | undefined>(undefined);
 	const confirm = useConfirmer();
 
+	// 换了项目以后，上一个项目晚到的回答（列表或错误）不能落在这一个下面。
+	const currentCwd = useRef(cwd);
+	currentCwd.current = cwd;
 	const refresh = useCallback(() => {
 		void bridge.hooks
 			.list(cwd)
 			.then((next) => {
+				if (currentCwd.current !== cwd) return;
 				setView(next);
 				setError(null);
 			})
-			.catch((reason: unknown) => setError(reason instanceof Error ? reason.message : String(reason)));
+			.catch((reason: unknown) => {
+				if (currentCwd.current === cwd) setError(reason instanceof Error ? reason.message : String(reason));
+			});
 	}, [cwd]);
 
 	useEffect(refresh, [refresh]);

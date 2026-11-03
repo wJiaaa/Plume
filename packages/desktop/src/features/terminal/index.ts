@@ -7,7 +7,7 @@
  * 它短是件好事。要往里加之前先想想，是不是那件事本来就该发生在这个域里面。
  */
 
-export { TerminalPane } from "./TerminalPane.tsx";
+export { TerminalPane } from "./LazyTerminalPane.tsx";
 export { TerminalTitle, closeTerminal } from "./TerminalTitle.tsx";
 export { confirmCloseTerminal } from "./close-guard.ts";
 export { useTerminalPrewarm } from "./prewarm.ts";

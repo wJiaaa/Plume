@@ -17,7 +17,7 @@ import { ProjectHead } from "./ProjectHead.tsx";
 import type { RowActions } from "./SessionRow.tsx";
 import { SessionRows } from "./SessionRows.tsx";
 import { ShowMore } from "./ShowMore.tsx";
-import { useSidebarReorderContext } from "./reorder-context.ts";
+import { useReorderState } from "./reorder-context.ts";
 import { DropLineIndicator } from "./DropIndicator.tsx";
 import { useUnfold } from "./useUnfold.ts";
 
@@ -62,9 +62,8 @@ export function ProjectGroup({
 	const hidden = group.sessions.length - visible.length;
 	// Only worth offering once something has actually been opened up.
 	const canCollapse = visible.length > COLLAPSED_SESSION_COUNT;
-	const reorder = useSidebarReorderContext();
-	const isDraggingThisProject = reorder?.dragging?.kind === "project" && reorder.dragging.id === group.id;
-	const isTargetThisProject = reorder?.dropTarget?.kind === "project" && reorder.dropTarget.id === group.id;
+	const isDraggingThisProject = useReorderState((state) => state.dragging?.kind === "project" && state.dragging.id === group.id);
+	const targetPlacement = useReorderState((state) => (state.dropTarget?.kind === "project" && state.dropTarget.id === group.id ? state.dropTarget.placement : null));
 
 	return (
 		<div
@@ -72,7 +71,7 @@ export function ProjectGroup({
 				isDraggingThisProject ? "opacity-35" : ""
 			}`}
 		>
-			{isTargetThisProject && <DropLineIndicator placement={reorder!.dropTarget!.placement} />}
+			{targetPlacement && <DropLineIndicator placement={targetPlacement} />}
 			{/*
 			 * Held at the rail while you are inside this project, and pushed out by the next one.
 			 *

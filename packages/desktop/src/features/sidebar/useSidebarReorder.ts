@@ -1,25 +1,30 @@
 import { translate } from "../../i18n/translate.ts";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../../store/index.ts";
 import { dropSessionDrag, paneAtPoint } from "../split/index.ts";
 import type { SortKey } from "./ListMenu.tsx";
 import type { Grouped } from "../../lib/sidebar-grouping.ts";
-import type { DraggingItem, DropTarget, SidebarReorderContextValue } from "./reorder-context.ts";
+import type { DraggingItem, DropTarget, ReorderState, SidebarReorderContextValue } from "./reorder-context.ts";
 
 const DRAG_THRESHOLD = 5;
 
 export function useSidebarReorder(groups: Grouped, sort: SortKey, onReordered?: () => void): {
 	contextValue: SidebarReorderContextValue;
 	dragging: DraggingItem | null;
-	dropTarget: DropTarget | null;
-	pointer: { x: number; y: number };
 } {
+	/*
+	 * `dragging` is also state, for the list itself — it draws the carried pill only while a project
+	 * is in the hand, and that changes twice per drag. The drop target and the pointer change far
+	 * more often and live only in the store, where each row selects the one bit it draws.
+	 */
 	const [dragging, setDragging] = useState<DraggingItem | null>(null);
-	const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
-	const [pointer, setPointer] = useState({ x: 0, y: 0 });
+	const store = useRef<ReorderState>({ dragging: null, dropTarget: null, pointer: { x: 0, y: 0 } });
+	const listeners = useRef(new Set<() => void>());
+	const update = useCallback((patch: Partial<ReorderState>) => {
+		store.current = { ...store.current, ...patch };
+		for (const listener of listeners.current) listener();
+	}, []);
 	const candidateRef = useRef<{ item: DraggingItem; originX: number; originY: number; pointerId: number } | null>(null);
-	const draggingRef = useRef<DraggingItem | null>(null);
-	const dropTargetRef = useRef<DropTarget | null>(null);
 	const suppressClick = useRef(false);
 	const saving = useRef(false);
 	/*
@@ -36,47 +41,46 @@ export function useSidebarReorder(groups: Grouped, sort: SortKey, onReordered?: 
 	reordered.current = onReordered;
 	const sorting = useRef(sort);
 	sorting.current = sort;
+	// The same for the list: as a dependency it made `startDrag` and `registerTarget` new functions
+	// on every list change, and the context with them.
+	const grouping = useRef(groups);
+	grouping.current = groups;
 
 	const eligible = useCallback((kind: "project" | "session", id: string, project?: string) => {
-		if (!onReordered) return false;
+		if (!reordered.current) return false;
+		const groups = grouping.current;
 		if (kind === "session") return groups.projects.some((group) => group.id === project && group.sessions.some((session) => session.id === id));
 		return groups.projects.some((group) => group.id === id) && Boolean(useApp.getState().settings?.projects.some((project) => project.id === id));
-	}, [groups, onReordered]);
+	}, []);
 
 	const reset = useCallback(() => {
 		candidateRef.current = null;
-		draggingRef.current = null;
-		dropTargetRef.current = null;
+		if (store.current.dragging || store.current.dropTarget) update({ dragging: null, dropTarget: null });
 		setDragging(null);
-		setDropTarget(null);
-	}, []);
+	}, [update]);
 
 	const startDrag = useCallback((item: DraggingItem, event: React.PointerEvent) => {
 		// Touch keeps native scrolling; only a row's primary button starts a mouse drag.
 		if (event.button !== 0 || event.pointerType !== "mouse" || saving.current || !eligible(item.kind, item.id, item.project)) return;
 		candidateRef.current = { item, originX: event.clientX, originY: event.clientY, pointerId: event.pointerId };
-		setPointer({ x: event.clientX, y: event.clientY });
-	}, [eligible]);
+		update({ pointer: { x: event.clientX, y: event.clientY } });
+	}, [eligible, update]);
 
 	const registerTarget = useCallback((kind: "project" | "session", id: string, rect: DOMRect, clientY: number, project?: string) => {
-		const active = draggingRef.current;
+		const active = store.current.dragging;
 		if (!active || active.kind !== kind || active.id === id || !eligible(kind, id, project)) return;
 		if (kind === "session" && active.project !== project) return;
 		const placement = clientY < rect.top + rect.height / 2 ? "before" : "after";
-		const current = dropTargetRef.current;
+		const current = store.current.dropTarget;
 		if (!current || current.id !== id || current.placement !== placement) {
 			const next: DropTarget = { kind, id, placement };
-			dropTargetRef.current = next;
-			setDropTarget(next);
+			update({ dropTarget: next });
 		}
-	}, [eligible]);
+	}, [eligible, update]);
 
 	const clearTarget = useCallback((id: string) => {
-		if (dropTargetRef.current?.id === id) {
-			dropTargetRef.current = null;
-			setDropTarget(null);
-		}
-	}, []);
+		if (store.current.dropTarget?.id === id) update({ dropTarget: null });
+	}, [update]);
 
 	useEffect(() => {
 		const handlePointerDown = () => { suppressClick.current = false; };
@@ -84,14 +88,14 @@ export function useSidebarReorder(groups: Grouped, sort: SortKey, onReordered?: 
 			const candidate = candidateRef.current;
 			if (!candidate || event.pointerId !== candidate.pointerId) return;
 			if (!(event.buttons & 1)) { reset(); return; }
-			if (!draggingRef.current && Math.hypot(event.clientX - candidate.originX, event.clientY - candidate.originY) >= DRAG_THRESHOLD) {
-				draggingRef.current = candidate.item;
+			if (!store.current.dragging && Math.hypot(event.clientX - candidate.originX, event.clientY - candidate.originY) >= DRAG_THRESHOLD) {
 				suppressClick.current = true;
+				update({ dragging: candidate.item });
 				setDragging(candidate.item);
 			}
-			if (draggingRef.current) {
+			if (store.current.dragging) {
 				event.preventDefault();
-				setPointer({ x: event.clientX, y: event.clientY });
+				update({ pointer: { x: event.clientX, y: event.clientY } });
 			}
 		};
 		const commit = async (active: DraggingItem, target: DropTarget) => {
@@ -108,8 +112,7 @@ export function useSidebarReorder(groups: Grouped, sort: SortKey, onReordered?: 
 		};
 		const handlePointerUp = (event: PointerEvent) => {
 			if (event.pointerId !== candidateRef.current?.pointerId) return;
-			const active = draggingRef.current;
-			const target = dropTargetRef.current;
+			const { dragging: active, dropTarget: target } = store.current;
 			const overSplit = active?.kind === "session" && paneAtPoint(event.clientX, event.clientY);
 			if (overSplit) dropSessionDrag(event);
 			reset();
@@ -130,7 +133,7 @@ export function useSidebarReorder(groups: Grouped, sort: SortKey, onReordered?: 
 			}
 		};
 		const preventSelection = (event: Event) => { if (candidateRef.current) event.preventDefault(); };
-		const clearScrolledTarget = () => { dropTargetRef.current = null; setDropTarget(null); };
+		const clearScrolledTarget = () => { if (store.current.dropTarget) update({ dropTarget: null }); };
 		window.addEventListener("pointerdown", handlePointerDown, true);
 		window.addEventListener("pointermove", handlePointerMove, true);
 		window.addEventListener("pointerup", handlePointerUp);
@@ -151,7 +154,17 @@ export function useSidebarReorder(groups: Grouped, sort: SortKey, onReordered?: 
 			window.removeEventListener("blur", reset);
 			window.removeEventListener("scroll", clearScrolledTarget, true);
 		};
-	}, [reset]);
+	}, [reset, update]);
 
-	return { contextValue: { dragging, dropTarget, startDrag, registerTarget, clearTarget }, dragging, dropTarget, pointer };
+	const contextValue = useMemo<SidebarReorderContextValue>(() => ({
+		startDrag,
+		registerTarget,
+		clearTarget,
+		getState: () => store.current,
+		subscribe: (listener) => {
+			listeners.current.add(listener);
+			return () => { listeners.current.delete(listener); };
+		},
+	}), [startDrag, registerTarget, clearTarget]);
+	return { contextValue, dragging };
 }

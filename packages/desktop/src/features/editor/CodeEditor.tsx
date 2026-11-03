@@ -166,6 +166,8 @@ export function CodeEditor({
 
 		return () => {
 			live = false;
+			// One observer per opened file; left connected, every file ever opened kept one watching.
+			panels.disconnect();
 			instance.destroy();
 			view.current = null;
 			setScroller(null);

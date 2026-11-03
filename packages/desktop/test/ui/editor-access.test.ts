@@ -31,6 +31,30 @@ test("the file preview offers no editable surface, and ⌘F still opens find", a
 		assert.equal(searchPanelOpen(view.state), true, "⌘F 应该打开查找");
 		assert.equal(mounted.host.querySelector(".cm-search input[name=replace]"), null, "只读预览不该有替换");
 	} finally {
-		mounted.unmount();
+		await mounted.unmount();
 	}
+});
+
+/**
+ * 每换一个文件就重建一次视图，跟着新建一个看查找栏的观察器。从前清理时不断开它：切过 30 个文件，
+ * 42 个观察器还在盯着早就拆掉的 DOM。
+ */
+test("换过 30 个文件，活着的观察器不比打开第一个时多", async () => {
+	const Native = globalThis.MutationObserver;
+	const live = new Set<MutationObserver>();
+	class Counted extends Native {
+		override observe(target: Node, options?: MutationObserverInit) { live.add(this); super.observe(target, options); }
+		override disconnect() { live.delete(this); super.disconnect(); }
+	}
+	globalThis.MutationObserver = Counted;
+	const mounted = await mount(h(CodeEditor, { path: "/project/0.txt", text: "zero\n" }));
+	try {
+		const first = live.size;
+		for (let index = 1; index <= 30; index++) await mounted.rerender(h(CodeEditor, { path: `/project/${index}.txt`, text: `${index}\n` }));
+		assert.ok(live.size <= first, `打开第一个文件时 ${first} 个，换过 30 个以后 ${live.size} 个`);
+	} finally {
+		await mounted.unmount();
+		globalThis.MutationObserver = Native;
+	}
+	assert.equal(live.size, 0, "卸载以后还有观察器没断开");
 });

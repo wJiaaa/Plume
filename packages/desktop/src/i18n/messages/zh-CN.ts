@@ -2394,7 +2394,6 @@ export const zhCN = {
 	"sideChat.dontAskAgain": "不再询问",
 	"applyEvent.task": "任务",
 	"applyEvent.named": "「{title}」",
-	"applyEvent.refreshFailed": "会话列表刷新失败：{reason}",
 	"applyEvent.skillsDelta": "技能 {delta}",
 	"applyEvent.agentsDelta": "子代理 {delta}",
 	"applyEvent.changesNamed": "{changes}：{names}",

@@ -3,22 +3,31 @@ import type { ResolvedUiLocale } from "../../i18n/index.ts";
 import type { Message } from "@plume/core";
 import { readable } from "../../lib/spoken.ts";
 
+export type Question = { index: number; text: string; answer: string };
+
 /** Message indices preserve distinct targets for identical questions and attachment-only turns. */
 export function questionsIn(messages: readonly Message[]) {
-	const questions: { index: number; text: string; answer: string }[] = [];
-	for (const [index, message] of messages.entries()) {
-		if (!readable(message)) continue;
-		if (message.role === "assistant") {
-			const question = questions.at(-1);
-			const answer = message.content.filter((block) => block.type === "text").map((block) => block.text).join("\n\n").trim();
-			if (question && answer) question.answer = answer.slice(0, 600);
-			continue;
-		}
-		if (message.role !== "user" || message.synthetic) continue;
-		const text = message.content.filter((block) => block.type === "text").map((block) => block.text).join(" ").trim();
-		questions.push({ index, text: text || translate("questionNav.imageMessage"), answer: "" });
-	}
+	const questions: Question[] = [];
+	for (const [index, message] of messages.entries()) ask(message, index, questions);
 	return questions;
+}
+
+/**
+ * `questionsIn` 的一步。拆出来是因为 `transcript-shape.ts` 从最后一轮开头接着折，规则只写这一处。
+ *
+ * 回答落到最后一问上时换一份而不是原地改：接着折的那一版，前面那几问是存着、下一拍还要用的。
+ */
+export function ask(message: Message, index: number, questions: Question[]): void {
+	if (!readable(message)) return;
+	if (message.role === "assistant") {
+		const question = questions.at(-1);
+		const answer = message.content.filter((block) => block.type === "text").map((block) => block.text).join("\n\n").trim();
+		if (question && answer) questions[questions.length - 1] = { ...question, answer: answer.slice(0, 600) };
+		return;
+	}
+	if (message.role !== "user" || message.synthetic) return;
+	const text = message.content.filter((block) => block.type === "text").map((block) => block.text).join(" ").trim();
+	questions.push({ index, text: text || translate("questionNav.imageMessage"), answer: "" });
 }
 
 export const QUESTION_LIMIT = 15;
@@ -33,14 +42,17 @@ export function questionWindow(total: number, position: number) {
 export function timeSeparators(messages: readonly Message[]) {
 	const result = new Set<number>();
 	let previous: number | undefined;
-	for (const [index, message] of messages.entries()) {
-		if (!readable(message)) continue;
-		if (message.role === "user" && !message.synthetic) {
-			if (previous === undefined || message.timestamp - previous >= 30 * 60_000 || new Date(previous).toDateString() !== new Date(message.timestamp).toDateString()) result.add(index);
-		}
-		if (!('synthetic' in message && message.synthetic)) previous = message.timestamp;
-	}
+	for (const [index, message] of messages.entries()) previous = separate(message, index, previous, result);
 	return result;
+}
+
+/** `timeSeparators` 的一步：要分隔就记进 `out`，交回下一步要比的那个时刻。同 `ask`，规则只写这一处。 */
+export function separate(message: Message, index: number, previous: number | undefined, out: Set<number>): number | undefined {
+	if (!readable(message)) return previous;
+	if (message.role === "user" && !message.synthetic) {
+		if (previous === undefined || message.timestamp - previous >= 30 * 60_000 || new Date(previous).toDateString() !== new Date(message.timestamp).toDateString()) out.add(index);
+	}
+	return "synthetic" in message && message.synthetic ? previous : message.timestamp;
 }
 
 export function conversationTime(timestamp: number, now = Date.now(), locale: ResolvedUiLocale = activeLocale()) {

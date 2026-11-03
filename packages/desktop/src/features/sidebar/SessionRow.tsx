@@ -25,7 +25,7 @@ import { usePopover } from "../../ui/overlay/Popover.tsx";
 import { ScrollText } from "../../ui/scroll/ScrollText.tsx";
 import { SessionStatus } from "../conversation/index.ts";
 import { useTypedText } from "../../ui/motion/TypedText.tsx";
-import { useSidebarReorderContext } from "./reorder-context.ts";
+import { useReorderState, useSidebarReorderContext } from "./reorder-context.ts";
 import { offerSessionDrag } from "../split/index.ts";
 import { openScopedPanel, usePaneDock } from "../dock/index.ts";
 import { DropLineIndicator } from "./DropIndicator.tsx";
@@ -147,7 +147,9 @@ export const SessionRow = memo(function SessionRow({
 	 */
 	const activity = useApp((s) => s.activity[session.id] ?? null);
 	const sideRunning = useRunningBeside(session.id);
-	const settings = useApp((s) => s.settings);
+	// 两个布尔值，不是整份设置：选 `s.settings` 时，改任何一项设置都让每一行重画。
+	const isPinned = useApp((s) => s.settings?.pinnedSessionIds?.includes(session.id) ?? false);
+	const isUnread = useApp((s) => s.settings?.unreadSessionIds?.includes(session.id) ?? false);
 	const setSessionPinned = useApp((s) => s.setSessionPinned);
 	const deleteSession = useApp((s) => s.deleteSession);
 	/*
@@ -156,8 +158,6 @@ export const SessionRow = memo(function SessionRow({
 	 * `useState(null)` per row, which is what this costs — nothing renders until something is asked.
 	 */
 	const confirm = useConfirmer();
-	const isPinned = settings?.pinnedSessionIds?.includes(session.id) ?? false;
-	const isUnread = settings?.unreadSessionIds?.includes(session.id) ?? false;
 	const { compact } = useLayout();
 	const menu = usePopover();
 	const folded = useFoldedThreads((s) => (followUps ? s.folded.includes(session.id) : false));
@@ -189,8 +189,8 @@ export const SessionRow = memo(function SessionRow({
 
 	const reorderContext = useSidebarReorderContext();
 	const reorder = nested ? null : reorderContext;
-	const isDraggingThisSession = reorder?.dragging?.kind === "session" && reorder.dragging.id === session.id;
-	const isTargetThisSession = reorder?.dropTarget?.kind === "session" && reorder.dropTarget.id === session.id;
+	const isDraggingThisSession = useReorderState((state) => !nested && state.dragging?.kind === "session" && state.dragging.id === session.id);
+	const targetPlacement = useReorderState((state) => (!nested && state.dropTarget?.kind === "session" && state.dropTarget.id === session.id ? state.dropTarget.placement : null));
 	/** Only the archive can offer to delete, which makes it the answer to "which list is this". */
 	const inArchive = Boolean(onDelete);
 	const actionsCount = inArchive ? (onRestore ? 2 : 1) : (onArchive ? 2 : 1);
@@ -231,7 +231,7 @@ export const SessionRow = memo(function SessionRow({
 				}
 			}}
 		>
-			{isTargetThisSession && <DropLineIndicator placement={reorder!.dropTarget!.placement} />}
+			{targetPlacement && <DropLineIndicator placement={targetPlacement} />}
 			{card.anchor && <SessionCard session={session} anchor={card.anchor} project={project} leaving={card.leaving} />}
 			{menu.open && (
 				<SessionMenu

@@ -9,7 +9,7 @@
  * decided in `markdown-blocks.ts` and `markdown-inline.ts`, where they can be tested.
  */
 
-import { Fragment, memo, type ReactNode, useContext, useMemo, useRef } from "react";
+import { Fragment, memo, type ReactNode, useContext, useMemo, useRef, useSyncExternalStore } from "react";
 import { CodeBlock } from "./CodeBlock.tsx";
 import { isMermaid, MermaidBlock } from "./MermaidBlock.tsx";
 import { InterfaceBlock } from "./interface/InterfaceBlock.tsx";
@@ -21,7 +21,7 @@ import { parseMarkdown, parseMarkdownChunks } from "../../lib/markdown/blocks.ts
 import { filePathInCode } from "../../lib/markdown/file-link.ts";
 import { groupTokens, HUGE_BLOCK } from "../../lib/markdown/slice.ts";
 import { type Inline, parseInline } from "../../lib/markdown/inline.ts";
-import { renderMath } from "../../lib/markdown/math.ts";
+import { mathReady, onMathReady, renderMath } from "../../lib/markdown/math.ts";
 import { stripEmoji } from "../../lib/markdown/strip-emoji.ts";
 import { withoutFollowups } from "@plume/core/followups";
 import { completeTailHeld } from "../../lib/markdown/stream-tail.ts";
@@ -336,9 +336,13 @@ function Details({ summary, blocks, fade }: { summary: string; blocks: Block[]; 
 	);
 }
 
+/** Redraw once KaTeX has arrived; until then a formula is shown as its source (see `math.ts`). */
+const useMathReady = () => useSyncExternalStore(onMathReady, mathReady, mathReady);
+
 function MathBlock({ tex }: { tex: string }) {
 	// A wide formula scrolls rather than wraps; its thumb is the code block's (see `CodeBlock`).
 	const viewport = useRef<HTMLDivElement>(null);
+	useMathReady();
 	const html = renderMath(tex, true);
 	// TeX that does not parse is shown as it was written; a red error box helps nobody read it.
 	if (!html) return <pre className="ly-math-raw">{tex}</pre>;
@@ -349,6 +353,15 @@ function MathBlock({ tex }: { tex: string }) {
 			<OverlayScrollbar viewport={viewport} orientation="horizontal" />
 		</div>
 	);
+}
+
+// A component rather than a branch of `renderToken`, so it can subscribe to KaTeX arriving.
+function InlineMath({ tex, fade }: { tex: string; fade: boolean }) {
+	useMathReady();
+	const html = renderMath(tex, false);
+	if (!html) return `$${tex}$`;
+	// noDangerouslySetInnerHtml 在这里不适用（本仓库用 oxlint，不认 biome 的抑制注释，所以这只是一句说明）: KaTeX's own output, built from a parse tree it escapes.
+	return fade ? <FadeIn as="span" className="ly-math" dangerouslySetInnerHTML={{ __html: html }} /> : <span className="ly-math" dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 function inline(text: string, fade = false): ReactNode[] {
@@ -386,12 +399,8 @@ function renderToken(token: Inline, fade: boolean): ReactNode {
 			const Tag = token.name;
 			return <Tag>{renderTokens(token.children, fade)}</Tag>;
 		}
-		case "math": {
-			const html = renderMath(token.tex, false);
-			if (!html) return `$${token.tex}$`;
-			// noDangerouslySetInnerHtml 在这里不适用（本仓库用 oxlint，不认 biome 的抑制注释，所以这只是一句说明）: KaTeX's own output, built from a parse tree it escapes.
-			return fade ? <FadeIn as="span" className="ly-math" dangerouslySetInnerHTML={{ __html: html }} /> : <span className="ly-math" dangerouslySetInnerHTML={{ __html: html }} />;
-		}
+		case "math":
+			return <InlineMath tex={token.tex} fade={fade} />;
 		case "link":
 			return <Link href={token.href}>{renderTokens(token.children, fade)}</Link>;
 		case "image":

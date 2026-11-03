@@ -6,7 +6,7 @@ import { useScopedRunning, useScopedSessionId, useScopedWorkspace } from "../../
 import { syncPlan, type SyncButton } from "./syncPlan.ts";
 import { ActionSpinner } from "../../ui/motion/loaders.tsx";
 
-import type { GitStatus, RepoRef } from "@plume/contract";
+import type { RepoRef } from "@plume/contract";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import { Button } from "../../ui/primitives/Button.tsx";
 import { PanelEmpty } from "../../ui/layout/PanelEmpty.tsx";
@@ -21,8 +21,7 @@ import { HistoryView } from "./HistoryView.tsx";
 import { PipelinesView } from "./PipelinesView.tsx";
 
 import { RepoPicker } from "./RepoPicker.tsx";
-import { sameStatus } from "./sameStatus.ts";
-import { noteUpstream } from "./upstream-distance.ts";
+import { useRepoStatus } from "./use-repo-status.ts";
 import { SkeletonList, useSlowLoad } from "../../ui/primitives/Skeleton.tsx";
 import { CountUp } from "../../ui/primitives/CountUp.tsx";
 import { useNarrow } from "../../ui/hooks/useNarrow.ts";
@@ -229,7 +228,6 @@ export function GitPanel() {
   /** Worktrees per repository, keyed by the repository's path. */
   const [trees, setTrees] = useState<Record<string, RepoRef[]>>({});
   const [selected, setSelected] = useState<string | null>(null);
-  const [status, setStatus] = useState<GitStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [releaseOpen, setReleaseOpen] = useState(false);
   const [narrowNav, navRef] = useNarrow(330);
@@ -301,46 +299,7 @@ export function GitPanel() {
    * announcing that nothing had changed in a history that did not exist.
    */
   const cwd = selected;
-
-  /*
-   * Go and read it, and keep the object we already had when nothing moved.
-   *
-   * A poll that returns an equal-but-new object is a change as far as React is concerned, so every
-   * 1.5s tick re-ran `ChangesView`'s effect — which fetches the whole working-tree diff. That read
-   * is slower than the interval it is started on, so the panel spent every turn queued behind
-   * itself, which is what "the git panel stutters and takes ages" was. See `sameStatus`.
-   */
-  const read = useCallback(async () => {
-    if (!cwd) {
-      setStatus(null);
-      return;
-    }
-    const next = await bridge.git.status(cwd);
-    setStatus((current) => (sameStatus(current, next) ? current : next));
-    // The composer's branch chip shows the same distance; after a push or fetch here it is this read that knows first.
-    noteUpstream(cwd, next.branch, next.upstream ? { upstream: next.upstream, ahead: next.ahead, behind: next.behind } : null);
-  }, [cwd]);
-
-  /*
-   * The same read, shared by whoever asks for it at the same moment.
-   *
-   * Two effects want a status the instant this mounts — the branch watcher below and
-   * `useLiveRefresh` — so opening the panel spawned two identical `git status` processes and raced
-   * their answers.
-   *
-   * Deliberately *not* what `act` uses. Sharing is only correct for callers that want "a status",
-   * and an operation that has just staged a file wants "the status *after* that" — handing it a
-   * read already in flight when the click landed would show the list from before its own change.
-   */
-  const inflight = useRef<Promise<void> | null>(null);
-  const refresh = useCallback(() => {
-    if (inflight.current) return inflight.current;
-    const flight = read().finally(() => {
-      inflight.current = null;
-    });
-    inflight.current = flight;
-    return flight;
-  }, [read]);
+  const { status, read, refresh } = useRepoStatus(cwd);
 
   /*
    * Re-read from scratch when the checkout moves under us, and say so while it happens.

@@ -17,15 +17,14 @@ import { proseGrewAt } from "../../store/message-event.ts";
 import { GeneratedImages } from "./ImageCanvas.tsx";
 import { Scroller } from "../../ui/scroll/Scroller.tsx";
 import { ActionSpinner } from "../../ui/motion/loaders.tsx";
-import { runs, runKey, type Run } from "./grouping.ts";
-import { turnBlocks, withoutThinking } from "./turn-blocks.ts";
+import { runKey, type Run } from "./grouping.ts";
+import { NavigationCache, RunsCache, TurnBlocksCache } from "./transcript-shape.ts";
 import { intact } from "../../lib/transcript.ts";
 import { ToolRun as ToolRunGroup, WINDOW_TURNS } from "./runs.tsx";
 import { CommandRunRow } from "./CommandRunRow.tsx";
 import { HookTrustBanner } from "./HookTrustBanner.tsx";
 import { QuestionNav } from "./QuestionNav.tsx";
 import { QuoteMenu } from "./QuoteMenu.tsx";
-import { questionsIn, timeSeparators } from "./question-navigation.ts";
 import { MessageRow } from "./rows.tsx";
 import { TurnWork } from "./TurnWork.tsx";
 import { WorkStep } from "./WorkStep.tsx";
@@ -125,17 +124,19 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
   const arrival = useArrival(`${activeSessionId}:${loadingSession}`);
   // 推理默认不画，见 `withoutThinking`。
   const showThinking = useApp((s) => s.settings?.showThinking === true);
-  const allRuns = useMemo(() => {
-    const list = runs(messages, commandRuns, hiccups);
-    return showThinking ? list : withoutThinking(list);
-  }, [messages, commandRuns, hiccups, showThinking]);
+  /*
+   * 流式时 `messages` 每拍都换，下面这几样从头算一遍是整个会话的量；这几份缓存在最后一轮开头留检查点，
+   * 每拍只重算最后一轮，结果和从头算逐项相同。见 `transcript-shape.ts`。
+   */
+  const [shape] = useState(() => ({ runs: new RunsCache(), blocks: new TurnBlocksCache(), navigation: new NavigationCache() }));
+  const allRuns = useMemo(() => shape.runs.runs(messages, commandRuns, hiccups, showThinking), [shape, messages, commandRuns, hiccups, showThinking]);
   /*
    * 按内容记住，不按 `messages`：它每个 token 都换，跟着换的话 `draw` 也每个 token 都是新的，
    * `WorkStep` 的 memo 就形同虚设。
    */
-  const separatorKey = useMemo(() => [...timeSeparators(messages)].join(","), [messages]);
+  const separatorKey = useMemo(() => [...shape.navigation.timeSeparators(messages)].join(","), [shape, messages]);
   const separators = useMemo(() => new Set(separatorKey ? separatorKey.split(",").map(Number) : []), [separatorKey]);
-  const questions = useMemo(() => questionsIn(messages), [messages]);
+  const questions = useMemo(() => shape.navigation.questionsIn(messages), [shape, messages]);
   // 一个 Run 画成哪一行。依赖齐了它才换，`WorkStep` 的 memo 拿它的引用判断画出来的推理行会不会变。
   const draw = useCallback((run: Run) =>
   run.kind === "command" ? <CommandRunRow key={`${activeSessionId}:${runKey(run)}`} command={run.command} /> : run.kind === "hiccup" ? (
@@ -181,8 +182,8 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
    */
   const allBlocks = useMemo(
     // 跑着的那一轮从发出就按有过程分，见 `turnBlocks` 的 `live`。
-    () => turnBlocks(allRuns, running),
-    [allRuns, running],
+    () => shape.blocks.turnBlocks(allRuns, running),
+    [shape, allRuns, running],
   );
   const range = useTranscriptWindow(activeSessionId, WINDOW_TURNS, allBlocks.length);
   /*

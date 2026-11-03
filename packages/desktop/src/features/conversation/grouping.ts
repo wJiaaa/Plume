@@ -127,7 +127,7 @@ export function runKey(run: Run): string {
  * steering typed into a turn that is running, and the work it is doing goes on; if it has settled,
  * the message is a new question and there is nothing in flight to point at.
  */
-function liveWork(messages: Message[], live: number, rowOfCalls: Map<number, number>): number {
+function liveWork(messages: Message[], live: number, rowOfCalls: (at: number) => number | undefined): number {
 	if (live < 0) return -1;
 	const latest = messages[live];
 	const inFlight = latest.role === "assistant" && latest.stopReason === "pending";
@@ -140,7 +140,7 @@ function liveWork(messages: Message[], live: number, rowOfCalls: Map<number, num
 		}
 		// A tool result is the contents of a card, not a step of its own.
 		if (message.role !== "assistant") continue;
-		const row = rowOfCalls.get(at);
+		const row = rowOfCalls(at);
 		if (row !== undefined) return row;
 		if (spoken(message.content) > 0) return -1;
 	}
@@ -255,11 +255,47 @@ export function sameRun(
 export function runs(messages: Message[]): Exclude<Run, { kind: "command" } | { kind: "hiccup" }>[];
 export function runs(messages: Message[], commands: CommandRun[], hiccups?: Hiccup[]): Run[];
 export function runs(rawMessages: Message[], commands: CommandRun[] = [], hiccups: Hiccup[] = []): Run[] {
-	const messages = intact(rawMessages);
-	const out: Run[] = [];
+	return walkRuns(intact(rawMessages), commands, hiccups).rows;
+}
+
+/**
+ * 走到某一轮开头那一刻的全部状态：从这里接着往下走，得到的行和从头走一遍逐个相同。
+ *
+ * 流式时只有最后一轮在变，而从头分组一遍是整个会话的量（九千条消息约 2ms，每拍一次）。
+ * `transcript-shape.ts` 在最后一轮开头记一个，之后每拍从它接着走。`at` 处的消息开一轮（`opensTurn`
+ * 且不是「继续」），前面那一轮的页脚已经落定；`rows` 是那之前的全部行，此后谁也不再改它们。
+ */
+export interface RunsCheckpoint {
+	at: number;
+	rows: Run[];
+	nextCommand: number;
+	nextHiccup: number;
+	commands: CommandRun[];
+	hiccups: Hiccup[];
+	openTodos: boolean;
+	used: ModelUsed | null;
+	rowOfCalls: ReadonlyMap<number, number>;
+}
+
+/**
+ * `runs` 的本体，可以从一个检查点接着走（`from`），也可以在走过某一轮开头时留一个（`mark`）。
+ *
+ * 从检查点接着走时，工具结果、页面状态只从 `from.at` 往后数：一轮里的页面只和同一轮里的发布配对（见
+ * `previewPages`），前面那几轮的调用在后面有结果的（插话时偶尔有）由调用方认出来、改为从头走。
+ * `working` 是 `live` 落在第几行，调用方据此知道前面的行有没有换掉一行。
+ */
+export function walkRuns(
+	messages: Message[],
+	commands: CommandRun[],
+	hiccups: Hiccup[],
+	options: { from?: RunsCheckpoint; mark?: number } = {},
+): { rows: Run[]; mark?: RunsCheckpoint; working: number } {
+	const { from: resume } = options;
+	const start = resume?.at ?? 0;
+	const out: Run[] = resume ? resume.rows.slice() : [];
 	// Sorted so the marks can be consumed in order as the transcript is walked.
 	const commandMarks = [...commands].sort((a, b) => a.at - b.at);
-	let nextCommand = 0;
+	let nextCommand = resume?.nextCommand ?? 0;
 	/*
 	 * 断线也是一个标记，和命令一样按位置插。
 	 *
@@ -268,7 +304,7 @@ export function runs(rawMessages: Message[], commands: CommandRun[] = [], hiccup
 	 * 断线是这段工作当中的一件事，就该待在它发生的那一段旁边。见 `lib/hiccup.ts` 的 `at`。
 	 */
 	const hiccupMarks = [...hiccups].sort((a, b) => a.at - b.at);
-	let nextHiccup = 0;
+	let nextHiccup = resume?.nextHiccup ?? 0;
 	/** The reply being made, if one is: the last assistant message, whatever state it is in. */
 	let live = -1;
 	for (let at = messages.length - 1; at >= 0 && live < 0; at--) {
@@ -282,6 +318,8 @@ export function runs(rawMessages: Message[], commands: CommandRun[] = [], hiccup
 	 * `liveWork` walks back through the replies and reads it off.
 	 */
 	const rowOfCalls = new Map<number, number>();
+	const rowOf = (at: number) => rowOfCalls.get(at) ?? resume?.rowOfCalls.get(at);
+	let mark: RunsCheckpoint | undefined;
 
 	/*
 	 * A preview whose call failed showed nothing — the host refuses a page that throws — so it is work
@@ -291,8 +329,11 @@ export function runs(rawMessages: Message[], commands: CommandRun[] = [], hiccup
 	 * without publishing is the model looking at its page, and folds with the work.
 	 */
 	const failed = new Set<string>();
-	for (const message of messages) if (message.role === "toolResult" && message.isError) failed.add(message.toolCallId);
-	const pages = previewPages(messages, (at) => opensTurn(messages[at]) && !resumesTurn(messages, at));
+	for (let at = start; at < messages.length; at++) {
+		const message = messages[at];
+		if (message.role === "toolResult" && message.isError) failed.add(message.toolCallId);
+	}
+	const pages = previewPages(start ? messages.slice(start) : messages, (at) => opensTurn(messages[start + at]) && !resumesTurn(messages, start + at));
 	const shows = (call: Call) => {
 		// 建议另开的会话是等人点「开始」的卡片，折进过程就没人点了；参数被退回的没有卡片，照常是活。
 		// 交出去的审阅也一样站出来：报告回来之前，那一行是去看审阅进度的唯一入口。
@@ -325,7 +366,7 @@ export function runs(rawMessages: Message[], commands: CommandRun[] = [], hiccup
 	 * 上一条回复是哪个模型答的。换了就落一条分隔：换在两轮之间的，落在开这一轮的那句话上面——
 	 * 人是先换模型再开口的；换在一轮当中的（跑着的时候换，下一步才生效），落在第一条新回复上面。
 	 */
-	let used: ModelUsed | null = null;
+	let used: ModelUsed | null = resume?.used ?? null;
 	const answeredBy = (message: AssistantMessage, at: number) => {
 		const next = { provider: message.provider, model: message.model };
 		if (used && (used.provider !== next.provider || used.model !== next.model)) out.push({ kind: "model", at, from: used, to: next });
@@ -368,8 +409,9 @@ export function runs(rawMessages: Message[], commands: CommandRun[] = [], hiccup
 		closer = row;
 	};
 
-	let clock = newClock();
-	for (const [index, message] of messages.entries()) {
+	let clock = resume ? newClock(start, resume.openTodos) : newClock();
+	for (let index = start; index < messages.length; index++) {
+		const message = messages[index];
 		/*
 		 * A person speaking starts a new turn; the runtime's own messages continue the one running.
 		 *
@@ -379,6 +421,14 @@ export function runs(rawMessages: Message[], commands: CommandRun[] = [], hiccup
 		if (opensTurn(message) && !resumesTurn(messages, index)) {
 			closeTurn();
 			clock = newClock(index, clock.openTodos);
+			if (index === options.mark && index !== start) {
+				mark = {
+					at: index, rows: out.slice(), nextCommand, nextHiccup,
+					commands: commandMarks.slice(0, nextCommand), hiccups: hiccupMarks.slice(0, nextHiccup),
+					openTodos: clock.openTodos, used,
+					rowOfCalls: resume ? new Map([...resume.rowOfCalls, ...rowOfCalls]) : new Map(rowOfCalls),
+				};
+			}
 		}
 		// Commands are visible boundaries, including between an interrupted tool run and its resume.
 		while (nextCommand < commandMarks.length && commandMarks[nextCommand].at <= index) {
@@ -534,13 +584,14 @@ export function runs(rawMessages: Message[], commands: CommandRun[] = [], hiccup
 	 * Rows are only ever appended by the walk above — nothing is inserted after the fact any more —
 	 * so the indices `work` recorded still point where they did.
 	 */
-	const working = liveWork(messages, live, rowOfCalls);
+	const working = liveWork(messages, live, rowOf);
 
 	if (working >= 0) {
 		const row = out[working];
-		if (row.kind === "tools") row.live = true;
+		// 换一份而不是原地改：这一行可能是检查点里那几轮的，它们由下一拍接着用，不该带着这一拍的 `live`。
+		if (row.kind === "tools") out[working] = { ...row, live: true };
 	}
-	return out;
+	return { rows: out, mark, working };
 }
 
 /** 这一行有话：时间和复制那一行只挂在有话的回复下面（`rows.tsx` 的 `text.trim()`）。 */

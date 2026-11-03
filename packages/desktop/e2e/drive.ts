@@ -400,6 +400,39 @@ export async function openSession(page: Page, id: string): Promise<void> {
 	await until(page, `document.querySelector(${JSON.stringify(`${row}[aria-current]`)})`);
 }
 
+/**
+ * 把侧栏上的一行会话拖到分屏区右沿，等分屏数变成 `count`。
+ *
+ * 真鼠标一步步拖：拖动要先越过起拖的阈值才算开始，一下跳到终点的 `mouseMoved` 只是一次点击。投放区
+ * 是在指针进入后才长出来的，偶尔一次没接住，按 Esc 收掉重拖，三次都不行才报错。
+ */
+export async function dragIntoSplit(page: Page, id: string, count: number): Promise<void> {
+	const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+	for (let attempt = 1; attempt <= 3; attempt++) {
+		const from = await settle(page, `[data-ly-row="${id}"] > button`, undefined, "exact");
+		const to = await page.evaluate<Point>(`(()=>{const r=document.querySelector('[data-ly-split-root]').getBoundingClientRect();return {x:r.right-28,y:r.y+r.height/2};})()`);
+		const move = (x: number, y: number) => page.send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y, button: "left", buttons: 1 });
+		await page.send("Input.dispatchMouseEvent", { type: "mousePressed", ...from, button: "left", buttons: 1, clickCount: 1 });
+		await wait(80);
+		for (let i = 1; i <= 4; i++) {
+			await move(from.x + i * 3, from.y + i);
+			await wait(30);
+		}
+		const start = { x: from.x + 12, y: from.y + 4 };
+		for (let i = 1; i <= 24; i++) {
+			await move(start.x + ((to.x - start.x) * i) / 24, start.y + ((to.y - start.y) * i) / 24);
+			await wait(22);
+		}
+		await wait(250);
+		await page.send("Input.dispatchMouseEvent", { type: "mouseReleased", ...to, button: "left", buttons: 0, clickCount: 1 });
+		const opened = await until(page, `document.querySelector('[data-ly-split-root]')?.dataset.lySplitCount === '${count}'`, 300).then(() => true, () => false);
+		if (opened) return;
+		await press(page, "Escape", 27);
+		await wait(800);
+	}
+	throw new Error(`拖了三次都没把 ${id} 拖进分屏`);
+}
+
 /** 点侧栏顶上的铃铛，等通知菜单弹出来。侧栏要是展开的。 */
 export async function openNotifications(page: Page): Promise<void> {
 	await click(page, 'button[aria-label="通知"]');

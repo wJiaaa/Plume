@@ -11,7 +11,38 @@
  * `\includegraphics` and the rest of the commands that could emit a URL of the author's choosing.
  */
 
-import { renderToString } from "katex";
+import type { KatexOptions } from "katex";
+
+/*
+ * KaTeX is fetched the first time a formula is drawn, not at startup.
+ *
+ * It is about 1MB, and was imported here statically — so every launch parsed and ran it, for the
+ * minority of replies that contain any maths. Until it arrives `renderMath` answers `undefined` and
+ * the caller shows the TeX as written, the same thing it shows for TeX that does not parse; the
+ * formula is typeset as soon as the module lands (`onMathReady`).
+ */
+let typeset: ((tex: string, options: KatexOptions) => string) | null = null;
+let loading: Promise<void> | null = null;
+const listeners = new Set<() => void>();
+
+function loadMath(): void {
+	loading ??= import("katex").then(
+		(module) => {
+			typeset = module.renderToString ?? module.default.renderToString;
+			for (const listener of listeners) listener();
+		},
+		// A failed fetch leaves the source on screen and lets the next formula try again.
+		() => { loading = null; },
+	);
+}
+
+/** Whether KaTeX has arrived — for `useSyncExternalStore`, with `onMathReady`. */
+export const mathReady = (): boolean => typeset !== null;
+
+export function onMathReady(listener: () => void): () => void {
+	listeners.add(listener);
+	return () => { listeners.delete(listener); };
+}
 
 /*
  * Rendering the same formula twice is common — React re-renders a message on every token that
@@ -21,15 +52,22 @@ import { renderToString } from "katex";
 const cache = new Map<string, string>();
 const LIMIT = 400;
 
-/** Returns null when the TeX does not parse — the caller shows the source instead. */
-export function renderMath(tex: string, display: boolean): string | null {
+/**
+ * Returns null when the TeX does not parse, and undefined while KaTeX is still loading — in both
+ * cases the caller shows the source instead.
+ */
+export function renderMath(tex: string, display: boolean): string | null | undefined {
 	const key = `${display ? "d" : "i"}:${tex}`;
 	const hit = cache.get(key);
 	if (hit !== undefined) return hit || null;
+	if (!typeset) {
+		loadMath();
+		return undefined;
+	}
 
 	let html: string;
 	try {
-		html = renderToString(tex, {
+		html = typeset(tex, {
 			displayMode: display,
 			throwOnError: true,
 			trust: false,

@@ -132,7 +132,7 @@ function reasoning(run: Run): run is Extract<Run, { kind: "message" }> {
 }
 
 /** 一条 run 是不是「人开的口」——新一轮从这里开始。 */
-function opensBlock(run: Run): boolean {
+export function opensBlock(run: Run): boolean {
 	return run.kind === "command" || (run.kind === "message" && opensTurn(run.message));
 }
 
@@ -230,15 +230,34 @@ function withJobs(run: Run, more: DeliveredReport[]): Run {
  * 压缩命令开的一轮不这样分。
  */
 export function turnBlocks(list: Run[], live = false): TurnBlock[] {
-	const out: TurnBlock[] = [];
-	let turn = 0;
+	return blocksFrom(list, live).blocks;
+}
+
+/** 一轮开头的那一行在 `list` 里的位置，和它之前已经分出来的块数、轮数：从这里接着分，前面的块不变。 */
+export interface BlockStart {
+	at: number;
+	blocks: number;
+	turn: number;
+}
+
+/**
+ * `turnBlocks` 的本体，可以从某一轮开头接着分（`from`，见 `BlockStart`）。
+ *
+ * 块只在开一轮的那一行处断开，一块里有什么只看它自己那一段，所以那一行之前的块和后面怎么长无关——
+ * `transcript-shape.ts` 据此每拍只重分最后一轮。`starts` 记下走过的每一轮开头。
+ */
+export function blocksFrom(list: Run[], live = false, from?: BlockStart, prefix: TurnBlock[] = []): { blocks: TurnBlock[]; starts: BlockStart[] } {
+	const out: TurnBlock[] = from ? prefix.slice(0, from.blocks) : [];
+	const starts: BlockStart[] = [];
+	let turn = from?.turn ?? 0;
 	// 这一轮是人开的口：后台结果叫醒的、压缩命令开的都不算。
 	let asked = false;
 	const plain = (run: Run) => out.push({ kind: "plain", runs: [run], items: [], turn });
 
-	let at = 0;
+	let at = from?.at ?? 0;
 	while (at < list.length) {
 		if (opensBlock(list[at])) {
+			starts.push({ at, blocks: out.length, turn });
 			asked = list[at].kind === "message" && !wokenBy(list[at]);
 			turn++;
 			plain(list[at++]);
@@ -260,7 +279,7 @@ export function turnBlocks(list: Run[], live = false): TurnBlock[] {
 	}
 	// 刚发出、或者还在想：这一轮还什么也没有（推理不画时推理行已经拿掉），先占住 `work` 的位置。
 	if (live && asked && list.length > 0 && opensBlock(list[list.length - 1])) out.push({ kind: "work", runs: [], items: [], turn });
-	return out;
+	return { blocks: out, starts };
 }
 
 /**

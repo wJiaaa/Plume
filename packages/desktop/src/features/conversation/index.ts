@@ -30,6 +30,7 @@ export { useDeliveryReview, useSharedDeliveryTarget } from "./delivery-review.ts
 export { useDeliveryUndo } from "./delivery-undo.ts";
 export { useTurnDelivery } from "./delivery-cache.ts";
 export { TraceText } from "./detail/TraceText.tsx";
+export { imageBlockSrc } from "./image-block.ts";
 export { showTrace } from "./trajectory/navigation.ts";
 /* 画廊里点「在对话中查看」：那个对话一读完，就把那张图滚到中间、闪一下。 */
 export { revealDrawing } from "./reveal.ts";

@@ -304,6 +304,8 @@ aria、name，按这些在文档里查东西的代码找不到它；减少动效
 整条消息，下游不变；窗口中途才开始听或 `seq` 断档时用 `agent.streamingMessage` 要一帧关键帧
 （`desktop/shared/message-patch.ts`）。core 的事件不变——进程内传的是引用，没有成本。
 
+同一个出口（`electron/session/event-wire.ts`）还做三件事：`tool_update` 也只发追加的那截（`ToolPatch`，`desktop/shared/tool-patch.ts`，接不上时用 `agent.streamingTool` 要关键帧；输出超过模型上限后开头不动、结尾滚动，不再是追加，退回整段替换）；`turn_end` 不发，渲染进程没人读它，它却带着整条回复和全部工具结果；实时事件里的图片按内容停放成文件、换成 `ly-media` 地址，和冷读快照同一种形式，不再以 base64 过 IPC、留在 store 里。
+
 假 Anthropic 流、每 5ms 4 个字，`e2e/scratch/delta-ipc-probe.ts` 在主进程按 v8 结构化克隆数字节：
 
 | 回复长度 | agent:event 字节（前 → 后） | 反序列化估算（前 → 后） |
