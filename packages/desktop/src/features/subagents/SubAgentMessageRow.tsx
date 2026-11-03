@@ -37,8 +37,8 @@ import {
 import { spokenText } from "../../lib/spoken.ts";
 import { useApp } from "../../store/index.ts";
 import { Markdown } from "../markdown/index.ts";
-import { ThinkingBlock } from "../conversation/index.ts";
-import { subAgentRuns } from "./runs.ts";
+import { ThinkingBlock, ThinkingPending } from "../conversation/index.ts";
+import { subAgentRuns, waitingSince } from "./runs.ts";
 
 /**
  * 这一句是派它出去的那一方说的吗。
@@ -181,6 +181,13 @@ export const SubAgentTranscript = memo(function SubAgentTranscript({
 		return null;
 	};
 	const blocks = useMemo(() => turnBlocks(transcriptRuns, Boolean(isLive)), [transcriptRuns, isLive]);
+	/*
+	 * 在等模型回话：主会话有底部那行运行指示，这里没有，不补这一行任务卡下面就是一片空白。挂在跑着的那一轮
+	 * 里当最后一行，不排在列表外面：刚派出去时那一轮是 `turnBlocks` 占的空位，排在外面就多空出一份行距。
+	 */
+	const waiting = isLive ? waitingSince(messages) : undefined;
+	const pending = waiting === undefined ? null : <ThinkingPending startedAt={waiting} />;
+	const lastWork = blocks.at(-1)?.kind === "work";
 
 	return (
 		/*
@@ -198,13 +205,17 @@ export const SubAgentTranscript = memo(function SubAgentTranscript({
 				return (
 					<TurnWork
 						key={key}
-						entries={block.items.map((item) => ({
-							key: item.key,
-							node: item.kind === "step" ? <WorkStep step={item.step} live={live && item === tail} draw={draw} runs={toolRuns} /> : draw(item.run),
-						}))}
+						entries={[
+							...block.items.map((item) => ({
+								key: item.key,
+								node: item.kind === "step" ? <WorkStep step={item.step} live={live && item === tail} draw={draw} runs={toolRuns} /> : draw(item.run),
+							})),
+							...(pending && at === blocks.length - 1 ? [{ key: "pending", node: pending }] : []),
+						]}
 					/>
 				);
 			})}
+			{!lastWork && pending}
 			{!isLive && starts.length > 0 && stretchHooks(starts.at(-1)!, Infinity)}
 		</div>
 	);

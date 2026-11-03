@@ -14,7 +14,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Message } from "@plume/core";
-import { subAgentRuns } from "../src/features/subagents/runs.ts";
+import { subAgentRuns, waitingSince } from "../src/features/subagents/runs.ts";
 
 const call = (id: string, name: string, args: Record<string, unknown>, at = 1000): Message => ({
 	role: "assistant",
@@ -103,4 +103,38 @@ test("the user's own message does not become a record", () => {
 	]);
 
 	assert.deepEqual(Object.keys(runs), ["t1"]);
+});
+
+/*
+ * 子智能体的转录只收说完的消息，模型在想时面板上什么都没有：派出去以后任务卡下面一片空白，看着像没动。
+ * 「此刻在等模型」由这条规则说，面板据此补一行「正在思考」。
+ */
+const brief = (at: number): Message => ({ role: "user", content: [{ type: "text", text: "do it" }], timestamp: at, origin: "parent" });
+const reply = (text: string, at: number): Message => ({ role: "assistant", content: [{ type: "text", text }], stopReason: "stop", timestamp: at });
+
+test("waiting on the model right after the brief, counted from the brief", () => {
+	assert.equal(waitingSince([brief(500)]), 500);
+});
+
+test("waiting again once every call of the last reply has come back", () => {
+	const both: Message = {
+		role: "assistant",
+		content: [{ type: "toolCall", id: "t1", name: "read", arguments: {} }, { type: "toolCall", id: "t2", name: "read", arguments: {} }],
+		stopReason: "toolUse",
+		timestamp: 1000,
+	};
+	assert.equal(waitingSince([brief(500), both, result("t1", "a", { at: 1500 })]), undefined, "t2 is still running: the tool card says so");
+	assert.equal(waitingSince([brief(500), both, result("t1", "a", { at: 1500 }), result("t2", "b", { at: 1800 })]), 1800);
+});
+
+test("not waiting while a call runs, even with a steered line after it", () => {
+	assert.equal(waitingSince([brief(500), call("t1", "bash", {})]), undefined);
+	const steered: Message = { role: "user", content: [{ type: "text", text: "also check tests" }], timestamp: 1200 };
+	assert.equal(waitingSince([brief(500), call("t1", "bash", {}), steered]), undefined);
+	assert.equal(waitingSince([brief(500), call("t1", "bash", {}), steered, result("t1", "ok", { at: 1600 })]), 1600);
+});
+
+test("not waiting once it has said its piece, nor with nothing yet", () => {
+	assert.equal(waitingSince([brief(500), reply("done", 900)]), undefined);
+	assert.equal(waitingSince([]), undefined);
 });

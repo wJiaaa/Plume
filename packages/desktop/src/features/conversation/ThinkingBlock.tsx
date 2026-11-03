@@ -69,6 +69,20 @@ export function ThinkingBlock({
 }
 
 /**
+ * 还没有一个字的推理：只有「正在思考 · 5s」那一行，没有可展开的正文。
+ *
+ * 子智能体面板等模型回话时用，见 `waitingSince`——它的转录收不到写到一半的推理，`ThinkingBlock` 在那里
+ * 永远等不到 `live`。
+ */
+export function ThinkingPending({ startedAt }: { startedAt: number | undefined }) {
+	return (
+		<div data-ly-thinking-pending="">
+			<FlowRow icon={<Brain size={13} strokeWidth={1.8} />} summary={<LiveThought startedAt={startedAt} />} label={translate("thinking.process")} />
+		</div>
+	);
+}
+
+/**
  * 写完之后的「思考了 N 秒」。
  *
  * 秒向下取整，和它下面那行运行指示（`RunningIndicator` 的 `formatElapsed`）同一种取法——向上取整的话，

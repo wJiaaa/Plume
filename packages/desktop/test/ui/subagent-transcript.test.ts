@@ -45,3 +45,20 @@ test("推理和调用交替的三轮收成一行，结论照旧在下面", async
 		await view.unmount();
 	}
 });
+
+test("刚派出去、还没回话时任务卡下面有一行「正在思考」，跑完就没有", async () => {
+	const brief = transcript(0).slice(0, 1);
+	const live = await mount(h(SubAgentTranscript, { messages: brief, isLive: true }));
+	try {
+		assert.ok(live.find("[data-sub-brief]"));
+		assert.ok(live.find("[data-ly-thinking-pending]"), "模型在想的时候不能是一片空白");
+	} finally {
+		await live.unmount();
+	}
+	const done = await mount(h(SubAgentTranscript, { messages: transcript(1) }));
+	try {
+		assert.equal(done.all("[data-ly-thinking-pending]").length, 0);
+	} finally {
+		await done.unmount();
+	}
+});

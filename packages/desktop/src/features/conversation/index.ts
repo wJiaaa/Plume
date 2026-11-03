@@ -12,7 +12,7 @@ export { HookRunsButton, hasTroubledHooks } from "./HookRunsAction.tsx";
 export { SessionStatus } from "./SessionStatus.tsx";
 /* 建议新会话的「开始」那一排：环境卡片那一节和对话里的卡片问同一个问题。 */
 export { SuggestionStart } from "./SessionSuggestionCard.tsx";
-export { ThinkingBlock } from "./ThinkingBlock.tsx";
+export { ThinkingBlock, ThinkingPending } from "./ThinkingBlock.tsx";
 export { runs, runKey, type Run } from "./grouping.ts";
 /* 按回合把一段段活收成一行——主会话和子智能体面板同一套，见 `turn-blocks.ts`。 */
 export { stepsOf, turnBlocks, withoutThinking } from "./turn-blocks.ts";

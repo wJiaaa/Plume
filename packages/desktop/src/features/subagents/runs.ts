@@ -49,3 +49,23 @@ export function subAgentRuns(messages: Message[]): Record<string, ToolRun> {
 	}
 	return records;
 }
+
+/**
+ * 子智能体此刻在等模型回话：返回从哪一刻起等的，不在等就是 `undefined`。
+ *
+ * 子智能体的转录只收说完的消息（`sub-agent-run.ts` 只转发 `message_end`），模型在想、在写第一个字时
+ * 面板上什么都没有——任务卡下面一片空白，看着像没动。主会话靠底部那行运行指示补这段空档，它只认主会话。
+ *
+ * 末尾是一条回复就不算在等：要么它的调用还在跑（工具卡自己在说），要么这一段已经说完了。末尾是人插的
+ * 一句、而上一条回复的调用还没全部回来，也不算：插话是在调用跑着的时候送进去的，这时在跑的是工具。
+ */
+export function waitingSince(messages: readonly Message[]): number | undefined {
+	const last = messages.at(-1);
+	if (!last || last.role === "assistant") return undefined;
+	const reply = messages.findLast((message) => message.role === "assistant");
+	if (reply?.role === "assistant") {
+		const answered = new Set(messages.flatMap((message) => (message.role === "toolResult" ? [message.toolCallId] : [])));
+		if (reply.content.some((block) => block.type === "toolCall" && !answered.has(block.id))) return undefined;
+	}
+	return last.timestamp;
+}
