@@ -11,7 +11,7 @@
 import { existsSync } from "node:fs";
 import { relative, sep } from "node:path";
 import type { SessionMeta } from "@plume/core";
-import { git, run } from "./git-exec.ts";
+import { END_OF_OPTIONS, git, run } from "./git-exec.ts";
 import { parseStatusZ } from "./git-parse.ts";
 import { worktreeRecords } from "./git-probe.ts";
 import type { WorktreeState } from "@plume/contract";
@@ -66,7 +66,7 @@ export async function baseOf(repo: string, recorded?: string): Promise<string | 
  * synced "3 ahead" for two commits of its own, inviting a sync or a merge with nothing in it.
  */
 export async function countCommits(repo: string, range: string): Promise<number> {
-	return Number((await output(repo, ["rev-list", "--count", "--no-merges", range])) ?? 0) || 0;
+	return Number((await output(repo, ["rev-list", "--count", "--no-merges", END_OF_OPTIONS, range])) ?? 0) || 0;
 }
 
 /** Changed and untracked files. Ignored ones are not changes anyone made, and stay out of it. */
@@ -171,8 +171,8 @@ export async function reclaimWorktree(meta: Owned, options: { discardUncommitted
 	const { branch } = meta.worktree;
 	if (options.dropMergedBranch && (await branchExists(repo, branch))) {
 		const base = await baseOf(repo, meta.worktree.base);
-		if (base && base !== branch && (await succeeds(repo, ["merge-base", "--is-ancestor", branch, base]))) {
-			branchDropped = (await run(repo, ["branch", "-D", branch])).ok;
+		if (base && base !== branch && (await succeeds(repo, ["merge-base", "--is-ancestor", END_OF_OPTIONS, branch, base]))) {
+			branchDropped = (await run(repo, ["branch", "-D", END_OF_OPTIONS, branch])).ok;
 		}
 	}
 	return { removed, branchDropped };
@@ -198,12 +198,12 @@ export async function restoreWorktree(meta: Owned): Promise<Restored> {
 	await run(repo, ["worktree", "prune"]);
 	const { branch } = meta.worktree;
 	if (await branchExists(repo, branch)) {
-		const done = await run(repo, ["worktree", "add", root, branch]);
+		const done = await run(repo, ["worktree", "add", END_OF_OPTIONS, root, branch]);
 		return done.ok ? { ok: true, fresh: false } : { ok: false, error: done.error ?? "git worktree add" };
 	}
 	const base = await baseOf(repo, meta.worktree.base);
 	if (!base) return { ok: false, error: "no branch to start it from" };
-	const done = await run(repo, ["worktree", "add", "-b", branch, root, base]);
+	const done = await run(repo, ["worktree", "add", "-b", branch, END_OF_OPTIONS, root, base]);
 	return done.ok ? { ok: true, fresh: true } : { ok: false, error: done.error ?? "git worktree add" };
 }
 

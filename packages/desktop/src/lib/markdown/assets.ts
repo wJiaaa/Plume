@@ -9,6 +9,8 @@
  * that is wrong on Windows in a way nobody notices until someone opens a README there. Tested.
  */
 
+import { isRemoteOrDevicePath, remoteShareOf } from "../../../shared/remote-path.ts";
+
 /** Which separator this path is written with. A Windows path keeps its backslashes. */
 function separatorOf(dir: string): string {
 	return dir.includes("\\") && !dir.startsWith("/") ? "\\" : "/";
@@ -65,10 +67,18 @@ export function resolveAsset(dir: string | undefined, src: string): string | nul
 	if (!path) return null;
 
 	const separator = separatorOf(dir);
-	if (isAbsolutePath(path)) return normalise(path, separatorOf(path));
-
 	const base = dir.endsWith(separator) ? dir.slice(0, -1) : dir;
-	return normalise(`${base}${separator}${path}`, separator);
+	const resolved = isAbsolutePath(path) ? normalise(path, separatorOf(path)) : normalise(`${base}${separator}${path}`, separator);
+	/*
+	 * A picture on another machine, only when this file already lives on that same share.
+	 *
+	 * Not the boundary — the main process refuses these again, by the letter — but what comes out of
+	 * here becomes a `ly-media:` address and an "open" menu, and on Windows merely touching
+	 * `\\evil\s\a.png` connects to that host and hands it the user's NTLM credentials. Walking
+	 * from one's own share to the next one with `..` is refused the same way.
+	 */
+	if (isRemoteOrDevicePath(resolved) && remoteShareOf(resolved) !== (remoteShareOf(dir) ?? "")) return null;
+	return resolved;
 }
 
 /**

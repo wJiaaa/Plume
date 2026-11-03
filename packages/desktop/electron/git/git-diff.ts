@@ -6,7 +6,7 @@
  * anyone reviews line by line, and holding it in memory helps nobody.
  */
 
-import { readFile } from "node:fs/promises";
+import { open } from "node:fs/promises";
 import { join } from "node:path";
 import { computeDiff, type DiffHunk } from "@plume/core";
 import type { WorkspaceDiffFile } from "@plume/contract";
@@ -54,8 +54,8 @@ export async function collectWorkspaceDiff(
 	 * The committed side used to be a `git show` per file, which on a repository with a couple of
 	 * hundred uncommitted files is a couple of hundred process spawns — 1.8 seconds, of which the
 	 * reading was a rounding error. One `cat-file --batch` answers for all of them; see
-	 * `readBlobs`. The working-tree side is `readFile`, which has no such cost but is still latency
-	 * worth overlapping.
+	 * `readBlobs`. The working-tree side is a file read (`readCapped`), which has no such cost but
+	 * is still latency worth overlapping.
 	 */
 	const heads = await readBlobs(
 		cwd,
@@ -149,9 +149,31 @@ function sideOfBlob(read: BlobRead | null): Side {
 }
 
 async function readWorking(cwd: string, path: string): Promise<Side> {
-	const buffer = await readFile(join(cwd, path)).catch(() => null);
-	if (!buffer) return blank;
-	return sideOf(buffer);
+	const read = await readCapped(join(cwd, path), MAX_BLOB_BYTES);
+	if (!read) return blank;
+	return read.buffer ? sideOf(read.buffer) : { text: "", binary: true, bytes: read.bytes };
+}
+
+/**
+ * A working-tree file, or only its size when that is over `cap`.
+ *
+ * Sized before it is read. Reading first and then comparing put every untracked video and database
+ * dump in the project into memory — eight at a time, on every status refresh — only to throw it
+ * away. Null when the file cannot be read at all.
+ */
+export async function readCapped(path: string, cap: number): Promise<{ buffer: Buffer | null; bytes: number } | null> {
+	const handle = await open(path, "r").catch(() => null);
+	if (!handle) return null;
+	try {
+		const { size } = await handle.stat();
+		if (size > cap) return { buffer: null, bytes: size };
+		const buffer = await handle.readFile();
+		return { buffer, bytes: buffer.length };
+	} catch {
+		return null;
+	} finally {
+		await handle.close().catch(() => {});
+	}
 }
 
 /**
@@ -245,7 +267,7 @@ export async function readDiffBlob(cwd: string, path: string, side: "head" | "wo
 	const buffer =
 		side === "head"
 			? await gitBuffer(cwd, ["show", `HEAD:${path}`]).catch(() => null)
-			: await readFile(inside).catch(() => null);
+			: ((await readCapped(inside, MAX_PREVIEW_BYTES))?.buffer ?? null);
 	if (!buffer || buffer.length === 0 || buffer.length > MAX_PREVIEW_BYTES) return null;
 	return { dataUrl: `data:${type};base64,${buffer.toString("base64")}`, bytes: buffer.length };
 }

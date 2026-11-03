@@ -1,19 +1,34 @@
 /**
  * Attaching the security rules to Electron.
  *
- * The rules themselves are in `security-policy.ts`, which imports nothing — see the note there for
- * why they are apart. This file is the wiring: which event, on which object, at which moment.
+ * The rules themselves are in `security-policy.ts`, which imports nothing from Electron — see the
+ * note there for why they are apart. This file is the wiring: which event, on which object, at which moment.
  *
  * All four are from Electron's own security checklist. None is clever; the reason to gather them is
  * that each is invisible until it is missing, and three of them were.
  */
 
+import { realpath, stat } from "node:fs/promises";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { session, shell, type WebContents, type WebPreferences } from "electron";
+import type { OpenPathOutcome } from "@plume/contract";
 
-import { harden, isOpenable, isOurPage, isPermissionGranted, isWebviewSourceAllowed } from "./security-policy.ts";
+import { isRemoteOrDevicePath } from "../../shared/remote-path.ts";
+import { harden, isOpenable, isOurPage, isPermissionGranted, isWebviewSourceAllowed, opensAsProgram } from "./security-policy.ts";
 
 /** The dev server's origin, or undefined in a packaged build. */
 const devServer = () => process.env.ELECTRON_RENDERER_URL;
+
+/**
+ * The bundled renderer every window with the preload loads, and the only `file:` page they may show.
+ *
+ * One path for the loaders and the navigation check, so the two cannot drift apart. The main
+ * process is one bundle (`out/main/index.js`), which is why `import.meta.dirname` is the same here as
+ * in `window.ts`.
+ */
+export const rendererEntry = (): string => join(import.meta.dirname, "../renderer/index.html");
+const entryUrl = () => pathToFileURL(rendererEntry()).href;
 
 /** Hand a URL to the user's browser, or refuse it. Returns whether it was opened. */
 export function openExternalSafely(raw: string): boolean {
@@ -22,10 +37,34 @@ export function openExternalSafely(raw: string): boolean {
 	return true;
 }
 
-/** Keep `contents` on our own pages; send everything else to the browser. */
+/**
+ * Open a file with its default application — unless that would run it, in which case show it.
+ *
+ * A share is never opened either: running something off `\\host\share` is running a stranger's
+ * program, and whether a remote file is a program is not something to stat over the network to find
+ * out. The outcome goes back so the window can say why a click showed a folder instead.
+ */
+export async function openPathSafely(path: string): Promise<OpenPathOutcome> {
+	if (typeof path !== "string" || path.length === 0 || path.includes("\0")) return "failed";
+	if (isRemoteOrDevicePath(path)) {
+		shell.showItemInFolder(path);
+		return "revealed";
+	}
+	// Both names are judged: LaunchServices follows a symlink, so `notes.txt` → `/bin/sh` runs a shell.
+	const real = await realpath(path).catch(() => path);
+	const info = await stat(real).catch(() => null);
+	const facts = { isDirectory: info?.isDirectory() ?? false, executable: ((info?.mode ?? 0) & 0o111) !== 0 };
+	if (opensAsProgram(path, facts, process.platform) || opensAsProgram(real, facts, process.platform)) {
+		shell.showItemInFolder(path);
+		return "revealed";
+	}
+	return (await shell.openPath(path)) === "" ? "opened" : "failed";
+}
+
+/** Keep `contents` on our own page; send everything else to the browser. Every window with the preload needs it. */
 export function guardNavigation(contents: WebContents): void {
 	contents.on("will-navigate", (event, url) => {
-		if (isOurPage(url, devServer())) return;
+		if (isOurPage(url, devServer(), entryUrl())) return;
 		event.preventDefault();
 		openExternalSafely(url);
 	});
@@ -38,10 +77,10 @@ export function guardNavigation(contents: WebContents): void {
 	 * ordinary-looking link becomes a problem.
 	 */
 	contents.on("will-redirect", (event, url) => {
-		if (!isOurPage(url, devServer())) event.preventDefault();
+		if (!isOurPage(url, devServer(), entryUrl())) event.preventDefault();
 	});
 
-	// Links asking for a new window open in the user's browser; the app has no second window.
+	// Links asking for a new window open in the user's browser; no page may open a window of its own.
 	contents.setWindowOpenHandler(({ url }) => {
 		openExternalSafely(url);
 		return { action: "deny" };
@@ -68,7 +107,7 @@ export function installPermissionHandlers(partitions: string[]): void {
 
 	for (const ses of sessions) {
 		ses.setPermissionRequestHandler((contents, permission, callback) => {
-			callback(isPermissionGranted(contents?.getURL() ?? "", permission, devServer()));
+			callback(isPermissionGranted(contents?.getURL() ?? "", permission, devServer(), entryUrl()));
 		});
 		/*
 		 * The synchronous half.
@@ -78,7 +117,7 @@ export function installPermissionHandlers(partitions: string[]): void {
 		 * above would refuse, which is a confusing pair of answers to give.
 		 */
 		ses.setPermissionCheckHandler((contents, permission) =>
-			isPermissionGranted(contents?.getURL() ?? "", permission, devServer()),
+			isPermissionGranted(contents?.getURL() ?? "", permission, devServer(), entryUrl()),
 		);
 	}
 }

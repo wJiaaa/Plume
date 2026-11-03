@@ -139,5 +139,9 @@ export async function withFileThere(path: string, act: (path: string) => unknown
 	}
 	await Promise.resolve()
 		.then(() => act(path))
+		.then((outcome) => {
+			// `system.openPath` showed it in its folder instead of running it — say so, or the click looks broken.
+			if (outcome === "revealed") useApp.getState().notify(translate("attachment.revealedInstead", { name }), "info");
+		})
 		.catch((error: unknown) => useApp.getState().notify(String(error), "error"));
 }

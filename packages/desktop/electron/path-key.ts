@@ -44,6 +44,28 @@ export function canonicalPath(input: string): string {
 }
 
 /**
+ * `canonicalPath` over a list of roots, remembered until the list changes.
+ *
+ * The guarded IPC calls — every listing, every file read — resolve every project root, and
+ * `realpath` is synchronous: one project on a network drive that had gone to sleep held the main
+ * process, and every window with it, on each of those calls. The list is the user's own and changes
+ * when they edit their projects; between edits the answer for it does not. A root that is created
+ * or re-linked later keeps its first spelling until the list changes, which for a root that did not
+ * exist yet is the same spelling — its nearest real ancestor's, with the rest joined on.
+ */
+let rootsKey: string | null = null;
+let rootsCanonical: string[] = [];
+
+export function canonicalRoots(roots: string[]): string[] {
+	const key = roots.join("\0");
+	if (key !== rootsKey) {
+		rootsCanonical = roots.map((root) => canonicalPath(root));
+		rootsKey = key;
+	}
+	return rootsCanonical;
+}
+
+/**
  * The same path reduced to something two of them can be compared by.
  *
  * Lowercased only where the filesystem is case-insensitive. macOS usually is too, but `realpath`

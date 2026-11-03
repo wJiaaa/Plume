@@ -11,12 +11,13 @@ import { plumeHome } from "@plume/core";
 import { app, clipboard, ipcMain, nativeImage, shell } from "electron";
 import { documentImage } from "../images/avatars.ts";
 import { writeClipboardImage } from "../screenshot/clipboard-image.ts";
-import { openExternalSafely } from "../app/window-security.ts";
-import type { OpenTarget } from "@plume/contract";
+import { openExternalSafely, openPathSafely } from "../app/window-security.ts";
+import type { OpenPathOutcome, OpenTarget } from "@plume/contract";
 import { openTargets, openWith } from "../open-targets/open-targets.ts";
 
 export function registerSystemIpc(): void {
-	ipcMain.handle("system:openPath", async (_event, path: string) => void shell.openPath(path));
+	// Opened, unless that would run it — then shown in its folder. See `openPathSafely`.
+	ipcMain.handle("system:openPath", async (_event, path: string): Promise<OpenPathOutcome> => openPathSafely(path));
 
 	// One door for every external link; see `window-security.ts` for what it lets through and why.
 	ipcMain.handle("system:openExternal", async (_event, url: string) => openExternalSafely(url));
@@ -51,8 +52,8 @@ export function registerSystemIpc(): void {
 	 * them, which is where attachments overwhelmingly come from. A spreadsheet dragged in from
 	 * `~/Downloads` would be reported missing while sitting right there.
 	 *
-	 * Unguarded like `system:openPath` beside it, and for the same reason: a renderer that can ask
-	 * the OS to *open* any path is not held back by being unable to ask whether it exists. What it
+	 * Not confined to the projects, like `system:openPath` beside it: a renderer that can ask the OS
+	 * to open or reveal any path is not held back by being unable to ask whether it exists. What it
 	 * buys is the difference between 「这个文件已经不在原处了」 and a click that does nothing.
 	 */
 	ipcMain.handle("system:pathExists", async (_event, path: string): Promise<boolean> =>

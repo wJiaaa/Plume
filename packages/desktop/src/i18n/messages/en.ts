@@ -1818,6 +1818,7 @@ export const en = {
 	"attachment.copiedImage": "Image copied",
 	"composer.tooManyFiles": "At most {count} at a time — the other {dropped} were left out",
 	"attachment.gone": "{name} is no longer where it was",
+	"attachment.revealedInstead": "Opening {name} directly could run it, so it is shown in its folder instead",
 	"attachment.pathCopied": "Path copied",
 	"attachment.openHint": "Double-click to open",
 	"composer.finishUnfinished": "Carry on with what is unfinished",

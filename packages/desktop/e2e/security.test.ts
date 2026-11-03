@@ -36,6 +36,16 @@ test("窗口不会被导航到外部页面", async () => {
 	assert.equal(after, before, "窗口应该停在原地；它被导航走就等于 window.plume 交了出去");
 });
 
+test("窗口也不会被导航到别的 file: 页面或内部协议", async () => {
+	const before = await app.evaluate<string>("location.href");
+	// 从前按前缀放行这三种：带主机的 file: 在 Windows 上走 SMB，ly-preview 是模型写的页面，ly-media 是项目里的任意文件。
+	for (const target of ["file://attacker.example/share/evil.html", "file:///tmp/evil.html", "ly-preview://s/p/index.html", "ly-media://f/x"]) {
+		await app.evaluate<void>(`void (location.href = ${JSON.stringify(target)})`);
+		await new Promise((resolve) => setTimeout(resolve, 800));
+		assert.equal(await app.evaluate<string>("location.href"), before, `${target} 不该成为持有 preload 的窗口的页面`);
+	}
+});
+
 test("window.open 不在应用内开新窗口", async () => {
 	const opened = await app.evaluate<boolean>(`
 		(() => {

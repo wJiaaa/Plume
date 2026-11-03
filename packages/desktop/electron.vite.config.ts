@@ -53,9 +53,14 @@ export default defineConfig({
 				/*
 				 * The sandbox runner is an entry of its own: it is started in Node mode as a script,
 				 * and has to be a file that does nothing but confine and run a command. See
-				 * `electron/sandbox-runner.ts`.
+				 * `electron/sandbox-runner.ts`. The database reader likewise: `files/documents.ts`
+				 * starts it as a child process so a query that never ends can be killed.
 				 */
-				input: { index: resolve("electron/main.ts"), "sandbox-runner": resolve("electron/sandbox-runner.ts") },
+				input: {
+					index: resolve("electron/main.ts"),
+					"sandbox-runner": resolve("electron/sandbox-runner.ts"),
+					"database-reader": resolve("electron/files/database-reader.ts"),
+				},
 				/*
 				 * `electron` is a devDependency, so the externalize plugin leaves it in — and
 				 * bundling its CommonJS loader breaks on `__dirname` under ESM output.
@@ -137,8 +142,16 @@ export default defineConfig({
 						// so it is the one chunk worth caching hardest.
 						if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) return "vendor-react";
 
-						// The code editor. Reached by opening a file, which most sessions never do.
-						if (/[\\/]node_modules[\\/](@codemirror|@lezer)[\\/]/.test(id)) return "editor";
+						/*
+						 * The editor's core, which the transcript's code blocks colour with too.
+						 *
+						 * Only the core. This used to take every `@codemirror` and `@lezer` package, and a
+						 * manual chunk swallows whatever it names — the seventeen `lang-*` grammars that
+						 * `highlight.ts` imports on demand were folded into a chunk the first screen needs,
+						 * so every launch ran each grammar's `LRParser.deserialize`. Left unnamed, each
+						 * grammar is a chunk of its own, fetched when a file of that language is shown.
+						 */
+						if (/[\\/]node_modules[\\/](@codemirror[\\/](state|view|language|commands|search)|@lezer[\\/](common|highlight))[\\/]/.test(id)) return "editor";
 
 						// The terminal emulator, same reasoning.
 						if (/[\\/]node_modules[\\/]@xterm[\\/]/.test(id)) return "terminal";

@@ -190,14 +190,43 @@ async function download(url: string, kind: Kind): Promise<string | null> {
 			const response = await fetch(url, { signal: AbortSignal.timeout(9000), redirect: "follow" });
 			const type = response.headers.get("content-type") ?? "";
 			if (!response.ok || !type.startsWith("image/")) return null;
-			const bytes = Buffer.from(await response.arrayBuffer());
-			// A guard against something that answers 200 with a megabyte of anything.
-			if (bytes.byteLength === 0 || bytes.byteLength > LIMIT[kind]) return null;
+			const bytes = await bodyWithin(response, LIMIT[kind]);
+			if (!bytes || bytes.byteLength === 0) return null;
 			return `data:${type};base64,${bytes.toString("base64")}`;
 		} catch {
 			return null;
 		}
 	});
+}
+
+/**
+ * The body, or null once it is past `limit` — a guard against something that answers 200 with a
+ * megabyte of anything.
+ *
+ * Stopped as it goes over rather than measured after: read whole first, a host that streams without
+ * end held the whole of it in memory before the size was ever looked at. A declared length over the
+ * limit is refused before a byte is read; the count still decides, because the header can lie.
+ */
+export async function bodyWithin(response: Response, limit: number): Promise<Buffer | null> {
+	if (!response.body) return Buffer.alloc(0);
+	if (Number(response.headers.get("content-length")) > limit) {
+		await response.body.cancel().catch(() => {});
+		return null;
+	}
+	const reader = response.body.getReader();
+	const chunks: Uint8Array[] = [];
+	let size = 0;
+	for (;;) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		size += value.byteLength;
+		if (size > limit) {
+			await reader.cancel().catch(() => {});
+			return null;
+		}
+		chunks.push(value);
+	}
+	return Buffer.concat(chunks, size);
 }
 
 /**

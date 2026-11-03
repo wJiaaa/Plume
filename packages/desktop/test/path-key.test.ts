@@ -8,12 +8,12 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
 
-import { canonicalPath, pathKey, samePath } from "../electron/path-key.ts";
+import { canonicalPath, canonicalRoots, pathKey, samePath } from "../electron/path-key.ts";
 
 const made: string[] = [];
 after(async () => {
@@ -74,4 +74,27 @@ test("a path that does not exist yet is spelled through its nearest real ancesto
 	// A junction on Windows, which needs no elevation; the type is ignored elsewhere.
 	await symlink(join(dir, "real"), join(dir, "link"), "junction");
 	assert.equal(canonicalPath(join(dir, "link", "new", "file.ts")), join(canonicalPath(join(dir, "real")), "new", "file.ts"));
+});
+
+test("project roots are resolved once per list, not on every call", async () => {
+	// A root behind a link: retargeting the link is the only way to see whether realpath ran again.
+	const dir = await mkdtemp(join(tmpdir(), "plume-roots-"));
+	made.push(dir);
+	await mkdir(join(dir, "one"));
+	await mkdir(join(dir, "two"));
+	const link = join(dir, "project");
+	await symlink(join(dir, "one"), link, "junction");
+	const other = join(dir, "other");
+
+	const first = canonicalRoots([link, other]);
+	assert.equal(first[0], canonicalPath(join(dir, "one")));
+
+	await unlink(link);
+	await symlink(join(dir, "two"), link, "junction");
+	assert.equal(canonicalRoots([link, other])[0], first[0], "同一份列表不该再碰磁盘");
+
+	// The list changed — a project was added — so every root is resolved again.
+	const changed = canonicalRoots([link, other, dir]);
+	assert.equal(changed[0], canonicalPath(join(dir, "two")));
+	assert.equal(changed.length, 3);
 });

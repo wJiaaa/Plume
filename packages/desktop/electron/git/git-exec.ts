@@ -7,9 +7,10 @@
  */
 
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { delimiter } from "node:path";
+import { delimiter, win32 } from "node:path";
 import { promisify } from "node:util";
 
+import { findExecutable, searchDirs } from "../find-executable.ts";
 import { explainGitFailure } from "./git-errors.ts";
 import type { RemoteResult } from "@plume/contract";
 
@@ -100,6 +101,21 @@ export function remoteGitEnvironment(base: NodeJS.ProcessEnv): NodeJS.ProcessEnv
 const GIT_ENV = gitEnvironment(process.env);
 const REMOTE_GIT_ENV = remoteGitEnvironment(process.env);
 
+/**
+ * Goes in front of every ref, branch or tag handed to git as a positional argument.
+ *
+ * A ref name may begin with `-`. `refs/tags/--output=/tmp/x` is a valid tag, a clone brings it
+ * along, and `git describe` answers with its short name — so `git log --output=/tmp/x..HEAD` wrote
+ * a file wherever the repository's author chose. After this marker git reads every argument as a
+ * revision or a name, never as an option.
+ *
+ * Git 2.24 and later, through parse-options and the revision parser alike. `rev-parse` learned it
+ * only in 2.30 and is left without it: handed an unknown option it prints it back and writes nothing.
+ * On an older git the marker itself is the unknown option, so the command fails rather than doing
+ * something else.
+ */
+export const END_OF_OPTIONS = "--end-of-options";
+
 export const MAX_FILES = 200;
 export const MAX_BLOB_BYTES = 400_000;
 
@@ -132,8 +148,41 @@ export async function mapLimit<T, R>(items: T[], run: (item: T) => Promise<R>): 
 	return out;
 }
 
+/**
+ * Which file to run as git.
+ *
+ * Bare `git` everywhere but Windows. There, given a name without a path, the process launcher looks
+ * in the *working directory* before PATH — and the working directory is the repository. A checkout
+ * that carries its own `git.exe` at the top would have it run, by the panel, on every refresh. So on
+ * Windows git is looked up on PATH ourselves and run by its full path; a relative PATH entry (`.`)
+ * would bring the same hole back and is skipped. `.exe` and `.com` only, the two the launcher would
+ * have tried: a `git.cmd` cannot be started without a shell.
+ *
+ * Null when this machine has no git: then there is nothing safe to run, and the caller reports git
+ * as missing rather than letting the launcher go looking in the repository.
+ */
+export function gitProgram(
+	platform: string = process.platform,
+	env: NodeJS.ProcessEnv = process.env,
+	isExecutable?: (path: string) => boolean,
+): string | null {
+	if (platform !== "win32") return "git";
+	const dirs = searchDirs(platform, env).filter((dir) => win32.isAbsolute(dir));
+	return findExecutable("git", { platform, env: { PATH: dirs.join(";"), PATHEXT: ".COM;.EXE" }, isExecutable });
+}
+
+/** Found once and kept; not found is asked again, so installing git does not need a restart. */
+let resolvedGit: string | null = null;
+
+function gitFile(): string {
+	resolvedGit ??= gitProgram();
+	if (resolvedGit) return resolvedGit;
+	// Worded as the launcher words it, which is what `probeRepo` recognises as "no git at all".
+	throw Object.assign(new Error("spawn git ENOENT"), { code: "ENOENT" });
+}
+
 export async function git(cwd: string, args: string[], { timeoutMs }: { timeoutMs?: number } = {}): Promise<string> {
-	const { stdout } = await execFileAsync("git", args, { cwd, maxBuffer: 32 * 1024 * 1024, env: GIT_ENV, timeout: timeoutMs });
+	const { stdout } = await execFileAsync(gitFile(), args, { cwd, maxBuffer: 32 * 1024 * 1024, env: GIT_ENV, timeout: timeoutMs });
 	return stdout;
 }
 
@@ -142,9 +191,10 @@ export async function git(cwd: string, args: string[], { timeoutMs }: { timeoutM
  *
  * Here rather than a bare `spawn` at that caller so it gets the same environment as everything
  * else: started without it, an inherited `GIT_DIR` made it read blobs from another repository.
+ * Throws when there is no git; called inside a promise executor, that is a rejection.
  */
 export function spawnGit(cwd: string, args: string[]): ChildProcessWithoutNullStreams {
-	return spawn("git", args, { cwd, env: GIT_ENV });
+	return spawn(gitFile(), args, { cwd, env: GIT_ENV });
 }
 
 /**
@@ -156,7 +206,7 @@ export function spawnGit(cwd: string, args: string[]): ChildProcessWithoutNullSt
  * cannot ask it once the bytes have already been mangled into a string.
  */
 export async function gitBuffer(cwd: string, args: string[]): Promise<Buffer> {
-	const { stdout } = await execFileAsync("git", args, {
+	const { stdout } = await execFileAsync(gitFile(), args, {
 		cwd,
 		maxBuffer: 32 * 1024 * 1024,
 		encoding: "buffer",
@@ -210,7 +260,7 @@ export async function runRemote(
 	{ timeoutMs, signal }: { timeoutMs: number; signal?: AbortSignal },
 ): Promise<RemoteResult> {
 	try {
-		await execFileAsync("git", ["-c", "credential.interactive=false", ...args], {
+		await execFileAsync(gitFile(), ["-c", "credential.interactive=false", ...args], {
 			cwd,
 			maxBuffer: 32 * 1024 * 1024,
 			env: REMOTE_GIT_ENV,

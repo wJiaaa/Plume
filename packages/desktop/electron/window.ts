@@ -7,7 +7,7 @@
  * size and position are restored from disk rather than guessed.
  */
 
-import { guardNavigation } from "./app/window-security.ts";
+import { guardNavigation, rendererEntry } from "./app/window-security.ts";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { plumeHome, type Settings } from "@plume/core";
@@ -600,7 +600,7 @@ function buildAppWindow(options: {
 
 	const devServer = process.env.ELECTRON_RENDERER_URL;
 	if (devServer) void win.loadURL(devServer);
-	else void win.loadFile(join(import.meta.dirname, "../renderer/index.html"));
+	else void win.loadFile(rendererEntry());
 	return win;
 }
 

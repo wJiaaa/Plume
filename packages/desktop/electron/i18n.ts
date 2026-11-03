@@ -30,6 +30,9 @@ const zhCN = {
 	"sessions.notFound": "找不到这个会话。",
 	"mcp.promptNotFound": "没有连着的 MCP 服务器提供 /{name}。",
 	"revert.unrecorded": "有改动记录读不出来，文件没有动。",
+	"documents.timeoutAt": "读「{name}」超过 {seconds} 秒，已经停下。它可能是一个跑不完的视图。",
+	"documents.timeout": "读这个数据库超过 {seconds} 秒，已经停下。",
+	"documents.blob": "[{n} 字节]",
 	// 设置页拿着的那条钩子在文件里已经变了或不在了（别处改过配置）。
 	"hooks.stale": "这条钩子在配置文件里已经被改过或删掉了。重新打开钩子设置，看过新内容再操作。",
 	// 计划审批卡上「在新会话里执行」开出来的会话，第一条消息就是这几行（`plan-handoff.ts`）。
@@ -241,6 +244,9 @@ export const NATIVE_CATALOGS: Record<NativeLocale, NativeCatalog> = {
 		"sessions.notFound": "That conversation could not be found.",
 		"mcp.promptNotFound": "No connected MCP server offers /{name}.",
 		"revert.unrecorded": "Some change records could not be read, so no file was touched.",
+		"documents.timeoutAt": "Reading “{name}” took more than {seconds} s, so it was stopped. It may be a view that never finishes.",
+		"documents.timeout": "Reading this database took more than {seconds} s, so it was stopped.",
+		"documents.blob": "[{n} bytes]",
 		"hooks.stale": "This hook was changed or removed in its config file. Reopen the hooks settings and review it before trying again.",
 		"planHandoff.title": "Carry out the approved plan: {title}",
 		"planHandoff.file": "- Plan file: {file}. It is the authority; read all of it before you start.",

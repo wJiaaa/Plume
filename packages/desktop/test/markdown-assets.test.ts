@@ -37,6 +37,20 @@ test("a UNC share keeps both of its leading separators", () => {
 	assert.equal(resolveAsset("\\\\server\\share", "a.png"), "\\\\server\\share\\a.png");
 });
 
+test("a picture on another machine is refused unless the file is on that same share", () => {
+	// Merely resolving one of these on Windows connects to the host and hands it NTLM credentials.
+	assert.equal(resolveAsset("C:\\proj", "\\\\attacker.example\\share\\a.png"), null);
+	assert.equal(resolveAsset("/repo", "\\\\evil\\s\\a.png"), null);
+	assert.equal(resolveAsset("/", "\\\\evil\\s\\a.png"), null);
+	assert.equal(resolveAsset("C:\\proj", "\\\\?\\C:\\a.png"), null);
+	assert.equal(resolveAsset("C:\\proj", "\\\\.\\pipe\\x"), null);
+	// Relative to `/`, a single `\evil` becomes `/\evil` — two separators at the front again.
+	assert.equal(resolveAsset("/", "\\evil\\s\\a.png"), null);
+	// The same share is the file's own neighbourhood; walking to the next share is not.
+	assert.equal(resolveAsset("\\\\Server\\Share\\docs", "\\\\server\\share\\img\\a.png"), "\\\\server\\share\\img\\a.png");
+	assert.equal(resolveAsset("\\\\server\\share\\docs", "../../other/a.png"), null);
+});
+
 test("what GitHub reads is stripped, since the disk does not read it", () => {
 	// `?raw=true` and `#gh-dark-mode-only` are addressed to a website. Left on, they become part of
 	// a filename that then does not exist.

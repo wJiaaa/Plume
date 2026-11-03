@@ -5,12 +5,13 @@
 
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { after, test } from "node:test";
 
+import { readCapped } from "../electron/git/git-diff.ts";
 import { workspaceStat } from "../electron/git/git-status.ts";
 import { statusBranch } from "../electron/git/git-parse.ts";
 import { gitBranch } from "../electron/git/git-probe.ts";
@@ -68,4 +69,22 @@ test("a directory that is not a repository has nothing uncommitted", async () =>
 	roots.push(dir);
 	await writeFile(join(dir, "a.ts"), "one\n");
 	assert.deepEqual(await workspaceStat(dir), { branch: null, added: 0, removed: 0, files: 0 });
+});
+
+test("an untracked file over the cap is sized, not read, and counts no lines", async () => {
+	// Sparse, so the disk holds nothing: a whole-file read would still have asked for 1GB of memory.
+	const dir = await repo();
+	await writeFile(join(dir, "a.ts"), "one\ntwo\n");
+	const big = join(dir, "dump.bin");
+	await writeFile(big, "");
+	await truncate(big, 1024 * 1024 * 1024);
+
+	const read = await readCapped(big, 400_000);
+	assert.deepEqual(read, { buffer: null, bytes: 1024 * 1024 * 1024 });
+	assert.equal((await readCapped(join(dir, "a.ts"), 400_000))?.buffer?.toString(), "one\ntwo\n");
+	assert.equal(await readCapped(join(dir, "missing"), 400_000), null);
+
+	const stat = await workspaceStat(dir);
+	assert.equal(stat.added, 2);
+	assert.equal(stat.files, 2);
 });

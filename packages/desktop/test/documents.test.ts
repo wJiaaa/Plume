@@ -47,6 +47,8 @@ before(async () => {
 	db.prepare("INSERT INTO users VALUES (?, ?, ?)").run(1, "小明", new Uint8Array([1, 2, 3, 4]));
 	db.prepare("INSERT INTO users VALUES (?, ?, ?)").run(2, "小红", null);
 	db.prepare('INSERT INTO "odd""name" VALUES (?)').run("ok");
+	// A view that never ends: counting it, or sorting it, runs forever. `LIMIT` alone stops it.
+	db.exec("CREATE VIEW endless AS WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM c) SELECT n FROM c");
 	db.close();
 });
 
@@ -177,4 +179,36 @@ test("opening a database is read-only — a preview must not write to it", async
 	await readDatabase(path);
 	assert.deepEqual(readdirSync(before).sort(), filesBefore, "预览数据库时留下了新文件");
 	rmSync(before, { recursive: true, force: true });
+});
+
+test("a view that never ends is read up to the row limit, not counted forever", async () => {
+	// Before, `SELECT COUNT(*)` over this view ran on the main process and every window froze.
+	const started = Date.now();
+	const data = await readDatabase(database);
+	assert.equal(data.error, undefined);
+	const endless = data.sheets.find((sheet) => sheet.name === "endless");
+	assert.equal(endless?.rows.length, 2000);
+	assert.equal(endless?.rows[1999][0], "2000");
+	assert.ok(Date.now() - started < 5000, "读一个跑不完的视图不该等到超时");
+	// The ordinary tables beside it are read as before.
+	assert.equal(data.sheets.find((sheet) => sheet.name === "users")?.total, 2);
+});
+
+test("a query that cannot stop is killed at the timeout and reported, rather than hanging", async () => {
+	// `ORDER BY` has to see every row before it returns the first, so even `LIMIT` cannot save it.
+	const own = mkdtempSync(join(tmpdir(), "plume-docs-stuck-"));
+	const path = join(own, "stuck.sqlite");
+	const { DatabaseSync } = await import("node:sqlite");
+	const seed = new DatabaseSync(path);
+	seed.exec("CREATE TABLE a_first (x TEXT)");
+	seed.exec("CREATE VIEW b_stuck AS WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM c) SELECT n FROM c ORDER BY n");
+	seed.close();
+
+	const started = Date.now();
+	const data = await readDatabase(path, 1000);
+	const elapsed = Date.now() - started;
+	rmSync(own, { recursive: true, force: true });
+	assert.ok(elapsed < 3000, `超时后应该马上回来，实际 ${elapsed}ms`);
+	assert.match(data.error ?? "", /b_stuck/);
+	assert.deepEqual(data.sheets, []);
 });

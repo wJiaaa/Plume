@@ -5,4 +5,4 @@
  * 真有别的域在用的；没列出来的文件可以随意改名、挪动。`main.ts`、`window.ts` 与 `ipc/` 是装配层，照旧直接引。
  */
 export { notifyAgentEvent } from "./notify.ts";
-export { openExternalSafely } from "./window-security.ts";
+export { guardNavigation, openExternalSafely, openPathSafely, rendererEntry } from "./window-security.ts";

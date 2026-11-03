@@ -11,8 +11,11 @@
  * database has tables, and once you are drawing a grid the difference is what the tab is called.
  */
 
+import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
-import type { DocumentData } from "@plume/contract";
+import { extname, join } from "node:path";
+import type { DocumentData, DocumentSheet } from "@plume/contract";
+import { nativeText } from "../i18n.ts";
 
 /**
  * How much of a sheet is worth moving.
@@ -67,6 +70,9 @@ export async function readWorkbook(path: string): Promise<DocumentData> {
 	}
 }
 
+/** Long enough for a large table on a slow disk, short enough that nobody sits watching a spinner. */
+const DATABASE_TIMEOUT_MS = 5000;
+
 /**
  * A SQLite database, table by table.
  *
@@ -74,61 +80,87 @@ export async function readWorkbook(path: string): Promise<DocumentData> {
  * files read-only, and adding a native module to this app for a preview pane would mean rebuilding
  * it per platform on every release.
  *
- * Read-only is not a detail. This is a *preview* — opening someone's database in a file browser
- * must not be able to write to it, and a journal file appearing beside a repository because you
- * glanced at it would be a bug with a bad name.
+ * Read in a child process rather than here. `DatabaseSync` is synchronous, and a view built on a
+ * recursive CTE never finishes: run on the main process it froze every window for good. Why a
+ * process and not a worker is in `database-reader.ts`.
  */
-export async function readDatabase(path: string): Promise<DocumentData> {
-	let database: { close(): void; prepare(sql: string): { all(...params: unknown[]): unknown[] } } | null = null;
-	try {
-		const { DatabaseSync } = await import("node:sqlite");
-		database = new DatabaseSync(path, { readOnly: true });
+export async function readDatabase(path: string, timeoutMs = DATABASE_TIMEOUT_MS): Promise<DocumentData> {
+	/*
+	 * Beside this file, with this file's extension: `out/main/database-reader.js` in the build (a
+	 * second entry, see `electron.vite.config.ts`), the `.ts` source under the tests. Built from
+	 * `import.meta` rather than a `new URL(…)` literal, which the bundler would copy as an asset.
+	 */
+	const entry = join(import.meta.dirname, `database-reader${extname(import.meta.filename)}`);
+	// 子进程不引主进程的文案表（见 `database-reader.ts` 顶上），BLOB 那一格的说法由这里按界面语言交给它。
+	const args = [...(entry.endsWith(".ts") ? ["--experimental-strip-types", "--no-warnings"] : []), entry, path, nativeText("documents.blob", { n: "{n}" })];
 
-		const names = database
-			.prepare("SELECT name FROM sqlite_master WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' ORDER BY name")
-			.all()
-			.map((row) => String((row as { name: string }).name));
+	return new Promise((resolve) => {
+		const names: string[] = [];
+		const sheets: DocumentSheet[] = [];
+		let failure: string | undefined;
+		let pending = "";
+		let settled = false;
+		const finish = (data: DocumentData): void => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			resolve(data);
+		};
+		const take = (line: string): void => {
+			if (!line) return;
+			try {
+				const message = JSON.parse(line) as { names?: string[]; sheet?: DocumentSheet; error?: string };
+				if (message.names) names.push(...message.names);
+				if (message.sheet) sheets.push(message.sheet);
+				if (message.error) failure = message.error;
+			} catch {
+				// A line that is not ours (a stray warning) says nothing about the database.
+			}
+		};
 
-		const sheets = names.slice(0, 64).map((name) => {
-			// Quoted by doubling, which is SQLite's own escape — a table really can be called `a"b`.
-			const quoted = `"${name.replaceAll('"', '""')}"`;
-			const total = Number((database!.prepare(`SELECT COUNT(*) AS n FROM ${quoted}`).all()[0] as { n: number }).n);
-			const rows = database!.prepare(`SELECT * FROM ${quoted} LIMIT ${MAX_ROWS}`).all() as Record<string, unknown>[];
-			const columns = rows.length > 0 ? Object.keys(rows[0]).slice(0, MAX_COLUMNS) : columnsOf(database!, quoted);
-			return {
-				name,
-				columns,
-				rows: rows.map((row) => columns.map((column) => cell(row[column]))),
-				total,
-			};
+		/*
+		 * `ELECTRON_RUN_AS_NODE` because in the app `process.execPath` is Plume, not Node — without it
+		 * this would start a second copy of the app. Under plain Node the variable does nothing.
+		 */
+		const child = spawn(process.execPath, args, {
+			stdio: ["ignore", "pipe", "pipe"],
+			env: { ...process.env, NODE_OPTIONS: "", ELECTRON_RUN_AS_NODE: "1" },
+			windowsHide: true,
 		});
+		const timer = setTimeout(() => {
+			child.kill("SIGKILL");
+			const stuck = names[sheets.length];
+			finish({
+				kind: "tables",
+				sheets: [],
+				error: stuck
+					? nativeText("documents.timeoutAt", { name: stuck, seconds: timeoutMs / 1000 })
+					: nativeText("documents.timeout", { seconds: timeoutMs / 1000 }),
+			});
+		}, timeoutMs);
 
-		return { kind: "tables", sheets };
-	} catch (error) {
-		return { kind: "tables", sheets: [], error: describe(error) };
-	} finally {
-		try {
-			database?.close();
-		} catch {
-			// Closing a database that never opened is not worth reporting.
-		}
-	}
-}
-
-/** An empty table still has columns, and they are worth showing. */
-function columnsOf(
-	database: { prepare(sql: string): { all(...params: unknown[]): unknown[] } },
-	quoted: string,
-): string[] {
-	try {
-		return database
-			.prepare(`PRAGMA table_info(${quoted})`)
-			.all()
-			.map((row) => String((row as { name: string }).name))
-			.slice(0, MAX_COLUMNS);
-	} catch {
-		return [];
-	}
+		let stderr = "";
+		child.stdout.setEncoding("utf8");
+		child.stdout.on("data", (chunk: string) => {
+			pending += chunk;
+			const lines = pending.split("\n");
+			pending = lines.pop() ?? "";
+			for (const line of lines) take(line);
+		});
+		child.stderr.setEncoding("utf8");
+		child.stderr.on("data", (chunk: string) => {
+			if (stderr.length < 4000) stderr += chunk;
+		});
+		child.on("error", (error) => finish({ kind: "tables", sheets: [], error: describe(error) }));
+		child.on("close", (code) => {
+			take(pending);
+			if (failure !== undefined || code !== 0) {
+				finish({ kind: "tables", sheets: [], error: describe(failure ?? (stderr.trim() || `exit ${code}`)) });
+				return;
+			}
+			finish({ kind: "tables", sheets });
+		});
+	});
 }
 
 /**

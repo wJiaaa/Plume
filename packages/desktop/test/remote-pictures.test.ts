@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { after, before, mock, test } from "node:test";
 
-import { documentImage, remoteImage } from "../electron/images/avatars.ts";
+import { bodyWithin, documentImage, remoteImage } from "../electron/images/avatars.ts";
 
 /** Answers the test has not released yet, by URL. */
 const held = new Map<string, () => void>();
@@ -55,4 +55,37 @@ test("a README's pictures do not queue behind the market's icons", async () => {
 	await new Promise((resolve) => setTimeout(resolve, 10));
 	for (const release of held.values()) release();
 	assert.equal((await Promise.all(icons)).filter(Boolean).length, 14, "and the icons still all arrive");
+});
+
+test("a body past the limit is stopped as it streams, not read whole and then weighed", async () => {
+	// An answer that never ends: before, `arrayBuffer()` would have waited for all of it.
+	let pulled = 0;
+	const endless = new ReadableStream<Uint8Array>({
+		pull(controller) {
+			pulled += 1;
+			controller.enqueue(new Uint8Array(64 * 1024));
+		},
+	});
+	const response = new Response(endless, { headers: { "content-type": "image/png" } });
+	assert.equal(await bodyWithin(response, 512 * 1024), null);
+	assert.ok(pulled <= 10, `只该读到刚超过上限为止，实际读了 ${pulled} 块`);
+});
+
+test("a declared length over the limit is refused before the body is read", async () => {
+	let pulled = 0;
+	const body = new ReadableStream<Uint8Array>({
+		pull(controller) {
+			pulled += 1;
+			controller.enqueue(new Uint8Array(1024));
+		},
+	});
+	const response = new Response(body, { headers: { "content-length": String(10 * 1024 * 1024) } });
+	assert.equal(await bodyWithin(response, 512 * 1024), null);
+	// A ReadableStream pulls once up front to fill its queue; nothing past that.
+	assert.ok(pulled <= 1, `声明超限时不该再读正文，实际读了 ${pulled} 块`);
+});
+
+test("a body within the limit comes back whole", async () => {
+	const bytes = await bodyWithin(new Response(new Uint8Array([1, 2, 3])), 512);
+	assert.deepEqual([...(bytes ?? [])], [1, 2, 3]);
 });

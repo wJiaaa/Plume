@@ -6,7 +6,7 @@
  * them, and every git module that reached back through it closed a cycle.
  */
 
-import { git } from "./git-exec.ts";
+import { END_OF_OPTIONS, git } from "./git-exec.ts";
 import { gitBranch, isGitRepo } from "./git-probe.ts";
 import type { BranchList } from "@plume/contract";
 
@@ -79,7 +79,7 @@ export async function switchBranch(cwd: string, branch: string): Promise<{ ok: b
 		const isLocal = await git(cwd, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`])
 			.then(() => true)
 			.catch(() => false);
-		await git(cwd, isLocal ? ["switch", branch] : ["switch", "--track", branch]);
+		await git(cwd, isLocal ? ["switch", END_OF_OPTIONS, branch] : ["switch", "--track", END_OF_OPTIONS, branch]);
 		return { ok: true };
 	} catch (cause) {
 		const message = cause instanceof Error && "stderr" in cause ? String(cause.stderr) : String(cause);

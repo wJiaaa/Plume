@@ -16,7 +16,7 @@ import { delimiter, join } from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
 
-import { gitEnvironment, remoteGitEnvironment } from "../electron/git/git-exec.ts";
+import { gitEnvironment, gitProgram, remoteGitEnvironment } from "../electron/git/git-exec.ts";
 
 const exec = promisify(execFile);
 
@@ -125,4 +125,34 @@ test("git speaks English whatever the system language, without touching the enco
 
 	const refused = await exec("git", ["ls-remote", "http://127.0.0.1:9/x.git"], { env }).then(() => "", (error: { stderr?: string }) => error.stderr ?? "");
 	assert.match(refused, /^fatal: unable to access/m);
+});
+
+/*
+ * On Windows a bare `git` is looked for in the working directory first — the repository — so a
+ * checkout carrying its own `git.exe` would be what the panel runs. The program is resolved from
+ * PATH instead, and the repository's copy is never the answer.
+ */
+test("on Windows git is the one on PATH, never one sitting in the repository", () => {
+	const repo = "C:\\work\\evil";
+	const onDisk = new Set(["C:\\work\\evil\\git.exe", "C:\\Program Files\\Git\\cmd\\git.exe"]);
+	const found = gitProgram("win32", { Path: "C:\\Windows\\System32;C:\\Program Files\\Git\\cmd" }, (path) => onDisk.has(path));
+	assert.equal(found, "C:\\Program Files\\Git\\cmd\\git.exe");
+	assert.ok(!found?.startsWith(repo));
+});
+
+test("a relative PATH entry does not bring the working directory back in", () => {
+	// `.` on PATH would be resolved against wherever the process happens to be.
+	const found = gitProgram("win32", { PATH: ".;C:\\Git\\cmd" }, (path) => path === "git.exe" || path === "C:\\Git\\cmd\\git.exe");
+	assert.equal(found, "C:\\Git\\cmd\\git.exe");
+});
+
+test("a git.cmd is not taken for git, and no git at all is null rather than a guess", () => {
+	// The launcher would never have run a `.cmd` for `git`, and execFile cannot start one.
+	assert.equal(gitProgram("win32", { PATH: "C:\\shims" }, (path) => path === "C:\\shims\\git.cmd"), null);
+	assert.equal(gitProgram("win32", { PATH: "C:\\Windows" }, () => false), null);
+});
+
+test("everywhere else git is still run by name", () => {
+	assert.equal(gitProgram("darwin", { PATH: "/usr/bin" }, () => false), "git");
+	assert.equal(gitProgram("linux", {}, () => false), "git");
 });

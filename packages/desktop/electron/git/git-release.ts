@@ -8,7 +8,7 @@
 
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
-import { git, runRemote } from "./git-exec.ts";
+import { END_OF_OPTIONS, git, runRemote } from "./git-exec.ts";
 import { PUSH_PULL_TIMEOUT_MS } from "./git-history.ts";
 import { gitBranch, isGitRepo } from "./git-probe.ts";
 import { parseRemote, type RemoteRepo } from "./git-remote.ts";
@@ -79,7 +79,7 @@ export async function getReleaseInfo(cwd: string): Promise<ReleaseInfo> {
 		.catch(() => null);
 
 	// Get commits since tag or all commits if no tag
-	const range = latestTag ? [`${latestTag}..HEAD`] : ["-n", "50"];
+	const range = latestTag ? [END_OF_OPTIONS, `${latestTag}..HEAD`] : ["-n", "50"];
 	const logOut = await git(cwd, ["log", "--no-merges", "--format=%H%x1f%h%x1f%s%x1f%an%x1f%ad", ...range])
 		.then((out) => out.trim())
 		.catch(() => "");
@@ -384,8 +384,8 @@ export async function publishReleaseTag(
 
 		// Create and push tag. Through `runRemote`, like every push: bounded, and never waiting on a
 		// credential prompt that has nowhere to appear.
-		await git(cwd, ["tag", tag]);
-		const pushed = await runRemote(cwd, ["push", "origin", tag], { timeoutMs: PUSH_PULL_TIMEOUT_MS });
+		await git(cwd, ["tag", END_OF_OPTIONS, tag]);
+		const pushed = await runRemote(cwd, ["push", END_OF_OPTIONS, "origin", tag], { timeoutMs: PUSH_PULL_TIMEOUT_MS });
 		return pushed.ok ? { ok: true, tag } : { ok: false, error: pushed.error };
 	} catch (err) {
 		return { ok: false, error: err instanceof Error ? err.message : String(err) };

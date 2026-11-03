@@ -28,7 +28,7 @@ import {
 	sessions,
 } from "./session/session-hub.ts";
 import { resolveInside } from "./files/file-ops.ts";
-import { canonicalPath } from "./path-key.ts";
+import { canonicalPath, canonicalRoots } from "./path-key.ts";
 import { resolveReadablePath } from "./files/file-read-service.ts";
 import { loadUserImagesAt } from "./session/display-image.ts";
 import { captureLog } from "./screenshot/screenshot-debug.ts";
@@ -235,7 +235,7 @@ function projectPath(target: string): string | null {
 	 * 的话 `relative()` 会算出一串 `../..`，新建、重命名、删除、复制粘贴全被判在项目之外，而且判完
 	 * 一声不吭。`file-read-service.ts` 早就在读文件那条路上这么做了，这里补上其余的门。
 	 */
-	return resolveInside(canonicalPath(target), allowedRoots().map((root) => canonicalPath(root)));
+	return resolveInside(canonicalPath(target), canonicalRoots(allowedRoots()));
 }
 
 /** The predicate form, for the doorways that only need a yes or no. */

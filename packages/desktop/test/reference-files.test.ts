@@ -19,3 +19,9 @@ test("listing a skill permits only that file, never adjacent settings or the who
 		assert.equal(await referenceFile(root), null);
 	} finally { await rm(root, { recursive: true, force: true }); }
 });
+
+test("a path on another machine is refused before anything resolves it", async () => {
+	for (const path of ["\\\\evil\\share\\SKILL.md", "//evil/share/SKILL.md", "\\\\?\\C:\\SKILL.md"]) {
+		assert.equal(await referenceFile(path), null, path);
+	}
+});

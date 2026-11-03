@@ -18,6 +18,7 @@
 
 import { join } from "node:path";
 import { BrowserWindow, nativeImage, screen } from "electron";
+import { guardNavigation, rendererEntry } from "../app/index.ts";
 
 /**
  * Every pinned picture currently on screen.
@@ -211,10 +212,13 @@ export function pinScreenshot(request: PinRequest): { ok: boolean } {
 	});
 	pinned.add(win);
 
+	// Same preload as the main window, so the same rule: this page, and nothing it is pointed at.
+	guardNavigation(win.webContents);
+
 	const devServer = process.env.ELECTRON_RENDERER_URL;
 	const load = devServer
 		? win.loadURL(`${devServer}#/pinned-shot`)
-		: win.loadFile(join(import.meta.dirname, "../renderer/index.html"), { hash: "/pinned-shot" });
+		: win.loadFile(rendererEntry(), { hash: "/pinned-shot" });
 
 	/*
 	 * The picture waits here to be asked for, rather than being pushed at the page.

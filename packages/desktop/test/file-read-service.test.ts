@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { listReadableFiles, readReadableFile, resolveReadablePath } from "../electron/files/file-read-service.ts";
+import { listReadableFiles, readReadableFile, remotePathAllowed, resolveReadablePath } from "../electron/files/file-read-service.ts";
 
 test("file reads stay read-only and share the desktop text rules", async () => {
 	const root = await mkdtemp(join(tmpdir(), "plume-file-read-"));
@@ -135,6 +135,52 @@ test("scratch roots and worktree roots permit reading files within them while fo
 
 		const resolvedTraverse = await resolveReadablePath(join(scratch, "..", "outside", "secret.txt"), allowedRoots);
 		assert.equal(resolvedTraverse, null);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("a share is refused by the letter unless an open project lives on it", () => {
+	const local = ["C:\\proj", "/Users/me/proj"];
+	for (const target of [
+		"\\\\attacker.example\\share\\a.png",
+		"//attacker.example/share/a.png",
+		"\\/attacker.example/share/a.png",
+		"\\\\?\\C:\\proj\\a.png",
+		"\\\\.\\pipe\\x",
+		"\\\\?\\UNC\\server\\share\\a.png",
+	]) {
+		assert.equal(remotePathAllowed(target, local), false, target);
+	}
+	for (const target of ["C:\\proj\\a.png", "/Users/me/proj/a.png"]) assert.equal(remotePathAllowed(target, local), true, target);
+
+	// A project on a share may read itself — host and share compared as Windows does, without case.
+	const onShare = ["\\\\nas\\work\\proj"];
+	assert.equal(remotePathAllowed("\\\\NAS\\Work\\proj\\src\\a.ts", onShare), true);
+	assert.equal(remotePathAllowed("//nas/work/proj/src/a.ts", onShare), true);
+	assert.equal(remotePathAllowed("\\\\nas\\work\\proj", onShare), true);
+	// Beside it, above it, or on another share of the same host is not inside.
+	assert.equal(remotePathAllowed("\\\\nas\\work\\other\\a.ts", onShare), false);
+	assert.equal(remotePathAllowed("\\\\nas\\work\\proj\\..\\secret.txt", onShare), false);
+	assert.equal(remotePathAllowed("\\\\nas\\home\\proj\\a.ts", onShare), false);
+	assert.equal(remotePathAllowed("\\\\evil\\work\\proj\\a.ts", onShare), false);
+	// A device-path root grants nothing.
+	assert.equal(remotePathAllowed("\\\\?\\C:\\proj\\a.ts", ["\\\\?\\C:\\proj"]), false);
+});
+
+test("a large file is read only up to the cap, and still reports its whole size", async () => {
+	const root = await mkdtemp(join(tmpdir(), "plume-file-cap-"));
+	try {
+		const big = join(root, "big.log");
+		await writeFile(big, "x".repeat(512 * 1024 + 10));
+		const contents = await readReadableFile(big, true);
+		assert.equal(contents?.text.length, 512 * 1024);
+		assert.equal(contents?.truncated, true);
+		assert.equal(contents?.bytes, 512 * 1024 + 10);
+
+		const exact = join(root, "exact.log");
+		await writeFile(exact, "y".repeat(512 * 1024));
+		assert.equal((await readReadableFile(exact, true))?.truncated, false);
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}

@@ -10,7 +10,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { git, run } from "./git-exec.ts";
+import { END_OF_OPTIONS, git, run } from "./git-exec.ts";
 import { worktreeRecords } from "./git-probe.ts";
 import { samePath } from "../path-key.ts";
 import { baseOf, conflictedFiles, countCommits, isMerging, repoRoot, uncommittedFiles, worktreeRootOf, type Owned } from "./worktree-lifecycle.ts";
@@ -64,7 +64,7 @@ export async function mergeIntoBase(meta: Owned): Promise<MergeOutcome> {
  */
 async function mergeInCheckout(repo: string, base: string, branch: string, message: string, commits: number): Promise<MergeOutcome> {
 	if (await isMerging(repo)) return { kind: "refused", reason: "busy" };
-	const done = await run(repo, ["merge", "--no-ff", "--no-edit", "-m", message, branch]);
+	const done = await run(repo, ["merge", "--no-ff", "--no-edit", "-m", message, END_OF_OPTIONS, branch]);
 	if (done.ok) return { kind: "merged", commits, base };
 	const conflicted = await conflictedFiles(repo);
 	if (await isMerging(repo)) await run(repo, ["merge", "--abort"]);
@@ -78,7 +78,7 @@ async function mergeInCheckout(repo: string, base: string, branch: string, messa
  * being overwritten.
  */
 async function mergeUnchecked(repo: string, base: string, branch: string, message: string, commits: number): Promise<MergeOutcome> {
-	const result = await git(repo, ["merge-tree", "--write-tree", "--name-only", "--no-messages", base, branch]).then(
+	const result = await git(repo, ["merge-tree", "--write-tree", "--name-only", "--no-messages", END_OF_OPTIONS, base, branch]).then(
 		(text) => ({ clean: true, text, code: 0 }),
 		(error: { stdout?: string; code?: number }) => ({ clean: false, text: String(error.stdout ?? ""), code: error.code ?? -1 }),
 	);
@@ -112,7 +112,7 @@ export async function syncFromBase(meta: Owned): Promise<SyncOutcome> {
 	if (files > 0) return { kind: "uncommitted", files };
 	const commits = await countCommits(repo, `${branch}..${base}`);
 	if (commits === 0) return { kind: "up-to-date", base };
-	const done = await run(root, ["merge", "--no-edit", base]);
+	const done = await run(root, ["merge", "--no-edit", END_OF_OPTIONS, base]);
 	if (done.ok) return { kind: "synced", commits, base };
 	const conflicted = await conflictedFiles(root);
 	if (conflicted.length > 0) return { kind: "conflict", files: conflicted, base };

@@ -8,7 +8,7 @@
 import { computeDiff } from "@plume/core";
 import type { GitCommit, RemoteResult, WorkspaceDiffFile } from "@plume/contract";
 import { readBlobs, type BlobRead } from "./git-blobs.ts";
-import { git, run, runRemote, MAX_FILES } from "./git-exec.ts";
+import { END_OF_OPTIONS, git, run, runRemote, MAX_FILES } from "./git-exec.ts";
 import { capHunks, classify } from "./git-diff.ts";
 import { parseNumstat } from "./git-parse.ts";
 import { defaultRemote } from "./git-remote-state.ts";
@@ -22,7 +22,7 @@ export async function gitLog(cwd: string, limit = 60, ref?: string): Promise<Git
 		"--topo-order",
 		`--max-count=${Math.min(limit, 300)}`,
 		`--format=${LOG_FORMAT}`,
-		...(ref ? [ref] : []),
+		...(ref ? [END_OF_OPTIONS, ref] : []),
 	]).catch(() => "");
 
 	return out
@@ -93,8 +93,8 @@ async function diffSummary(
 
 	// Both at once: they are independent reads of the same commit and one need not wait for the other.
 	const [names, stats] = await Promise.all([
-		git(cwd, ["diff", "--name-status", "-z", base, head]).catch(() => ""),
-		git(cwd, ["diff", "--numstat", "-z", base, head]).catch(() => ""),
+		git(cwd, ["diff", "--name-status", "-z", END_OF_OPTIONS, base, head]).catch(() => ""),
+		git(cwd, ["diff", "--numstat", "-z", END_OF_OPTIONS, base, head]).catch(() => ""),
 	]);
 
 	const counts = parseNumstat(stats);
@@ -136,7 +136,7 @@ export async function diffRefs(
 ): Promise<{ files: WorkspaceDiffFile[]; added: number; removed: number }> {
 	if (!(await isGitRepo(cwd))) return { files: [], added: 0, removed: 0 };
 
-	const range = head ? [base, head] : ["--cached", base];
+	const range = head ? [END_OF_OPTIONS, base, head] : ["--cached", END_OF_OPTIONS, base];
 	const names = await git(cwd, ["diff", "--name-status", "-z", ...range]).catch(() => "");
 
 	/*
@@ -210,11 +210,11 @@ export async function commitDiff(cwd: string, sha: string) {
 export async function createBranch(cwd: string, name: string, from?: string) {
 	const clean = name.trim();
 	if (!clean) return { ok: false, error: "分支名不能为空" };
-	return run(cwd, ["switch", "-c", clean, ...(from ? [from] : [])]);
+	return run(cwd, ["switch", "-c", clean, ...(from ? [END_OF_OPTIONS, from] : [])]);
 }
 
 export async function deleteBranch(cwd: string, name: string, force = false) {
-	return run(cwd, ["branch", force ? "-D" : "-d", name]);
+	return run(cwd, ["branch", force ? "-D" : "-d", END_OF_OPTIONS, name]);
 }
 
 /**
@@ -266,7 +266,7 @@ export async function pushBranch(cwd: string, { signal }: { signal?: AbortSignal
 			error: remotes.length === 0 ? "仓库没有配置远端" : "有多个远端，请先设置上游分支",
 		};
 	}
-	return runRemote(cwd, ["push", "-u", remote, branch], { timeoutMs: PUSH_PULL_TIMEOUT_MS, signal });
+	return runRemote(cwd, ["push", "-u", END_OF_OPTIONS, remote, branch], { timeoutMs: PUSH_PULL_TIMEOUT_MS, signal });
 }
 
 export async function pullBranch(cwd: string, { signal }: { signal?: AbortSignal } = {}): Promise<RemoteResult> {

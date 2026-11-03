@@ -25,6 +25,7 @@ import { promisify } from "node:util";
 import { app, shell } from "electron";
 import { appIcon, findApp } from "./app-icon.ts";
 import { findExecutable } from "../find-executable.ts";
+import { openPathSafely } from "../app/index.ts";
 import { CANDIDATES, type Candidate, launchPlan, resolveTargetId, revealLabel } from "./open-target-ids.ts";
 import type { OpenTarget } from "@plume/contract";
 
@@ -107,6 +108,10 @@ async function build(): Promise<OpenTarget[]> {
  * Everything unknown — an id from a platform this machine is not, a setting written by a newer
  * version — hands the path to the system's own default handler rather than failing. The user asked
  * for the file to open; which application does it is the part we might be wrong about.
+ *
+ * The fallback is `openPathSafely`, not `shell.openPath`: an editor that is missing or fails to
+ * start must not turn into running a `.command` with its default handler — the door the
+ * "open with default app" button already closed.
  */
 export async function openWith(stored: string, path: string): Promise<void> {
 	const id = resolveTargetId(stored);
@@ -117,7 +122,7 @@ export async function openWith(stored: string, path: string): Promise<void> {
 
 	const candidate = (CANDIDATES[process.platform] ?? []).find((entry) => entry.id === id);
 	if (!candidate) {
-		await shell.openPath(path);
+		await openPathSafely(path);
 		return;
 	}
 
@@ -132,7 +137,7 @@ export async function openWith(stored: string, path: string): Promise<void> {
 		}
 		const located = await locate(candidate);
 		if (!located) {
-			await shell.openPath(target);
+			await openPathSafely(target);
 			return;
 		}
 		/*
@@ -153,10 +158,10 @@ export async function openWith(stored: string, path: string): Promise<void> {
 			stdio: "ignore",
 			windowsVerbatimArguments: plan.windowsVerbatimArguments ?? false,
 		});
-		child.on("error", () => void shell.openPath(target));
+		child.on("error", () => void openPathSafely(target));
 		child.unref();
 	} catch {
-		await shell.openPath(target);
+		await openPathSafely(target);
 	}
 }
 

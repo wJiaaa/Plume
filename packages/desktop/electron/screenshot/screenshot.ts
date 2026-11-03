@@ -9,6 +9,7 @@
 import { join } from "node:path";
 import { app, BrowserWindow, desktopCapturer, globalShortcut, nativeImage, screen, systemPreferences } from "electron";
 import type { ScreenshotSettings, Settings } from "@plume/core";
+import { guardNavigation, rendererEntry } from "../app/index.ts";
 
 import { registerShortcut, type ShortcutOutcome } from "./accelerator.ts";
 import { writeClipboardImage } from "./clipboard-image.ts";
@@ -834,10 +835,13 @@ function ensureOverlay(): Promise<BrowserWindow> {
 		revealers.delete(pageId);
 	});
 
+	// Same preload as the main window, so the same rule: this page, and nothing it is pointed at.
+	guardNavigation(win.webContents);
+
 	const devServer = process.env.ELECTRON_RENDERER_URL;
 	const load = devServer
 		? win.loadURL(`${devServer}#/screenshot-overlay`)
-		: win.loadFile(join(import.meta.dirname, "../renderer/index.html"), { hash: "/screenshot-overlay" });
+		: win.loadFile(rendererEntry(), { hash: "/screenshot-overlay" });
 
 	overlayLoading = new Promise<BrowserWindow>((resolve, reject) => {
 		win.webContents.once("did-finish-load", () => {

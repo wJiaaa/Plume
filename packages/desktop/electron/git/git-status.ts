@@ -5,11 +5,11 @@
  * and what it will not. Everything here reports or moves files between those two lists.
  */
 
-import { access, readFile } from "node:fs/promises";
+import { access } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import type { GitOperation, GitStatus, GitStatusFile } from "@plume/contract";
-import { git, run, mapLimit, MAX_BLOB_BYTES, MAX_FILES } from "./git-exec.ts";
-import { classify } from "./git-diff.ts";
+import { END_OF_OPTIONS, git, run, mapLimit, MAX_BLOB_BYTES, MAX_FILES } from "./git-exec.ts";
+import { classify, readCapped } from "./git-diff.ts";
 import { parseNumstat, parseStatusZ, statusBranch } from "./git-parse.ts";
 import { classifyRemote } from "./git-remote-state.ts";
 import { gitBranch, isGitRepo } from "./git-probe.ts";
@@ -144,7 +144,7 @@ async function operationInProgress(cwd: string): Promise<GitOperation | null> {
 
 /** `rev-list --count`, as a number or null when the range does not resolve. */
 async function countCommits(cwd: string, range: string): Promise<number | null> {
-	const out = await git(cwd, ["rev-list", "--count", range]).catch(() => null);
+	const out = await git(cwd, ["rev-list", "--count", END_OF_OPTIONS, range]).catch(() => null);
 	if (out === null) return null;
 	const count = Number.parseInt(out.trim(), 10);
 	return Number.isFinite(count) ? count : null;
@@ -304,8 +304,8 @@ async function numstat(cwd: string, args: string[]): Promise<Map<string, { added
 
 /** An untracked file has no other side to diff against, so every line counts as added. */
 async function countNewFile(cwd: string, path: string): Promise<{ added: number; removed: number }> {
-	const buffer = await readFile(join(cwd, path)).catch(() => null);
-	if (!buffer || buffer.length > MAX_BLOB_BYTES || buffer.includes(0)) return { added: 0, removed: 0 };
+	const buffer = (await readCapped(join(cwd, path), MAX_BLOB_BYTES))?.buffer;
+	if (!buffer || buffer.includes(0)) return { added: 0, removed: 0 };
 	const text = buffer.toString("utf8");
 	return { added: text.length === 0 ? 0 : text.replace(/\n$/, "").split("\n").length, removed: 0 };
 }

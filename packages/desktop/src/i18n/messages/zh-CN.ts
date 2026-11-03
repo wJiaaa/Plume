@@ -1997,6 +1997,7 @@ export const zhCN = {
 	"attachment.copiedImage": "图片已复制",
 	"composer.tooManyFiles": "一次最多带 {count} 个，余下 {dropped} 个没放进来",
 	"attachment.gone": "「{name}」已经不在原来的位置了",
+	"attachment.revealedInstead": "直接打开「{name}」可能会运行它，已改为在文件夹中显示",
 	"attachment.pathCopied": "路径已复制",
 	"attachment.openHint": "双击打开",
 	"composer.finishUnfinished": "接着做完没做完的部分",

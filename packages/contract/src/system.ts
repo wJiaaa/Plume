@@ -66,8 +66,15 @@ export interface SchedulerNotice {
 	sessionId?: string;
 }
 
+/**
+ * What `system:openPath` did. `revealed` is the file shown in its folder instead of opened — it
+ * would have run (a script, an app, a shortcut) or it sits on a network share. See
+ * `electron/app/window-security.ts`'s `openPathSafely`.
+ */
+export type OpenPathOutcome = "opened" | "revealed" | "failed";
+
 export interface SystemApi {
-	openPath(path: string): Promise<void>;
+	openPath(path: string): Promise<OpenPathOutcome>;
 	openExternal(url: string): Promise<void>;
 	/** The system default browser's name, or "" where the platform cannot tell. */
 	defaultBrowser(): Promise<string>;

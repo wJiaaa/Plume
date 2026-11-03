@@ -10,7 +10,7 @@ import { mkdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import type { SessionMeta, Settings } from "@plume/core";
-import { git } from "./git-exec.ts";
+import { END_OF_OPTIONS, git } from "./git-exec.ts";
 import { gitBranch, isGitRepo, worktreeRecords } from "./git-probe.ts";
 import { canonicalPath } from "../path-key.ts";
 import { removeLinkedWorktree, repoRoot } from "./worktree-lifecycle.ts";
@@ -84,7 +84,7 @@ export async function createWorktree(
 		// Ensure parent directory exists
 		await mkdir(join(target, ".."), { recursive: true });
 		// `-B` so re-running with the same name resets or creates branch cleanly
-		await git(cwd, ["worktree", "add", "-B", safe, target]);
+		await git(cwd, ["worktree", "add", "-B", safe, END_OF_OPTIONS, target]);
 		/*
 		 * The canonical spelling, not the one that was passed in.
 		 *
