@@ -237,6 +237,8 @@ interface RipgrepRun {
 	lines: string[];
 	count: number;
 	errors: { total: number; first: string[] };
+	/** We ended it once there was nothing more it could add; `count` is then a lower bound. */
+	stopped: boolean;
 }
 
 /**
@@ -250,9 +252,9 @@ interface RipgrepRun {
  * stream's closing `summary`, prove the search ran; what it could not read is reported alongside.
  */
 function ripgrepResult(run: RipgrepRun, args: GrepArgs, limit: number, literal: boolean, completed = false, capped = false): ToolResult | null {
-	const ran = run.code === 0 || run.code === 1 || (run.code === 2 && (run.count > 0 || completed));
+	const ran = run.stopped || run.code === 0 || run.code === 1 || (run.code === 2 && (run.count > 0 || completed));
 	if (!ran) return null;
-	return formatMatches(run.lines, args, limit, literal, run.count, run.code === 2 ? describeErrors(run.errors) : "", capped);
+	return formatMatches(run.lines, args, limit, literal, run.count, run.code === 2 || run.stopped ? describeErrors(run.errors) : "", capped || run.stopped);
 }
 
 function describeErrors(errors: RipgrepRun["errors"]): string {
@@ -289,11 +291,25 @@ function collectRipgrep(
 		const lines: string[] = [];
 		let count = 0;
 		let failed = false;
+		let full = false;
+		let size = 0;
 		const errors: RipgrepRun["errors"] = { total: 0, first: [] };
 		const reader = createInterface({ input: child.stdout });
 		reader.on("line", (line) => {
-			if (!line) return;
+			if (!line || full) return;
+			const before = lines.length;
 			if (onLine(line, lines, lines.length < limit)) count++;
+			for (let i = before; i < lines.length; i++) size += lines[i].length + 1;
+			/*
+			 * 收满了就让 ripgrep 停下。`--max-count` 是每个文件的上限，不是总数：200 条早就收齐了，
+			 * ripgrep 还会把整棵树扫完，每一行都送过来再被这里 JSON.parse 一遍然后丢掉。字符闸门满了
+			 * 也一样——再多的行也显示不出来。停下以后剩下的命中数不知道，所以结果标成 `stopped`，
+			 * 照实说「可能还有」。
+			 */
+			if (lines.length >= limit || size > MAX_OUTPUT_CHARS) {
+				full = true;
+				child.kill();
+			}
 		});
 		const errorReader = createInterface({ input: child.stderr });
 		errorReader.on("line", (line) => {
@@ -314,7 +330,7 @@ function collectRipgrep(
 			reader.close();
 			errorReader.close();
 			if (failed) return;
-			resolve({ code, lines, count, errors });
+			resolve({ code, lines, count, errors, stopped: full });
 		});
 	});
 }
@@ -433,8 +449,10 @@ function formatMatches(lines: string[], args: GrepArgs, limit: number, literal =
 	}
 	const shown = boundCollectedLines(lines.slice(0, limit));
 	const header = literal ? `${note}\n\n` : "";
+	// 停在字符闸门上而不是条数上时，「hit the 200-match limit」就是假话：只收了几条长行。
+	const reason = shown.length < Math.min(count, limit) ? `the ${MAX_OUTPUT_CHARS}-character output limit` : `the ${limit}-match limit`;
 	const footer = stopped
-		? `\n\n[truncated: hit the ${limit}-match limit${count > shown.length ? `, and ${count - shown.length} collected lines are not shown` : ""}; more matches may exist — narrow pattern, path or glob]`
+		? `\n\n[truncated: hit ${reason}${count > shown.length ? `, and ${count - shown.length} collected lines are not shown` : ""}; more matches may exist — narrow pattern, path or glob]`
 		: count > shown.length
 			? `\n\n[truncated: ${count - shown.length} collected matching/context lines omitted; narrow pattern, path or glob]`
 			: "";

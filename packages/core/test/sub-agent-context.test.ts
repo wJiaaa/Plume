@@ -3,6 +3,9 @@
  */
 
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 
 import { runSubAgent } from "../src/runtime/sub-agent/sub-agent.ts";
@@ -10,6 +13,7 @@ import { describeSubAgentContext, SubAgentContexts } from "../src/runtime/sub-ag
 import { SubAgentRegistry } from "../src/runtime/sub-agent/sub-agents.ts";
 import type { AgentDefinition } from "../src/agents-builtin.ts";
 import type { AgentEvent } from "../src/agent/events.ts";
+import { SessionStore } from "../src/session/store.ts";
 import type { SessionRecord } from "../src/session/types.ts";
 import type { ModelConfig, ProviderConfig, Settings, Tool } from "../src/types.ts";
 import { emptyUsage } from "../src/types.ts";
@@ -125,4 +129,19 @@ test("tool schemas from an MCP server are counted as MCP tools", async () => {
 	assert.ok(asMcp > 0, "the MCP tool has a segment of its own");
 	// 每个子代理都带着 `yield`，系统工具段不会是空的；要量的是 `read` 从那一段整个挪到了 MCP 那一段。
 	assert.equal(tokens(new Set(), "systemTools") - tokens(new Set(["read"]), "systemTools"), asMcp, "and is no longer counted as a system tool");
+});
+
+test("found in the log through the two kinds the session asks for, the same as reading all of it", async (t) => {
+	// `AgentSession.subAgentContextBreakdown` reads only `subagent` and `subagent_event`: the rest of the log is requests and transcripts.
+	const { events, id } = await dispatch();
+	const root = await mkdtemp(join(tmpdir(), "ly-sub-context-"));
+	t.after(() => rm(root, { recursive: true, force: true, maxRetries: 8, retryDelay: 25 }));
+	const store = new SessionStore(root);
+	let meta = await store.create("/tmp/project", "m");
+	meta = (await store.append(meta, { type: "message", message: { role: "user", content: [{ type: "text", text: "去找" }], timestamp: 1 } })) ?? meta;
+	for (const event of events) meta = (await store.append(meta, { type: "event", event })) ?? meta;
+	const filtered = await new SubAgentContexts().get(id, () => store.read(meta.id, 0, { kinds: ["subagent", "subagent_event"] }));
+	const whole = await new SubAgentContexts().get(id, () => store.read(meta.id));
+	assert.ok(filtered.context, "the context is found");
+	assert.deepEqual(filtered, whole);
 });

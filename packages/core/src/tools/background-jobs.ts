@@ -104,12 +104,12 @@ export class BackgroundJobs {
 	isQuiet(id: string): boolean { return this.quiet.has(id); }
 	wasStopped(id: string): boolean { return this.stopped.has(id); }
 	/**
-	 * A turn was stopped — the stop button, or a message that interrupts it: nothing running now
-	 * may wake the session when it ends.
+	 * The stop button was pressed: nothing running now may wake the session when it ends. A message
+	 * that interrupts the turn does not mute anything — the conversation goes on, and the model still
+	 * counts on hearing from what it started (`AgentSession.halt`).
 	 *
-	 * Monitors are left alone. Muted, a monitor can do nothing except hold a process; after an
-	 * interruption the conversation goes on and the model still counts on it. The stop button ends
-	 * them outright instead: see `stopMonitors`.
+	 * Monitors are left alone. Muted, a monitor can do nothing except hold a process; the stop button
+	 * ends them outright instead: see `stopMonitors`.
 	 */
 	mute(): void {
 		for (const { info } of this.entries.values()) {

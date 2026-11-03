@@ -67,7 +67,15 @@ function withoutBreakpoint(value: unknown): unknown {
 
 function withoutBlockBreakpoints(message: unknown): unknown {
 	if (!message || typeof message !== "object" || !Array.isArray((message as { content?: unknown }).content)) return message;
-	return { ...message, content: (message as { content: unknown[] }).content.map(withoutBreakpoint) };
+	const content = (message as { content: unknown[] }).content.map(withoutBreakpoint);
+	/*
+	 * 只有一个 text 块的内容按那个字符串算。Chat Completions 给 Claude 放断点时要把字符串内容改写成
+	 * 一个 text 块（`withCacheBreakpoints`），下一轮断点挪走，它又变回字符串——同一句话，不算前缀变了。
+	 * 两种写法在 Anthropic 那边本来就是同一个块。
+	 */
+	const only = content.length === 1 ? (content[0] as Record<string, unknown>) : undefined;
+	const text = only?.type === "text" && typeof only.text === "string" && Object.keys(only).length === 2 ? only.text : undefined;
+	return { ...message, content: text ?? content };
 }
 
 /** `after` 和 `before` 比：`before` 原样是 `after` 的前缀时没有 `change`。 */

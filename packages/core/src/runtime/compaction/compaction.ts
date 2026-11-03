@@ -27,11 +27,11 @@ import type { Compaction, CompactionLineage, CompactionObserver, CompactionVia }
 import { streamAssistant } from "../../ai/index.ts";
 import { dropUneventful, FRESH_RESULT_MAX_CHARS, pruneToolResults, type ArtifactSink } from "../../agent/prune.ts";
 import { dropStaleResults } from "./stale-results.ts";
-import { estimateTokens, measureTotal } from "../../tokens.ts";
-import { taskContextFromHistory } from "./task-context.ts";
+import { charsToTokens, estimateChars, estimateTokens, measureTotal } from "../../tokens.ts";
+import { RetiredHistory } from "./retired.ts";
 import type { Message, ModelConfig, ProviderConfig, RequestPrefix } from "../../types.ts";
 import { forkable, forkSummary } from "./compaction-fork.ts";
-import { droppedMessage, filesSeen, lastRequest, summaryMessages } from "./compaction-head.ts";
+import { droppedMessage, lastRequest, summaryMessages } from "./compaction-head.ts";
 import { fallbackSummary, summarize } from "./compaction-summary.ts";
 import { compactionBudget, KEEP_MIN, type CompactionBudget } from "./compaction-budget.ts";
 
@@ -290,21 +290,34 @@ export async function compactIfNeeded(request: CompactionRequest): Promise<Compa
 	 */
 	const target = budget.settled;
 	const scaled = (list: Message[]) => estimateTokens(list) * scale;
-	const withHead = (text: string, tail: Message[]) => {
-		// Tail trimming can retire another request or plan update; keep its facts outside the summary too.
-		const retired = messages.slice(0, messages.length - tail.length);
-		return [...summaryMessages(text, lastRequest(retired), provider, model, filesSeen(retired), taskContextFromHistory(retired)), ...tail];
-	};
+	const chars = messages.map(estimateChars);
+	/*
+	 * `from` 总是 `messages` 的一段后缀。折进头里的那段和尾部的字符数都逐条增减（`RetiredHistory`），
+	 * 不是每删一条就对整段重算——算出来的和从前每次 `scaled([...头, ...尾])` 是同一个数。
+	 */
 	const fit = (text: string, from: Message[]) => {
-		let tail = from;
-		let compacted = withHead(text, tail);
-		while (scaled(compacted) > target && tail.length > 1) {
-			let drop = 1;
-			while (drop < tail.length && tail[drop].role === "toolResult") drop++;
-			tail = tail.slice(drop);
-			compacted = withHead(text, tail);
+		let start = messages.length - from.length;
+		// Tail trimming can retire another request or plan update; keep its facts outside the summary too.
+		const retired = new RetiredHistory();
+		let tailChars = 0;
+		for (let at = 0; at < messages.length; at++) {
+			if (at < start) retired.add(messages[at]);
+			else tailChars += chars[at];
 		}
-		return { tail, compacted };
+		const withHead = () => summaryMessages(text, retired.request(), provider, model, retired.files(), retired.taskContext());
+		const weight = (head: Message[]) => charsToTokens(head.reduce((sum, message) => sum + estimateChars(message), tailChars)) * scale;
+		let head = withHead();
+		while (weight(head) > target && messages.length - start > 1) {
+			let drop = 1;
+			while (start + drop < messages.length && messages[start + drop].role === "toolResult") drop++;
+			for (const end = start + drop; start < end; start++) {
+				retired.add(messages[start]);
+				tailChars -= chars[start];
+			}
+			head = withHead();
+		}
+		const tail = messages.slice(start);
+		return { tail, compacted: [...head, ...tail] };
 	};
 
 	/*
@@ -408,23 +421,29 @@ function dropOldest(messages: Message[], model: ModelConfig, budget: CompactionB
 	const target = budget.dropped;
 	const weight = (list: Message[]) => estimateTokens(list) * scale;
 
-	// 预算的是交出去的整份：前面那条说明带着最新请求和任务上下文，中文下能有好几千 token。
-	const build = (start: number) => {
-		const older = messages.slice(0, start);
-		const standing = lastRequest(older) ?? lastRequest(messages);
-		return [droppedMessage(standing, taskContextFromHistory(older), model, filesSeen(older)), ...messages.slice(start)];
-	};
 	if (weight(messages) <= target) return null;
+	// 预算的是交出去的整份：前面那条说明带着最新请求和任务上下文，中文下能有好几千 token。
+	// 丢掉的那段和留下的字符数逐条增减，同 `fit`。
+	const chars = messages.map(estimateChars);
+	const fallback = lastRequest(messages);
+	const older = new RetiredHistory();
+	let rest = chars.reduce((sum, value) => sum + value, 0);
+	let head: Message | undefined;
 	let start = 0;
-	let result: Message[] = messages;
 	while (start < messages.length - 1) {
+		const from = start;
 		start++;
 		// Never begin on an answer whose question has just been dropped.
 		while (start < messages.length && messages[start].role === "toolResult") start++;
-		result = build(start);
-		if (weight(result) <= target) break;
+		for (let at = from; at < start; at++) {
+			older.add(messages[at]);
+			rest -= chars[at];
+		}
+		head = droppedMessage(older.request() ?? fallback, older.taskContext(), model, older.files());
+		if (charsToTokens(estimateChars(head) + rest) * scale <= target) break;
 	}
-	if (start === 0) return null;
+	if (!head) return null;
+	const result = [head, ...messages.slice(start)];
 	// 丢到只剩最后一条仍可能放不下；放不放得下由调用方和摘要结果一起比（见 `compactIfNeeded`）。
 	return { messages: result, summary: "", kept: result.length - 1, via: "dropped" };
 }

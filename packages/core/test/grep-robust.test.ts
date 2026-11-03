@@ -29,6 +29,12 @@ done
 if [ -n "$FAKE_RG_STDERR" ]; then echo "$FAKE_RG_STDERR" >&2; fi
 case " $* " in
 	*" --json "*)
+		# 一直吐命中、永不退出：只有被结束掉，这次搜索才会有结果。
+		if [ "$FAKE_RG_FLOOD" = 1 ]; then
+			while :; do
+				printf '{"type":"match","data":{"path":{"text":"%s/rg-only.txt"},"lines":{"text":"from-ripgrep\\\\n"},"line_number":1,"submatches":[{"match":{"text":"from"},"start":0,"end":4}]}}\\n' "$root"
+			done
+		fi
 		if [ "$FAKE_RG_MATCH" = 1 ]; then
 			printf '{"type":"match","data":{"path":{"text":"%s/rg-only.txt"},"lines":{"text":"from-ripgrep\\\\n"},"line_number":1,"submatches":[{"match":{"text":"from"},"start":0,"end":4}]}}\\n' "$root"
 		fi
@@ -50,6 +56,8 @@ interface FakeRg {
 	match: boolean;
 	summary: boolean;
 	exit: number;
+	/** Matches forever and never exits on its own. */
+	flood?: boolean;
 }
 
 const NO_SHELL_SPAWN = process.platform === "win32" ? "a shell script cannot stand in for rg.exe without spawning through a shell" : false;
@@ -72,6 +80,7 @@ async function withFakeRg(t: TestContext, behaviour: FakeRg): Promise<{ dir: str
 	process.env.FAKE_RG_MATCH = behaviour.match ? "1" : "0";
 	process.env.FAKE_RG_SUMMARY = behaviour.summary ? "1" : "0";
 	process.env.FAKE_RG_EXIT = String(behaviour.exit);
+	process.env.FAKE_RG_FLOOD = behaviour.flood ? "1" : "0";
 	t.after(async () => {
 		for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key];
 		Object.assign(process.env, saved);
@@ -92,6 +101,20 @@ test("stderr 写满管道也不会把 rg 卡住", { skip: NO_SHELL_SPAWN }, asyn
 	const res = await grepTool.execute({ pattern: "from" }, ctx(dir, AbortSignal.timeout(5_000)));
 	assert.match(textOf(res), /rg-only\.txt:1:from-ripgrep/, "ripgrep 找到的结果要原样交回来");
 	assert.ok(Date.now() - started < 4_000, `不该等到超时才结束，实际 ${Date.now() - started}ms`);
+});
+
+test("收满上限就结束 rg，不等它扫完整棵树", { skip: NO_SHELL_SPAWN }, async (t) => {
+	// `--max-count` 只管每个文件：替身在同一个「文件」里没完没了地报命中，不结束它就永远等不到 close。
+	const { dir } = await withFakeRg(t, { match: false, summary: false, exit: 0, flood: true });
+	const started = Date.now();
+	const res = await grepTool.execute({ pattern: "from" }, ctx(dir, AbortSignal.timeout(5_000)));
+	const text = textOf(res);
+	assert.ok(Date.now() - started < 4_000, `收满后应立刻结束，实际 ${Date.now() - started}ms`);
+	assert.match(text, /rg-only\.txt:1:from-ripgrep/);
+	assert.doesNotMatch(text, /from-fallback/, "被我们结束的 rg 不算失败，不该交给内置扫描器重搜");
+	assert.match(text, /hit the 200-match limit; more matches may exist/);
+	assert.equal((res.details as { count: number }).count, 200);
+	assert.equal((res.details as { stopped?: boolean }).stopped, true);
 });
 
 test("rg 出过错（退出码 2）但找到了匹配：结果照用，错误附在后面", { skip: NO_SHELL_SPAWN }, async (t) => {

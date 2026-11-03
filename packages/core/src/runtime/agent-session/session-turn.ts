@@ -109,8 +109,7 @@ export async function driveTurn(input: TurnInputs): Promise<void> {
 		await runStopFailureHooks(hooks, { reason: "error", error: error instanceof Error ? error.message : String(error), messages: [] }).catch(() => {});
 		throw error;
 	};
-	const first = await runTurn(config, onEvent).catch(failed);
-	const final = await continueWhileWorkRemains(first, {
+	const final = await continueWhileWorkRemains(() => runTurn(config, onEvent), {
 		run: (messages) => runTurn({ ...config, session: { ...config.session, messages, systemPrompt } }, onEvent),
 		// 日期块由循环在每次请求末尾接上（`environment`），续跑重建的历史里不带它。
 		messages: () => modelHistory(input.log, input.provider, input.model),

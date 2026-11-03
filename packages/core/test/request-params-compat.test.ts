@@ -138,3 +138,11 @@ test("组织没验证、不给推理摘要：只撤 summary", () => {
 	assert.equal(learnDroppedParam("qa", "m", `{"error":{"message":"Unsupported value.","param":"reasoning.summary","code":"unsupported_value"}}`), true);
 	assert.ok(droppedParams("qa", "m").has("reasoning-summary"));
 });
+
+test("端点点名 cache_control 就别再放缓存断点", () => {
+	resetRequestParamsCompat();
+	// 措辞照 Google 系拒未知字段的模子套的，没有真实样本：认的只是字段名。
+	assert.equal(learnDroppedParam("qa", "m", `Invalid JSON payload received. Unknown name "cache_control" at 'messages[0].content[0]': Cannot find field.`), true);
+	assert.deepEqual([...droppedParams("qa", "m")], ["cache-control"]);
+	assert.equal(learnDroppedParam("qa", "m", "cache_control is not permitted"), false, "撤过还被拒，不再重发");
+});

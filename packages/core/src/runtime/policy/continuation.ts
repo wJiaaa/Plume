@@ -90,18 +90,23 @@ export interface ContinuationDeps {
 	planless?: () => Message;
 }
 
+/**
+ * `first` 是第一段本身，不是它跑完的结果：判停的基线要在它开跑之前取。
+ */
 export async function continueWhileWorkRemains(
-	first: AgentRunResult,
+	first: () => Promise<AgentRunResult>,
 	deps: ContinuationDeps,
 ): Promise<AgentRunResult> {
-	let result = first;
 	/*
 	 * 打了勾的项数，和「连着几轮一项都没打上」。
 	 *
-	 * 起点取 `first` 跑完时的状态，所以下面第一次比较问的是「这一轮 200 步推进了什么」，而不是拿
-	 * 一个空清单当基线——后者会让第一次续跑无条件算作有进展。
+	 * 起点取第一段开跑之前的状态，下面每一次比较问的都是「刚跑完的这一段推进了什么」。从前起点取在
+	 * 第一段跑完之后，第一次比较拿同一份清单比同一份清单，必然记一次「没推进」：第一段打了勾、
+	 * 第二段没打，就在第二段末尾停下，和 `STALLED_CONTINUATIONS` 说的「允许一次」差了一段，
+	 * 停下时那句「连着 2 轮一项都没完成」也不是实话。
 	 */
 	let done = completed(deps.todos());
+	let result = await first();
 	let stalled = 0;
 	/** 「没有清单」的那一次宽限给过没有——见 `planless`。 */
 	let graced = false;

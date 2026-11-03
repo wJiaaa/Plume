@@ -108,7 +108,8 @@ test("both places that rebuild a compaction head pass the list", async () => {
 			.filter((line) => line.includes("summaryMessages(") && !line.includes("export function"));
 		assert.ok(heads.length > 0, `${file} 里应该有组装点`);
 		for (const line of heads) {
-			assert.match(line, /filesSeen\(/, `${file} 的这个组装点没带上已读清单：${line.trim()}`);
+			// 压缩当场逐条累加（`RetiredHistory.files()`，和 `filesSeen` 同一份），重建时从头算。
+			assert.match(line, /filesSeen\(|\.files\(\)/, `${file} 的这个组装点没带上已读清单：${line.trim()}`);
 		}
 	}
 });

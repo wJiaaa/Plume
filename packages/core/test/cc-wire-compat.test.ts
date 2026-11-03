@@ -13,6 +13,7 @@ import {
 	openaiChatCompletionsProvider,
 	resetChatCompletionsCompat,
 } from "../src/ai/openai-chat-completions.ts";
+import { withCacheBreakpoints } from "../src/ai/openai-chat-completions-request.ts";
 import { resetReasoningCompat } from "../src/ai/reasoning-compat.ts";
 import { droppedParams, resetRequestParamsCompat } from "../src/ai/request-params-compat.ts";
 import type { AssistantMessage, ModelConfig, ProviderConfig } from "../src/types.ts";
@@ -407,4 +408,69 @@ test("不支持思考的模型一个 reasoning_effort 都不发", async () => {
 	resetRequestParamsCompat();
 	const { bodies } = await runTurn([{ status: 200, body: OK_STREAM }], modelOf({ supportsThinking: false }), { thinking: "off" });
 	assert.equal("reasoning_effort" in bodies[0], false);
+});
+
+// ---------------------------------------------------------------------------
+// Claude 经中转：缓存断点
+// ---------------------------------------------------------------------------
+
+/**
+ * 严格端点不认 `cache_control`。措辞照 OpenAI 的 `invalid_request_error` 模子套的——**没有真实样本，
+ * 推断，未验证**（手上没有走这条链的 Claude 端点）。证明的是这条轴接得上。
+ */
+const CACHE_CONTROL_400 = JSON.stringify({
+	error: {
+		message: "Additional properties are not allowed ('cache_control' was unexpected) - 'messages.0.content.0'",
+		type: "invalid_request_error",
+		param: "messages.0.content.0",
+		code: null,
+	},
+});
+
+const claude = () => modelOf({ id: "openrouter/claude-sonnet", modelId: "anthropic/claude-sonnet-4.5", supportsThinking: false });
+const breakpoints = (body: Record<string, any>) =>
+	(body.messages as Array<{ role: string; content: unknown }>).flatMap((message, index) =>
+		Array.isArray(message.content) && message.content.some((part: { cache_control?: unknown }) => part.cache_control) ? [`${index}:${message.role}`] : [],
+	);
+
+test("CC：Claude 模型在 system 和末尾放缓存断点，别的模型一个都不放", async () => {
+	resetChatCompletionsCompat();
+	resetRequestParamsCompat();
+	resetReasoningCompat();
+	const { bodies } = await runTurn([{ status: 200, body: OK_STREAM }], claude(), { thinking: "off" });
+	assert.deepEqual(breakpoints(bodies[0]), ["0:system", "1:user"]);
+	assert.deepEqual(bodies[0].messages[0].content, [{ type: "text", text: "你是 Plume。", cache_control: { type: "ephemeral" } }]);
+
+	const other = await runTurn([{ status: 200, body: OK_STREAM }], modelOf({ supportsThinking: false }), { thinking: "off" });
+	assert.deepEqual(breakpoints(other.bodies[0]), []);
+	assert.equal(other.bodies[0].messages[0].content, "你是 Plume。", "非 Claude 的请求一字不变");
+});
+
+test("CC：端点点名不认 cache_control 就学会不放，并且立刻重发一次", async () => {
+	resetChatCompletionsCompat();
+	resetRequestParamsCompat();
+	resetReasoningCompat();
+	const { bodies, done } = await runTurn([{ status: 400, body: CACHE_CONTROL_400 }, { status: 200, body: OK_STREAM }], claude(), { thinking: "off" });
+	assert.equal(bodies.length, 2);
+	assert.deepEqual(breakpoints(bodies[0]), ["0:system", "1:user"]);
+	assert.deepEqual(breakpoints(bodies[1]), [], "重发的那份不带断点");
+	assert.equal(bodies[1].messages[0].content, "你是 Plume。");
+	assert.ok(done, "重发成功");
+});
+
+test("CC：断点只挂在有字的 text 块上，只有工具调用的助手消息和纯图片消息往前让", () => {
+	const image = { type: "image_url", image_url: { url: "data:image/png;base64,AA" } };
+	const marked = withCacheBreakpoints([
+		{ role: "system", content: "s" },
+		{ role: "user", content: "看看" },
+		{ role: "assistant", content: "", tool_calls: [{ id: "c", type: "function", function: { name: "read", arguments: "{}" } }] },
+		{ role: "tool", tool_call_id: "c", content: "结果" },
+		{ role: "user", content: [{ type: "text", text: "图" }, image] },
+		{ role: "user", content: [image] },
+	]) as Array<{ role: string; content: any }>;
+	assert.deepEqual(marked[3].content, [{ type: "text", text: "结果", cache_control: { type: "ephemeral" } }]);
+	assert.deepEqual(marked[4].content, [{ type: "text", text: "图", cache_control: { type: "ephemeral" } }, image]);
+	assert.deepEqual(marked[5].content, [image], "没有字的消息不放");
+	assert.equal(marked[2].content, "", "只有工具调用的助手消息不放");
+	assert.equal(marked[1].content, "看看", "一共只放 system 加两处");
 });

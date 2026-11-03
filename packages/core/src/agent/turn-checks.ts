@@ -172,6 +172,12 @@ function emptyReply(awaiting: AwaitWatch, answeringStop: (produced: readonly Mes
 		// 回 Stop 钩子那句话时一个字没写，是「没有要补的」：计划模式那句提醒就要它这样收尾，催了它只会补一句「无需计划」。
 		if (!saidNothing || answeringStop(produced)) return undefined;
 		if (nudges >= MAX_NUDGES) return { end: { reason: "error", error: "模型连续返回空回复，请重试或更换模型。" } };
+		/*
+		 * 步数用完也照催，不看 `turnsLeft`，理由同 `outputLimit`：催了，循环在下一步顶上按 `max_turns`
+		 * 收场，续跑链接得上，下一段的请求以这句话结尾；不催，规则往下问到底是 `done`，一条空回复就此
+		 * 算答完、续跑链不接。续跑链也不接时这句话留在历史末尾，人点「继续」时照样读得到。
+		 * `closing` 看 `turnsLeft` 是因为清单没勾完本来就归续跑链管，那句话到了上限是多余的。
+		 */
 		nudges += 1;
 		// 「请给出回答」在等子代理时是在要结论：`1155850f` 被这句逼出了一句「设计方向已明确」，最后一路还没回来。
 		const pending = awaiting.pending();
@@ -183,6 +189,7 @@ function emptyReply(awaiting: AwaitWatch, answeringStop: (produced: readonly Mes
 function stopHook(control: AgentControlContext): { check: Check<ProseTurn>; answering: (produced: readonly Message[]) => boolean } {
 	let said: Message | undefined;
 	return {
+		// 步数用完也问，理由同 `emptyReply`：钩子要它接着做，就按 `max_turns` 收场交给续跑链，不当成答完。
 		check: async ({ assistant, produced }) => {
 			if (!control.onStop || control.signal?.aborted) return undefined;
 			const responseText = assistant.content.filter((part) => part.type === "text").map((part) => part.text).join("");

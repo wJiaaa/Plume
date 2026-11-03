@@ -36,21 +36,33 @@ export function freshTokens(usage: Pick<Usage, "input" | "output" | "cacheWrite"
 
 export function estimateTokens(messages: Message[]): number {
 	let chars = 0;
-	for (const message of messages) {
-		if (message.role === "assistant") {
-			for (const c of message.content) {
-				if (c.type === "text") chars += c.text.length;
-				else if (c.type === "thinking") chars += c.thinking.length;
-				else chars += (c.argumentsText ?? JSON.stringify(c.arguments)).length + c.name.length;
-			}
-		} else {
-			for (const c of message.content) {
-				// A base64 image is worth roughly 1500 tokens regardless of its byte length.
-				chars += c.type === "text" ? c.text.length : 6000;
-			}
+	for (const message of messages) chars += estimateChars(message);
+	return charsToTokens(chars);
+}
+
+/**
+ * `estimateTokens` 的一条一条的那半：字符数能逐条加减，取整只在最后做一次。压缩时尾部一条条地删，
+ * 照这两半算出来的和每次对整段调 `estimateTokens` 是同一个数，而不必每删一条重扫一遍。
+ */
+export function estimateChars(message: Message): number {
+	let chars = 0;
+	if (message.role === "assistant") {
+		for (const c of message.content) {
+			if (c.type === "text") chars += c.text.length;
+			else if (c.type === "thinking") chars += c.thinking.length;
+			else chars += (c.argumentsText ?? JSON.stringify(c.arguments)).length + c.name.length;
+		}
+	} else {
+		for (const c of message.content) {
+			// A base64 image is worth roughly 1500 tokens regardless of its byte length.
+			chars += c.type === "text" ? c.text.length : 6000;
 		}
 	}
-	// ~3.5 characters per token averaged over code and prose.
+	return chars;
+}
+
+/** ~3.5 characters per token averaged over code and prose. */
+export function charsToTokens(chars: number): number {
 	return Math.ceil(chars / 3.5);
 }
 

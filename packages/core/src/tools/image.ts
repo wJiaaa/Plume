@@ -166,7 +166,7 @@ export const imageTool: Tool<ImageArgs> = {
 	name: "image_generate",
 	approvalKind: "network",
 	description:
-		"Generate images, or edit existing ones, with the image model the user configured, and show them in the conversation.\n\n" +
+		"Generate images, or edit existing ones, with the image model the user configured.\n\n" +
 		"Write `prompt` as a complete brief: subject, composition, setting, style or medium, lighting, colour, and any text that must appear (quoted, verbatim). " +
 		"Keep the user's language for text inside the picture. For an edit, say what to change and what must stay the same.\n\n" +
 		"To edit or use pictures as reference, list them in `images`: \"#1\" is the newest image in this conversation — something the user attached, or an earlier result — \"#2\" the one before it, and so on. " +

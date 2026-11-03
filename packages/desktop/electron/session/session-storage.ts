@@ -35,6 +35,26 @@ export function observeSessionStorage(store: SessionStorage, announce: (change: 
 		held.delete(change.id);
 		announce(change);
 	};
+	/*
+	 * 侧边聊天花了钱，父会话卡片上的 `sideUsage` 跟着变。它不在父会话的存档里，是读列表时现算的（`listSessions`），
+	 * 推送过来的 meta 里没有；从前窗口为了这一个数在每轮收尾读一遍整张会话表。现在侧边聊天写下记录后，隔
+	 * `SETTLE_MS` 只算这一个父会话、把它连同这个数推一次——一轮里十几条记录并成一次查询，算在推出去那一刻，
+	 * 读到的是最后一条落下之后的总数。
+	 */
+	const sidesPending = new Set<string>();
+	const sideSpent = (parentId: string) => {
+		if (sidesPending.has(parentId)) return;
+		sidesPending.add(parentId);
+		setTimeout(() => {
+			sidesPending.delete(parentId);
+			void Promise.all([store.get(parentId), store.sideUsage(parentId)]).then(
+				([parent, sideUsage]) => {
+					if (parent) announce({ id: parent.id, projectId: parent.projectId, meta: sideUsage ? { ...parent, sideUsage } : parent });
+				},
+				(cause: unknown) => console.error("[session-storage] side chat usage refresh failed", cause),
+			);
+		}, SETTLE_MS);
+	};
 	return {
 		async create(...args) {
 			const meta = await store.create(...args);
@@ -45,6 +65,7 @@ export function observeSessionStorage(store: SessionStorage, announce: (change: 
 			const meta = await store.append(...args);
 			// Token updates already travel over the agent stream; only directory changes need a push.
 			// Null is a write that landed after its session was deleted: announcing it would put the session back in the sidebar.
+			if (meta?.parentId) sideSpent(meta.parentId);
 			if (!meta || args[1].type === "event") return meta;
 			(args[1].type === "message" ? gathered : changed)({ id: meta.id, projectId: meta.projectId, meta });
 			return meta;
@@ -95,6 +116,7 @@ export function observeSessionStorage(store: SessionStorage, announce: (change: 
 			return loaded;
 		},
 		listSessions: (...args) => store.listSessions(...args),
+		sideUsage: (...args) => store.sideUsage(...args),
 		// Startup maintenance runs before clients connect.
 		pruneEmpty: (...args) => store.pruneEmpty(...args),
 		// Streaming a reply and the settings pages' reads change nothing the sidebar shows.

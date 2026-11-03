@@ -147,9 +147,9 @@ function returnedWindow(details: unknown, args: Record<string, unknown>): Window
 /**
  * Whether this result reaches the model as it came back, now and later.
  *
- * A view derived from the logged result has been rewritten already. One over the size threshold is
- * cut to head and tail by the aged pruner — in this same pass, or in a later batch — and the earlier
- * read it would have replaced is then the only copy of its middle.
+ * A view derived from the logged result has been rewritten already. One over the size threshold can
+ * be cut to head and tail by the pruning that follows in the same compaction (`compactIfNeeded`),
+ * and the earlier read it would have replaced is then the only copy of its middle.
  */
 function goesOutWhole(message: ToolResultMessage): boolean {
 	if (sourceOf(message) !== message) return false;

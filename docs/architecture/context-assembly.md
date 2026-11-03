@@ -131,7 +131,7 @@ token 和多花的钱，用来验收上面这些前缀修复、并定位前缀�
   DeepSeek 空闲 527 秒后 12.8 万 token 前缀只读到 2,048。按一个猜的时长把未命中记成「过期」，会把
   真打断藏起来，所以只把两次请求开始时间的间隔照实记在 `idleMs`，由看的人对照。
 - **本地前缀变没变**：每次请求把最终请求体按工具定义、系统提示词、请求参数、逐条消息切段算哈希（去掉
-  协议放在工具、system 块和内容块上的 `cache_control` 断点；请求参数不含逐次重算的输出上限、流式开关、
+  协议放在工具、system 块和内容块上的 `cache_control` 断点，去掉后只剩一个 text 块的内容按那个字符串算；请求参数不含逐次重算的输出上限、流式开关、
   路由键和模型名；开头三段每次都占位，缺了记空，关掉 thinking 或工具全断开时变化不会错记到后一段），和同一会话上一次比，第一处不同的段及其前后长度记在回复的 `prefix` 上，不存正文
   （`ai/prefix-fingerprint.ts`）。Chat Completions 的系统提示词是开头那条 `system` 消息，同样记成
   `system` 段，不然改提示词会被当成改写历史。工具定义在三条协议里都排最前，改一处整段重算；会话中途
@@ -179,6 +179,10 @@ token 和多花的钱，用来验收上面这些前缀修复、并定位前缀�
 - **严格端点**：未知字段被拒且错误串点名 `prompt_cache_key` 时，`request-params-compat.ts` 学到
   `cache-key`，撤掉重发一次，本进程内这个模型不再带；两个会话头照带。请求头不参与学习：未知请求头各家
   都是忽略。拒了却不点名字段的端点学不到，这类端点目前没有手动关的开关。
+- **Claude 走 Chat Completions**（模型 id 含 `claude`，多为 OpenRouter、LiteLLM 一类转成 Anthropic
+  的中转）：在 system 和最后两条有字的消息上放 `cache_control: {type: "ephemeral"}`，挂在 text 内容块上，
+  字符串内容改写成一个 text 块（`withCacheBreakpoints`）。错误串点名 `cache_control` 时学到
+  `cache-control`，撤掉重发，本进程内这个模型不再放。没有在真实端点上验证过。
 - **`device_id`** 由主机名和用户目录算出的 64 位十六进制摘要，不存盘，同一台机器每次启动都一样。
 - **要求专门会话头的服务商**由 `sessionHeaders` 按地址写死：目前只有 OpenCode Go
   （`opencode.ai/zen/go`）的 `x-opencode-session`，缺了直接 400，做法同 ZCode `opencode-session.ts`。

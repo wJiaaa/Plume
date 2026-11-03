@@ -4,7 +4,7 @@
  * 和另外两个轴（`reasoning-compat.ts` 管推理怎么还、`tool-pairing-compat.ts` 管工具怎么排）是并列的
  * 第三件事，各学各的。压进同一条梯子的代价上一轮付过了：端点说 A、梯子退 B，对不上号时只能靠碰巧。
  *
- * 这里管的六个参数有一个共同点——**它们都不是必需品**。少发一个最多损失一点控制力（思考没关干净、
+ * 这里管的七个参数有一个共同点——**它们都不是必需品**。少发一个最多损失一点控制力（思考没关干净、
  * 采样参数没生效），而多发一个是整个请求被拒。所以默认全发、撞了就撤，方向永远是安全的那边。
  *
  * 为什么是「学」而不是「配」：这四条在作者能测到的两个端点上**全部 200**（2026-09-11，
@@ -22,7 +22,7 @@
 import { compatKey } from "./compat-key.ts";
 
 /** 一个可以在撞墙后撤掉的请求参数。 */
-export type DroppedParam = "reasoning-off" | "reasoning-summary" | "tool-choice" | "sampling" | "include-encrypted" | "cache-key";
+export type DroppedParam = "reasoning-off" | "reasoning-summary" | "tool-choice" | "sampling" | "include-encrypted" | "cache-key" | "cache-control";
 
 /**
  * 端点拒绝某个参数时的说法，以及该撤哪个。
@@ -108,7 +108,19 @@ const SIGNALS: { pattern: RegExp; drop: DroppedParam; source: string }[] = [
 		pattern: /prompt_cache_key/i,
 		drop: "cache-key",
 		source: "严格端点拒未知字段时的错误串会点名字段；这个名字是唯一的",
-	},];
+	},
+	{
+		/*
+		 * Chat Completions 上给 Claude 放的缓存断点（`withCacheBreakpoints`）。它是 Anthropic 的字段，
+		 * 不在 OpenAI 的协议里，不认它的严格端点拒未知字段时会点名——和上一条 `prompt_cache_key` 同一类
+		 * 错误。**没有这个字段被拒的真实样本**（手上没有走这条链的 Claude 端点），认的只是字段名本身，
+		 * 它只属于缓存断点。
+		 */
+		pattern: /cache_control/i,
+		drop: "cache-control",
+		source: "同 prompt_cache_key：严格端点拒未知字段时点名字段；未取得真实样本",
+	},
+];
 
 /** 学到的结论：`${providerId} ${modelId}` → 这些参数别再发了。 */
 const learned = new Map<string, Set<DroppedParam>>();

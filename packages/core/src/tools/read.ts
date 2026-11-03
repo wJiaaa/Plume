@@ -11,6 +11,7 @@ import { markRead } from "./read-state.ts";
 import { sameNamed } from "./project-files.ts";
 import { scratchFile } from "./scratch-file.ts";
 import { decodeText } from "./text-layout.ts";
+import { LINE_KEEP_BYTES, readLineWindow, STREAM_ABOVE_BYTES } from "./large-text.ts";
 import { EXTRACTABLE, extractDocumentText } from "../files/document-text.ts";
 import { FRESH_RESULT_MAX_CHARS } from "../agent/prune.ts";
 
@@ -119,6 +120,10 @@ export const readTool: Tool<ReadArgs> = {
 			};
 		}
 
+		const extractable = EXTRACTABLE.has(extensionOf(absolute));
+		// Too big to load for a few thousand characters of it; extraction needs the whole document, so it keeps the old path.
+		if (info.size > STREAM_ABOVE_BYTES && !extractable) return readLarge(args, ctx, absolute, shownPath, info, charOffset);
+
 		const buffer = await readFile(absolute);
 
 		/*
@@ -134,7 +139,7 @@ export const readTool: Tool<ReadArgs> = {
 		 * Extraction first, because the byte test cannot tell a zip of XML from an executable and
 		 * would turn every one of these away before anything else got a chance.
 		 */
-		const extracted = EXTRACTABLE.has(extensionOf(absolute)) ? await extractDocumentText(absolute, buffer).catch(() => null) : null;
+		const extracted = extractable ? await extractDocumentText(absolute, buffer).catch(() => null) : null;
 		if (extracted) {
 			markRead(ctx, absolute);
 			/*
@@ -196,7 +201,8 @@ export const readTool: Tool<ReadArgs> = {
 		}
 
 		const offset = Math.max(1, args.offset ?? 1);
-		const shown = renderLines(allLines, offset, Math.max(1, args.limit ?? DEFAULT_LIMIT), charOffset - 1);
+		const limit = Math.max(1, args.limit ?? DEFAULT_LIMIT);
+		const shown = renderLines(allLines.slice(offset - 1, offset - 1 + limit), offset, allLines.length, charOffset - 1);
 		if (!shown) {
 			return errorResult(`Line ${offset} is past the end of the file (${allLines.length} lines).`);
 		}
@@ -237,9 +243,45 @@ interface LineWindow {
 	footer: string;
 }
 
-/** 从 `offset` 起带行号取一段，逐行按 `charStart` 开字符窗口；`offset` 越过末尾时返回 null。 */
-function renderLines(allLines: string[], offset: number, limit: number, charStart: number): LineWindow | null {
-	const slice = allLines.slice(offset - 1, offset - 1 + limit);
+/**
+ * Show a file too big to load: the same window and footer as a small one, from a streamed read.
+ *
+ * No outline — a file this size is a log or a dump, not source an outline helps with, and building
+ * one needs the whole text in memory, which is what this path exists to avoid.
+ */
+async function readLarge(args: ReadArgs, ctx: ToolContext, absolute: string, shownPath: string, info: Stats, charOffset: number): Promise<ToolResult> {
+	const askedWindow = args.offset !== undefined || args.limit !== undefined || charOffset > 1;
+	const offset = Math.max(1, args.offset ?? 1);
+	const limit = Math.max(1, args.limit ?? DEFAULT_LIMIT);
+	const window = await readLineWindow(absolute, offset, limit, charOffset - 1, OUTPUT_BUDGET, ctx.signal);
+	if (window.binary) return errorResult(`${args.path} looks like a binary file (${info.size} bytes) and cannot be read as text.`);
+	const shown = renderLines(window.lines, offset, window.totalLines, charOffset - 1);
+	if (!shown) return errorResult(`Line ${offset} is past the end of the file (${window.totalLines} lines).`);
+	const { body, shownEnd, long, footer } = shown;
+	// Said rather than shown as the whole line: `char_offset` past the kept part would read as the line's end.
+	const cut = window.cut.filter((line) => line <= shownEnd);
+	const cutNote = cut.length
+		? `\n\n[line${cut.length === 1 ? "" : "s"} ${cut.join(", ")} ${cut.length === 1 ? "is" : "are"} longer than ${LINE_KEEP_BYTES / 1024 / 1024} MB; only the first ${LINE_KEEP_BYTES / 1024 / 1024} MB can be read, and any character count above covers just that part — use grep or bash to search the rest]`
+		: "";
+	markRead(ctx, absolute, info, !askedWindow && shownEnd < window.totalLines);
+	return {
+		content: [{ type: "text", text: `[${shownPath}]\n${body}${footer}${cutNote}` }],
+		details: {
+			kind: "text",
+			path: shownPath,
+			totalLines: window.totalLines,
+			shownFrom: offset,
+			shownTo: shownEnd,
+			...(long[0] ? { charFrom: long[0].shownFrom, charTo: long[0].shownTo, longLines: long.length } : {}),
+		},
+	};
+}
+
+/**
+ * 从 `offset` 起的这一段带行号排出来，逐行按 `charStart` 开字符窗口；`slice` 为空（`offset` 越过末尾）时返回 null。
+ * `totalLines` 是整个文件的行数，页脚据此说还剩多少。
+ */
+function renderLines(slice: string[], offset: number, totalLines: number, charStart: number): LineWindow | null {
 	if (slice.length === 0) return null;
 
 	const long: LineWindow["long"] = [];
@@ -267,8 +309,8 @@ function renderLines(allLines: string[], offset: number, limit: number, charStar
 	const shownEnd = offset + rendered.length - 1;
 	const capped = rendered.length < slice.length ? ` (output capped at ${OUTPUT_BUDGET.toLocaleString("en-US")} characters)` : "";
 	const lineFooter =
-		shownEnd < allLines.length
-			? `\n\n[showing lines ${offset}-${shownEnd} of ${allLines.length}${capped}; call read again with offset=${shownEnd + 1} for more]`
+		shownEnd < totalLines
+			? `\n\n[showing lines ${offset}-${shownEnd} of ${totalLines}${capped}; call read again with offset=${shownEnd + 1} for more]`
 			: "";
 	return { body: rendered.join("\n"), shownEnd, long, footer: lineFooter + longLineFooter(long) };
 }
@@ -301,7 +343,8 @@ async function tryResource(
 			const lines = content.split("\n");
 			if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
 			const offset = Math.max(1, window.offset ?? 1);
-			const shown = renderLines(lines, offset, Math.max(1, window.limit ?? DEFAULT_LIMIT), window.charOffset - 1);
+			const limit = Math.max(1, window.limit ?? DEFAULT_LIMIT);
+			const shown = renderLines(lines.slice(offset - 1, offset - 1 + limit), offset, lines.length, window.charOffset - 1);
 			if (!shown) return errorResult(`Line ${offset} is past the end of ${resource.url} (${lines.length} lines).`);
 			content = shown.body + shown.footer;
 		}

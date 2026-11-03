@@ -83,12 +83,13 @@ export class TsServerBackend implements CodeIntelBackend {
 		 * nothing. `windowsHide` because the main process has no console, and a program started from
 		 * it without the flag opens one.
 		 */
-		this.child = spawn(process.execPath, [entry, "--disableAutomaticTypingAcquisition"], {
+		const child = spawn(process.execPath, [entry, "--disableAutomaticTypingAcquisition"], {
 			cwd: root,
 			stdio: ["pipe", "pipe", "pipe"],
 			env: { ...process.env, NODE_OPTIONS: "", ELECTRON_RUN_AS_NODE: "1" },
 			windowsHide: true,
 		});
+		this.child = child;
 		this.started = true;
 		/*
 		 * Detached from the parent's exit accounting.
@@ -113,8 +114,25 @@ export class TsServerBackend implements CodeIntelBackend {
 		 * turn a working lookup into a wall of noise attached to a tool result.
 		 */
 		this.child.stderr?.resume();
-		this.child.on("exit", () => this.failAll(new Error("tsserver 退出了。")));
-		this.child.on("error", (error) => this.failAll(error));
+		this.child.on("exit", () => this.gone(child, new Error("tsserver 退出了。")));
+		this.child.on("error", (error) => this.gone(child, error));
+	}
+
+	/**
+	 * The process is gone, and with it every file it had been told to open.
+	 *
+	 * `open` records what *this* process has opened; a new process has opened nothing. Resetting
+	 * only `started` left `sync` believing the restarted server already had the file, so it sent a
+	 * `reload` or nothing at all, and every answer after a crash was "No Project" until the session
+	 * ended. Only for its own process, as in `stdio.ts`: after a recycle and a restart, the old
+	 * process's late `exit` must not wipe the new one's state.
+	 */
+	private gone(child: ChildProcess, error: Error): void {
+		if (this.child !== child) return;
+		this.failAll(error);
+		this.open.clear();
+		this.buffer = "";
+		this.child = null;
 	}
 
 	ready(): boolean {

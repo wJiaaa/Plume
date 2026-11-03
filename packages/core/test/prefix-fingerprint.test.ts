@@ -79,6 +79,17 @@ test("诊断把回复上记下的前缀变化带出来", () => {
 	assert.deepEqual(second.prefix, { segments: 6, change });
 });
 
+test("字符串内容改写成带断点的单个 text 块不算前缀变化", () => {
+	// Chat Completions 给 Claude 放断点时就是这么改写的，下一轮断点挪走又变回字符串。
+	const marked = (text: string) => [{ type: "text", text, cache_control: { type: "ephemeral" } }];
+	const tail = { tools: [], messages: [{ role: "system", content: marked("s") }, { role: "user", content: marked("a") }] };
+	const next = { tools: [], messages: [{ role: "system", content: marked("s") }, { role: "user", content: "a" }, { role: "assistant", content: marked("b") }] };
+	assert.equal(comparePrefix(payloadSegments(tail), payloadSegments(next)).change, undefined);
+	// 内容真变了照样算。
+	const edited = { tools: [], messages: [{ role: "system", content: "s" }, { role: "user", content: "a!" }] };
+	assert.equal(comparePrefix(payloadSegments(tail), payloadSegments(edited)).change?.segment, "messages[1]");
+});
+
 // ---------------------------------------------------------------------------
 // 接线：真适配器发出去的请求体
 // ---------------------------------------------------------------------------

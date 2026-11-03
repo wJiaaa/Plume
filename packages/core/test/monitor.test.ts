@@ -252,7 +252,7 @@ test("人按停止：monitor 的进程被结束，普通后台命令照跑", asy
 	await bashTool.execute({ command: "pnpm dev", run_in_background: true }, h.ctx);
 
 	h.jobs.mute();
-	assert.ok(!procs[0].killed(), "插话也会静音：对话还在往下走，monitor 不受影响");
+	assert.ok(!procs[0].killed(), "静音只管普通后台命令，monitor 不受影响");
 	h.jobs.stopMonitors();
 	assert.ok(procs[0].killed(), "monitor 只为叫醒会话而存在，停止按钮收回它");
 	assert.ok(!procs[1].killed(), "开发服务器是人的，停止按钮不管它");
@@ -353,26 +353,6 @@ test("monitor 自己退出、最后一批还在攒批窗口里时模型用 bash_
 	await settle();
 	assert.equal(h.submitted.length, 1);
 	assert.match(textOf(h.submitted[0]!), /error: first/, "读过结局不等于被停掉：丢了这一批就再也找不回来");
-});
-
-test("插话时 monitor 刚自己退出、报告还在攒批窗口里：照送；普通后台命令的结束报告照旧不送", async (t) => {
-	const tick = useClock(t);
-	const procs = fakeProcesses();
-	const h = delivering();
-	await monitorTool.execute({ command: "tail -f app.log" }, h.ctx);
-	await bashTool.execute({ command: "pnpm build", run_in_background: true }, h.ctx);
-
-	procs[0].print("error: last words\n");
-	procs[0].exit(2);
-	procs[1].exit(0);
-	h.box.clear({ monitors: false });
-	h.jobs.mute();
-	tick(400);
-	await settle();
-	assert.equal(h.submitted.length, 1);
-	const text = textOf(h.submitted[0]!);
-	assert.match(text, /error: last words/, "monitor 的退出状态和最后几行");
-	assert.doesNotMatch(text, /pnpm build/, "插话静音了普通后台命令，它的结束不再叫醒会话");
 });
 
 // ── 接到会话上 ──

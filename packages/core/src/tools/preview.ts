@@ -60,13 +60,17 @@ export const previewTool: Tool<PreviewArgs> = {
 	 *
 	 * Charts are handed to interface blocks by name. Both this text and theirs claimed "a chart", and
 	 * this one — a tool, many times longer — won: "…给我个图表看看" over data already in hand became a page.
+	 * So that sentence stays here even though the interface section says much the same.
+	 *
+	 * The theme variable list stays too. `plume://preview` is read only before using the page API;
+	 * moved there, every themed page would cost a read first, or a guessed name that resolves to nothing.
 	 */
 	description:
 		"Show a self-contained web page inline in the conversation, above your reply; the user can also open it in the side panel. " +
 		"Use it when the answer is something to look at or interact with — a diagram, a table to explore, a demo or game, a layout put up for approval — " +
 		"not to display code for reading, where a fenced block is better. " +
 		"A chart or figures from data you already have go in an interface block (```ui) in your reply instead: it needs no script, and it is drawn as you write it. " +
-		"Pass `html` for a single file, or `files` for several (the entry defaults to index.html). Inline your CSS and JS; libraries may be loaded from a CDN over https. " +
+		"Pass `html` for a single file, or `files` for several. Inline your CSS and JS; libraries may be loaded from a CDN over https. " +
 		"The user watches the page appear while you write it, before any script runs: write it in order — styles in <head>, then the markup, then scripts at the end of <body> — and write as markup (text, layout, inline SVG) whatever does not need a script to exist. " +
 		"The page runs sandboxed, with no access to the user's machine or the app. " +
 		"It sits directly in the reply, as wide as the text column (about 700px, narrower in split views): leave html and body without a background, " +
@@ -83,8 +87,7 @@ export const previewTool: Tool<PreviewArgs> = {
 		"When the user is to pick one of the things the page shows, keep the picking out of the page: put it in an interface block in your reply, under the page. " +
 		"Fix and check again as needed, then publish the checked page with just its `id` — don't send the html again. " +
 		"To show an HTML file already on disk, pass its `path` instead of its content: a copy of that one file is shown, so call again after changing it, and keep its CSS, JS and images inline or on https. " +
-		"Never start a server (python -m http.server and the like) to look at a local page. " +
-		"This is the way to look at a preview: don't serve it yourself or open it with the browser tools. The user already sees a published page, so don't describe it in your reply.",
+		"This is the way to look at a page: never start a server for it (python -m http.server and the like) or open it with the browser tools. The user already sees a published page, so don't describe it in your reply.",
 	parameters: {
 		type: "object",
 		properties: {
@@ -105,7 +108,7 @@ export const previewTool: Tool<PreviewArgs> = {
 			},
 			path: { type: "string", description: "An .html file already on disk, absolute or relative to the workspace, shown instead of `html`/`files`." },
 			entry: { type: "string", description: "Which file to load. Defaults to index.html." },
-			check: { type: "boolean", description: "Load the page out of sight and return a screenshot, console errors and height, without publishing it." },
+			check: { type: "boolean", description: "Check the page out of sight instead of publishing it." },
 			width: { type: "number", description: "With check: the width to load it at, 320–1600. Defaults to the conversation's width." },
 			from: { type: "number", description: "With check: how far down the page the screenshot starts, in px. To see the part below the first screenshot, check again with the `from` the result gives." },
 			id: { type: "string", description: "Publish a page already sent with `check: true`, by the id that call returned. Pass nothing else with it." },

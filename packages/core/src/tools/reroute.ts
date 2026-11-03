@@ -1,9 +1,10 @@
 /**
  * 把 `cat a.txt` 改道到 `read`，而不是在提示词里说第十遍。
  *
- * 提示词是建议，拦截是保证。`bash` 的 guidelines 早就写着「用 read 别用 cat」，而模型照样
- * `cat`——不是没读到，是 `cat` 更顺手。一个错误结果比一句劝告有效得多：模型看见错误会改，
- * 看见劝告只会记一会儿。
+ * 提示词是建议，改道是保证。`bash` 的 guidelines 早就写着「用 read 别用 cat」，而模型照样
+ * `cat`——不是没读到，是 `cat` 更顺手。无歧义的 `cat`/`ls`/`rg` 由 `agent/tool-run.ts` 用
+ * `translatedShellCommand` 当场代为执行，结果末尾注明下次直接用哪个工具，钩子仍按 `bash` 跑；
+ * 从前是回一个错误再等一轮，每次都白花一整个请求。其余匹配 `REROUTES` 的才在 `bash.ts` 拦下报错。
  *
  * 只拦**纯粹的等价调用**。`cat a.txt | wc -l` 在算行数，那是 bash 的正当用途；`cat a > b` 在
  * 复制；`cat a && echo done` 在组合。任何管道、重定向、串联出现，都说明这条命令有 `read` 给

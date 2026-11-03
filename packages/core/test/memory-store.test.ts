@@ -38,3 +38,14 @@ test("a missing file is a real empty, and writes go through", async () => {
 	const entry = await addMemoryEntry("回答用中文");
 	assert.deepEqual((await loadMemory()).entries.map((e) => e.id), [entry.id]);
 });
+
+test("concurrent adds and removes all land: each one reads what the previous wrote", async () => {
+	await rm(memoryPath(), { force: true });
+	const contents = ["一", "二", "三", "四", "五", "六"];
+	const added = await Promise.all(contents.map((c) => addMemoryEntry(c)));
+	assert.deepEqual(new Set((await loadMemory()).entries.map((e) => e.content)), new Set(contents), "并发加的每一条都还在");
+
+	const removed = await Promise.all([removeMemoryEntry(added[0].id), removeMemoryEntry(added[1].id), addMemoryEntry("七")]);
+	assert.deepEqual(removed.slice(0, 2), [true, true]);
+	assert.deepEqual(new Set((await loadMemory()).entries.map((e) => e.content)), new Set(["三", "四", "五", "六", "七"]));
+});

@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { DEFAULT_SETTINGS, type Settings } from "../src/config/settings.ts";
 import { AgentSession } from "../src/runtime/agent-session/session.ts";
+import { SessionLog } from "../src/runtime/record/session-log.ts";
 import { SessionStore, type SessionRecord } from "../src/session/store.ts";
 import type { AssistantMessage, LlmContext, ModelConfig, ProviderConfig } from "../src/types.ts";
 import { emptyUsage } from "../src/types.ts";
@@ -268,4 +269,24 @@ test("discarding an active plan suppresses a late tool response and leaves no re
 		const records = await h.records();
 		assert.ok(records.some(record => record.type === "message" && record.message.role === "user" && record.message.clearsTaskPlan));
 	} finally { await h.cleanup(); }
+});
+
+test("一轮里工具表没变：记下的请求不再每一步深拷一遍；变了就重拷", () => {
+	const log = new SessionLog({} as never, () => {});
+	const params = { type: "object", properties: { path: { type: "string" } } };
+	// 循环每次请求都重新拼一个数组，条目里的 schema 是工具自己那一份，引用不变。
+	const table = () => [{ name: "read", description: "读文件", parameters: params }];
+	const request = (tools: LlmContext["tools"]): LlmContext => ({ systemPrompt: "s", messages: [], tools });
+
+	log.captureRequest(request(table()), MODEL);
+	const first = log.requestContext!.context.tools;
+	log.captureRequest(request(table()), MODEL);
+	assert.equal(log.requestContext!.context.tools, first, "同一份工具表只拷一次");
+	assert.notEqual(first[0]!.parameters, params, "拷的是副本，不是原件");
+	assert.deepEqual(first, table());
+
+	log.captureRequest(request([{ name: "read", description: "读文件（新）", parameters: params }]), MODEL);
+	assert.equal(log.requestContext!.context.tools[0]!.description, "读文件（新）", "说明变了就重拷");
+	log.captureRequest(request([...table(), { name: "edit", description: "改文件", parameters: { type: "object" } }]), MODEL);
+	assert.deepEqual(log.requestContext!.context.tools.map((tool) => tool.name), ["read", "edit"], "多了一件也重拷");
 });

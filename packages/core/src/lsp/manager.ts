@@ -102,8 +102,15 @@ export class CodeIntelManager {
 
 		let pending = this.starting.get(backend);
 		if (!pending) {
+			/*
+			 * 起来的那一刻开始计时（起不来的不计，它没占着什么），不等下一次 `acquire`。只在等待窗口里看一眼的话，冷启动超过
+			 * `waitMs` 的那台（大项目上的 tsserver 常常如此）就永远没有计时器，一直活到会话结束。
+			 */
 			pending = backend
 				.start(root)
+				.then(() => {
+					if (backend.ready()) this.touch();
+				})
 				.catch(() => {})
 				.finally(() => this.starting.delete(backend));
 			this.starting.set(backend, pending);
@@ -117,8 +124,6 @@ export class CodeIntelManager {
 		 * `tsserver` can take on a large project.
 		 */
 		const won = await Promise.race([pending.then(() => true), delay(waitMs).then(() => false)]);
-		// 起来了就开始计时——起不来的不计，它没占着什么。
-		if (backend.ready()) this.touch();
 		return won && backend.ready() ? backend : null;
 	}
 

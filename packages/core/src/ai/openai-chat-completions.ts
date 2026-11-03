@@ -2,7 +2,7 @@
  * OpenAI Chat Completions API adapter (`POST /v1/chat/completions`).
  */
 
-import { toChatCompletionsMessages, toChatCompletionsTools } from "./openai-chat-completions-request.ts";
+import { toChatCompletionsMessages, toChatCompletionsTools, wantsCacheBreakpoints, withCacheBreakpoints } from "./openai-chat-completions-request.ts";
 import { sanitizeToolPairing } from "./sanitize-history.ts";
 import { toolNameFromStream } from "./tool-names.ts";
 import type {
@@ -121,7 +121,7 @@ export function learnChatCompletionsCompat(providerId: string, modelId: string, 
 	/*
 	 * 共用的那份参数轴（`request-params-compat.ts`）也来看一眼。
 	 *
-	 * 它管四个参数，而这条链只读其中三个。`include-encrypted` 是 Responses 专属的 `include` 数组，这条链
+	 * 这条链只读它管的参数里 `readHere` 那几个。`include-encrypted` 是 Responses 专属的 `include` 数组，这条链
 	 * 压根不发，所以学到它**不算**「值得重发」——重发的请求体会和刚被拒的那份一模一样，白烧一次钱。
 	 *
 	 * `reasoning-off` 起初也在排除之列，因为这条链关思考时什么都不发。后来实测发现「什么都不发」在
@@ -133,7 +133,7 @@ export function learnChatCompletionsCompat(providerId: string, modelId: string, 
 	const before = new Set(droppedParams(providerId, modelId));
 	learnDroppedParam(providerId, modelId, error, sent);
 	const after = droppedParams(providerId, modelId);
-	const readHere = ["sampling", "tool-choice", "reasoning-off", "cache-key"] as const;
+	const readHere = ["sampling", "tool-choice", "reasoning-off", "cache-key", "cache-control"] as const;
 	const droppedHere = readHere.some((param) => after.has(param) && !before.has(param));
 	return learnedField || droppedHere;
 }
@@ -256,15 +256,17 @@ async function* streamChatCompletions(
 		if (tokensField !== "max_tokens" && "max_tokens" in sampling) {
 			delete (sampling as Record<string, unknown>).max_tokens;
 		}
+		const messages = toChatCompletionsMessages(
+			context.systemPrompt ?? "",
+			sanitizeToolPairing(context.messages),
+			replay,
+			model,
+			padsMissingReasoning(scope.providerId, scope.modelId),
+		);
 		return {
 			model: model.modelId,
-			messages: toChatCompletionsMessages(
-				context.systemPrompt ?? "",
-				sanitizeToolPairing(context.messages),
-				replay,
-				model,
-				padsMissingReasoning(scope.providerId, scope.modelId),
-			),
+			// Claude 经中转时放缓存断点，端点点名不认就不放了：见 `withCacheBreakpoints`。
+			messages: wantsCacheBreakpoints(model.modelId) && !dropped.has("cache-control") ? withCacheBreakpoints(messages) : messages,
 			stream: true,
 			stream_options: { include_usage: true },
 			/*

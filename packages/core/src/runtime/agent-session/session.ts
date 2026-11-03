@@ -47,7 +47,7 @@ import { describeSubAgentContext, SubAgentContexts } from "../sub-agent/sub-agen
 import { DetachedDispatches } from "../sub-agent/detached-dispatches.ts";
 import type { FinishedSession } from "./delivery-message.ts";
 import { backgroundJobs } from "../../tools/background-jobs.ts";
-import { SessionActivity, type CompactOutcome } from "./session-activity.ts";
+import { SessionActivity, type CompactOutcome, type StopMark } from "./session-activity.ts";
 import { SessionDeliveries } from "./session-deliveries.ts";
 import { SessionInbox } from "./session-inbox.ts";
 import { sessionLookup } from "./session-lookup.ts";
@@ -140,6 +140,8 @@ export class AgentSession {
 	private projectLayer: Record<string, unknown> = {};
 	/** Bumped by every read of the project layer, so a slower, older read cannot land over a newer one. */
 	private projectReads = 0;
+	/** 上一次读项目层时说过的被拒键和错误；没变就不再说，见 `applyProjectConfig`。 */
+	private projectNotices = "";
 	/** 盯着技能和子智能体目录的那个，没有可听的目录时是 null。 */
 	private watcher: CapabilityWatcher | null = null;
 	private streamFn?: StreamFn;
@@ -157,6 +159,13 @@ export class AgentSession {
 	 * `log.emit`，记在 `emit` 里就一次也记不到——服务商报错、被停下的那一轮都会被当成 done。
 	 */
 	private lastEnd: Extract<AgentEvent, { type: "agent_end" }>["reason"] = "done";
+	/**
+	 * 收尾后的自动压缩在等会话闲下来：最近一次登记时的停止标记，没在等时是 null。
+	 *
+	 * 只挂一个等待者：从前每一轮收尾都往 `idleWaiters` 里多挂一个，后台子代理一跑半小时，期间收尾
+	 * 几十轮就攒几十个，闲下来时一起醒。见 `compactLater`。
+	 */
+	private idleCompactFrom: StopMark | null = null;
 	/** 正在收尾的这一轮的 `agent_end`：`submit` 开轮前清掉、跑完读走，交给开这一轮的调用方。 */
 	private turnEnd: TurnEnd | undefined;
 	/** 经日志出口发过的 `agent_end` 有几个：一轮抛了异常时，据此知道它自己有没有收场。见 `run`。 */
@@ -174,7 +183,7 @@ export class AgentSession {
 	 */
 	readonly subAgents = new SubAgentRegistry(
 		() => {
-			void this.emit({ type: "subagents", agents: this.subAgents.list() });
+			void this.emit({ type: "subagents", agents: this.subAgents.list() }).catch((error) => this.report(error));
 		},
 		/*
 		 * 一个子代理停下了，它还挂着的授权也就没人等了——收回，卡片跟着下来。
@@ -489,11 +498,12 @@ export class AgentSession {
 	 * 留着就要等下一次有人开口才读到，闲着的会话于是一直不动；交给送达，和闲着时来的信一样开一轮。
 	 * 人按了停的不送（停下是人的决定），通知留到下一轮开头读，请求丢掉：`halt` 丢的是那一刻已经到的，
 	 * 按停之后、收尾之前又到的在这里丢，不然它会在人下次开口时被读到，而发件方已经被告知信丢了。
-	 * 还有别的运行占着会话时也不动，那一轮会读到。
+	 * 还有别的运行占着会话时也不动，那一轮会读到。被插话、编辑重发停下的也不动：请求和通知都留着，
+	 * 打断它的那一句马上开新的一轮，开头就读到（`context`）；那一轮收尾时这里再看一次。
 	 */
-	private releaseLetters(mark: number): void {
+	private releaseLetters(mark: StopMark): void {
 		if (this.activity.stoppedSince(mark)) this.letters = this.letters.filter((letter) => !letter.request);
-		if (this.letters.length > 0 && !this.running && !this.activity.stoppedSince(mark)) {
+		if (this.letters.length > 0 && !this.running && !this.activity.haltedSince(mark)) {
 			for (const letter of this.letters.splice(0, this.letters.length)) this.deliveries.letter(letter);
 		}
 		this.announcePeerQueue();
@@ -612,8 +622,14 @@ export class AgentSession {
 		 *
 		 * `.plume/config.json` 是要提交进仓库的，落在里面的凭证就是已公开的凭证。安静地忽略它，
 		 * 写的人会以为它生效了——那正是「能正常工作、只是把密钥共享了」的那种错误。
+		 *
+		 * 和上一次读到的一样就不再说：设置页每改一项，主进程对每个开着的会话都会重读一遍项目层，
+		 * 同一句警告于是改一次设置就在每个会话里再落一条。文件改好了再改坏，内容变了，照样会说。
 		 */
-		if (layered.refused.length > 0) {
+		const notices = JSON.stringify([layered.refused, layered.error ?? ""]);
+		const repeated = notices === this.projectNotices;
+		this.projectNotices = notices;
+		if (!repeated && layered.refused.length > 0) {
 			await this.emit({
 				type: "notice",
 				level: "warn",
@@ -622,7 +638,7 @@ export class AgentSession {
 				params: { keys: layered.refused.join(", ") },
 			});
 		}
-		if (layered.error) {
+		if (!repeated && layered.error) {
 			const problem = layered.problem;
 			await this.emit({
 				type: "notice",
@@ -650,7 +666,8 @@ export class AgentSession {
 	async subAgentContextBreakdown(id: string): Promise<ContextBreakdown | null> {
 		const detail = this.subAgents.detail(id);
 		if (!detail) return null;
-		const seen = await this.subAgentContexts.get(id, () => this.store.read(this.log.meta.id));
+		// 只要它开跑时记下的模型和上下文那两类：不过滤就把整份日志（每一次请求、每个子代理的全部转录）都解析一遍。
+		const seen = await this.subAgentContexts.get(id, () => this.store.read(this.log.meta.id, 0, { kinds: ["subagent", "subagent_event"] }));
 		return describeSubAgentContext({
 			detail, seen, settings: this.settings,
 			fallback: resolveModel(this.settings, this.modelIdInEffect())?.model,
@@ -680,7 +697,7 @@ export class AgentSession {
 		const task = this.activity.compact((signal) => manualCompaction(this.compactionParts(), instructions, signal));
 		void task.finally(() => {
 			void this.watcher?.resume();
-			void this.tasks.drain();
+			this.drainTasks();
 		}).catch(() => {});
 		return task;
 	}
@@ -757,7 +774,7 @@ export class AgentSession {
 		 * 它要读一次盘，而这个方法是同步的（每一个改设置的路径都在调它）。不重新叠的话，
 		 * 在设置页改任何一项，都会把这个会话的项目配置默默清掉——而屏幕上没有任何东西说这件事。
 		 */
-		void this.applyProjectConfig();
+		void this.applyProjectConfig().catch((error) => this.report(error));
 	}
 
 	/**
@@ -863,7 +880,7 @@ export class AgentSession {
 		const mark = this.activity.mark();
 		const resume = async () => {
 			await this.cancelPendingPrompt();
-			if (this.activity.stoppedSince(mark)) { await this.emit({ type: "agent_end", reason: "aborted" }); return; }
+			if (this.activity.haltedSince(mark)) { await this.emit({ type: "agent_end", reason: "aborted" }); return; }
 			/*
 			 * A fresh session restored with pendingPrompt (e.g. from the desktop new session flow)
 			 * has its first prompt already written to disk before the session object exists. Trigger
@@ -876,13 +893,13 @@ export class AgentSession {
 					await this.title.fromPrompt(first.content, first.displayText === "" ? first.skillRef?.name ?? first.sessionRefs?.[0]?.title ?? "" : first.displayText);
 				}
 			}
-			if (this.activity.stoppedSince(mark)) { await this.emit({ type: "agent_end", reason: "aborted" }); return; }
-			await this.runThenDrain(undefined);
+			if (this.activity.haltedSince(mark)) { await this.emit({ type: "agent_end", reason: "aborted" }); return; }
+			await this.runThenDrain(mark, undefined);
 		};
 		const held = this.activity.hold("resume", resume);
 		void held.finally(() => {
 			this.releaseLetters(mark);
-			void this.tasks.drain();
+			this.drainTasks();
 			this.checkIdle();
 		}).catch(() => {});
 		return held;
@@ -932,9 +949,9 @@ export class AgentSession {
 		 *
 		 * 插话要等模型写完手上这一步——一次思考加一大段输出可以是好几分钟，按下去之后什么也没发生。
 		 * 停止用的就是停止按钮那一套（`halt`），半截回复怎么留、没跑完的工具怎么答，和按停一样；只是
-		 * 不收回 monitor 和定时唤醒——对话还在往下走，模型还指着它们。
-		 * 等到会话完全放手才提交，不然这句话会落在被停掉那一轮的回复前面，或者被当成插话收进去又
-		 * 随停止一起清掉。
+		 * 不收回后台命令、monitor、定时唤醒，也不清排着的话和来信——对话还在往下走，模型还指着它们。
+		 * 等到会话完全放手才提交，不然这句话会落在被停掉那一轮的回复前面，或者被当成插话收进一个
+		 * 已经停下的回合。
 		 */
 		let interrupting = false;
 		if (options.deliver === "interrupt" && this.running) {
@@ -1007,16 +1024,26 @@ export class AgentSession {
 			}
 			await options.title?.();
 
-			if (this.activity.stoppedSince(mark)) { await this.emit({ type: "agent_end", reason: "aborted" }); ended = this.turnEnd; return; }
-			await this.runThenDrain(options.thinking, () => { ended = this.turnEnd; });
+			if (this.activity.haltedSince(mark)) { await this.emit({ type: "agent_end", reason: "aborted" }); ended = this.turnEnd; return; }
+			await this.runThenDrain(mark, options.thinking, () => { ended = this.turnEnd; });
 		};
 		try { await this.activity.hold("prompt", accept); }
 		finally {
 			this.releaseLetters(mark);
-			void this.tasks.drain();
+			this.drainTasks();
 			this.checkIdle();
 		}
 		return ended;
+	}
+
+	/** 排着的任务趁会话空下来接着跑。没人等这个 promise，出了错在对话里说一声，不能丢成未处理的拒绝。 */
+	private drainTasks(): void {
+		void this.tasks.drain().catch((error) => this.report(error));
+	}
+
+	/** 没人等着的后台动作出了错：在对话里说一声。写盘本身坏了的时候这一句也落不下，那就只能算了。 */
+	private report(error: unknown): void {
+		void this.emit({ type: "notice", level: "error", message: error instanceof Error ? error.message : String(error) }).catch(() => {});
 	}
 
 	/**
@@ -1025,11 +1052,11 @@ export class AgentSession {
 	 * 这一轮抛了异常，排着的照样发：不发的话它们留在 inbox 里，等到下一次有人开口才被带出来，而且
 	 * 排在那句新话后面。第一个错误照样抛出去。`ran`：这一轮收了场、排着的还没开始的那一刻。
 	 */
-	private async runThenDrain(thinking: ThinkingLevel | undefined, ran: () => void = () => {}): Promise<void> {
+	private async runThenDrain(mark: StopMark, thinking: ThinkingLevel | undefined, ran: () => void = () => {}): Promise<void> {
 		let failure: { error: unknown } | undefined;
 		try { await this.run(thinking); } catch (error) { failure = { error }; }
 		ran();
-		try { await this.drainPending(); } catch (error) { failure ??= { error }; }
+		try { await this.drainPending(mark); } catch (error) { failure ??= { error }; }
 		if (failure) throw failure.error;
 	}
 
@@ -1038,19 +1065,20 @@ export class AgentSession {
 	 *
 	 * 一条 `followUp` 跑完可能又带出下一条，所以是循环而不是一次——而 `run` 本身在跑的时候
 	 * `this.running` 为真，所以循环里不会有第二个回合同时开始。
+	 *
+	 * 这一段（`mark` 之后）被停过就不再往下发，先看再取：按停时 inbox 已经清空；插话和编辑重发不清它，
+	 * 排着的要等打断它的那一句先跑完，由那一句开的这一段接着发。先取后看的话，取出来的那一条就丢了。
 	 */
-	private async drainPending(): Promise<void> {
+	private async drainPending(mark: StopMark): Promise<void> {
 		let failure: { error: unknown } | undefined;
-		while (!this.inbox.empty) {
+		while (!this.inbox.empty && !this.activity.haltedSince(mark)) {
 			// Orphaned steering comes out first; see `SessionInbox.next`.
 			const next = this.inbox.next();
 			if (!next) break;
-			if (this.activity.stopping) break;
-			const mark = this.activity.mark();
 			await this.log.commit(next.message);
 			await this.emit({ type: "message_start", message: next.message });
 			await this.emit({ type: "message_end", message: next.message });
-			if (this.activity.stoppedSince(mark)) break;
+			if (this.activity.haltedSince(mark)) break;
 			try { await this.run(next.thinking); } catch (error) { failure ??= { error }; }
 		}
 		if (failure) throw failure.error;
@@ -1162,9 +1190,27 @@ export class AgentSession {
 
 		// The queue moves the moment the workspace is free again. Skipped while draining,
 		// because that loop is already the thing calling us.
-		void this.tasks.drain();
+		this.drainTasks();
 		// 越线的那次回复刚落地、缓存还热：趁人还没开口先压掉。也等会话真闲下来，排着的先跑。
-		if (this.compactWhenIdle && this.lastEnd === "done") void this.whenIdle().then(() => this.compactIdle());
+		if (this.compactWhenIdle && this.lastEnd === "done") this.compactLater();
+	}
+
+	/**
+	 * 等会话真闲下来再压。已经在等就只把标记换成这一次的：后面又干净收尾了一轮，从这一轮算起。
+	 *
+	 * 闲下来时再看一眼有没有人按过停、最后那一轮是不是干净收尾的。后台子代理没回来时按停，
+	 * `dispatches.forget()` 让会话当场闲下来，不看这一眼就会在停下之后发一次付费的摘要请求。
+	 */
+	private compactLater(): void {
+		const waiting = this.idleCompactFrom !== null;
+		this.idleCompactFrom = this.activity.mark();
+		if (waiting) return;
+		void this.whenIdle().then(() => {
+			const from = this.idleCompactFrom;
+			this.idleCompactFrom = null;
+			if (!from || this.activity.stoppedSince(from) || this.lastEnd !== "done") return;
+			return this.compactIdle();
+		}).catch((error) => this.report(error));
 	}
 
 	/** 见 `idle-compaction.ts`。和手动压缩同一把锁；有人先一步占住了会话就算了，下一轮开头照常会看。 */
@@ -1178,7 +1224,7 @@ export class AgentSession {
 		}
 		await task.catch(() => {});
 		void this.watcher?.resume();
-		void this.tasks.drain();
+		this.drainTasks();
 	}
 
 	/** The stop button, and the command line's Ctrl-C: see `halt`. */
@@ -1204,12 +1250,22 @@ export class AgentSession {
 		void this.title.cancel();
 		// The prompt owner records a cancelled startup before resolving, so disposal cannot race
 		// an unawaited append after the caller has already finished the opening submission.
-		this.activity.stop();
-		// Steering and the queue both go: see `SessionInbox.clear`. A wakeup among them fires again: see `SessionWakeups.dropped`.
-		this.wakeups.dropped(this.inbox.clear());
-		// 没读到的请求跟着丢：路由器在这个会话闲下来时据此替它给发件方送一封「没读到」（`session-peers.ts`）。通知留到下一轮。
-		this.letters = this.letters.filter((letter) => !letter.request);
-		this.announcePeerQueue();
+		this.activity.stop({ interrupt: !revoke });
+		/*
+		 * 按停：插话和排队的都丢，见 `SessionInbox.clear`；里面有定时唤醒的，它会再响，见 `SessionWakeups.dropped`。
+		 * 没读到的请求跟着丢：路由器在这个会话闲下来时据此替它给发件方送一封「没读到」（`session-peers.ts`）。通知留到下一轮。
+		 *
+		 * 插话和编辑重发都不丢。打断它的那一句在这一轮放手后才进对话、开新的一轮，所以它自己不在 inbox
+		 * 里，不会被读两遍；还没被循环取走的插话由那一轮第一步取走（`drainSteering`），接在那一句后面；
+		 * 排着的等那一轮做完再发（`drainPending` 看 `haltedSince`，不在被打断的这一段里接着发）；来信留给
+		 * 那一轮开头读。从前这里不分停的是哪一种，人点「现在就发」，排在后面的话和别的会话等着回答的
+		 * 请求就一起没了，发件方还被告知信丢了。
+		 */
+		if (revoke) {
+			this.wakeups.dropped(this.inbox.clear());
+			this.letters = this.letters.filter((letter) => !letter.request);
+			this.announcePeerQueue();
+		}
 		/*
 		 * Explicitly, as well as through the chain.
 		 *
@@ -1229,14 +1285,22 @@ export class AgentSession {
 			// 后台子代理还在跑，它们停在授权上的问题也还有人等；收的只是这一轮自己的。
 			this.approvals.rejectWhere((request) => !request.from);
 		}
-		// 攒着没送的不再送回来（插话时跑完的子代理和 monitor 照送）；后台命令照跑，只是结束时不再叫醒会话。
-		this.deliveries.clear({ monitors: revoke, subAgents: revoke });
-		const jobs = backgroundJobs(this.can.state);
-		jobs.mute();
-		if (revoke) jobs.stopMonitors();
+		/*
+		 * 按停：攒着没送的不再送回来，后台命令照跑、只是结束时不再叫醒会话，monitor 停掉。
+		 *
+		 * 插话和编辑重发一样都不动。从前插话也静音后台命令、丢掉攒着的结束报告：模型在后台起了构建，
+		 * 人插一句话，构建跑完就再没人告诉它，它照着「结束时会通知你」一直等。monitor 和后台子代理
+		 * 早就是这样留着的，理由相同：对话还在往下走，模型还指着它们。
+		 */
+		if (revoke) {
+			this.deliveries.clear();
+			const jobs = backgroundJobs(this.can.state);
+			jobs.mute();
+			jobs.stopMonitors();
+		}
 		// Stop means stop. Letting the queue carry on after the button was pressed would be
 		// the opposite of what pressing it asks for. An interrupt is not that: the queue waits its turn.
-		if (revoke) void this.tasks.cancelAll();
+		if (revoke) void this.tasks.cancelAll().catch((error) => this.report(error));
 		/*
 		 * 定时唤醒也一起取消，和「停下的会话不再被后台结果叫醒」同一个理由：自动续跑是模型的决定，按停止
 		 * 就是收回它。取消了就说一声——那是模型说过「十分钟后再看」的事，悄悄没了，人会一直等。
@@ -1381,8 +1445,11 @@ export class AgentSession {
 		await this.title.cancel();
 		if (this.running) {
 			this.halt({ revoke: false });
-			// Acceptance writes and follow-up draining also own the history, before/after driveTurn.
-			await (this.activity.holding("prompt") ?? this.activity.holding("resume"))?.catch(() => {});
+			/*
+			 * 等到没有谁再占着历史，和插话一样：开轮前后的写盘、排队的出队都在 hold 里，手动压缩和收尾后的
+			 * 自动压缩也占着它。只等 hold 的话，压缩还在写边界时这里就截断了历史，边界落在截掉的尾巴上。
+			 */
+			await this.activity.quiet();
 		}
 		await rewind(this.rewindParts(), messageIndex);
 		await this.prompt(content, options);

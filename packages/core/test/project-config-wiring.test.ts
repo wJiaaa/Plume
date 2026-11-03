@@ -113,6 +113,28 @@ test("项目文件带凭证会被拒，而且说出来", async () => {
 	assert.match((warned as { message: string }).message, /mcpServers/);
 });
 
+test("改设置时项目文件没变：同一句警告不再说一遍；文件变了才再说", async () => {
+	/*
+	 * 设置页每改一项，主进程对每个开着的会话都调 `updateSettings`，项目层跟着重读。从前每读一次就把
+	 * 被拒的键再报一遍、落一条进记录，开着五个会话改三次设置，就是十五条一样的警告。
+	 */
+	const cwd = await project("leaky-repeat", { providers: [{ id: "x", apiKey: "sk-真的密钥" }] });
+	const { session, events } = await sessionIn(cwd);
+	const notices = () => events.filter((e) => e.type === "notice" && (e.code === "project-config-refused" || e.code === "project-config-invalid-json"));
+	assert.equal(notices().length, 1, "打开时说一次");
+
+	session.updateSettings({ ...GLOBAL, autoSummarizeTitle: false });
+	await new Promise((resolve) => setTimeout(resolve, 50));
+	session.updateSettings({ ...GLOBAL, autoSummarizeTitle: true });
+	await new Promise((resolve) => setTimeout(resolve, 50));
+	assert.equal(notices().length, 1, "文件没变，改设置不再重复");
+
+	await writeFile(join(cwd, ".plume", "config.json"), "{ oops,", "utf8");
+	session.updateSettings({ ...GLOBAL });
+	await new Promise((resolve) => setTimeout(resolve, 50));
+	assert.deepEqual(notices().map((e) => e.type === "notice" && e.code), ["project-config-refused", "project-config-invalid-json"], "文件改坏了是新的问题，照样说");
+});
+
 test("坏掉的 JSON 不会让会话起不来", async () => {
 	/*
 	 * 有人正在改这个文件、多打了一个逗号——他该拿到的是全局设置加一句话，

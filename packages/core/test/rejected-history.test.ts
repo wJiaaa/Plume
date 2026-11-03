@@ -18,6 +18,7 @@ import { test } from "node:test";
 import { runAgent } from "../src/agent/loop.ts";
 import { runConfig } from "./run-config.ts";
 import { PRUNE_THRESHOLD_CHARS, stripOversizedToolResults } from "../src/agent/prune.ts";
+import { AgedToolPruner } from "../src/agent/aged-prune.ts";
 import type { AgentEvent } from "../src/agent/events.ts";
 import type { AssistantMessage, Message, ModelConfig, ProviderConfig } from "../src/types.ts";
 import { emptyUsage } from "../src/types.ts";
@@ -193,4 +194,43 @@ test("recovery happens once per turn, not in a loop", async () => {
 	const { sent, result } = await run([rejected(400), rejected(400)]);
 	assert.equal(sent.length, 2);
 	assert.equal(result.reason, "error");
+});
+
+/*
+ * 剪成一行的那份要活过这一轮：下一轮从日志重建（同一个剪枝器），和重启之后（换一个剪枝器、从日志
+ * 放回记下的视图），第一次请求发的都得是剪过的那份。从前只记在内存里、还要等下一次 `prepare` 才记，
+ * 剪完那次回复就收场的一轮什么都没留下，下一轮把被拒的那份原样再发一次。
+ */
+test("the history cut after a refusal is what later turns and a restarted session send", async () => {
+	const pruner = new AgedToolPruner();
+	const recorded: { source: Message; view: Message }[] = [];
+	pruner.onAdopt = (views) => void recorded.push(...views);
+	const turn = async (messages: Message[], with_: AgedToolPruner, replies: AssistantMessage[]) => {
+		const sent: Message[][] = [];
+		let at = 0;
+		const result = await runAgent(
+			runConfig({
+				session: { messages, pruner: with_ },
+				model: { provider: PROVIDER, model: MODEL, streamFn: async (context) => (sent.push([...context.messages]), replies[Math.min(at++, replies.length - 1)]) },
+			}),
+			async () => {},
+		);
+		return { sent, result };
+	};
+
+	const log = history();
+	const first = await turn(log, pruner, [rejected(400), reply({})]);
+	assert.equal(first.sent.length, 2);
+	assert.equal(recorded.length, 1, "the cut is handed over to be written down");
+	assert.ok(biggest([recorded[0]!.view]) < 400);
+
+	const next = [...log, ...first.result.messages, { role: "user" as const, content: [{ type: "text" as const, text: "接着说" }], timestamp: 10 }];
+	const later = await turn(next, pruner, [reply({})]);
+	assert.equal(later.sent.length, 1, "no second refusal");
+	assert.ok(biggest(later.sent[0]!) < 400, "the next turn sends the cut copy");
+
+	const restarted = new AgedToolPruner();
+	for (const { source, view } of recorded) restarted.remember(source, view);
+	const reopened = await turn(next, restarted, [reply({})]);
+	assert.ok(biggest(reopened.sent[0]!) < 400, "and so does the session reopened from its log");
 });

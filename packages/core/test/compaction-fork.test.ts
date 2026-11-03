@@ -42,10 +42,16 @@ const said = (text: string): AssistantMessage => ({ role: "assistant", content: 
 const calls = (id: string, path: string): AssistantMessage => ({ ...said(""), content: [{ type: "toolCall", id, name: "read", arguments: { path } }], stopReason: "toolUse" });
 const result = (id: string, text: string): Message => ({ role: "toolResult", toolCallId: id, toolName: "read", content: [{ type: "text", text }], isError: false, timestamp: 3 });
 
-/** 一段像样的历史：开头的请求，几轮读文件。 */
+/**
+ * 一段像样的历史：开头的请求，几轮读文件。
+ *
+ * 文件内容的长度有讲究：实测用量是写死的 185k，字少的话「实测 ÷ 估算」的比例就大，摘要指令的
+ * 每个字都被放大几百倍，独立请求按比例折算后放不下。每份 400 字时指令多一句话就会把这几条测试
+ * 挤到本地整理；4000 字时比例在几十，指令长度不再左右结果（1500 到 8000 都过）。
+ */
 function history(): Message[] {
 	const out: Message[] = [user(`登录页点了没反应，查一下原因并修好。${"背景说明".repeat(50)}`)];
-	for (let i = 0; i < 4; i++) out.push(calls(`c${i}`, `src/login-${i}.ts`), result(`c${i}`, `export const step${i} = ${"1".repeat(400)};`));
+	for (let i = 0; i < 4; i++) out.push(calls(`c${i}`, `src/login-${i}.ts`), result(`c${i}`, `export const step${i} = ${"1".repeat(4000)};`));
 	return out;
 }
 
@@ -258,4 +264,40 @@ test("the loop forks from the request it last sent: same prompt, same tools, its
 	assert.equal(fork.systemPrompt, previous.systemPrompt);
 	assert.deepEqual(fork.tools, previous.tools);
 	assert.deepEqual(fork.messages.slice(0, previous.messages.length), previous.messages, "what was sent last time leads the fork, unchanged");
+});
+
+/*
+ * 分叉用的那份消息和随后真正发出的那份，是同一次算出来的，逐字节相同。
+ *
+ * 从前各算一遍：`requestView` 每次扫整段历史，两次之间历史没变，结果也该一样——这条守的是复用之后
+ * 这一点仍然成立，没把一份过时的视图交给请求。
+ */
+test("the messages the fork is offered are exactly the ones the request then sends", async () => {
+	const offered: Message[][] = [];
+	const sent: Message[][] = [];
+	let turns = 0;
+	const config = runConfig({
+		session: {
+			sessionId: "s",
+			systemPrompt: SYSTEM,
+			messages: [user("读一下 f1")],
+			state: new Map(),
+			compact: async (_messages, _model, _observer, options) => {
+				if (options?.lineage) offered.push(structuredClone(options.lineage.messages));
+				return null;
+			},
+		},
+		model: {
+			streamFn: async (context) => {
+				turns += 1;
+				sent.push(structuredClone(context.messages));
+				return turns === 1 ? calls("c1", "src/f1.ts") : said("读完了。");
+			},
+		},
+		tools: { available: [{ name: "read", description: "Read a file", parameters: { type: "object", properties: {} }, execute: async () => ({ content: [{ type: "text", text: "x" }] }) }] as never },
+	});
+	await runAgent(config, () => {});
+
+	assert.equal(offered.length, 1, "the second turn has a request to fork from");
+	assert.deepEqual(sent[1], offered[0]);
 });

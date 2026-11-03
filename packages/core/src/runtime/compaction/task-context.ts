@@ -7,37 +7,51 @@ const REQUEST_SOURCES = 20;
 /** Read committed facts; model-written summaries cannot change task status or user wording. */
 export function taskContextFromHistory(messages: Message[]): CompactionContext {
 	let context: CompactionContext = {};
-	for (const message of messages) {
-		if (message.role === "user") {
-			if (message.synthetic && message.compactionContext) {
-				context = { ...message.compactionContext, ...(message.compactionContext.requests ? { requests: [...message.compactionContext.requests] } : {}) };
-			}
-			if (message.clearsTaskPlan) context.todos = [];
-			if (message.synthetic) continue;
-			const text = (message.displayText ?? message.content
-				.filter((block) => block.type === "text")
-				.map((block) => block.text).join("\n")).trim();
-			if (!text) continue;
-			const points = [...text];
-			const quoted = points.length <= REQUEST_CHARS ? text : `${points.slice(0, REQUEST_CHARS).join("")}\n[Request excerpt; use recall for the full wording.]`;
-			context.originalRequest ??= quoted;
-			context.latestRequest = quoted;
-			const requests = context.requests ?? [];
-			requests.push({ ordinal: (requests.at(-1)?.ordinal ?? 0) + 1, text: quoted, timestamp: message.timestamp });
-			// Full originals remain in the log; synthetic messages must not grow with the whole session.
-			context.requests = requests.slice(-REQUEST_SOURCES);
-		} else if (message.role === "toolResult" && message.toolName === "todo_write" && !message.isError) {
-			const details = message.details as { kind?: string; todos?: CompactionContext["todos"] } | undefined;
-			if (details?.kind === "todo" && Array.isArray(details.todos)) {
-				context.todos = details.todos.map(({ content, status }) => ({ content, status }));
-			}
-		} else if (message.role === "toolResult" && message.toolName === SUBMIT_PLAN_TOOL_NAME && !message.isError) {
-			// 只认批准的那份：打回的是反馈，不是计划。后一次批准覆盖前一次。
-			const approved = approvedPlanOf(message.details);
-			if (approved) context.plan = approved;
+	for (const message of messages) context = foldTaskContext(context, message);
+	return context;
+}
+
+/**
+ * `taskContextFromHistory` 的一步：读进一条消息，交回读到这里为止的事实。原地改 `context`，有时换一个新的。
+ *
+ * 拆出来是给压缩用的：被折进头里的那段一条条往后长，逐条读下去，不必每长一条就从头再读一遍。
+ * 中途要拿一份去用，先 `copyTaskContext`——后面的读会接着改它。
+ */
+export function foldTaskContext(context: CompactionContext, message: Message): CompactionContext {
+	if (message.role === "user") {
+		if (message.synthetic && message.compactionContext) {
+			context = { ...message.compactionContext, ...(message.compactionContext.requests ? { requests: [...message.compactionContext.requests] } : {}) };
 		}
+		if (message.clearsTaskPlan) context.todos = [];
+		if (message.synthetic) return context;
+		const text = (message.displayText ?? message.content
+			.filter((block) => block.type === "text")
+			.map((block) => block.text).join("\n")).trim();
+		if (!text) return context;
+		const points = [...text];
+		const quoted = points.length <= REQUEST_CHARS ? text : `${points.slice(0, REQUEST_CHARS).join("")}\n[Request excerpt; use recall for the full wording.]`;
+		context.originalRequest ??= quoted;
+		context.latestRequest = quoted;
+		const requests = context.requests ?? [];
+		requests.push({ ordinal: (requests.at(-1)?.ordinal ?? 0) + 1, text: quoted, timestamp: message.timestamp });
+		// Full originals remain in the log; synthetic messages must not grow with the whole session.
+		context.requests = requests.slice(-REQUEST_SOURCES);
+	} else if (message.role === "toolResult" && message.toolName === "todo_write" && !message.isError) {
+		const details = message.details as { kind?: string; todos?: CompactionContext["todos"] } | undefined;
+		if (details?.kind === "todo" && Array.isArray(details.todos)) {
+			context.todos = details.todos.map(({ content, status }) => ({ content, status }));
+		}
+	} else if (message.role === "toolResult" && message.toolName === SUBMIT_PLAN_TOOL_NAME && !message.isError) {
+		// 只认批准的那份：打回的是反馈，不是计划。后一次批准覆盖前一次。
+		const approved = approvedPlanOf(message.details);
+		if (approved) context.plan = approved;
 	}
 	return context;
+}
+
+/** 读到一半时取走的那份：`requests` 会被后面的读原地追加，要自己的一份。其余字段只会被整体换掉。 */
+export function copyTaskContext(context: CompactionContext): CompactionContext {
+	return { ...context, ...(context.requests ? { requests: [...context.requests] } : {}) };
 }
 
 export function formatTaskContext(context: CompactionContext, requestBudget = 6000): string {

@@ -79,7 +79,7 @@ test("a turn the connection killed is left for the person, not picked back up", 
 	const dropped = result({ reason: "error", error: "fetch failed (UND_ERR_SOCKET)" });
 	const unfinished: TodoItem[] = [{ content: "step", status: "pending" }];
 	const { seen, full } = deps([result({ reason: "done" })], { todos: () => unfinished });
-	const final = await continueWhileWorkRemains(dropped, full);
+	const final = await continueWhileWorkRemains(async () => dropped, full);
 
 	assert.equal(seen.runs, 0);
 	assert.equal(final, dropped, "and the failure is what gets reported");
@@ -90,7 +90,7 @@ test("running out of rounds still behaves as it did", async () => {
 	const capped = result({ reason: "max_turns" });
 	const unfinished: TodoItem[] = [{ content: "step", status: "pending" }];
 	const { seen, full } = deps([result({ reason: "done" })], { todos: () => unfinished });
-	await continueWhileWorkRemains(capped, full);
+	await continueWhileWorkRemains(async () => capped, full);
 
 	assert.equal(seen.runs, 1);
 	assert.match(seen.notices[0], /步数用尽/);
@@ -98,7 +98,7 @@ test("running out of rounds still behaves as it did", async () => {
 
 test("running out of rounds with the plan complete still stops", async () => {
 	const { seen, full } = deps([result({ reason: "done" })], { todos: () => [] });
-	await continueWhileWorkRemains(result({ reason: "max_turns" }), full);
+	await continueWhileWorkRemains(async () => result({ reason: "max_turns" }), full);
 
 	assert.match(seen.notices.at(-1) ?? "", /步数上限.*停下/);
 	assert.equal(seen.runs, 0);
@@ -123,10 +123,33 @@ test("rounds that finish nothing twice over stop rather than continuing", async 
 		todos: () => stuck,
 	});
 
-	await continueWhileWorkRemains(result({ reason: "max_turns" }), full);
+	await continueWhileWorkRemains(async () => result({ reason: "max_turns" }), full);
 
 	assert.equal(seen.runs, 1, "第一次零进展还给一次机会，第二次就该停——不是 10 次");
 	assert.match(seen.notices[seen.notices.length - 1], /一项都没完成/);
+});
+
+/*
+ * 第一段打了勾、之后不再打：第二段没推进是第一次，还给一段；第三段仍没推进才停。
+ *
+ * 基线从前取在第一段跑完之后，第一次比较是同一份清单比同一份清单，第二段末尾就停了——少给一段，
+ * 停下时还说「连着 2 轮一项都没完成」，可第一段明明完成了一项。
+ */
+test("a first stretch that ticks something earns the one allowed stall", async () => {
+	let ticked = 0;
+	const todos = (): TodoItem[] => [
+		{ content: "a", status: ticked > 0 ? "completed" : "pending" },
+		{ content: "b", status: "pending" },
+	];
+	const { seen, full } = deps([result({ reason: "max_turns" })], { todos });
+
+	await continueWhileWorkRemains(async () => {
+		ticked = 1;
+		return result({ reason: "max_turns" });
+	}, full);
+
+	assert.equal(seen.runs, 2, "第二段零进展还给一次，第三段零进展才停");
+	assert.match(seen.notices.at(-1) ?? "", /连着 2 轮/);
 });
 
 test("rounds that keep finishing things keep going", async () => {
@@ -155,7 +178,7 @@ test("rounds that keep finishing things keep going", async () => {
 		},
 	);
 
-	await continueWhileWorkRemains(result({ reason: "max_turns" }), full);
+	await continueWhileWorkRemains(async () => result({ reason: "max_turns" }), full);
 
 	assert.equal(seen.runs, 3, "每一轮都打上了勾，就一直继续到它自己说做完了");
 	assert.ok(

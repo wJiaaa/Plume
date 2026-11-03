@@ -75,6 +75,8 @@ export interface SessionStorage extends PartialSink, CallSink {
 	} | null>;
 	/** Most recently used first. Side chats only when `children` asks for them; see `SessionMeta.parentId`. */
 	listSessions(options?: { children?: boolean }): Promise<SessionMeta[]>;
+	/** What this session's side chats have spent together — the `sideUsage` `listSessions` adds — or undefined when it has none. */
+	sideUsage(parentId: string): Promise<Usage | undefined>;
 	truncateFrom(sessionId: string, messageIndex: number): Promise<{ meta: SessionMeta; messages: Message[] } | null>;
 	setArchived(sessionId: string, archived: boolean): Promise<SessionMeta | null>;
 	/** Re-file a session under another project: a new `cwd`, and with it a new `projectId`. */

@@ -29,6 +29,20 @@ export interface CompactOutcome {
 	after?: number;
 }
 
+/**
+ * Where the stop counters stood when a piece of work began; compare with `stoppedSince` / `haltedSince`.
+ *
+ * Two counters because there are two kinds of stop. The button (and quitting, disposing) takes the
+ * conversation's next steps back; a message that interrupts the turn, or an edit that rewinds it,
+ * stops the turn and goes on. Work that asks "did the person stop this?" — a wakeup, a delivery, a
+ * letter, an idle compaction — must not mistake the second for the first, or an interrupt drops
+ * what nobody asked to drop.
+ */
+export interface StopMark {
+	stops: number;
+	halts: number;
+}
+
 export class SessionActivity {
 	private readonly holds = new Map<HoldKind, Promise<void>>();
 	/**
@@ -40,8 +54,10 @@ export class SessionActivity {
 	private controller: AbortController | null = null;
 	private turn: Promise<void> | null = null;
 	private compactionTask: Promise<CompactOutcome> | null = null;
-	/** Bumped by every stop. Work that awaited something compares marks before acting on it. */
+	/** Bumped by every real stop. Work that awaited something compares marks before acting on it. */
 	private stops = 0;
+	/** Bumped by every stop, interrupts included: the hold that was running must not start another turn. */
+	private halts = 0;
 	private loopLive = false;
 	/**
 	 * Whether a steering message would be picked up right now: the loop is between `agent_start` and
@@ -170,17 +186,27 @@ export class SessionActivity {
 		return task;
 	}
 
-	/** Stop whatever is running. Work holding a `mark` from before this sees it through `stoppedSince`. */
-	stop(): void {
-		this.stops += 1;
+	/**
+	 * Stop whatever is running. Work holding a `mark` from before this sees it through `haltedSince`,
+	 * and through `stoppedSince` too unless this is an `interrupt` (see `StopMark`).
+	 */
+	stop({ interrupt = false }: { interrupt?: boolean } = {}): void {
+		this.halts += 1;
+		if (!interrupt) this.stops += 1;
 		this.controller?.abort();
 	}
 
-	mark(): number {
-		return this.stops;
+	mark(): StopMark {
+		return { stops: this.stops, halts: this.halts };
 	}
 
-	stoppedSince(mark: number): boolean {
-		return this.stops !== mark;
+	/** Someone really stopped the session: the button, quitting, disposing. */
+	stoppedSince(mark: StopMark): boolean {
+		return this.stops !== mark.stops;
+	}
+
+	/** The turn was stopped in any way, an interrupt included. */
+	haltedSince(mark: StopMark): boolean {
+		return this.halts !== mark.halts;
 	}
 }

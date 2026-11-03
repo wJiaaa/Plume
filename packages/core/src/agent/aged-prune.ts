@@ -14,7 +14,8 @@ import { carriesResults, derive, descends, dropUneventful, FRESH_RESULT_MAX_CHAR
  * `FRESH_RESULT_MAX_CHARS` 的剪成头尾。所以从日志重建时——包括重启之后——会得出同一份，前缀
  * 不靠记忆也接得上（`artifact://` 地址按内容取，见 `SessionCapabilities.keepArtifact`）。
  *
- * 记忆仍然要有，为的是压缩：压缩里剪过的结果经 `adopt` 记下，否则下一轮从日志重建回原文，前缀
+ * 记忆仍然要有，为的是压缩：压缩里剪过的结果经 `adopt` 记下（服务商拒收后剪成一行的也一样，见
+ * `loop.ts` 的 `requestReply`），否则下一轮从日志重建回原文，前缀
  * 从那里断开，而压缩判断读的是剪过之后的 usage，不会再触发，原文照发，隔轮振荡。采纳的那些经
  * `onAdopt` 交给会话写进日志，重启后由 `remember` 放回（`SessionLog.recordViews` / `restoredViews`），
  * 不然重启后的第一次请求把剪过的结果按原文重发，已经发出去的前缀就被改写了。
@@ -75,7 +76,7 @@ export class AgedToolPruner {
 
 	/*
 	 * 记下的视图优先于从原文重新剪出的副本：上一次发出去的是它，前缀才接得上。只有在它之上
-	 * 进一步剪出来的（服务商拒收后 `stripOversizedToolResults` 又剪了一次）才替换它。
+	 * 进一步剪出来的才替换它。这里替换只记在内存里、不落盘，要活过重启的改写走 `adopt`。
 	 */
 	private withViews(messages: Message[], sources: Message[]): Message[] {
 		let next = messages;

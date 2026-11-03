@@ -25,7 +25,7 @@ export const REPEAT_WARN = 3;
  * 纠正了这么多次还在重复，就不用再试了。
  *
  * 从 6 放宽到 10，因为第 3 次起的每一次都已经便宜得多：那时候不再把一模一样的结果重贴一遍，只回一句
- * 「这是第 N 次」（见 `agent/loop.ts` 里用 `repeats` 的那一段）。省下的空间换成多给七次纠正的机会。
+ * 「这是第 N 次」（见 `agent/turn-checks.ts` 的 `repeats`）。省下的空间换成多给七次纠正的机会。
  *
  * 但**上限必须存在**。纠正过七次还在问同一个问题，继续跑就只是烧钱了——项目第一原则的第二条
  * （更快更省）在这里生效，它不和第一条冲突：一个已经证明自己走不下去的回合，停下来不会让任何需求
@@ -149,8 +149,8 @@ export class RepetitionWatch {
 	 *
 	 * One pass because there is one set of fingerprints. This was two methods, and the caller ran
 	 * both over the same round — so every key was built twice, and a key is the whole argument
-	 * object serialised plus 400 characters of the result. The second pass could not disagree with
-	 * the first; it only cost.
+	 * object serialised plus a sha256 of the whole result (`sample`). The second pass could not
+	 * disagree with the first; it only cost.
 	 */
 	observe(calls: { name: string; arguments: unknown }[], results: Message[]): RepeatRound {
 		// A successful workspace mutation invalidates observations made before that change.
@@ -267,7 +267,7 @@ export function repeatHint(kind: "exact" | "intent" | "probe" | undefined, tool:
 }
 
 /**
- * 第三次起替换重复结果的那句话（见 `agent/loop.ts` 用 `repeats` 的那一段）。
+ * 第三次起替换重复结果的那句话（见 `agent/turn-checks.ts` 的 `repeats`）。
  *
  * 放在这里，是因为有两处要认得它：循环写它，`runtime/compaction/stale-results.ts` 要把它当成「不是原文」。
  */

@@ -37,26 +37,36 @@ const SEEN_FILES_CAP = 20;
  * 压缩当场发出去的头和下一次运行重建的头对不上，`messages[0]` 起整段前缀不命中（`20ec7460` seq 3921）。
  */
 export function filesSeen(messages: Message[]): { read: string[]; changed: string[] } {
-	const read = new Set<string>();
-	const changed = new Set<string>();
-	for (const message of messages) {
+	const seen = new SeenFiles();
+	for (const message of messages) seen.add(message);
+	return seen.list();
+}
+
+/** `filesSeen` 逐条读的那一半：压缩时被折进头里的那段一条条往后长，读到哪儿都能当场交出那一段的清单。 */
+export class SeenFiles {
+	private readonly read = new Set<string>();
+	private readonly changed = new Set<string>();
+
+	add(message: Message): void {
 		if (message.role === "user" && message.synthetic && message.compactionFiles) {
-			for (const path of message.compactionFiles.read) read.add(path);
-			for (const path of message.compactionFiles.changed) changed.add(path);
+			for (const path of message.compactionFiles.read) this.read.add(path);
+			for (const path of message.compactionFiles.changed) this.changed.add(path);
 		}
-		if (message.role !== "assistant") continue;
+		if (message.role !== "assistant") return;
 		for (const part of message.content) {
 			if (part.type !== "toolCall") continue;
 			const args = (part.arguments ?? {}) as Record<string, unknown>;
 			const path = (args.path ?? args.file ?? args.filePath) as unknown;
 			if (typeof path !== "string" || !path) continue;
-			if (part.name === "write" || part.name === "edit") changed.add(path);
-			else if (part.name === "read") read.add(path);
+			if (part.name === "write" || part.name === "edit") this.changed.add(path);
+			else if (part.name === "read") this.read.add(path);
 		}
 	}
-	// 改过的不再算进「只读过」——两边都出现时，「它变了」是更要紧的那件事。
-	for (const path of changed) read.delete(path);
-	return { read: [...read], changed: [...changed] };
+
+	list(): { read: string[]; changed: string[] } {
+		// 改过的不再算进「只读过」——两边都出现时，「它变了」是更要紧的那件事。
+		return { read: [...this.read].filter((path) => !this.changed.has(path)), changed: [...this.changed] };
+	}
 }
 
 /**

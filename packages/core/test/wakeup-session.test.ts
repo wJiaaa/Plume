@@ -289,7 +289,7 @@ const lastSaid = (context: LlmContext) => {
 	return last?.role === "user" ? last.content.map((part) => ("text" in part ? part.text : "")).join("") : "";
 };
 
-test("排着的唤醒被插话清掉：之后补送一次，循环任务也不会一直当成「上一次还没看完」", async () => {
+test("排着的唤醒碰上插话：不清掉，排在插话那一轮后面各送一次；循环任务之后照常触发", async () => {
 	const h = await harness(async (context) => {
 		if (lastIsWakeup(context)) return says("看过了。");
 		if (lastSaid(context).includes("README") && context.messages.at(-1)?.role === "user") return says("好。");
@@ -308,10 +308,11 @@ test("排着的唤醒被插话清掉：之后补送一次，循环任务也不�
 		assert.ok(h.session.running, "两条都排在这一轮之后");
 		await h.session.prompt([{ type: "text", text: "顺便看下 README" }], { deliver: "interrupt" });
 		await turn;
-		await until(() => !h.session.running, "插话那一轮收尾");
-		assert.equal(woken(h.session.messages).length, 0, "排着的那两条随插话清掉了");
-		h.clock.advance(MINUTE);
-		await until(() => woken(h.session.messages).length === 2 && !h.session.running, "清掉的那次补送");
+		await until(() => !h.session.running, "插话那一轮和排在后面的都跑完");
+		// 插话停的是这一轮，排着的照旧排着：从前随插话一起清掉，要等下一次到点才补送。
+		assert.equal(woken(h.session.messages).length, 2, "排着的那两条都送到了，各一次");
+		const readme = h.session.messages.findIndex((message) => message.role === "user" && message.interrupting);
+		assert.ok(readme >= 0 && h.session.messages.indexOf(woken(h.session.messages)[0]!) > readme, "排在插话那一句后面");
 		const ids = woken(h.session.messages).flatMap((message) => (message.role === "user" ? message.delivery?.map((report) => report.id) ?? [] : []));
 		assert.deepEqual(ids.sort(), ["cron-2", "wake-1"]);
 		h.clock.advance(MINUTE);

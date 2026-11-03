@@ -104,6 +104,29 @@ test("显式 dispose 之后计时器不会再回来补一刀", async () => {
 	assert.equal(counts.disposed, 1, "会话结束时杀过一次，空闲计时器不该再杀一次死的");
 });
 
+test("启动比等待窗口还慢的，起来之后照样会被回收", async () => {
+	/*
+	 * 大项目上 tsserver 冷启动常超过 3 秒：第一次问拿到 null，服务器在后台起来。原来只在等待
+	 * 窗口内就绪才开始计时，这一台就永远没有计时器，一直活到会话结束。
+	 */
+	const { backend, counts } = counting();
+	const start = backend.start;
+	backend.start = async (r) => {
+		await tick(300);
+		await start(r);
+	};
+	const manager = new CodeIntelManager([backend], { idleMs: 200 });
+
+	assert.equal(await manager.acquire(join(root, "src", "a.ts"), root, { waitMs: 50 }), null, "等待窗口内没起来，先给文本搜索");
+	await tick(300);
+	assert.equal(backend.ready(), true, "后台起来了");
+	assert.equal(counts.disposed, 0);
+
+	await tick(300);
+	assert.equal(counts.disposed, 1, "起来之后没人问，空闲到期被回收");
+	await manager.dispose();
+});
+
 test("真的 tsserver：空闲之后进程没了", { timeout: 60_000 }, async (t) => {
 	/*
 	 * 数进程，不数标志位。验收条款写的是「进程数验证」，因为一个 `disposed = true` 挡不住

@@ -106,6 +106,8 @@ export class SessionLog {
 	/** 历史是从日志载入的（`restore`）。没载入过的会话，日志里有的都经过这里写下，不必读盘。 */
 	private restored = false;
 	requestContext: RequestContext | null = null;
+	/** The tool table `requestContext` last copied, and the copy; see `toolsCopy`. */
+	private toolsSeen: { source: LlmContext["tools"]; copy: LlmContext["tools"] } | null = null;
 
 	private readonly store: SessionStorage;
 	private readonly sink: AgentEventSink;
@@ -277,7 +279,27 @@ export class SessionLog {
 
 	captureRequest(context: LlmContext, model: ModelConfig): void {
 		// Messages are immutable once committed; copy the array before the loop appends to it.
-		this.requestContext = { context: { ...context, messages: [...context.messages], tools: structuredClone(context.tools) }, model };
+		this.requestContext = { context: { ...context, messages: [...context.messages], tools: this.toolsCopy(context.tools) }, model };
+	}
+
+	/**
+	 * The tool table as last copied, copied again only when it changed.
+	 *
+	 * The loop builds a fresh array for every request, but its entries carry each tool's own name,
+	 * description and `parameters` object, and within a turn none of them change — cloning the full
+	 * schema set per request was a deep copy of the same tens of KB every step. Compared by those
+	 * three, the schema by reference: a tool whose schema is rebuilt gets a new object and is copied.
+	 */
+	private toolsCopy(tools: LlmContext["tools"]): LlmContext["tools"] {
+		const last = this.toolsSeen;
+		const same = last !== null && last.source.length === tools.length && tools.every((tool, at) => {
+			const was = last.source[at]!;
+			return was.name === tool.name && was.description === tool.description && was.parameters === tool.parameters;
+		});
+		if (same) return last.copy;
+		const copy = structuredClone(tools);
+		this.toolsSeen = { source: tools.map((tool) => ({ ...tool })), copy };
+		return copy;
 	}
 
 	/** Reuse the durable prompt after restart, including sources that have since changed on disk. */

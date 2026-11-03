@@ -307,6 +307,51 @@ export function toChatCompletionsMessages(
 	return out;
 }
 
+const EPHEMERAL = { type: "ephemeral" } as const;
+
+/** 这个模型值得放缓存断点：Anthropic 的模型，经一个把请求翻译成 Anthropic 的中转（OpenRouter、LiteLLM 一类）。 */
+export function wantsCacheBreakpoints(modelId: string): boolean {
+	return /claude/i.test(modelId);
+}
+
+/**
+ * 在 system 和最后两条消息上放 `cache_control` 断点。
+ *
+ * Anthropic 的缓存只认显式断点，而这条链原来一个都不放：Claude 经 Chat Completions 中转时每一轮都把
+ * 整段历史按全价重读。原生那条链早就在尾部滚动断点（`anthropic-messages-request.ts` 的
+ * `applyPromptCaching`）。这里放 system 和最后两条；断点挂在**内容块**上而不是消息上，照 opencode
+ * （`packages/ai/src/protocols/openai-chat.ts`：「Chat cache breakpoints belong on text content parts」），
+ * 所以字符串内容要改写成一个 text 块——`prefix-fingerprint.ts` 把这样的单块认作原来那个字符串。
+ * Anthropic 一次最多四个断点，这里用三个。
+ *
+ * 只挂在有字的 text 块上：空 text 块不能带断点，只有 `tool_calls` 的助手消息（`content: ""`）跳过、往前找。
+ * 端点不认这个字段时会点名它，学到 `cache-control` 就不再放（`request-params-compat.ts`）。
+ */
+export function withCacheBreakpoints(messages: unknown[]): unknown[] {
+	const out = messages.slice();
+	const system = (out[0] as { role?: unknown } | undefined)?.role === "system";
+	if (system) out[0] = withBreakpoint(out[0]) ?? out[0];
+	let placed = 0;
+	for (let i = out.length - 1; i >= (system ? 1 : 0) && placed < 2; i--) {
+		const marked = withBreakpoint(out[i]);
+		if (!marked) continue;
+		out[i] = marked;
+		placed++;
+	}
+	return out;
+}
+
+/** 最后一个有字的 text 块带上断点后的这条消息；没有能放的块时是 null。 */
+function withBreakpoint(message: unknown): unknown {
+	const record = message as Record<string, unknown>;
+	const content = record.content;
+	if (typeof content === "string") return content ? { ...record, content: [{ type: "text", text: content, cache_control: EPHEMERAL }] } : null;
+	if (!Array.isArray(content)) return null;
+	const at = content.findLastIndex((part) => (part as { type?: unknown })?.type === "text" && Boolean((part as { text?: unknown }).text));
+	if (at === -1) return null;
+	return { ...record, content: content.map((part, index) => (index === at ? { ...(part as object), cache_control: EPHEMERAL } : part)) };
+}
+
 /**
  * 回放一次工具调用时发的参数串。
  *

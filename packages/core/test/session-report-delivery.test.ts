@@ -57,7 +57,7 @@ test("攒一下就送成一条；送之前不算空闲", async () => {
 test("人按了停：攒着的不再送", async () => {
 	const { box, submitted } = deliveries();
 	box.sessionFinished(REPORT);
-	box.clear({ monitors: true });
+	box.clear();
 	await new Promise((resolve) => setTimeout(resolve, 500));
 	assert.equal(submitted.length, 0);
 	assert.equal(box.empty, true);
@@ -78,15 +78,4 @@ test("monitor 自己停了：攒批窗口里它前一批也送，从面板停掉
 	assert.match(text, /error: first/, "已经标成读过的行，这里丢了就再也找不回来");
 	assert.match(text, /error: last/);
 	assert.doesNotMatch(text, /from the panel/);
-});
-
-test("插话停下这一轮：攒着的 monitor 输出照送，别的照旧清掉", async () => {
-	const { box, submitted } = deliveries();
-	box.sessionFinished(REPORT);
-	box.monitored(batch("m1", "error: boom"));
-	box.clear({ monitors: false });
-	await new Promise((resolve) => setTimeout(resolve, 500));
-	assert.equal(submitted.length, 1);
-	assert.deepEqual(submitted[0].role === "user" ? submitted[0].delivery?.map((one) => one.kind) : null, ["job"]);
-	assert.match(textOf(submitted[0]), /error: boom/);
 });

@@ -53,6 +53,43 @@ export interface Replayed {
 	replyUsage: Usage;
 	steps: number;
 	subagentUsage: Usage;
+	/** What `usage` is added up from besides the replies: kept so `countsAfterCut` need not replay again. */
+	auxiliaryUsage: Usage;
+	subagentEntries: { seq: number; usage: Usage }[];
+}
+
+type Counts = Pick<Replayed, "usage" | "turns" | "replyUsage" | "steps" | "subagentUsage">;
+
+function tally(entries: readonly { message: Message }[], subagentEntries: readonly { usage: Usage }[], auxiliaryUsage: Usage): Counts {
+	let replyUsage = emptyUsage();
+	let turns = 0;
+	let steps = 0;
+	for (const { message } of entries) {
+		if (message.role === "assistant") {
+			steps += 1;
+			if (message.usage) replyUsage = addUsage(replyUsage, message.usage);
+		} else if (message.role === "user" && !message.synthetic) turns += 1;
+	}
+	let subagentUsage = emptyUsage();
+	for (const entry of subagentEntries) if (entry.usage) subagentUsage = addUsage(subagentUsage, entry.usage);
+	const usage = addUsage(addUsage(auxiliaryUsage, replyUsage), subagentUsage);
+	return { usage, turns, replyUsage, steps, subagentUsage };
+}
+
+/**
+ * The counts a `truncate` at `afterSeq`, appended after these records, would replay to — without
+ * reading the log a second time.
+ *
+ * `truncateFrom` holds the write lock while it works, and replaying the longest local session twice
+ * took about 110ms of it. A truncate drops the transcript entries and sub-agent replies after the
+ * cut, and nothing else that is counted: side calls (`usage` records) stay paid for either way.
+ */
+export function countsAfterCut(replayed: Replayed, afterSeq: number): Counts {
+	return tally(
+		replayed.entries.filter((entry) => entry.seq <= afterSeq),
+		replayed.subagentEntries.filter((entry) => entry.seq <= afterSeq),
+		replayed.auxiliaryUsage,
+	);
 }
 
 export function replayRecords(records: Iterable<SessionRecord>): Replayed {
@@ -110,19 +147,6 @@ export function replayRecords(records: Iterable<SessionRecord>): Replayed {
 		}
 	}
 
-	let replyUsage = emptyUsage();
-	let turns = 0;
-	let steps = 0;
-	for (const { message } of entries) {
-		if (message.role === "assistant") {
-			steps += 1;
-			if (message.usage) replyUsage = addUsage(replyUsage, message.usage);
-		} else if (message.role === "user" && !message.synthetic) turns += 1;
-	}
-	let subagentUsage = emptyUsage();
-	for (const entry of subagentEntries) if (entry.usage) subagentUsage = addUsage(subagentUsage, entry.usage);
-	const usage = addUsage(addUsage(auxiliaryUsage, replyUsage), subagentUsage);
-
 	return {
 		entries,
 		compactions,
@@ -130,10 +154,8 @@ export function replayRecords(records: Iterable<SessionRecord>): Replayed {
 		boundaryMark,
 		commandRuns: [...commandRuns.values()].map(({ run }) => (run.status === "running" ? interruptedCompaction(run) : run)),
 		hookRuns: [...hookRuns.values()].map(({ run }) => run),
-		usage,
-		turns,
-		replyUsage,
-		steps,
-		subagentUsage,
+		...tally(entries, subagentEntries, auxiliaryUsage),
+		auxiliaryUsage,
+		subagentEntries,
 	};
 }

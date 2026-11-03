@@ -92,10 +92,29 @@ async function saveMemory(store: MemoryStore): Promise<void> {
 	invalidateMemorySnapshots();
 }
 
+/**
+ * `memory.json` 的读—改—写一次只走一个，按文件路径排队（与 `project-memory.ts` 的 `inTurn` 同一写法）。
+ *
+ * 增删都是先读整份再写回整份：设置页连点几次「添加」，几次调用读到的是同一份旧列表，后写的覆盖
+ * 先写的，最后只剩一条。排队之后每一次都读到上一次写完的结果。
+ */
+const memoryTurns = new Map<string, Promise<unknown>>();
+
+function inMemoryTurn<T>(work: () => Promise<T>): Promise<T> {
+	const file = memoryPath();
+	const run = (memoryTurns.get(file) ?? Promise.resolve()).then(work, work);
+	memoryTurns.set(file, run.catch(() => {}));
+	return run;
+}
+
 /** 人在设置页里加的一条。`source` 里另外两种只出现在旧版本写下的数据里。 */
 export async function addMemoryEntry(content: string): Promise<MemoryEntry> {
 	const trimmed = content.trim();
 	if (!trimmed) throw new Error("Memory content cannot be empty");
+	return inMemoryTurn(() => addEntry(trimmed));
+}
+
+async function addEntry(trimmed: string): Promise<MemoryEntry> {
 	const store = await loadForWrite();
 	const entry: MemoryEntry = {
 		id: `mem_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -109,19 +128,21 @@ export async function addMemoryEntry(content: string): Promise<MemoryEntry> {
 	return entry;
 }
 
-export async function removeMemoryEntry(id: string): Promise<boolean> {
-	const store = await loadForWrite();
-	const initial = store.entries.length;
-	store.entries = store.entries.filter((e) => e.id !== id);
-	if (store.entries.length !== initial) {
-		await saveMemory(store);
-		return true;
-	}
-	return false;
+export function removeMemoryEntry(id: string): Promise<boolean> {
+	return inMemoryTurn(async () => {
+		const store = await loadForWrite();
+		const initial = store.entries.length;
+		store.entries = store.entries.filter((e) => e.id !== id);
+		if (store.entries.length !== initial) {
+			await saveMemory(store);
+			return true;
+		}
+		return false;
+	});
 }
 
-export async function clearAllMemory(): Promise<void> {
-	await saveMemory({ entries: [] });
+export function clearAllMemory(): Promise<void> {
+	return inMemoryTurn(() => saveMemory({ entries: [] }));
 }
 
 /** Formats memory entries for insertion into the agent's system prompt. */

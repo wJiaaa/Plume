@@ -143,12 +143,6 @@ export function allowance(sizes: number[], budget: number): number {
 }
 
 /**
- * One message, with any oversized text cut down. Returns the same object when nothing changed.
- *
- * Identity is the signal callers use to decide whether anything happened, so it matters that an
- * untouched message comes back as itself rather than as an equal copy.
- */
-/**
  * 把剪掉的原文存起来，换回一个地址。
  *
  * 传进来而不是在这里建：存在哪儿是会话的事，而这个模块是纯的——它现在唯一的副作用就是这个
@@ -163,6 +157,12 @@ export function carriesResults(message: Message): boolean {
 	return message.role === "toolResult" || (message.role === "user" && message.delivery !== undefined);
 }
 
+/**
+ * One message, with any oversized text cut down. Returns the same object when nothing changed.
+ *
+ * Identity is the signal callers use to decide whether anything happened, so it matters that an
+ * untouched message comes back as itself rather than as an equal copy.
+ */
 function pruneMessage(message: Message, threshold: number, artifacts?: ArtifactSink): Message {
 	if (!carriesResults(message)) return message;
 

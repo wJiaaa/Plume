@@ -118,3 +118,24 @@ test("after a stop, the Stop hook is not asked: nobody is waiting to be told to 
 	assert.equal(asked, 0);
 	assert.equal(sent.length, 1);
 });
+
+/*
+ * 最后一步上钩子说「还没完」、或者回复是空的：照样把那句话接上，按 `max_turns` 收场。
+ *
+ * 不接、往下问，结论就是 `done`——续跑链只认 `max_turns`，钩子要的那件事或那条空回复就此算答完。
+ * 接上之后历史以这句话结尾，续跑那一段的第一个请求回答的就是它。和输出截断那条同理（`output-limit`）。
+ */
+test("on the last step, the Stop hook's objection and the empty-reply nudge still go in and the run ends at the step limit", async () => {
+	const objection = synthetic("the tests have not been run");
+	const cases: [AssistantMessage, Partial<AgentControlContext>, RegExp][] = [
+		[said("done"), { onStop: async () => objection }, /tests have not been run/],
+		[reply([]), {}, /没有正文/],
+	];
+	for (const [last, control, tail] of cases) {
+		const { result } = await run([last], { ...control, maxTurns: 1 });
+		assert.equal(result.reason, "max_turns", "续跑链接得上");
+		const end = result.view.at(-1);
+		assert.equal(end?.role, "user", "续跑那次请求以这句话结尾，不以回复结尾");
+		assert.match(text(end), tail);
+	}
+});

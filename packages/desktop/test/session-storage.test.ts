@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
-import { SessionStore } from "@plume/core";
+import { SessionStore, emptyUsage, type AssistantMessage } from "@plume/core";
 import { observeSessionStorage, SETTLE_MS } from "../electron/session/session-storage.ts";
 import type { SessionChange } from "@plume/contract";
 import { readTrajectoryChanges } from "../electron/session/trajectory-changes.ts";
@@ -150,4 +150,31 @@ test("opening a conversation that recovers a cut-off reply tells the sidebar", a
 		source.close();
 		await rm(root, { recursive: true, force: true });
 	}
+});
+
+test("a side chat that spends pushes its parent once, carrying the side chats' total", async () => {
+	const root = await mkdtemp(join(tmpdir(), "plume-side-usage-"));
+	const changes: SessionChange[] = [];
+	const store = observeSessionStorage(new SessionStore(join(root, "sessions")), (change) => changes.push(change));
+	const settled = () => new Promise((resolve) => setTimeout(resolve, SETTLE_MS + 50));
+	const reply = (input: number): AssistantMessage => ({
+		role: "assistant", content: [{ type: "text", text: "ok" }], api: "openai-responses", provider: "p", model: "m",
+		usage: { ...emptyUsage(), input, output: 1 }, stopReason: "stop", timestamp: 1,
+	});
+	try {
+		const parent = await store.create(root, "m");
+		let side = await store.create(root, "m", "side", { parentId: parent.id, sideId: "panel-1" });
+		let other = await store.create(root, "m", "side 2", { parentId: parent.id, sideId: "panel-2" });
+		side = (await store.append(side, { type: "message", message: reply(10) }))!;
+		side = (await store.append(side, { type: "message", message: reply(20) }))!;
+		other = (await store.append(other, { type: "message", message: reply(5) }))!;
+		const before = changes.filter((change) => change.id === parent.id).length;
+		await settled();
+		const pushed = changes.filter((change) => change.id === parent.id);
+		assert.equal(pushed.length, before + 1, "a burst from both side chats is one push");
+		assert.equal(pushed.at(-1)?.meta?.sideUsage?.input, 35);
+		const [listed] = await store.listSessions();
+		assert.deepEqual(pushed.at(-1)?.meta?.sideUsage, listed?.sideUsage, "the same number the list computes");
+		assert.equal(await store.sideUsage(side.id), undefined, "a session without side chats has none");
+	} finally { await rm(root, { recursive: true, force: true }); }
 });

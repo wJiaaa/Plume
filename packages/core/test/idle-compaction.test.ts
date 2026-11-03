@@ -3,7 +3,7 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -186,6 +186,65 @@ test("a prune adopted while idle still counts after a restart", async () => {
 		assert.equal(summaries.length, 0, "重启后同样不信剪枝前那条回复的用量");
 	} finally {
 		await reopened?.dispose();
+		await rm(root, { recursive: true, force: true, maxRetries: 8, retryDelay: 25 });
+	}
+});
+
+test("按停时后台子代理还没回来：会话随之闲下来，也不再发收尾后的摘要请求；等着的只挂一个", async () => {
+	/*
+	 * 停止按钮收回放了手的子代理（`dispatches.forget()`），会话当场闲下来。登记在收尾那一刻的压缩
+	 * 不看这一眼，就在人按了停之后发一次付费的摘要请求。
+	 */
+	const root = await mkdtemp(join(tmpdir(), "ly-idle-stop-"));
+	const home = join(root, "home");
+	await mkdir(home, { recursive: true });
+	const saved = { PLUME_HOME: process.env.PLUME_HOME, HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
+	Object.assign(process.env, { PLUME_HOME: home, HOME: home, USERPROFILE: home });
+	const summaries: LlmContext[] = [];
+	let main = 0;
+	const streamFn = async (context: LlmContext, request?: { signal?: AbortSignal }): Promise<AssistantMessage> => {
+		const last = context.messages.at(-1);
+		if (last?.role === "user" && JSON.stringify(last.content).includes("## Goal & Original User Intent")) {
+			summaries.push(context);
+			return reply(SUMMARY);
+		}
+		if (!context.tools.some((tool) => tool.name === "task")) {
+			if (context.tools.length === 0) return reply("{}");
+			// 后台子代理：一直不回来，直到被停下。
+			await new Promise<void>((resolve) => request?.signal?.addEventListener("abort", () => resolve(), { once: true }));
+			return { ...reply(""), stopReason: "aborted" };
+		}
+		main += 1;
+		if (main === 1) {
+			return {
+				...reply(""), stopReason: "toolUse",
+				content: [{ type: "toolCall", id: "t1", name: "task", arguments: { description: "审查 a.ts", prompt: "看看 a.ts", subagent_type: "general" }, argumentsText: "{}" }],
+			};
+		}
+		// 最后一轮越线：放在平时，收尾后就该趁热压掉。
+		return reply(`第 ${main} 个回答`, main === PROMPTS + 1 ? 31_000 : 1000);
+	};
+	const settings: Settings = { ...SETTINGS, maxConcurrentSubAgents: 4, subAgentDelegation: "eager" };
+	const session = new AgentSession({ cwd: root, settings, store: new SessionStore(join(root, "sessions")), emit: () => {}, streamFn, compactWhenIdle: true });
+	await session.initialize();
+	try {
+		for (let i = 0; i < PROMPTS; i++) await session.prompt([{ type: "text", text: `问题 ${i}：${"请详细说明".repeat(400)}` }]);
+		assert.equal(session.subAgents.list().length, 1, "子代理派出去了");
+		assert.equal(session.idle, false, "它没回来，会话不算闲");
+		// 每一轮收尾都登记一次压缩：从前每次多挂一个等待者，子代理一跑半小时就攒几十个。
+		const waiters = Reflect.get(session, "idleWaiters") as unknown[];
+		assert.ok(waiters.length <= 1, `等着闲下来的只有一个，实际 ${waiters.length}`);
+
+		session.abort();
+		await until(() => session.idle);
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		assert.equal(summaries.length, 0, "按了停，不再花钱压缩");
+	} finally {
+		await session.dispose();
+		for (const [key, value] of Object.entries(saved)) {
+			if (value === undefined) delete process.env[key];
+			else process.env[key] = value;
+		}
 		await rm(root, { recursive: true, force: true, maxRetries: 8, retryDelay: 25 });
 	}
 });

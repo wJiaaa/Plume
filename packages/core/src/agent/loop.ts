@@ -89,9 +89,10 @@ export async function runAgent(config: AgentRunConfig, emit: AgentEventSink): Pr
 		await emit({ type: "turn_start", turn });
 
 		await takeSteering(run, turn === 1);
-		if (!(await prepareHistory(run))) return finish(run, { reason: "aborted" });
+		const view = await prepareHistory(run);
+		if (!view) return finish(run, { reason: "aborted" });
 
-		const assistant = await requestReply(run);
+		const assistant = await requestReply(run, view);
 		if (assistant === "aborted") return finish(run, { reason: "aborted" });
 		// A request let go for a model switch did nothing; it is not charged as a turn.
 		if (assistant === "switched") {
@@ -189,8 +190,14 @@ async function takeSteering(run: Run, first: boolean): Promise<void> {
 	}
 }
 
-/** Model switch, pruning, compaction — everything that reshapes history before a request. False when stopped. */
-async function prepareHistory(run: Run): Promise<boolean> {
+/**
+ * Model switch, pruning, compaction — everything that reshapes history before a request. Returns the
+ * request view of the history it settled on, or undefined when stopped.
+ *
+ * The view is worked out once and handed on: the compaction fork and the request that follows both
+ * need it, and `requestView` walks the whole history on every call.
+ */
+async function prepareHistory(run: Run): Promise<Message[] | undefined> {
 	const { session, model, control } = run.config;
 	/*
 	 * Switch at the top of the loop. Strip every provider handle before this point rather than
@@ -207,15 +214,19 @@ async function prepareHistory(run: Run): Promise<boolean> {
 	// Decide how new results look the first time they are sent; resend sent ones as they were.
 	replaceHistory(run, run.pruner.prepare(run.messages, session.artifacts));
 
+	let view = requestMessages(run);
 	if (session.compact) {
-		// 摘要请求从上一次请求分叉，消息就是下一次要发的那份（`requestMessages`），见 `lineage.ts`。
-		const lineage = lineageFrom(session.state, requestMessages(run));
+		// 摘要请求从上一次请求分叉，消息就是下一次要发的那份，见 `lineage.ts`。
+		const lineage = lineageFrom(session.state, view);
 		const compaction = await compactStep(session, control.signal, run.messages, run.active.model, run.emit, { provider: run.active.provider, lineage });
-		if (control.signal?.aborted) return false;
-		if (compaction) adoptCompaction(run, compaction.messages);
+		if (control.signal?.aborted) return undefined;
+		if (compaction) {
+			adoptCompaction(run, compaction.messages);
+			view = requestMessages(run);
+		}
 	}
 	// Compaction can wait on a model; cancellation during that await must prevent a new request.
-	return !control.signal?.aborted;
+	return control.signal?.aborted ? undefined : view;
 }
 
 /**
@@ -225,11 +236,11 @@ async function prepareHistory(run: Run): Promise<boolean> {
  * compaction and ask once more. Neither loops — the resend never comes back through here — and a
  * failed recovery surfaces the original error.
  */
-async function requestReply(run: Run): Promise<AssistantMessage | "switched" | "aborted"> {
+async function requestReply(run: Run, view: Message[]): Promise<AssistantMessage | "switched" | "aborted"> {
 	const { config: { session, tools, control }, emit } = run;
 	const context: LlmContext = {
 		systemPrompt: session.systemPrompt,
-		messages: requestMessages(run),
+		messages: view,
 		// 被延迟的不发，换成两个入口：见 `tools/mcp-search.ts`。
 		tools: toolTable(tools.available).map((t) => ({ name: t.name, description: t.description, parameters: t.parameters })),
 	};
@@ -251,6 +262,11 @@ async function requestReply(run: Run): Promise<AssistantMessage | "switched" | "
 				message: "模型服务拒收了这次请求。已把其中过大的工具输出压成一行，正在重试。",
 				code: "request-rejected",
 			});
+			/*
+			 * 剪成一行的那份要经剪枝器记下、写进日志（`onAdopt`），和压缩剪过的一样。只留在这次运行的
+			 * 历史里，下一轮从日志重建、或者重启之后，发出去的又是被拒的那份，再被拒一次。
+			 */
+			run.pruner.adopt(run.messages, stripped);
 			replaceHistory(run, stripped);
 			reply = await resend(reply);
 		}

@@ -59,6 +59,20 @@ test("stop aborts the running turn and is visible to work that took a mark befor
 	assert.equal(activity.stopping, false);
 });
 
+test("an interrupt stops the turn but is not a stop to work asking whether the person stopped it", () => {
+	const activity = new SessionActivity();
+	const mark = activity.mark();
+	const signal = activity.beginTurn();
+	activity.stop({ interrupt: true });
+	assert.equal(signal.aborted, true, "the turn is stopped all the same");
+	assert.equal(activity.haltedSince(mark), true, "the hold it ran in must not start another turn");
+	assert.equal(activity.stoppedSince(mark), false, "wakeups, deliveries and letters carry on");
+	activity.endTurn();
+	activity.stop();
+	assert.equal(activity.stoppedSince(mark), true);
+	assert.equal(activity.haltedSince(mark), true);
+});
+
 test("settled waits for the prompt and then for the turn's tools", async () => {
 	const activity = new SessionActivity();
 	const tools = gate();

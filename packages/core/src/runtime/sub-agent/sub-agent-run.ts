@@ -156,7 +156,7 @@ export async function runDispatched(
 			// 没写清单就撞上检查点的，再给一段——见 `ContinuationDeps.planless`。
 			planless: () => planDemand(checkpoint),
 		};
-		result = await continueWhileWorkRemains(await segment(history), checkpoints);
+		result = await continueWhileWorkRemains(() => segment(history), checkpoints);
 		/*
 		 * 收尾时有人对它说了话，还没送进去。
 		 *
@@ -169,7 +169,7 @@ export async function runDispatched(
 		 */
 		const heardMore = () => !controller.signal.aborted && registry.hasSteering(id);
 		while (heardMore()) {
-			result = await continueWhileWorkRemains(await segment(view), checkpoints);
+			result = await continueWhileWorkRemains(() => segment(view), checkpoints);
 		}
 		/*
 		 * 从这里起没有循环再取话了——讨交接那一轮不取，收尾的记账更不取。`close` 之后 `steer` 当场

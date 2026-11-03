@@ -23,7 +23,7 @@ import { beforeSessionDbClose, closeSessionDb, sessionDb, transaction } from "./
 import { interruptedResult, openRound, type CallPhase, type LiveCall } from "./live-calls.ts";
 import { assemblePartial, flushPendingPartials, type PartialPiece } from "./partial.ts";
 import { MAY_HOLD_MEDIA, mediaNamesIn, parkRecordPayload, rehydrateMessages, sessionMediaPath, slimJsonlLine } from "./payload.ts";
-import { REPLAY_KINDS, replayRecords } from "./replay-records.ts";
+import { countsAfterCut, REPLAY_KINDS, replayRecords } from "./replay-records.ts";
 import { auxiliaryCall, spendOf, type SpendEntry, type SpendRow } from "./spend.ts";
 import type { ActiveDay, ReplyTiming, SessionStorage } from "./storage.ts";
 import type { Boundary, SessionMeta, SessionRecord, SessionRecordInput } from "./types.ts";
@@ -238,6 +238,13 @@ export class SessionStore implements SessionStorage {
 		});
 	}
 
+	/** `listSessions` 给每个会话算的那份 `sideUsage`，只算这一个：侧边聊天花了钱时推给窗口用，不必为一个数读整张表。 */
+	async sideUsage(parentId: string): Promise<Usage | undefined> {
+		const rows = this.db.prepare("SELECT json_extract(meta, '$.usage') AS usage FROM sessions WHERE json_extract(meta, '$.parentId') = ?").all(parentId) as { usage: string | null }[];
+		if (rows.length === 0) return undefined;
+		return rows.reduce((sum, row) => (row.usage ? addUsage(sum, JSON.parse(row.usage) as Usage) : sum), emptyUsage());
+	}
+
 	/**
 	 * `turns`, `replyUsage`, `steps` and `subagentUsage` for a session written before they existed,
 	 * counted from its log once.
@@ -366,17 +373,20 @@ export class SessionStore implements SessionStorage {
 	async truncateFrom(sessionId: string, messageIndex: number): Promise<{ meta: SessionMeta; messages: Message[] } | null> {
 		// The transcript is read under the write lock too: another process appending between the read and the cut would move the cut.
 		const cut = transaction(this.db, () => {
-			const { entries } = this.replay(sessionId, false);
+			const replayed = this.replay(sessionId, false);
+			const { entries } = replayed;
 			if (!Number.isInteger(messageIndex) || messageIndex < 0 || messageIndex >= entries.length) return null;
 
 			// Never cut inside a tool-call turn: a cut on a tool result moves back past the call that produced it.
 			let target = messageIndex;
 			while (target > 0 && entries[target]?.message.role === "toolResult") target -= 1;
 			// The seq to keep is the one just before the record carrying the doomed message.
-			const truncated = this.write(sessionId, { type: "truncate", afterSeq: entries[target].seq - 1 }, false);
+			const afterSeq = entries[target].seq - 1;
+			const truncated = this.write(sessionId, { type: "truncate", afterSeq }, false);
 			if (!truncated) return null;
-			const replayed = this.replay(sessionId, false);
-			const counts = { messageCount: target, usage: settledUsage(truncated.usage, replayed.usage), turns: replayed.turns, replyUsage: replayed.replyUsage, steps: replayed.steps, subagentUsage: replayed.subagentUsage };
+			// Counted from the replay above rather than a second one under the same lock; see `countsAfterCut`.
+			const after = countsAfterCut(replayed, afterSeq);
+			const counts = { messageCount: target, usage: settledUsage(truncated.usage, after.usage), turns: after.turns, replyUsage: after.replyUsage, steps: after.steps, subagentUsage: after.subagentUsage };
 			// The meta row tracks message count; a truncate is the one write that lowers it.
 			const corrected = this.write(sessionId, { type: "meta", meta: { ...truncated, ...counts } }, false) ?? truncated;
 			return { meta: { ...corrected, ...counts }, kept: entries.slice(0, target).map((entry) => entry.message) };

@@ -53,6 +53,7 @@ ask_session / notify_session ─▶ 路由器（electron/peer/session-peers.ts�
                ├─ 在跑：攒在会话里，下一步之前读到（和人插话同一处，drainSteering）；
                │   循环最后一次取插话之后才到的，收场后交给 SessionDeliveries
                │   人按了停：请求丢掉，通知留到下一轮开头读到
+               │   人插话或编辑重发：请求和通知都留着，由插话开的那一轮开头读到
                └─ 闲着：SessionDeliveries 攒 400ms，几家并成一条开一轮，不和后台结果并在一起；
                    人在这期间按了停就不开，通知退回会话、下一轮开头读到，请求丢掉
 

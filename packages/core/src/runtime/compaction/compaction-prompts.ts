@@ -32,6 +32,12 @@ Never continue the conversation and never answer its questions. Output only the 
  *
  * `## Goal & Original User Intent` first for a reason. It is the section that must survive the most
  * rewrites intact, and it is the one drift shows up in first.
+ *
+ * The length target is there because the summary is written out token by token, and that is nearly
+ * all of a compaction's wall time: with no target, summaries ran 4k–7k tokens, grew with every
+ * rewrite, and a compaction took two minutes. The target yields to unfinished work, never the other
+ * way round. Numbers and the rollback condition: docs/architecture/agent-cost-and-stopping.md,
+ * "2026-11-03".
  */
 const SUMMARY_FORMAT = `Use exactly this format, omitting sections that do not apply:
 
@@ -44,7 +50,7 @@ const SUMMARY_FORMAT = `Use exactly this format, omitting sections that do not a
 ## Key Work & Task Progress
 
 ### Completed Tasks
-- [x] [Completed work, specific bugs resolved, files created/edited, with file paths]
+- [x] [Completed work, specific bugs resolved, files created/edited, with file paths — one line per item]
 
 ### Pending & In Progress Tasks
 - [ ] [All remaining tasks from the user's requests that have NOT yet been finished, including original checklist items and sub-tasks]
@@ -59,9 +65,9 @@ const SUMMARY_FORMAT = `Use exactly this format, omitting sections that do not a
 1. [Ordered, concrete, immediately actionable next steps to finish remaining user goals]
 
 ## Critical Context
-- [Exact file paths, symbol names, command outputs, error traces, and repository state needed to continue work seamlessly.]
+- [Exact file paths, symbol names, and repository state needed to continue work seamlessly. Of command output and errors, keep only the one key line the next step depends on, never whole outputs or traces.]
 
-Keep sections tight, highly dense and factual. Never drop unfinished tasks or the primary objective. Output only the summary, with no preamble.`;
+Keep sections tight, highly dense and factual. Aim for about 2,500 tokens in total; only exceed it when unfinished work genuinely needs it. Never shorten the goal, constraints or unfinished tasks to fit. Never drop unfinished tasks or the primary objective. Output only the summary, with no preamble.`;
 
 export const FIRST_SUMMARY = `Summarise the conversation above so another engineer can pick the work up with no other context. Ensure all user requests and task lists are fully recorded.
 
@@ -79,6 +85,8 @@ ${SUMMARY_FORMAT}`;
  * So carrying the previous summary forward is stated as the primary obligation, and rewriting it
  * is framed as an update: things move from In Progress to Done, blockers clear, next steps change.
  * The goal and the constraints are meant to survive unchanged for the life of the session.
+ * What does not survive verbatim is finished work: carried forward word for word, it made each
+ * summary longer than the last (4.2k to 7k tokens across one session's rewrites).
  */
 export const UPDATE_SUMMARY = `The conversation above begins with a summary of everything that came before it. Rewrite that summary so it also covers what has happened since.
 
@@ -86,6 +94,7 @@ This is an update, not a fresh summary:
 - CRITICAL: Carry forward the complete initial user goals, requirements, constraints, and ALL unfinished task items from the previous summary. Never let past goals be forgotten or replaced by temporary sub-steps.
 - Move finished items from Pending to Completed. Update Blockers and Next Steps according to the latest progress.
 - Drop only what has genuinely become obsolete — never drop earlier task instructions that are still unfulfilled.
+- Condense completed work instead of copying it: items finished before the previous summary shrink to one line each, without their command output or step-by-step detail. Only the goal, constraints and unfinished tasks are carried over in full.
 
 ${SUMMARY_FORMAT}`;
 

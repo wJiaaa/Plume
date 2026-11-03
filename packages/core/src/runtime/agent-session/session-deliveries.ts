@@ -109,34 +109,28 @@ export class SessionDeliveries {
 	 * stopped — the screen has only just said "stopped", and it starts moving again. Background
 	 * commands are not stopped (the stop button is for this conversation, not for the dev server
 	 * the person had it start), but they no longer wake the session when they end either: if the
-	 * model needs the result next turn, it reads it itself with `bash_output`.
+	 * model needs the result next turn, it reads it itself with `bash_output`. The stop button ends
+	 * monitors (`BackgroundJobs.stopMonitors`), so what they had gathered goes with them.
 	 *
-	 * Monitors are the exception either way. The stop button ends them (`BackgroundJobs.stopMonitors`)
-	 * and passes `monitors: true`, so what they had gathered goes with them. A message that interrupts
-	 * the turn leaves them running, and their gathered lines — already marked read — still go out. So
-	 * does the end of one that exited on its own just before: `mute` leaves monitors alone, and that
-	 * report carries its exit status and the lines after its last batch, which nothing else will show.
-	 * Other background commands that ended meanwhile are still dropped, the same as the running ones
-	 * `mute` just silenced.
-	 *
-	 * Finished sub-agents are the same kind of exception (`subAgents: false`): an interrupt leaves
-	 * the running ones going, so the ones that finished just before still have someone waiting.
+	 * Only the stop button (and quitting, disposing) calls this. A message that interrupts the turn,
+	 * or an edit that rewinds it, leaves everything here alone: the conversation goes on, and the
+	 * model still counts on what it set off. An edit that cuts a dispatch or a watch out of the
+	 * history drops that one with `keepOnly` / `forgetJobs`.
 	 *
 	 * Notices from other sessions are not dropped but handed back (`unsent`): nobody waits for an
 	 * answer to one, so a dropped notice is lost without anyone knowing. The next turn reads them.
 	 * Requests are dropped: their sender is waiting, and is told the request never got read.
 	 */
-	clear({ monitors, subAgents = true }: { monitors: boolean; subAgents?: boolean }): void {
-		if (subAgents) this.reports.length = 0;
-		this.finishedJobs = monitors ? [] : this.finishedJobs.filter((job) => job.kind === "monitor");
-		if (monitors) this.monitorEvents.length = 0;
+	clear(): void {
+		this.reports.length = 0;
+		this.finishedJobs.length = 0;
+		this.monitorEvents.length = 0;
 		this.finishedSessions.length = 0;
 		const notices = this.letters.filter((letter) => !letter.request);
 		this.letters.length = 0;
 		if (notices.length > 0) this.deps.unsent(notices);
 		if (this.timer) clearTimeout(this.timer);
 		this.timer = null;
-		if (this.monitorEvents.length > 0 || this.finishedJobs.length > 0 || this.reports.length > 0) this.schedule();
 	}
 
 	/**
