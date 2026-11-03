@@ -72,7 +72,8 @@ export type Run =
 	/** A stretch of tool work. */
 	/*
 	 * `shown` is a run of one: a page the agent put up for the reader with `preview`, or a suggested
-	 * session waiting on the reader's Start (`spawn_session`). Either is for the reader rather than
+	 * session waiting on the reader's Start (`spawn_session`), or work the side chat is waiting for the
+	 * reader to send somewhere (`dispatch_task` with a card). Each is for the reader rather than
 	 * the turn's work, so it is never folded away with the work — see `turnBlocks`.
 	 */
 	| { kind: "tools"; calls: Call[]; shown?: true };
@@ -245,15 +246,20 @@ export function walkRuns(
 	 * without publishing is the model looking at its page, and folds with the work.
 	 */
 	const failed = new Set<string>();
+	// 侧边聊天交出去、等人选去处的那几次：结果回来才知道是卡片还是已经直接派了，所以按结果认。
+	const choosing = new Set<string>();
 	for (let at = start; at < messages.length; at++) {
 		const message = messages[at];
-		if (message.role === "toolResult" && message.isError) failed.add(message.toolCallId);
+		if (message.role !== "toolResult") continue;
+		if (message.isError) failed.add(message.toolCallId);
+		else if ((message.details as { kind?: unknown } | undefined)?.kind === "dispatch_suggestion") choosing.add(message.toolCallId);
 	}
 	const pages = previewPages(start ? messages.slice(start) : messages, (at) => opensTurn(messages[start + at]) && !resumesTurn(messages, start + at));
 	const shows = (call: Call) => {
 		// 建议另开的会话是等人点「开始」的卡片，折进过程就没人点了；参数被退回的没有卡片，照常是活。
 		// 交出去的审阅也一样站出来：报告回来之前，那一行是去看审阅进度的唯一入口。
 		if (call.block.name === SPAWN_SESSION_TOOL || call.block.name === REVIEW_SESSION_TOOL) return !failed.has(call.block.id);
+		if (choosing.has(call.block.id)) return true;
 		if (call.block.name !== "preview" || failed.has(call.block.id)) return false;
 		if (call.page) return !("publishing" in call.page);
 		return call.block.arguments?.check !== true;

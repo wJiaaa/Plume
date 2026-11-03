@@ -203,6 +203,12 @@ export interface SideChatApi {
 /** Work the side chat handed to a session, waiting for it to be free. */
 export interface TasksApi {
 	list(sessionId: string): Promise<QueuedTask[]>;
+	/**
+	 * Queue work on a session from the renderer: the side chat's card, when the person picks the main
+	 * session. `sideId` is the side chat it came from, so its panel shows the receipt. Null when the
+	 * session cannot be brought up.
+	 */
+	enqueue(sessionId: string, text: string, sideId: string): Promise<QueuedTask | null>;
 	/** Only a task that has not started can be withdrawn; stopping a running one is `abort`. */
 	cancel(sessionId: string, taskId: string): Promise<boolean>;
 	/**

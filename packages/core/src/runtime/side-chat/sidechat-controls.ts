@@ -3,32 +3,70 @@ import type { Tool } from "../../types.ts";
 import type { MainSession } from "./side-main.ts";
 
 /**
+ * 侧边聊天自己判断该交出去、人没指定去哪时，留给卡片的东西：人在卡片上选交给主会话、开新会话，
+ * 还是就在侧边聊天里做。写进工具结果的 `details`，日志留着，重开面板卡片还在。
+ */
+export interface DispatchSuggestionDetails {
+	kind: "dispatch_suggestion";
+	title: string;
+	instruction: string;
+}
+
+/** 卡片标题按人数字的方式数（码点）。没给标题就用指令的开头。 */
+const TITLE_MAX = 60;
+
+function cardTitle(title: unknown, instruction: string): string {
+	const given = typeof title === "string" ? title.trim() : "";
+	const chars = [...(given || instruction.split("\n")[0]!)];
+	return chars.length > TITLE_MAX ? `${chars.slice(0, TITLE_MAX - 1).join("")}…` : chars.join("");
+}
+
+/**
  * Handing work to the main session instead of doing it here.
  *
  * The side chat can change files itself; this is for work that belongs to what the main session
- * is doing. It puts a note in the main session's queue and returns, and the main session runs it
- * later under the same approval rules as anything the user typed themselves.
+ * is doing. Where it goes is the person's call, not the model's: only when they said to hand it to
+ * the main session (`user_asked`) is it queued at once. Otherwise it is a card offering the main
+ * session, a new session or this side chat — a dispatch lands in the main session's history and
+ * runs at once when it is idle, which is not something to do on a guess. Queued work runs under
+ * the same approval rules as anything the user typed themselves.
  */
-export function dispatchTaskTool(main: MainSession, sideId: () => string): Tool<{ instruction: string }> {
+export function dispatchTaskTool(main: MainSession, sideId: () => string): Tool<{ instruction: string; title?: string; user_asked?: boolean }> {
 	return {
 		name: "dispatch_task",
 		description:
-			"把一件需要动手的事交给主会话执行（改文件、跑命令、查代码等）。主会话会在完成当前工作后按顺序执行。" +
-			"instruction 必须是一条完整、可独立执行的指令——主会话看不到侧边聊天的上下文。",
+			"把一件需要动手的事交出去（改文件、跑命令、查代码等）。" +
+			"用户明确说了交给主会话（「让主会话做」「交给主会话」）时 user_asked 为 true：直接排进主会话的队列，它在完成当前工作后执行。" +
+			"其余情况 user_asked 为 false：什么都不会开始，侧边聊天里出现一张卡片，由用户选择交给主会话、开一个新会话，还是就在这里做；调用后简短告诉用户卡片在等他选，然后结束这一轮。" +
+			"instruction 必须是一条完整、可独立执行的指令——主会话和新会话都看不到侧边聊天的上下文。",
 		parameters: {
 			type: "object",
 			properties: {
 				instruction: {
 					type: "string",
-					description: "交给主会话的完整指令，写成可以直接执行的一句话或一段话。",
+					description: "交出去的完整指令，写成可以直接执行的一句话或一段话。",
+				},
+				title: {
+					type: "string",
+					maxLength: TITLE_MAX,
+					description: "卡片标题：以动词开头的短语，不超过 60 字；选开新会话时也是新会话的名字。",
+				},
+				user_asked: {
+					type: "boolean",
+					description: "用户是否明确要求交给主会话。只在他说过时为 true，你自己判断该交出去的一律 false。",
 				},
 			},
-			required: ["instruction"],
+			required: ["instruction", "user_asked"],
 		},
-		summarize: (args) => `派给主会话：${String(args.instruction ?? "").slice(0, 40)}`,
+		summarize: (args) => `${args.user_asked === true ? "派给主会话" : "建议交出去"}：${String(args.instruction ?? "").slice(0, 40)}`,
 		async execute(args) {
 			const instruction = String(args.instruction ?? "").trim();
 			if (!instruction) return textResult("指令为空，没有派出任何任务。");
+			if (args.user_asked !== true) {
+				const details: DispatchSuggestionDetails = { kind: "dispatch_suggestion", title: cardTitle(args.title, instruction), instruction };
+				// 模型得听清楚什么都没开始：一张等人点的卡片，从它这边看和已经派出去一模一样。
+				return textResult("什么都还没开始：侧边聊天里有一张卡片，等用户选交给主会话、开新会话，还是就在这里做。简短告诉用户这件事，然后结束这一轮。", details);
+			}
 			const task = await main.enqueueTask(instruction, "side-chat", sideId());
 			return textResult(
 				main.running

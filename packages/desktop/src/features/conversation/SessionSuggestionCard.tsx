@@ -202,7 +202,8 @@ function Suggested({ sessionId, suggestion }: { sessionId: string; suggestion: S
 	);
 }
 
-function Started({ sessionId, callId, title, startedId, icon, label, lateReportBack = true }: {
+/** `sessionId` 是这一行所在那一屏的会话：点了在那一屏打开。侧边聊天那张交出去的卡片也用它（`DispatchSuggestionCard`）。 */
+export function Started({ sessionId, callId, title, startedId, icon, label, lateReportBack = true }: {
 	sessionId: string;
 	callId: string;
 	title: string;

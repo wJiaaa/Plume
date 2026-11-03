@@ -111,10 +111,23 @@ test("with nothing interrupted, resuming sends 继续 as the app's own message",
 test("each side chat shows only the tasks it dispatched itself", async () => {
 	const main = fakeMain();
 	const ctx = {} as ToolContext;
-	await dispatchTaskTool(main as unknown as MainSession, () => "side-old").execute({ instruction: "上一格派的活" }, ctx);
-	await dispatchTaskTool(main as unknown as MainSession, () => "side-new").execute({ instruction: "这一格派的活" }, ctx);
+	await dispatchTaskTool(main as unknown as MainSession, () => "side-old").execute({ instruction: "上一格派的活", user_asked: true }, ctx);
+	await dispatchTaskTool(main as unknown as MainSession, () => "side-new").execute({ instruction: "这一格派的活", user_asked: true }, ctx);
 
 	assert.deepEqual(dispatchedFrom(main.taskQueue, "side-new").map((t) => t.text), ["这一格派的活"], "新开的一格不该挂着上一格派的回执");
 	assert.deepEqual(dispatchedFrom(main.taskQueue, "side-old").map((t) => t.text), ["上一格派的活"]);
 	assert.deepEqual(dispatchedFrom(main.taskQueue, undefined), [], "还没问过第一句的一格什么也没派过");
+});
+
+test("人没点名主会话时什么也不排，只留一张卡片让人选去处", async () => {
+	const main = fakeMain();
+	const dispatch = dispatchTaskTool(main as unknown as MainSession, () => "side");
+	const result = await dispatch.execute({ instruction: "把 README 里过时的安装步骤改掉\n第二行细节", user_asked: false }, {} as ToolContext);
+	assert.equal(main.taskQueue.length, 0, "没人说交给主会话，就不该进它的队列");
+	assert.deepEqual(result.details, { kind: "dispatch_suggestion", title: "把 README 里过时的安装步骤改掉", instruction: "把 README 里过时的安装步骤改掉\n第二行细节" }, "没给标题就用指令的第一行");
+	assert.match(result.content.map((c) => (c.type === "text" ? c.text : "")).join(""), /什么都还没开始/, "模型得知道这件事还没做");
+
+	const missing = await dispatch.execute({ instruction: "随便做点什么", title: "x".repeat(80) }, {} as ToolContext);
+	assert.equal(main.taskQueue.length, 0, "漏了 user_asked 也按没点名算");
+	assert.equal([...(missing.details as { title: string }).title].length, 60, "标题截到 60 字");
 });

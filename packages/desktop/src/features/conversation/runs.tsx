@@ -11,6 +11,7 @@ import { PreviewCall, type PreviewInfo } from "../files/index.ts";
 import { ToolCard } from "./ToolCard.tsx";
 import { useDelegation, useDispatches } from "./DelegationCard.tsx";
 import { ReviewSessionRow, SessionSuggestionCard } from "./SessionSuggestionCard.tsx";
+import { DispatchSuggestionCard } from "./DispatchSuggestionCard.tsx";
 import type { ToolRun as ToolRunState } from "../../store/index.ts";
 import { useScopedFromMeta, useScopedFromToolRuns, useScopedRunning } from "../../app/session-scope.tsx";
 import { useWriteDraft } from "./write-draft.ts";
@@ -93,6 +94,8 @@ export function LiveToolCard({
   // 子智能体的转录里没有这件工具（`sessionOnly`），带着 `runs` 来的照旧是工具行。
   if (block.name === "spawn_session" && !runs) return <SessionSuggestionCard block={block} run={run} stopReason={stopReason} turnRunning={turnRunning} fallback={plain} />;
   if (block.name === "review_session" && !runs) return <ReviewSessionRow block={block} run={run} fallback={plain} />;
+  // 只有侧边聊天有这件工具；被点名直接派了的没有卡片可画，照旧是工具行。
+  if (block.name === "dispatch_task" && !runs) return <DispatchSuggestionCard block={block} run={run} fallback={plain} />;
   return plain;
 }
 

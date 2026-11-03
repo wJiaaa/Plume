@@ -141,6 +141,7 @@ export { storedContextBreakdown } from "./runtime/agent-session/stored-context.t
 export { storedSubAgents } from "./runtime/agent-session/stored-sub-agents.ts";
 export { createWakeupTools } from "./runtime/agent-session/wakeup-tools.ts";
 export { HISTORY_PROPERTIES, readHistory, type HistoryArgs } from "./runtime/side-chat/sidechat-history.ts";
+export type { DispatchSuggestionDetails } from "./runtime/side-chat/sidechat-controls.ts";
 export { summarizeSession } from "./runtime/summary/session-summary.ts";
 export {
 	plumeHome,

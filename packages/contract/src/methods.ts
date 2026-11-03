@@ -133,6 +133,7 @@ export const METHODS = {
 	},
 	tasks: {
 		list: "tasks:list",
+		enqueue: "tasks:enqueue",
 		cancel: "tasks:cancel",
 		dismiss: "tasks:dismiss",
 		resume: "tasks:resume",

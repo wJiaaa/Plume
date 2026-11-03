@@ -226,3 +226,16 @@ test("建议新会话的卡片自成一行，不并进前后的过程；参数�
 	const failing = [user("修侧栏"), refused, result(refused, 0, true), after, result(after, 0), answer("好了。")];
 	assert.deepEqual(describe(turnBlocks(runs(failing))), ["user", "work(spawn_session)", "work(read)", "assistant"], "过程里的一行，不是卡片");
 });
+
+/*
+ * 侧边聊天交出去、等人选去处的那张卡片同理；被点名直接派给主会话的没有卡片，照常是活。按工具结果认，
+ * 因为同一件工具两种都可能。
+ */
+test("等人选去处的交出去自成一行；直接派了的并进过程", () => {
+	const look = calls("read");
+	const hand = calls("dispatch_task");
+	const card = { ...result(hand, 0), details: { kind: "dispatch_suggestion", title: "改 README", instruction: "改 README" } } as Message;
+	assert.deepEqual(describe(turnBlocks(runs([user("顺手改下 README"), look, result(look, 0), hand, card, answer("卡片在等你选。")]))), ["user", "work(read)", "page(dispatch_task)", "assistant"]);
+	const sent = calls("dispatch_task");
+	assert.deepEqual(describe(turnBlocks(runs([user("交给主会话改 README"), look, result(look, 0), sent, result(sent, 0), answer("已派给主会话。")]))), ["user", "work(read)", "work(dispatch_task)", "assistant"]);
+});

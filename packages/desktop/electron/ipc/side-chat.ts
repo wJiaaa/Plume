@@ -1,7 +1,7 @@
 /** Side chats, the queue of work a session dispatched, and the wakeups it scheduled for itself. */
 
 import { ipcMain } from "electron";
-import { sessions } from "../session/session-hub.ts";
+import { ensureLiveSession, sessions } from "../session/session-hub.ts";
 import { sideChatClose, sideChatList, sideChatOpen } from "../session/side-chat-service.ts";
 
 export function registerSideChatIpc(): void {
@@ -9,6 +9,11 @@ export function registerSideChatIpc(): void {
 	ipcMain.handle("sidechat:open", (_event, sessionId: string, sideId: string) => sideChatOpen(sessionId, sideId));
 	ipcMain.handle("sidechat:close", (_event, sessionId: string, sideId: string) => sideChatClose(sessionId, sideId));
 	ipcMain.handle("tasks:list", (_event, sessionId: string) => sessions.get(sessionId)?.taskQueue ?? []);
+	ipcMain.handle("tasks:enqueue", async (_event, sessionId: string, text: string, sideId: string) => {
+		if (typeof text !== "string" || !text.trim() || typeof sideId !== "string") throw new Error("Invalid task");
+		// 要真去跑，所以走 ensureLiveSession：主会话可能还没在内存里。
+		return (await (await ensureLiveSession(sessionId))?.enqueueTask(text.trim(), "side-chat", sideId)) ?? null;
+	});
 	ipcMain.handle("tasks:cancel", async (_event, sessionId: string, taskId: string) => (await sessions.get(sessionId)?.cancelTask(taskId)) ?? false);
 	ipcMain.handle("tasks:dismiss", async (_event, sessionId: string, taskId: string) => (await sessions.get(sessionId)?.dismissTask(taskId)) ?? false);
 	ipcMain.handle("tasks:resume", async (_event, sessionId: string, taskId: string) => (await sessions.get(sessionId)?.resumeTask(taskId)) ?? false);
