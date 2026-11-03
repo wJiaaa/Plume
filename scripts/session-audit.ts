@@ -49,6 +49,7 @@ import {
 } from "../packages/core/src/runtime/record/cache-diagnostics.ts";
 import { afterCompaction, cacheLifetime, LIFETIME_BUCKETS, type AuditBoundary } from "./audit-compaction.ts";
 import { isFork, withoutCopies } from "./audit-copies.ts";
+import { PEER_TOOLS, peerStats, type PeerArrival, type PeerCall } from "./audit-peers.ts";
 import { KEEP_MIN } from "../packages/core/src/runtime/compaction/compaction-budget.ts";
 import { catalogModelFor } from "../packages/core/src/model-catalog.ts";
 import { loadCachedModelCatalog } from "../packages/core/src/model-catalog-sync.ts";
@@ -133,6 +134,9 @@ interface Session {
 	compactionRequests: CompactionRequest[];
 	/** 主会话里写下的边界，第 13 节用；子代理的不在这里。 */
 	boundaries: AuditBoundary[];
+	/** 第 15 节：会话间工具的调用与结果、收到的来信。 */
+	peerCalls: PeerCall[];
+	peerArrivals: PeerArrival[];
 }
 
 interface CompactionRequest {
@@ -179,6 +183,7 @@ function loadSessions(): Session[] {
 		const subAgents = new Map<string, string>();
 		const auxCost = new Map<string, number>();
 		const userPrompts: UserPrompt[] = [];
+		const peerArrivals: PeerArrival[] = [];
 		let finalTodos: { content: string; status: string }[] | undefined;
 		const fileEdits = new Map<string, number>();
 		const mainStream: CacheStream = { label: file.slice(0, 8), messages: [], boundaries: [] };
@@ -277,6 +282,7 @@ function loadSessions(): Session[] {
 					.map((p) => (p.type === "text" && p.text ? p.text : ""))
 					.join("");
 				userPrompts.push({ text, synthetic: message.synthetic === true });
+				if (Array.isArray(message.peer)) peerArrivals.push({ steered: message.steered === true, letters: message.peer as PeerArrival["letters"] });
 			} else if (message?.role === "assistant") {
 				round++;
 				if (typeof message.timestamp === "number") lastRequestAt = message.timestamp;
@@ -336,6 +342,13 @@ function loadSessions(): Session[] {
 				compactions: [...compactions.values()],
 				compactionRequests,
 				boundaries,
+				peerCalls: calls.filter((call) => (PEER_TOOLS as readonly string[]).includes(call.name)).map((call) => {
+					const result = results.get(call.id) as (Message & { details?: { kind?: unknown } }) | undefined;
+					const text = result?.role === "toolResult" ? result.content.map((part) => (part.type === "text" ? part.text : "")).join("") : "";
+					const kind = typeof result?.details?.kind === "string" ? result.details.kind : undefined;
+					return { name: call.name, isError: result?.role === "toolResult" && result.isError === true, ...(kind ? { kind } : {}), text };
+				}),
+				peerArrivals,
 			});
 	}
 	db.close();
@@ -832,6 +845,7 @@ const folded = afterCompaction(
 	sessions.map((s) => ({ messages: s.cacheStreams[0].messages, calls: s.calls, boundaries: s.boundaries, resultChars: (id: string) => charsOf(s.results.get(id)) })),
 );
 const lifetime = [...cacheLifetime(cacheDiagnoses.map((d) => d.diagnosis))].sort(([a], [b]) => a.localeCompare(b));
+const peers = peerStats(sessions.map((session) => ({ calls: session.peerCalls, arrivals: session.peerArrivals })));
 
 /*
  * 样本太薄时先说出来，写在 stderr，不进 `--json` 的输出。
@@ -903,6 +917,7 @@ if (asJson) {
 					frustSessions: frustMaxEdits.length, smoothSessions: smoothMaxEdits.length,
 					classification: "Uncalibrated keyword proxy, not a task-success metric",
 				},
+				peers,
 				compactions: { automatic: blockingCompactions, manual: manualCompactions },
 				compactionRequests: {
 					byVia,
@@ -1139,3 +1154,12 @@ else {
 }
 console.log("  每格是「命中 / 本该命中」：只数前缀有理由命中的请求，冷启动、压缩、撤回、换模型和本地改写不算。");
 console.log("  ⚠ 4.5m 之后那几格仍然稳定命中的上游，分叉的时限才值得为它放宽。");
+
+console.log("\n── 15. 会话之间的消息（问答改成不阻塞的验收看这里） ──");
+const counts = (map: Record<string, number>) => Object.entries(map).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join("，") || "没有";
+console.log(`  有往来的会话 ${peers.involvedSessions} 个；工具调用：${counts(peers.calls)}`);
+console.log(`  ask_session 的结果：${counts(peers.ask)}`);
+console.log(`  wait_for_session 的结果：${counts(peers.wait)}`);
+console.log(`  收到的信：${counts(peers.letters)}；插进正在跑的那一轮 ${peers.arrivals.steered} 条，为它开一轮 ${peers.arrivals.opened} 条`);
+console.log(`  有往来的会话平均每个发通知 ${peers.noticesPerInvolvedSession} 条`);
+console.log("  ⚠ 改前 ask 的 done 才算拿到回答，sent 是改后的「已送出」；改后看 answer:replied 占请求的比例。answer:unreplied 多说明对方常忘了 reply_session。");
