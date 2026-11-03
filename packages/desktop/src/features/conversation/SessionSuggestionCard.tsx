@@ -40,7 +40,8 @@ function useStartedId(sessionId: string | null, callId: string): string | null {
 /**
  * 「开始」那一排：按钮、工作树开关、交回开关。对话里的卡片和环境卡片那一节共用一份，两处问的是同一个问题。
  *
- * 两个开关各自从一个默认起步：工作树跟输入框同一个设置，交回跟模型提建议时说的（`reportBack`）。
+ * 两个开关各自从一个默认起步：交回跟模型提建议时说的（`reportBack`）；工作树先看模型说没说它要和别的会话
+ * 并行改代码（`worktree`），没说才跟输入框同一个设置。
  */
 export function SuggestionStart({ sessionId, suggestion, disabled }: { sessionId: string; suggestion: SessionSuggestion; disabled?: boolean }) {
 	const { t } = useI18n();
@@ -50,7 +51,7 @@ export function SuggestionStart({ sessionId, suggestion, disabled }: { sessionId
 	const [worktreePick, setWorktreePick] = useState<boolean | null>(null);
 	const [reportBack, setReportBack] = useState(details.reportBack === true);
 	const [starting, setStarting] = useState(false);
-	const inWorktree = worktreePick ?? worktreeByDefault;
+	const inWorktree = worktreePick ?? (details.worktree || worktreeByDefault);
 	const offersWorktree = Boolean(workspace?.isGitRepo);
 
 	const start = async () => {

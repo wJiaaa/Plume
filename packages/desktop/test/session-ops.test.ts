@@ -258,6 +258,15 @@ test("spawn_session 的 report_back：要交回才记进 details、才在返回�
 	assert.match(text(bad), /^report_back must be true or false/);
 });
 
+test("spawn_session 的 edits_in_parallel：要并行改代码才在 details 里记 worktree；不是布尔就退回", async () => {
+	const spawn = named(tools().tools, "spawn_session");
+	assert.deepEqual((await spawn.execute({ ...BRIEF, edits_in_parallel: true }, ctx())).details, { kind: "session_suggestion", ...BRIEF, worktree: true } satisfies SessionSuggestionDetails);
+	assert.deepEqual((await spawn.execute({ ...BRIEF, edits_in_parallel: false }, ctx())).details, { kind: "session_suggestion", ...BRIEF });
+	const bad = await spawn.execute({ ...BRIEF, edits_in_parallel: "yes" }, ctx());
+	assert.equal(bad.isError, true);
+	assert.match(text(bad), /^edits_in_parallel must be true or false/);
+});
+
 test("spawn_session 的参数不合格就退回去，并且点名是哪一项", async () => {
 	const spawn = named(tools().tools, "spawn_session");
 	const cases: [Record<string, unknown>, RegExp][] = [

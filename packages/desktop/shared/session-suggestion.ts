@@ -16,6 +16,11 @@ export interface SessionSuggestionDetails {
 	prompt: string;
 	/** The model asked for the new conversation's first reply to come back here; the card's switch starts from it. */
 	reportBack?: true;
+	/**
+	 * The model said it will edit the repository alongside other conversations; the card's worktree switch
+	 * starts on. Without it, parallel parts shared one checkout and spent their messages agreeing who owns which file.
+	 */
+	worktree?: true;
 }
 
 export const REVIEW_SESSION_TOOL = "review_session";

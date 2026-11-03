@@ -170,6 +170,25 @@ test("也能选在新工作树里开始：默认跟设置，选了就带下去�
 	}
 });
 
+test("模型说它要和别的会话并行改代码：工作树开关默认开着，设置是关的也一样；人关掉就以人为准", async () => {
+	useApp.setState({
+		settings: { defaultModelId: "fake/model", projects: [], worktrees: { autoCreateOnNewSession: false } } as never,
+		toolRuns: { [CALL.id]: run("done", { ...DETAILS, worktree: true } satisfies SessionSuggestionDetails) },
+	});
+	const view = await mount(section());
+	try {
+		const toggle = () => view.all<HTMLButtonElement>("[data-ly-worktree-toggle]")[0];
+		assert.equal(toggle()?.getAttribute("aria-pressed"), "true");
+		await click(toggle());
+		assert.equal(toggle()?.getAttribute("aria-pressed"), "false");
+		await click(view.find('[data-ly-suggestion-action="start"]'));
+		await waitFor(() => created.length === 1, "建会话");
+		assert.equal(created[0].initial.worktree, false);
+	} finally {
+		await view.unmount();
+	}
+});
+
 test("项目不是 Git 仓库：没有工作树开关，请求里也没有这一项", async () => {
 	useApp.setState({ workspace: { path: "/work/project", name: "project", isGitRepo: false, branch: null } });
 	const view = await mount(section());

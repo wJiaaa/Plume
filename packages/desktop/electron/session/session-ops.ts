@@ -23,6 +23,7 @@ interface SpawnArgs {
 	summary?: unknown;
 	prompt?: unknown;
 	report_back?: unknown;
+	edits_in_parallel?: unknown;
 }
 
 /** The trimmed text, or why it cannot be used — said so the model can send it again, fixed. */
@@ -42,8 +43,9 @@ function spawnSession(args: SpawnArgs): ToolResult {
 	const prompt = field(args.prompt, "prompt", PROMPT_MAX);
 	if (typeof prompt !== "string") return errorResult(prompt.error);
 	if (args.report_back !== undefined && typeof args.report_back !== "boolean") return errorResult("report_back must be true or false.");
+	if (args.edits_in_parallel !== undefined && typeof args.edits_in_parallel !== "boolean") return errorResult("edits_in_parallel must be true or false.");
 	const reportBack = args.report_back === true;
-	const details: SessionSuggestionDetails = { kind: "session_suggestion", title, summary, prompt, ...(reportBack ? { reportBack: true } : {}) };
+	const details: SessionSuggestionDetails = { kind: "session_suggestion", title, summary, prompt, ...(reportBack ? { reportBack: true } : {}), ...(args.edits_in_parallel === true ? { worktree: true } : {}) };
 	return {
 		content: [
 			{
@@ -70,7 +72,7 @@ export function createSessionOpsTools(host: { archiveAfterTurn(sessionId: string
 			"Suggest a new, separate conversation for follow-up work that deserves its own session: something you noticed that is worth doing but would bloat the current change — dead code, stale docs, missing tests, a TODO you confirmed, a security problem spotted in passing. " +
 			"How it differs from a sub-agent (`task`): the person sees it as a card and decides whether it starts; once started it is a conversation in their sidebar they can open, talk to and stop, with its own clean context, and it stays afterwards to be continued. " +
 			"A sub-agent is yours: it runs at once, the person cannot see or steer it, and it only hands its conclusion back to you. Work you need done now to finish the current task, that nobody has to watch, is a sub-agent's. " +
-			"Not for vague code smells, low-confidence guesses, small fixes you can make inline, or the current task itself — unless the person asks you to split their task across separate sessions; then each part is a spawn_session with report_back true. " +
+			"Not for vague code smells, low-confidence guesses, small fixes you can make inline, or the current task itself — unless the person asks you to split their task across separate sessions; then each part is a spawn_session with report_back true, and edits_in_parallel true when the parts change the same repository. " +
 			"Returns immediately and starts nothing. Keep working on the current task afterwards. " +
 			"The prompt is the new conversation's first message and is all it will know: name the files and give enough context to act without this conversation.",
 		parameters: {
@@ -83,6 +85,11 @@ export function createSessionOpsTools(host: { archiveAfterTurn(sessionId: string
 					type: "boolean",
 					description:
 						"Default false. True when what it finds should change what you do here, and always when it carries out part of a task the person gave you (they asked you to split the work across sessions): you are the one they will ask how it went. When its first turn ends, its reply is delivered to this conversation and starts a turn here. Leave it off for independent follow-ups. The person can still change it on the card.",
+				},
+				edits_in_parallel: {
+					type: "boolean",
+					description:
+						"Default false. True when it will change files in this repository while this conversation or other suggested sessions are also changing them — the parts of a split task. The card then starts it in a worktree of its own, so no two sessions edit one checkout and none has to negotiate who owns which file; it merges back when done. The person can still change it on the card.",
 				},
 			},
 			required: ["title", "summary", "prompt"],
