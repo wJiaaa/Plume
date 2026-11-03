@@ -54,6 +54,7 @@ import { KEEP_MIN } from "../packages/core/src/runtime/compaction/compaction-bud
 import { catalogModelFor } from "../packages/core/src/model-catalog.ts";
 import { loadCachedModelCatalog } from "../packages/core/src/model-catalog-sync.ts";
 import type { Message } from "../packages/core/src/types.ts";
+import { turnVerification } from "../packages/core/src/verification.ts";
 
 /** 字符数换算 token 的粗系数。绝对值不重要，前后两次用同一个就行。 */
 const CHARS_PER_TOKEN = 3.5;
@@ -748,6 +749,28 @@ const smoothAvgEdits = avgMaxEdits(smoothMaxEdits);
 // Nearest-rank P90 is descriptive, never a runtime stop threshold.
 const p90 = (values: number[]) => values.length ? [...values].sort((a, b) => a - b)[Math.ceil(values.length * 0.9) - 1] : 0;
 
+/*
+ * 改过代码的轮次怎么收尾：最后一次改动之后验没验、过没过。和交付卡片用同一个 `turnVerification`。
+ * 一轮从人说的那句话起，到下一句人说的话为止；运行时送达的那几条（synthetic）不算新的一轮。
+ */
+const verification = { passed: 0, failed: 0, pending: 0, unverified: 0 };
+for (const session of sessions) {
+	let turn: Message[] = [];
+	const settle = () => {
+		const state = turnVerification(turn)?.state;
+		if (state) verification[state]++;
+	};
+	for (const message of session.cacheStreams[0].messages) {
+		if (message.role === "user" && !message.synthetic) {
+			settle();
+			turn = [];
+		}
+		turn.push(message);
+	}
+	settle();
+}
+const editedTurns = verification.passed + verification.failed + verification.pending + verification.unverified;
+
 // ---------------------------------------------------------------------------
 // 10. 逐次请求的缓存未命中：本该命中而没命中多少、多花多少、为什么
 //
@@ -916,6 +939,7 @@ if (asJson) {
 					frustP90MaxEdits: p90(frustMaxEdits), smoothP90MaxEdits: p90(smoothMaxEdits),
 					frustSessions: frustMaxEdits.length, smoothSessions: smoothMaxEdits.length,
 					classification: "Uncalibrated keyword proxy, not a task-success metric",
+					verification: { editedTurns, ...verification },
 				},
 				peers,
 				compactions: { automatic: blockingCompactions, manual: manualCompactions },
@@ -1058,6 +1082,8 @@ console.log(`  用户发言：真实输入 ${totalUserPrompts} 条，含挫败�
 console.log(`  单文件最大修改均值：顺利组 ${smoothAvgEdits} 次 vs 挫败组 ${frustAvgEdits} 次（纯事后连续观测，严禁在运行时注入打断）`);
 
 console.log(`  Edit-count P90: smooth ${p90(smoothMaxEdits)} (n=${smoothMaxEdits.length}); frustration-proxy ${p90(frustMaxEdits)} (n=${frustMaxEdits.length}). Keyword classification is uncalibrated, not task success.`);
+console.log(`  改过代码的轮次 ${editedTurns} 个，最后一次改动之后：检查通过 ${verification.passed} (${share(verification.passed, editedTurns)})，没通过 ${verification.failed} (${share(verification.failed, editedTurns)})，结果另行送达 ${verification.pending} (${share(verification.pending, editedTurns)})，没跑检查 ${verification.unverified} (${share(verification.unverified, editedTurns)})`);
+console.log("  ⚠ 检查命令按 `isCheckCommand` 的启发式认：`npx tsc`、`make` 认不出。「没跑检查」不等于做错了，不少事本来就不用验证，只看改动前后的趋势。");
 
 console.log("\n── 10. 逐次请求的缓存未命中（前缀修复验收看这里） ──");
 console.log(

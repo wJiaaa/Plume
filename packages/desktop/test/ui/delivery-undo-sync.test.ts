@@ -51,6 +51,7 @@ function delivery(): TurnDelivery {
 	return {
 		files: [APP, LIB].map((path) => ({ path, added: 3, removed: 1, hunks: [], canUndo: undoable[path] })),
 		commands: [],
+		verification: null,
 		serviceJobIds: [],
 		warnings: [],
 		reportPath: null,

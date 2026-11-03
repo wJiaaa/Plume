@@ -31,7 +31,7 @@ const SAID: Message[] = [
 ];
 const DELIVERY: TurnDelivery = {
 	files: [PRD, LIB].map((path) => ({ path, added: 3, removed: 1, hunks: [], canUndo: true })),
-	commands: [], serviceJobIds: [], warnings: [], reportPath: "",
+	commands: [], verification: null, serviceJobIds: [], warnings: [], reportPath: "",
 };
 
 let calls: Array<[string, string]>;

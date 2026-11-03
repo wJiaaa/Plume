@@ -375,7 +375,7 @@ test("the skill a message used, on the screen without focus, is looked up in tha
 test("the delivery card on the screen without focus names files by that project and opens its panes in that screen", async () => {
 	const delivery: TurnDelivery = {
 		files: [{ path: "/work/beta/src/lib.ts", added: 3, removed: 1, hunks: [], canUndo: true }],
-		commands: [], serviceJobIds: [], warnings: [], reportPath: "/work/beta/.plume/report.md",
+		commands: [], verification: null, serviceJobIds: [], warnings: [], reportPath: "/work/beta/.plume/report.md",
 	};
 	plume.delivery = { onChanged: () => () => {}, get: async () => delivery };
 	view = await inScreen("b", h(TurnDeliveryCard, { timestamp: 2 }));

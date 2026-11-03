@@ -15,6 +15,7 @@ import type {
 	SubAgentDetail,
 	SubAgentSummary,
 	ThinkingLevel,
+	TurnVerification,
 	UndoProblem,
 	UserContent,
 } from "@plume/core/contract-types";
@@ -27,7 +28,8 @@ export interface DeliveryFile { path: string; added: number; removed: number; hu
  * 代码会停在一个从没存在过的中间状态。
  */
 export interface RevertPlan { files: { path: string; added: number; removed: number; problem: UndoProblem | null }[]; unrecorded: boolean }
-export interface TurnDelivery { files: DeliveryFile[]; commands: { command: string; status: string; output: string }[]; serviceJobIds: string[]; warnings: string[]; reportPath: string | null }
+/** `verification`：改过代码的轮次，最后一次改动之后验没验、过没过（`turnVerification`）；没改代码是 `null`。 */
+export interface TurnDelivery { files: DeliveryFile[]; commands: { command: string; status: string; output: string }[]; verification: TurnVerification | null; serviceJobIds: string[]; warnings: string[]; reportPath: string | null }
 
 export interface ServiceEndpoint { address: string; port: number; pid: number; url?: string }
 interface SessionService {

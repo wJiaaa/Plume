@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
-import { computeDiff, formatDiff, plumeHome, readFileChange, undoProblems, type Message, type RecordedChange } from "@plume/core";
+import { computeDiff, formatDiff, isCheckCommand, plumeHome, readFileChange, turnVerification, undoProblems, type Message, type RecordedChange } from "@plume/core";
 import type { TurnDelivery } from "@plume/contract";
 export function deliveryMessages(messages: Message[], timestamp: number): Message[] {
 	const end = messages.findIndex((message) => message.role === "assistant" && message.timestamp === timestamp);
@@ -36,7 +36,7 @@ export function changedFiles(groups: Map<string, RecordedChange[]>): { path: str
 }
 export async function collectDelivery(sessionId: string, cwd: string, messages: Message[], timestamp: number): Promise<TurnDelivery> {
 	const { groups, warnings } = await recordedChanges(sessionId, messages);
-	const value: TurnDelivery = { files: [], commands: [], serviceJobIds: [], warnings, reportPath: null };
+	const value: TurnDelivery = { files: [], commands: [], verification: turnVerification(messages), serviceJobIds: [], warnings, reportPath: null };
 	for (const message of messages) {
 		if (message.role !== "toolResult") continue;
 		const detail = message.details;
@@ -51,7 +51,7 @@ export async function collectDelivery(sessionId: string, cwd: string, messages: 
 	// The undo's own checks, so the button shows exactly when the undo would go through.
 	const problems = await undoProblems(cwd, shown.map(({ changes }) => changes));
 	shown.forEach(({ path, diff }, index) => value.files.push({ path, added: diff.added, removed: diff.removed, hunks: diff.hunks, canUndo: problems[index] === null }));
-	const engineering = value.files.length > 0 || value.warnings.length > 0 || value.commands.some((entry) => /(?:^|[\s/])(?:test|check|lint|typecheck|pytest|jest|vitest|cargo|go)(?:[\s:]|$)/i.test(entry.command));
+	const engineering = value.files.length > 0 || value.warnings.length > 0 || value.commands.some((entry) => isCheckCommand(entry.command));
 	if (!engineering) return value;
 	const request = messages.filter((message) => message.role === "user" && !message.synthetic).flatMap((message) => message.content.flatMap((part) => part.type === "text" ? [part.text] : [])).join("\n\n");
 	const answer = messages.filter((message) => message.role === "assistant" && message.stopReason !== "toolUse").flatMap((message) => message.content.flatMap((part) => part.type === "text" ? [part.text] : [])).join("\n\n");

@@ -111,6 +111,7 @@ export {
 } from "./runtime/memory/memory.ts";
 export type { ContextBreakdown, ContextSegmentKey } from "./runtime/record/context.ts";
 export { restated } from "./reply-text.ts";
+export { isCheckCommand, turnVerification, type TurnVerification } from "./verification.ts";
 export { costAtRates, selectPricingRates, type SelectedPricingRates } from "./utils/pricing.ts";
 export {
 	diagnoseRequest,

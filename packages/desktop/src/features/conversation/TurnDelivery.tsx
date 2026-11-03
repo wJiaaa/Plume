@@ -2,7 +2,7 @@ import { translate } from "../../i18n/translate.ts";
 import { FileDiff, Files, FileText, Undo2 } from "../../ui/icons/index.ts";
 import { Caret } from "../../ui/primitives/Caret.tsx";
 import { useEffect, useRef, useState } from "react";
-import type { DeliveryFile } from "@plume/contract";
+import type { DeliveryFile, TurnDelivery } from "@plume/contract";
 import { relativeTo } from "../../lib/paths.ts";
 import { Button } from "../../ui/primitives/Button.tsx";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
@@ -63,6 +63,23 @@ export function TurnDeliveryCard({ timestamp }: { timestamp: number }) {
 
 export function Counts({ added, removed }: { added: number; removed: number }) {
 	return <span className="flex shrink-0 items-center gap-1.5 tabular-nums"><span className="text-ok">+{added}</span><span className="text-danger">−{removed}</span></span>;
+}
+
+/**
+ * 改完之后跑过的那条检查怎么样了。没跑就什么也不说：不是每件事都要验证，哪些要、哪些不要，
+ * 这里没有可靠的信号——挂一句「没有检查」就是替人下了「这里少做了一步」的结论。
+ */
+function Checked({ verification }: { verification: TurnDelivery["verification"] }) {
+	const { t } = useI18n();
+	if (!verification || verification.state === "unverified") return null;
+	const { state, command } = verification;
+	const text = state === "passed" ? t("delivery.checkPassed", { command })
+		: state === "failed" ? t("delivery.checkFailed", { command })
+		: command === "verify" ? t("delivery.checkDelegated")
+		: t("delivery.checkPending", { command });
+	const tone = state === "passed" ? "text-ok" : state === "failed" ? "text-danger" : "text-ink-muted";
+	// 命令可能很长，一行放不下就省略；整句留在 tooltip 上。
+	return <span data-delivery-check={state} data-ly-tip={text} className={"min-w-0 truncate " + tone}>{text}</span>;
 }
 
 function FileName({ path }: { path: string }) {
@@ -201,7 +218,7 @@ function Delivery({ sessionId, timestamp }: { sessionId: string; timestamp: numb
 				<div className="flex min-h-16 flex-wrap items-center gap-3 px-3 py-3">
 					<span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-card-hover text-ink-muted"><FileDiff size={21} strokeWidth={1.7} /></span>
 					{/* 一行写不下就省略，不折行：折了这张卡就长高一截，而那一行字本来就是标题不是正文。 */}
-					<div className="min-w-0 flex-1"><p className="truncate font-medium text-ink">{translate("delivery.editedN", { n: files.length })}</p><Counts added={added} removed={removed} /></div>
+					<div className="min-w-0 flex-1"><p className="truncate font-medium text-ink">{translate("delivery.editedN", { n: files.length })}</p><div className="flex min-w-0 items-center gap-2"><Counts added={added} removed={removed} /><Checked verification={data.verification} /></div></div>
 					<div className="ml-auto flex shrink-0 items-center gap-1">
 						{/*
 						 * 三颗都带字，都不画框，都是同一颗 `Button`。

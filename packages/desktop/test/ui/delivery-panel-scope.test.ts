@@ -44,7 +44,7 @@ const A = meta("a", ALPHA.path, ALPHA.name);
 const B = meta("b", BETA.path, BETA.name);
 
 function delivery(path: string): TurnDelivery {
-	return { files: [{ path, added: 3, removed: 1, hunks: [], canUndo: true }], commands: [], serviceJobIds: [], warnings: [], reportPath: "" };
+	return { files: [{ path, added: 3, removed: 1, hunks: [], canUndo: true }], commands: [], verification: null, serviceJobIds: [], warnings: [], reportPath: "" };
 }
 const DELIVERIES: Record<string, TurnDelivery> = { a: delivery("/work/alpha/src/app.ts"), b: delivery("/work/beta/src/lib.ts") };
 

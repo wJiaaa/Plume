@@ -25,7 +25,7 @@ const TURN = 1_790_000_000_000;
 const OTHER_TURN = TURN + 60_000;
 
 function delivery(...paths: string[]): TurnDelivery {
-	return { files: paths.map((path) => ({ path, added: 3, removed: 1, hunks: [], canUndo: true })), commands: [], serviceJobIds: [], warnings: [], reportPath: "" };
+	return { files: paths.map((path) => ({ path, added: 3, removed: 1, hunks: [], canUndo: true })), commands: [], verification: null, serviceJobIds: [], warnings: [], reportPath: "" };
 }
 const TURNS: Record<number, TurnDelivery> = {
 	[TURN]: delivery("/work/alpha/docs/prd.md", "/work/alpha/src/app.ts"),

@@ -49,6 +49,7 @@ export type {
 	ThinkingLevel,
 	TrajectoryChanges,
 	TrajectoryEntry,
+	TurnVerification,
 	UndoProblem,
 	UsageReplayRow,
 	UserContent,

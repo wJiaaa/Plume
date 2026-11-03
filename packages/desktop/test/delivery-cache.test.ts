@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { clearDeliveryCache, peekDelivery, rememberDelivery } from "../src/features/conversation/delivery-cache.ts";
 
-const empty = () => ({ files: [], commands: [], serviceJobIds: [], warnings: [], reportPath: null });
+const empty = () => ({ files: [], commands: [], verification: null, serviceJobIds: [], warnings: [], reportPath: null });
 const card = (n: number) => ({
 	files: Array.from({ length: n }, (_, i) => ({
 		path: `/tmp/f${i}.ts`, added: 1, removed: 0, hunks: [], canUndo: false,
 	})),
-	commands: [], serviceJobIds: [], warnings: [], reportPath: null,
+	commands: [], verification: null, serviceJobIds: [], warnings: [], reportPath: null,
 });
 
 test("a remembered delivery is what the next paint reads", () => {
