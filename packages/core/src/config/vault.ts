@@ -28,8 +28,8 @@
  * to. That is a one-line change to where `key()` gets its bytes; the format below does not care.
  */
 
-import { mkdir, readFile, stat } from "node:fs/promises";
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { link, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { plumeHome } from "../session/store.ts";
 import { writeFileAtomic } from "../utils/atomic-write.ts";
@@ -71,15 +71,75 @@ function key(): Promise<Buffer> {
 async function loadOrMakeKey(): Promise<Buffer> {
 	const path = KEY_FILE();
 
-	const existing = await readFile(path).catch(() => null);
-	// A truncated or hand-edited key is replaced rather than used: a short key would throw on every
-	// call, and the failure would surface as "all your secrets are corrupt" instead of "this key is".
+	const existing = await readKeyFile(path);
 	if (existing && existing.length === KEY_BYTES) return (cached = existing);
+	if (existing) {
+		/*
+		 * A truncated or hand-edited key is replaced rather than used: a short key would throw on every
+		 * call, and the failure would surface as "all your secrets are corrupt" instead of "this key is".
+		 * Moved aside rather than overwritten, because it is the only copy of whatever it once was.
+		 */
+		await rename(path, `${path}.bad-${Date.now()}`);
+	}
 
-	const fresh = randomBytes(KEY_BYTES);
 	await mkdir(plumeHome(), { recursive: true });
-	await writeFileAtomic(path, fresh, { mode: 0o600 });
-	return (cached = fresh);
+	return (cached = await publishKey(path, randomBytes(KEY_BYTES)));
+}
+
+/**
+ * The key file's bytes, or null only when there is no such file.
+ *
+ * Every read error used to mean "no key", and a new key was written over the old one. A key that
+ * could not be read for a moment — EACCES, a Windows scanner holding it (EBUSY, EPERM), EMFILE —
+ * became, permanently, every stored secret failing to open. Anything but ENOENT is thrown: the
+ * caller reports it and the next call tries again, with the key still on disk.
+ */
+async function readKeyFile(path: string): Promise<Buffer | null> {
+	try {
+		return await readFile(path);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+		throw new Error(`Could not read the vault key at ${path} (${(error as Error).message}); it was left as it is.`, { cause: error });
+	}
+}
+
+/**
+ * Put a new key in place only if nobody has yet, and return whichever key is there.
+ *
+ * The desktop app and the command line can both be first: an overwriting write let the second
+ * replace the key the first had already sealed with. The bytes go into a temporary file and are
+ * hard-linked into place, because `link` refuses an existing name (EEXIST) and publishes a complete
+ * file — creating the key in place with `wx` would let the other process read it between the
+ * create and the write, see zero bytes, and move it aside as bad. Where hard links are not
+ * supported (FAT, some network shares) `wx` is the fallback; that narrow window is accepted there.
+ */
+async function publishKey(path: string, fresh: Buffer): Promise<Buffer> {
+	const tmp = `${path}.${process.pid}.${randomUUID().slice(0, 8)}.tmp`;
+	try {
+		await writeFile(tmp, fresh, { mode: 0o600, flag: "wx" });
+		await link(tmp, path);
+		return fresh;
+	} catch (error) {
+		const code = (error as NodeJS.ErrnoException).code;
+		if (code === "EEXIST") return theirKey(path);
+		if (code !== "ENOTSUP" && code !== "EPERM" && code !== "ENOSYS" && code !== "EXDEV") throw error;
+	} finally {
+		await rm(tmp, { force: true }).catch(() => {});
+	}
+	try {
+		await writeFile(path, fresh, { mode: 0o600, flag: "wx" });
+		return fresh;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "EEXIST") return theirKey(path);
+		throw error;
+	}
+}
+
+/** Another process made the key first: use its key, never a second one. */
+async function theirKey(path: string): Promise<Buffer> {
+	const theirs = await readKeyFile(path);
+	if (theirs && theirs.length === KEY_BYTES) return theirs;
+	throw new Error(`The vault key at ${path} appeared while this process was making one, but is not a ${KEY_BYTES}-byte key; it was left as it is.`);
 }
 
 /**
@@ -101,12 +161,18 @@ export async function seal(value: string): Promise<string> {
  * Null rather than a throw, because every caller turns it into the same thing — "this needs
  * entering again" — and that is both true and actionable where a decipher stack trace is neither.
  * It is reached when the key file was replaced, or when the ciphertext came from another machine.
+ *
+ * A key that cannot be *read* is thrown, not null. Null tells the caller the secret is gone, and
+ * callers act on that: a settings save writes the empty key back and deletes the entry, an OAuth
+ * refresh starts from an empty record and overwrites the stored one. A key that is readable again
+ * a moment later would find nothing left to open.
  */
 export async function unseal(sealed: string): Promise<string | null> {
 	if (!sealed.startsWith("v1:")) return null;
+	const k = await key();
 	try {
 		const raw = Buffer.from(sealed.slice(3), "base64");
-		const decipher = createDecipheriv("aes-256-gcm", await key(), raw.subarray(0, IV_BYTES));
+		const decipher = createDecipheriv("aes-256-gcm", k, raw.subarray(0, IV_BYTES));
 		decipher.setAuthTag(raw.subarray(IV_BYTES, IV_BYTES + 16));
 		return Buffer.concat([decipher.update(raw.subarray(IV_BYTES + 16)), decipher.final()]).toString("utf8");
 	} catch {
@@ -173,7 +239,7 @@ export function resetVault(): void {
 	pending = null;
 }
 
-/** The secret filed under `id`, or null when there is none or this key cannot open it. */
+/** The secret filed under `id`, or null when there is none or this key cannot open it. Throws when the key cannot be read (`unseal`). */
 export async function secret(id: string): Promise<string | null> {
 	const stored = (await read()).secrets[id];
 	if (stored === undefined) return null;

@@ -55,15 +55,16 @@ export const NEVER_UNATTENDED = new Map<string, RiskCode>([
 
 /** Subcommands that discard work or rewrite shared history. */
 export const RISKY_SUBCOMMANDS = new Map<string, Map<string, RiskCode>>([
+	/*
+	 * Only the two whose name is the danger. `reset`, `clean`, `checkout`, `push` and the rest are
+	 * dangerous by their flags, and `risk-git.ts` reads those — listed here, they made
+	 * `git reset HEAD file` and `git clean -n` ask.
+	 */
 	[
 		"git",
 		new Map<string, RiskCode>([
-			["reset", "discard-changes"],
-			["clean", "delete-untracked"],
 			["rebase", "rewrite-history"],
 			["filter-branch", "rewrite-history"],
-			["checkout", "overwrite-changes"],
-			["restore", "discard-changes"],
 		]),
 	],
 	["npm", new Map<string, RiskCode>([["publish", "publish-package"]])],

@@ -644,11 +644,33 @@ function isSecretEnv(server: McpServerConfig, name: string): boolean {
  * A key typed into `settings.json` by hand is honoured rather than ignored; `saveSettings` moves it
  * into the vault on the next write.
  */
+/**
+ * Secrets the last load could not open because the vault key could not be read (`unseal`).
+ *
+ * The settings in hand then carry an empty key, and the desktop app saves on every change. Written
+ * back as it was, that empty key deleted the stored one — and the key file, readable again a moment
+ * later, had nothing left to open. `writeSettings` leaves these entries alone until a load reads them
+ * or a new value is typed over them.
+ */
+const unreadable = new Set<string>();
+
+async function storedSecret(id: string): Promise<string | null> {
+	try {
+		const value = await secret(id);
+		unreadable.delete(id);
+		return value;
+	} catch {
+		// The settings still load: one provider without its key beats an app that will not start.
+		unreadable.add(id);
+		return null;
+	}
+}
+
 async function withKeys(settings: Settings): Promise<Settings> {
 	if (settings.providers.length === 0 && settings.mcpServers.length === 0) return settings;
 	const providers = await Promise.all(
 		settings.providers.map(async (provider) => {
-			const stored = await secret(providerSecretId(provider.id));
+			const stored = await storedSecret(providerSecretId(provider.id));
 			// `stored` wins: it is the newer of the two whenever both exist.
 			return stored === null ? provider : { ...provider, apiKey: stored };
 		}),
@@ -664,7 +686,7 @@ async function withKeys(settings: Settings): Promise<Settings> {
 			let env: Record<string, string> | null = null;
 			for (const [name, value] of Object.entries(server.env)) {
 				if (value !== holeFor(name)) continue;
-				const stored = await secret(mcpSecretId(server.id, name));
+				const stored = await storedSecret(mcpSecretId(server.id, name));
 				if (stored === null) continue;
 				env ??= { ...server.env };
 				env[name] = stored;
@@ -917,7 +939,13 @@ async function writeSettings(settings: Settings): Promise<void> {
 	const servers = new Set(settings.mcpServers.map((server) => server.id));
 	settings = { ...settings, providers: withoutMagpieProvider(settings.providers), mcpServers: settings.mcpServers.filter((server) => server.managedBy !== "magpie") };
 	const keys: Record<string, string> = {};
-	for (const provider of settings.providers) keys[providerSecretId(provider.id)] = provider.apiKey ?? "";
+	// 读不出来的那几份原样留着（`unreadable`）；删掉的供应商和服务器不在这里，照常忘掉。
+	const held = new Set<string>();
+	for (const provider of settings.providers) {
+		const id = providerSecretId(provider.id);
+		if (!provider.apiKey && unreadable.has(id)) held.add(id);
+		else keys[id] = provider.apiKey ?? "";
+	}
 	/*
 	 * An MCP server's secrets leave the file the same way: into the vault, with the placeholder that
 	 * names them left in their place — so the file still says where the value goes, and a copy of it
@@ -927,6 +955,7 @@ async function writeSettings(settings: Settings): Promise<void> {
 		if (!server.env) return server;
 		const env = { ...server.env };
 		for (const [name, value] of Object.entries(env)) {
+			if (value === holeFor(name) && unreadable.has(mcpSecretId(server.id, name))) held.add(mcpSecretId(server.id, name));
 			if (!value || isPlaceholder(value) || !isSecretEnv(server, name)) continue;
 			keys[mcpSecretId(server.id, name)] = value;
 			env[name] = holeFor(name);
@@ -934,10 +963,11 @@ async function writeSettings(settings: Settings): Promise<void> {
 		return { ...server, env };
 	});
 	await putSecrets(keys);
+	for (const id of Object.keys(keys)) unreadable.delete(id);
 	// Removed providers and servers — and a key somebody cleared — are forgotten in the same pass.
 	// 删掉的服务器，它的 OAuth 登录（`mcp/oauth.ts`）也一起忘掉；登录不经过这里写，所以按服务器在不在判断。
 	await keepSecrets((id) =>
-		id.startsWith(MCP_OAUTH_PREFIX) ? servers.has(id.slice(MCP_OAUTH_PREFIX.length)) : (!id.startsWith("provider:") && !id.startsWith("mcp:")) || id in keys,
+		id.startsWith(MCP_OAUTH_PREFIX) ? servers.has(id.slice(MCP_OAUTH_PREFIX.length)) : (!id.startsWith("provider:") && !id.startsWith("mcp:")) || id in keys || held.has(id),
 	);
 
 	await mkdir(plumeHome(), { recursive: true });

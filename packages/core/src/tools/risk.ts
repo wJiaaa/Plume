@@ -1,7 +1,9 @@
 import { isAbsolute } from "node:path";
 import { commandDialects, withinOrIs } from "../platform.ts";
-import type { RiskCode } from "./risk-reasons.ts";
-import { SAFE, risky, scratchRoots, underScratchRoot, wipesScratchRoot, type RiskVerdict } from "./risk-shared.ts";
+import { WINDOWS_DELETERS, climbsOut, findExec, judgeFind, judgeRm, judgeWindowsDelete } from "./risk-delete.ts";
+import { judgeGit } from "./risk-git.ts";
+import { judgeOpen } from "./risk-open.ts";
+import { SAFE, risky, scratchRoots, underScratchRoot, type RiskVerdict } from "./risk-shared.ts";
 import {
 	COMMAND_PREFIXES,
 	FETCHERS,
@@ -13,7 +15,7 @@ import {
 	SECRET_PATH,
 	SHELLS,
 } from "./risk-tables.ts";
-import { pipelines, splitCommands, splitWords, type Dialect } from "./shell-split.ts";
+import { pipelines, splitCommands, splitWords, substitutionHosts, type Dialect } from "./shell-split.ts";
 /**
  * How dangerous an operation is, so that "帮我批准" can mean what it says.
  *
@@ -30,32 +32,33 @@ import { pipelines, splitCommands, splitWords, type Dialect } from "./shell-spli
  * back": deleting, force-pushing, rewriting history, escalating privileges, piping the network
  * into a shell, touching anything outside the project.
  */
+const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
+/**
+ * The words the shell will run: quotes resolved, leading `VAR=value` assignments gone.
+ *
+ * Every rule reads this one list. They used to split on whitespace each for themselves, and the
+ * shell does not: `'rm' -rf ~` is `rm`, `rm -rf '/'` deletes `/`, and `HUSKY=0 git push --force` is
+ * a force push whose words began `HUSKY=0`. Each of those was judged safe.
+ */
+function argvOf(command: string, dialect: Dialect): string[] {
+	const words = splitWords(command, dialect);
+	let i = 0;
+	while (i < words.length && ASSIGNMENT.test(words[i])) i += 1;
+	return words.slice(i);
+}
 
+/** `C:\Windows\System32\format.com` and `rm.exe` are `format` and `rm`. */
+const programName = (word = "") => word.replace(/^.*[\\/]/, "").replace(/\.(exe|cmd|bat|com)$/i, "");
 
-
-function firstWord(command: string): string {
-	// Leading `VAR=value` assignments are not the program being run.
-	const program = command.split(/\s+/).find((word) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(word));
-	// `C:\Windows\System32\format.com` and `rm.exe` are `format` and `rm`.
-	return (program ?? "").replace(/^.*[\\/]/, "").replace(/\.(exe|cmd|bat|com)$/i, "");
+function firstWord(command: string, dialect: Dialect = "posix"): string {
+	return programName(argvOf(command, dialect)[0]);
 }
 
 /** A table lookup that also accepts Windows' case-insensitive spelling of the name. */
 function lookup<T>(table: Map<string, T>, name: string): T | undefined {
 	return table.get(name) ?? table.get(name.toLowerCase());
 }
-
-/** Absolute on either platform's terms: `/x`, `\x`, `C:\x`, `C:/x`, Git Bash's `/c/x`. */
-const absoluteAnywhere = (path: string) => isAbsolute(path) || /^([A-Za-z]:[\\/]|[\\/])/.test(path);
-
-/** `..` as a path segment, whichever separator wrote it. */
-const climbsOut = (path: string) => path.split(/[\\/]/).includes("..");
-
-/** PowerShell's and cmd's delete commands, lower-cased. `rm` is judged by the POSIX rule. */
-const WINDOWS_DELETERS = new Set(["remove-item", "ri", "del", "erase", "rd", "rmdir"]);
-
-const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
 /**
  * What a wrapper wraps, or null if this command is not one.
@@ -67,7 +70,7 @@ const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
  * about `rm` — it is a gap in deciding what to look up.
  */
 function wrappedCommand(command: string, dialect: Dialect = "posix"): string | null {
-	const words = splitWords(command, dialect);
+	const words = argvOf(command, dialect);
 	if (words.length < 2) return null;
 	const head = words[0].replace(/^.*[\\/]/, "").replace(/\.exe$/i, "");
 	const lower = head.toLowerCase();
@@ -95,6 +98,7 @@ function wrappedCommand(command: string, dialect: Dialect = "posix"): string | n
 	}
 	// `eval` takes it as the rest of the line, however many words that is.
 	if (head === "eval") return words.slice(1).join(" ");
+	if (head === "find") return findExec(words.slice(1));
 
 	if (!COMMAND_PREFIXES.has(head)) return null;
 
@@ -115,110 +119,20 @@ function wrappedCommand(command: string, dialect: Dialect = "posix"): string | n
 }
 
 /**
- * Git's subcommand, after its global options.
- *
- * Taken as `words[1]` before, which is the option rather than the subcommand the moment anything
- * global is present — and `git -c protocol.ext.allow=always push --force` is a force push whose
- * "subcommand" read as `-c`. Every git rule below then declined to apply.
- */
-function gitSubcommand(words: string[]): { sub: string; args: string[] } {
-	const TAKES_VALUE = new Set(["-c", "-C", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--config-env"]);
-	let i = 1;
-	while (i < words.length) {
-		const word = words[i];
-		if (TAKES_VALUE.has(word)) {
-			i += 2;
-			continue;
-		}
-		if (word.startsWith("-")) {
-			i += 1;
-			continue;
-		}
-		return { sub: word, args: words.slice(i + 1) };
-	}
-	return { sub: "", args: [] };
-}
-
-/** Pathspecs that mean the whole tree — `git checkout .` throws away every unstaged change. */
-const WHOLE_TREE = new Set([".", "./", ":/"]);
-
-/**
- * Git subcommands whose danger is in their arguments rather than their name.
- *
- * `checkout` and `restore` sat in `RISKY_SUBCOMMANDS` without a rule that ever consulted the
- * table, so `git checkout .` and `git restore .` went through unasked. The line that matters is
- * `git checkout <branch>`: it is how anyone changes branch and refuses to clobber local edits on
- * its own, so only `-f`, a whole-tree pathspec or paths after `--` count.
- */
-function gitArgumentRisk(sub: string, args: string[]): RiskCode | undefined {
-	const has = (...flags: string[]) => args.some((arg) => flags.includes(arg));
-	const operands = args.filter((arg) => !arg.startsWith("-"));
-	if (sub === "checkout") {
-		const afterDashes = args.indexOf("--");
-		const paths = afterDashes >= 0 && afterDashes < args.length - 1;
-		if (has("-f", "--force") || paths || operands.some((arg) => WHOLE_TREE.has(arg))) return "overwrite-changes";
-	}
-	// Restoring the index alone keeps the edits; anything that touches the worktree drops them.
-	if (sub === "restore" && (!has("-S", "--staged") || has("-W", "--worktree"))) return "discard-changes";
-	// `+main` is `--force` for that one ref; `--mirror` makes the remote match, deletions included.
-	if (sub === "push" && (has("--mirror") || operands.slice(1).some((arg) => arg.startsWith("+")))) return "force-push";
-	if (sub === "stash" && (operands[0] === "clear" || operands[0] === "drop")) return "discard-changes";
-	if (sub === "worktree" && operands[0] === "remove" && has("-f", "--force")) return "discard-changes";
-	return undefined;
-}
-
-/**
  * Judge one command — no chaining, no substitution; `assessCommand` splits those first.
  */
-/**
- * A wildcard with nothing in front of it.
- *
- * `rm -rf *` is the working directory and everything in it — the command people mean when they
- * warn you about `rm -rf`. `rm -rf server/data/uploads/*` is a named directory being emptied,
- * which is what re-seeding a database or clearing an upload folder looks like, and is no more
- * dangerous than deleting that directory. Treating the two as the same thing meant ordinary
- * housekeeping stopped an unattended run.
- *
- * The test is whether anything survives removing the wildcard segments: `*` and `./*` leave
- * nothing; `a/b/*` leaves `a/b`.
- */
-function bareGlob(target: string): boolean {
-	if (!/[*?]/.test(target)) return false;
-	const prefix = target
-		.split("/")
-		.filter((segment) => !/[*?]/.test(segment))
-		.filter((segment) => segment !== "" && segment !== ".");
-	return prefix.length === 0 || prefix.includes("..");
-}
-
-
-
-
 function judgeSingle(command: string, contained = false, cwd?: string, dialect: Dialect = "posix"): RiskVerdict {
-	const head = firstWord(command);
+	const argv = argvOf(command, dialect);
+	const head = programName(argv[0]);
 	if (!head) return SAFE;
+	const args = argv.slice(1);
 
 	const never = lookup(NEVER_UNATTENDED, head);
 	if (never) return risky(never);
 
-	/*
-	 * PowerShell's and cmd's recursive deletes, by the same rule as `rm -r` below.
-	 *
-	 * `-Recurse` may be abbreviated to any unambiguous prefix down to `-r`, in any case; cmd spells
-	 * it `/s`. Targets are judged the same way: a home or absolute path, `.`, anything climbing out
-	 * with `..` — either separator — or a chain that has left the workspace, asks.
-	 */
 	if (WINDOWS_DELETERS.has(head.toLowerCase())) {
-		const recursive = /(^|\s)-r(e(c(u(r(s(e)?)?)?)?)?)?(\s|:|$)/i.test(command) || /(^|\s)\/s(\s|$)/i.test(command);
-		if (recursive) {
-			const targets = splitWords(command, dialect)
-				.slice(1)
-				.filter((word) => !word.startsWith("-") && !/^\/[a-z]$/i.test(word));
-			const reckless = targets.some(
-				(t) => !t || t.startsWith("~") || t === "." || t === ".." || bareGlob(t.replaceAll("\\", "/")) || absoluteAnywhere(t),
-			);
-			if (targets.length === 0 || reckless || targets.some(climbsOut) || !contained) return risky("recursive-delete");
-		}
+		const verdict = judgeWindowsDelete(args, contained);
+		if (verdict.risky) return verdict;
 	}
 
 	// `iex (irm https://…)`: the download-and-run without a pipe for the pipeline rule to see.
@@ -228,70 +142,27 @@ function judgeSingle(command: string, contained = false, cwd?: string, dialect: 
 	// `Start-Process … -Verb RunAs` is Windows' `sudo`.
 	if (head.toLowerCase() === "start-process" && /-verb\s+['"]?runas\b/i.test(command)) return risky("run-as-admin");
 
-	// `rm` is the one worth reading closely: removing a file is routine, removing a tree is not.
 	if (head === "rm") {
-		/*
-		 * A recursive delete is judged by its target, at the user's direction.
-		 *
-		 * Clearing `src/data` to reseed a database, or `dist` to rebuild, is a step inside work
-		 * that was asked for, and stopping at each one is what stops an unattended run being
-		 * unattended. The user chose this trade explicitly: relative paths inside the workspace
-		 * proceed; the workspace itself (`.`), a bare wildcard, a home or absolute path, anything
-		 * climbing out with `..`, and any chain that has `cd`-ed elsewhere first still ask.
-		 */
-		// Long options too: `--recursive` is `-r`, and it was not recognised as one. The short form
-		// is deliberately unanchored at its end — `-rf` is one word carrying both flags.
-		if (/(^|\s)(-[a-zA-Z]*[rR]|--recursive(\s|$))/.test(command)) {
-			const targets = command.split(/\s+/).slice(1).filter((word) => !word.startsWith("-"));
-			const reckless = targets.some(
-				(t) =>
-					!t ||
-					t.startsWith("~") ||
-					t === "." ||
-					t === ".." ||
-					bareGlob(t) ||
-					wipesScratchRoot(t, cwd) ||
-					(isAbsolute(t) && !underScratchRoot(t, cwd)),
-			);
-			const climbs = targets.some(climbsOut);
-			if (targets.length === 0 || reckless || climbs || !contained) return risky("recursive-delete");
-		}
-		/*
-		 * A glob delete is judged by where it points, not by the glob.
-		 *
-		 * Rebuilding a database or clearing a build directory is ordinary work — and it is what
-		 * `rm -f data/blog.db*` is. What cannot be taken back is the same command aimed outside
-		 * the project, so that is what this asks about: an absolute or home-relative target, or
-		 * a chain that has stepped out of the workspace first.
-		 */
-		if (/(^|\s)(-[a-zA-Z]*f|--force(\s|$))/.test(command) && /[*?]/.test(command)) {
-			const targets = command.split(/\s+/).slice(1).filter((word) => !word.startsWith("-"));
-			const outside = targets.some(
-				(t) => t.startsWith("~") || wipesScratchRoot(t, cwd) || (isAbsolute(t) && !underScratchRoot(t, cwd)),
-			);
-			if (outside || !contained) return risky("force-delete-glob");
-		}
-		if (/(^|\s)\/(\s|$)|\s~\/?(\s|$)/.test(command)) return risky("delete-root-or-home");
+		const verdict = judgeRm(args, contained, cwd);
+		if (verdict.risky) return verdict;
 	}
-
-	if (head === "git") {
-		const { sub, args } = gitSubcommand(splitWords(command, dialect));
-		// A force push replaces what other people have; a plain push does not.
-		// `--force-with-lease` is the careful form, but it still replaces the remote branch.
-		if (sub === "push" && /(--force|(^|\s)-f(\s|$))/.test(command)) return risky("force-push");
-		if (sub === "reset" && /--hard/.test(command)) return risky("hard-reset");
-		const argumentRisk = gitArgumentRisk(sub, args);
-		if (argumentRisk) return risky(argumentRisk);
-		const table = RISKY_SUBCOMMANDS.get("git");
-		const code = table?.get(sub);
-		if (sub === "reset" || sub === "clean") return code ? risky(code) : SAFE;
-		if (code && (sub === "rebase" || sub === "filter-branch")) return risky(code);
-		return SAFE;
+	if (head === "find") {
+		const verdict = judgeFind(args, contained, cwd);
+		if (verdict.risky) return verdict;
 	}
+	if (head === "git") return judgeGit(argv);
+	// What LaunchServices starts runs outside the sandbox this command is in — see `risk-open.ts`.
+	if (head === "open") {
+		const verdict = judgeOpen(args);
+		if (verdict.risky) return verdict;
+	}
+	// Pruning volumes deletes the data in them; `docker volume ls` and `create` do not.
+	if (head === "docker" && args[0] === "volume" && args[1] === "prune") return risky("docker-prune");
 
 	const table = lookup(RISKY_SUBCOMMANDS, head);
 	if (table) {
-		const code = lookup(table, command.split(/\s+/)[1] ?? "");
+		// The first operand, so `pnpm -r publish` is a publish too.
+		const code = lookup(table, args.find((word) => !word.startsWith("-")) ?? "");
 		if (code) return risky(code);
 	}
 
@@ -353,6 +224,11 @@ export function assessCommand(command: string, cwd?: string, depth = 0, dialects
 	return SAFE;
 }
 
+const fetches = (head: string) => FETCHERS.has(head.toLowerCase());
+const interprets = (head: string) => INTERPRETERS.has(head) || INTERPRETERS.has(head.toLowerCase());
+/** Builtins that run the code they are given as an argument, the way an interpreter does. */
+const SOURCES = new Set(["eval", "source", "."]);
+
 function assessIn(command: string, cwd: string | undefined, depth: number, dialect: Dialect, dialects: readonly Dialect[]): RiskVerdict {
 	/*
 	 * Downloading something and handing it to an interpreter.
@@ -366,11 +242,16 @@ function assessIn(command: string, cwd: string | undefined, depth: number, diale
 	 * `curl u | tail -n +2 | sh` (anything in between). Both are the same sentence.
 	 */
 	for (const stages of pipelines(command, dialect)) {
-		const heads = stages.map((stage) => firstWord(stage));
-		const fetched = heads.findIndex((head) => FETCHERS.has(head.toLowerCase()));
+		const heads = stages.map((stage) => firstWord(stage, dialect));
+		const fetched = heads.findIndex(fetches);
 		if (fetched === -1) continue;
-		const ran = heads.findIndex((head, index) => index > fetched && (INTERPRETERS.has(head) || INTERPRETERS.has(head.toLowerCase())));
+		const ran = heads.findIndex((head, index) => index > fetched && interprets(head));
 		if (ran !== -1) return risky("download-and-run");
+	}
+	// And the same join with no pipe in it: `sh -c "$(curl u)"`, `bash <(curl u)`, `source <(curl u)`.
+	for (const { host, inner } of substitutionHosts(command, dialect)) {
+		const head = firstWord(host, dialect);
+		if ((interprets(head) || SOURCES.has(head)) && inner.some((piece) => fetches(firstWord(piece, dialect)))) return risky("download-and-run");
 	}
 
 	/*
@@ -435,7 +316,7 @@ function staysInside(command: string, cwd: string): boolean {
 			return false;
 		}
 		// A relative `cd` can still climb out with `..`.
-		if (target.split("/").includes("..")) return false;
+		if (climbsOut(target)) return false;
 	}
 	return true;
 }

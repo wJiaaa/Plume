@@ -233,6 +233,20 @@ test("our own runners' refusals are recognised under those runners only", () => 
 	assert.ok(!looksDenied("Permission denied, please try again.", "windows-acl"));
 });
 
+test("Seatbelt: open and defaults refused their daemon are denials there and only there", () => {
+	// Verbatim from `open` and `defaults write` under the profile on macOS 27.
+	const launch =
+		'The application cannot be opened for an unexpected reason, error=Error Domain=NSOSStatusErrorDomain Code=-10827 "kLSNoExecutableErr: The executable is missing" UserInfo={_LSLine=4288, _LSFunction=_LSOpenStuffCallLocal, _LSFile=LSOpenCore.mm, _LSErrorMessage=kLSNoExecutableErr}';
+	const document =
+		'No application knows how to open URL file:///tmp/doc.txt (Error Domain=NSOSStatusErrorDomain Code=-10661 "kLSExecutableIncorrectFormat: No compatible executable was found" UserInfo={_LSLine=1972, _LSFunction=runEvaluator, _LSFile=LSBindingEvaluator.mm, _LSErrorMessage=kLSExecutableIncorrectFormat}).';
+	const prefs = "Error: Could not write domain dev.example.probe; exiting";
+	for (const output of [launch, document, prefs]) {
+		assert.ok(looksDenied(output, "seatbelt"), output);
+		assert.ok(!looksDenied(output, "bwrap"), output);
+		assert.ok(!looksDenied(output), output);
+	}
+});
+
 test("Windows: PowerShell's refusal and an MSYS program dying under the token are denials", () => {
 	// What a confined PowerShell prints for a write outside the grant, verbatim from a Windows runner.
 	const powershell =

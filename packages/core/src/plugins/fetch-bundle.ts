@@ -50,8 +50,8 @@ export interface FetchResult {
 /**
  * Put the bundle's files in `staging`, and say how they got there.
  *
- * Throws only when both routes fail. A tarball that cannot be fetched or does not match its hash is
- * not fatal — it becomes a reason recorded on the result, and the clone proceeds.
+ * Throws only when both routes fail. A tarball that cannot be fetched, comes with no hash, or does
+ * not match its hash is not fatal when there is a repository — the clone proceeds instead.
  */
 export async function fetchBundle(entry: RegistryEntry, staging: string): Promise<FetchResult> {
 	if (entry.tarball) {
@@ -138,8 +138,17 @@ async function fromTarball(entry: RegistryEntry, staging: string): Promise<void>
 	 * Preferring the index's is deliberate: it was fetched separately, so matching it proves the
 	 * download agrees with what the catalogue advertised. The header is a fallback for a client that
 	 * only has a URL, and is worth strictly less — it arrived with the thing it describes.
+	 *
+	 * With neither, the archive is refused rather than unpacked as it came (ADR-0010: what cannot be
+	 * verified is not installed). An index that is a plain JSON file in a repository has no build to hash, but it also
+	 * has no archive — its entries install by cloning, which this does not touch; and an entry that
+	 * does have a repository still falls back to that clone in `fetchBundle`.
 	 */
 	const expected = entry.sha256 ?? response.headers.get("x-plume-sha256") ?? undefined;
+	if (!expected) {
+		await response.body?.cancel().catch(() => {});
+		throw new Error("索引和下载响应都没有给出这个包的 SHA-256，无法校验，所以没有安装");
+	}
 	await unpackVerified(new Uint8Array(await response.arrayBuffer()), expected, staging);
 }
 
@@ -158,17 +167,15 @@ async function fromTarball(entry: RegistryEntry, staging: string): Promise<void>
  */
 export async function unpackVerified(
 	archive: Uint8Array,
-	expected: string | undefined,
+	expected: string,
 	staging: string,
 ): Promise<void> {
 	if (archive.length === 0) throw new Error("下载到的是空文件");
 	if (archive.length > MAX_ARCHIVE_BYTES) throw new Error("下载的包过大");
 
-	if (expected) {
-		const actual = createHash("sha256").update(archive).digest("hex");
-		if (actual !== expected.toLowerCase()) {
-			throw new Error(`校验失败：期望 ${expected.slice(0, 12)}…，实际 ${actual.slice(0, 12)}…`);
-		}
+	const actual = createHash("sha256").update(archive).digest("hex");
+	if (actual !== expected.toLowerCase()) {
+		throw new Error(`校验失败：期望 ${expected.slice(0, 12)}…，实际 ${actual.slice(0, 12)}…`);
 	}
 
 	await mkdir(staging, { recursive: true });

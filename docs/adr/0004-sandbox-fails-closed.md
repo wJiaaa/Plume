@@ -60,3 +60,20 @@ Landlock 在 Ubuntu、Fedora、Debian 的内核里默认启用，无特权进程
 ## 2026-10-07 补：网络访问不经过文件沙箱
 
 命令统一允许联网；当前沙箱只约束文件写入，`danger-full-access` 不经过沙箱。
+
+## 2026-11-03 补：替命令写文件的系统服务也要拦
+
+`(deny file-write*)` 只管命令自己的写。macOS 上有两个守护进程会替它写，而且在沙箱之外：
+
+- **LaunchServices**：`open -g P.app` 让 launchd 在用户会话里起 P，P 里的 `touch ~/x` 照常写进主目录。
+- **cfprefsd**：`defaults write` 把改动交给偏好设置守护进程，由它写 `~/Library/Preferences`。
+
+Seatbelt 配置在非 `danger-full-access` 模式下按名字拒绝这几个 mach 服务（见 `sandbox/policy.ts`
+的 `HANDS_OFF`）。只拒 `launchservicesd` 不够，`open` 会改走 quarantine-resolver 照样起来，实测两个
+一起拒才拦住。代价是沙箱里 `open` 一个文档或网页也会失败（同一条请求），`looksDenied` 把这种失败
+认作沙箱拒绝，模型会被引导去申请提权，而不是对着一串 LaunchServices 错误码猜。cfprefsd 拒掉以后
+CFPreferences 直接读 plist，`defaults read`、`xcrun`、git、node、pnpm、python 实测不受影响，只是写不进去。
+风险判定那边，`open` 启动程序（`.app`、`-a`、`-b`、`--args`、`.command` 之类）判为要问人（`risk-open.ts`）。
+
+Linux 上同类缺口还在：bwrap/Landlock 下的命令可以经会话总线（`systemd-run --user`、D-Bus 激活的
+服务）让沙箱外的进程去写。没有环境验证，暂未处理。

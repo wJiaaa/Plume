@@ -25,6 +25,7 @@ export const RISK_REASONS = {
 	"write-system-path": "写入项目之外的系统路径",
 	"shell-startup": "修改 shell 启动文件",
 	"upload-file": "把本机文件上传到网络",
+	"launch-program": "启动其他程序，它不受沙箱约束",
 
 	// Programs that are dangerous whatever their arguments — `NEVER_UNATTENDED`.
 	"switch-user": "切换用户",
@@ -49,6 +50,7 @@ export const RISK_REASONS = {
 	"discard-changes": "可能丢弃未提交的改动",
 	"delete-untracked": "删除未跟踪的文件",
 	"rewrite-history": "重写提交历史",
+	"delete-branch": "删除分支，只在它上面的提交会丢失",
 	"overwrite-changes": "可能覆盖未提交的改动",
 	"publish-package": "发布到公共仓库",
 	"docker-prune": "可能清理镜像与卷",

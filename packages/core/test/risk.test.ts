@@ -293,3 +293,93 @@ test("emptying a named directory inside the project is housekeeping, not a warni
 	assert.equal(assessCommand("rm -rf ../sibling/*", cwd).risky, true);
 	assert.equal(assessCommand("cd /etc && rm -rf conf.d/*", cwd).risky, true, "and only inside the project");
 });
+
+test("git operations that take something away through their flags ask first", () => {
+	const code = (command: string) => assessCommand(command).code;
+	assert.equal(code("git push origin --delete main"), "delete-branch");
+	assert.equal(code("git push -d origin main"), "delete-branch");
+	assert.equal(code("git push origin :main"), "delete-branch");
+	assert.equal(code("git push origin main --force"), "force-push");
+	assert.equal(code("git push --mirror backup"), "force-push");
+	assert.equal(code("git branch -D x"), "delete-branch");
+	assert.equal(code("git branch --delete --force x"), "delete-branch");
+	assert.equal(code("git switch -f main"), "discard-changes");
+	assert.equal(code("git switch --discard-changes main"), "discard-changes");
+	assert.equal(code("git reset --merge"), "discard-changes");
+	assert.equal(code("git reset --keep HEAD~1"), "discard-changes");
+	assert.equal(code("git clean -xdf"), "delete-untracked");
+	assert.equal(code("git clean --force"), "delete-untracked");
+	assert.equal(code("docker volume prune -f"), "docker-prune");
+});
+
+test("git operations that keep every edit do not ask", () => {
+	// These asked because `reset` and `clean` were risky by name, whatever came after.
+	safe("git reset HEAD file");
+	safe("git reset --soft HEAD~1");
+	safe("git reset");
+	safe("git clean -n");
+	safe("git clean -fdn");
+	safe("git clean --dry-run -fd");
+	safe("git clean -d");
+	safe("git push origin :");
+	safe("git branch -d merged");
+	safe("git switch main");
+	safe("git switch -c feature/x");
+	safe("docker volume ls");
+});
+
+test("a cd that climbs out with a backslash has left the workspace", () => {
+	const cwd = "/Users/me/project";
+	// `..\..` is `../..` to Git Bash and PowerShell, and was read as one harmless segment.
+	assert.equal(assessCommand("cd ..\\.. && rm -rf build", cwd, 0, ["posix"]).risky, true);
+	assert.equal(assessCommand("cd ..\\.. && rm -rf build", cwd, 0, ["powershell"]).risky, true);
+	assert.equal(assessCommand("cd server && rm -rf build", cwd, 0, ["posix"]).risky, false);
+});
+
+test("a write is judged by Windows' separators as well as by '/'", () => {
+	assert.equal(assessWrite("C:\\Users\\me\\.zshrc", "C:\\Users\\me\\project").code, "shell-startup");
+	assert.equal(assessWrite("/Users/me/project/../other/x.ts", "/Users/me/project").code, "write-outside-project");
+	assert.equal(assessWrite("/Users/me/project/", "/Users/me/project").risky, false);
+});
+
+test("a write inside a Windows project is inside it", { skip: process.platform !== "win32" }, () => {
+	// `startsWith(`${cwd}/`)` was false for every Windows path, so every write there asked.
+	assert.equal(assessWrite("C:\\Users\\me\\project\\src\\a.ts", "C:\\Users\\me\\project").risky, false);
+	assert.equal(assessWrite("C:\\Users\\me\\project-backup\\a.ts", "C:\\Users\\me\\project").risky, true);
+	assert.equal(assessWrite("D:\\project\\a.ts", "C:\\Users\\me\\project").risky, true);
+});
+
+test("open asks before starting a program, and not before showing a document", () => {
+	// LaunchServices starts what `open` names in the user's session, outside the sandbox: `open -g
+	// P.app` wrote to the home directory from a sandbox that denies it.
+	risky("open -g /tmp/x/P.app");
+	risky("open /Applications/Terminal.app/");
+	risky("/usr/bin/open -a Terminal .");
+	risky("open -na Calculator");
+	risky("open -b com.apple.Terminal");
+	risky("open x.txt --args --flag");
+	risky("open --env FOO=1 notes.txt");
+	risky("open run.command");
+	risky("open ./build.sh");
+	risky("open setup.tool");
+	risky("open Installer.pkg");
+	risky("open ./payload"); // an executable with no extension runs in Terminal
+	risky("open vscode://extension/install");
+	risky("open -u ssh://host");
+	risky("env open -g P.app");
+	risky("ls && open P.app");
+
+	assert.equal(assessCommand("open -g P.app").code, "launch-program");
+
+	safe("open .");
+	safe("open ..");
+	safe("open dist/");
+	safe("open index.html");
+	safe("open screenshot.png");
+	safe("open -R report.pdf");
+	safe("open https://localhost:5173");
+	safe("open -u http://localhost:3000");
+	safe("open mailto:a@b.test");
+	safe("open -g coverage/index.html");
+	safe("open file:///tmp/report.html");
+});

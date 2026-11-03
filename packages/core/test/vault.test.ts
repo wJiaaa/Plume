@@ -9,7 +9,8 @@
  */
 
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { chmod, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, beforeEach, test } from "node:test";
@@ -78,6 +79,76 @@ test("a value this key cannot open is null, not a throw", async () => {
 	// something any of them could act on.
 	assert.equal(await unseal("v1:bm90IGV2ZW4gY2xvc2U="), null);
 	assert.equal(await unseal("plaintext from an older build"), null);
+});
+
+test("a key file that cannot be read is an error, and is never replaced", async (t) => {
+	// chmod is not a read barrier on Windows, nor for root, who reads a 000 file regardless.
+	if (process.platform === "win32" || process.getuid?.() === 0) return t.skip("chmod 000 does not stop this reader");
+	const sealed = await seal("sk-kept");
+	const keyFile = join(home, "vault.key");
+	const before = await readFile(keyFile);
+	resetVault();
+	await chmod(keyFile, 0o000);
+	try {
+		await assert.rejects(seal("sk-new"), /vault key/, "a read failure surfaces instead of minting a key");
+		await assert.rejects(unseal(sealed), /vault key/, "not null: null means the secret is gone, and callers delete it");
+	} finally {
+		await chmod(keyFile, 0o600);
+	}
+	assert.deepEqual(await readFile(keyFile), before, "the key on disk is the one it was");
+	assert.equal(await unseal(sealed), "sk-kept", "once readable again, the old secrets open");
+});
+
+test("a save made while the key could not be read does not delete the stored keys", async (t) => {
+	if (process.platform === "win32" || process.getuid?.() === 0) return t.skip("chmod 000 does not stop this reader");
+	await saveSettings(withProviders(provider("p1", "sk-kept")));
+	const keyFile = join(home, "vault.key");
+	resetVault();
+	await chmod(keyFile, 0o000);
+	let loaded: Settings;
+	try {
+		loaded = await loadSettings();
+	} finally {
+		await chmod(keyFile, 0o600);
+	}
+	assert.equal(loaded.providers[0].apiKey, "", "the settings still load, without the key");
+	// The desktop app saves the settings it holds on the next change, by which time the key reads.
+	await saveSettings(loaded);
+	resetVault();
+	assert.equal((await loadSettings()).providers[0].apiKey, "sk-kept");
+});
+
+test("a key of the wrong length is moved aside, not overwritten", async () => {
+	const keyFile = join(home, "vault.key");
+	await writeFile(keyFile, "short");
+	await seal("sk-one");
+	const backups = (await readdir(home)).filter((name) => name.startsWith("vault.key.bad-"));
+	assert.equal(backups.length, 1, `left: ${(await readdir(home)).join(", ")}`);
+	assert.equal(await readFile(join(home, backups[0]), "utf8"), "short", "the old bytes are kept");
+	assert.equal((await readFile(keyFile)).length, 32);
+	assert.deepEqual((await readdir(home)).filter((name) => name.endsWith(".tmp")), [], "no temporary file is left");
+});
+
+test("two processes using the vault for the first time end up with one key", async () => {
+	// Each child seals a value against an empty home; every sealed value has to open with the key
+	// that is on disk afterwards, or one process sealed with a key the other replaced.
+	const script = `
+		const { seal } = await import(${JSON.stringify(new URL("../src/config/vault.ts", import.meta.url).href)});
+		process.stdout.write(await seal("sk-" + process.pid));
+	`;
+	const children = Array.from({ length: 4 }, () =>
+		new Promise<string>((resolve, reject) => {
+			execFile(
+				process.execPath,
+				["--experimental-strip-types", "--no-warnings", "--input-type=module", "-e", script],
+				{ env: { ...process.env, PLUME_HOME: home } },
+				(error, stdout) => (error ? reject(error) : resolve(stdout)),
+			);
+		}),
+	);
+	const sealed = await Promise.all(children);
+	resetVault();
+	for (const value of sealed) assert.match((await unseal(value)) ?? "", /^sk-\d+$/, "sealed with the key that stayed");
 });
 
 test("the key file is 0600, and so is the store beside it", async () => {

@@ -6,6 +6,7 @@
  * attention.
  */
 
+import { withinOrIs } from "../platform.ts";
 import { PROTECTED_PATH } from "./risk-tables.ts";
 import { SAFE, risky, underScratchRoot, type RiskVerdict } from "./risk-shared.ts";
 
@@ -25,9 +26,8 @@ export function assessWrite(path: string, cwd: string): RiskVerdict {
 	 */
 	if (underScratchRoot(normalised, cwd)) return SAFE;
 	if (PROTECTED_PATH.test(` ${normalised}`)) return risky("write-sensitive-path");
-	if (/(^|\/)\.(zshrc|bashrc|profile|zprofile)$/.test(normalised)) return risky("shell-startup");
-	if (!normalised.startsWith(`${cwd.replace(/\/+$/, "")}/`) && normalised !== cwd.replace(/\/+$/, "")) {
-		return risky("write-outside-project");
-	}
+	if (/(^|[\\/])\.(zshrc|bashrc|profile|zprofile)$/.test(normalised)) return risky("shell-startup");
+	// Asked of `path`, not spelled with `/`: on Windows that spelling made every write "outside".
+	if (!withinOrIs(cwd, normalised)) return risky("write-outside-project");
 	return SAFE;
 }

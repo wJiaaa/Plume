@@ -575,6 +575,37 @@ export function pipelines(command: string, dialect: Dialect = "posix"): string[]
 	return out;
 }
 
+/** A command and the commands its substitutions run. */
+export interface SubstitutionHost {
+	/** The command, with each substitution in it shown as `…`. */
+	host: string;
+	/** Every command run inside its substitutions, however deep. */
+	inner: string[];
+}
+
+/**
+ * Each command that has substitutions in it, with what they run.
+ *
+ * `pipelines` and `splitCommands` both make a substitution a sibling of the command it sits in,
+ * which is right for "what does this line run" and loses the one relationship that matters for
+ * `sh -c "$(curl u)"` and `bash <(curl u)`: the download is the interpreter's *argument*. Neither
+ * is a pipe, so the pipeline rule never saw a fetch feeding a shell.
+ *
+ * A substitution's commands come out of `rebuild` before the command that encloses them, so they
+ * are held per depth until the next command one level up completes.
+ */
+export function substitutionHosts(command: string, dialect: Dialect = "posix"): SubstitutionHost[] {
+	const out: SubstitutionHost[] = [];
+	const pending: string[][] = [];
+	for (const entry of rebuild(command, dialect)) {
+		const inner = pending.slice(entry.depth + 1).flatMap((level) => level ?? []);
+		pending.length = entry.depth + 1;
+		if (inner.length > 0) out.push({ host: entry.text, inner });
+		if (entry.depth > 0) (pending[entry.depth] ??= []).push(entry.text, ...inner);
+	}
+	return out;
+}
+
 /** A command of the line itself and the operator that follows it. */
 export interface SequenceEntry {
 	/** The command, with any substitution in it shown as `…`. */

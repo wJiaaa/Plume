@@ -86,6 +86,29 @@ test("workspace-write adds subpath grants", () => {
 	assert.match(profile, /\(allow file-write\* \(subpath /);
 });
 
+test("a confined profile refuses the daemons that would write for it", () => {
+	/*
+	 * `open -g P.app` started P outside the sandbox and P wrote to the home directory; `defaults
+	 * write` had cfprefsd write `~/Library/Preferences`. Refusing `launchservicesd` alone still let
+	 * `open` through by way of the quarantine resolver, so both names are pinned here.
+	 */
+	for (const mode of ["read-only", "workspace-write"] as const) {
+		const profile = profileOf(seatbeltArgs({ mode, workspaceRoot: "/p" }));
+		const denial = /\(deny mach-lookup ([^()]|\([^()]*\))*\)/.exec(profile)?.[0] ?? "";
+		for (const name of [
+			'(global-name "com.apple.coreservices.launchservicesd")',
+			'(global-name "com.apple.coreservices.quarantine-resolver")',
+			'(global-name-prefix "com.apple.lsd.")',
+			'(global-name "com.apple.cfprefsd.daemon")',
+			'(global-name "com.apple.cfprefsd.agent")',
+		]) {
+			assert.ok(denial.includes(name), `${mode}: ${name} missing from ${profile}`);
+		}
+	}
+	// Full access is the absence of a sandbox, services included.
+	assert.ok(!profileOf(seatbeltArgs({ mode: "danger-full-access", workspaceRoot: "/p" })).includes("mach-lookup"));
+});
+
 test("the profile is passed as -p, the way sandbox-exec takes it", () => {
 	const args = seatbeltArgs({ mode: "read-only", workspaceRoot: "/p" });
 	assert.equal(args[0], "-p");

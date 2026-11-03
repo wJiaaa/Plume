@@ -328,6 +328,7 @@ export class SandboxUnavailableError extends Error {
 export function looksDenied(output: string, runner?: Runner): boolean {
 	if (DENIAL_PATTERNS.some((pattern) => pattern.test(output))) return true;
 	if (runner === "windows-acl" && (MSYS_UNDER_TOKEN.test(output) || WINDOWS_DENIAL.test(output))) return true;
+	if (runner === "seatbelt" && SEATBELT_SERVICE_DENIAL.test(output)) return true;
 	if (runner !== "landlock" && runner !== "windows-acl") return false;
 	return output.split("\n").some((line) => GENERIC_DENIAL.test(line) && !NOT_A_DENIAL.test(line));
 }
@@ -342,6 +343,14 @@ export function looksDenied(output: string, runner?: Runner): boolean {
  * denial, it reaches the model as one it can escalate, and unconfined the hook runs.
  */
 const MSYS_UNDER_TOKEN = /\bfatal error - .*\bWin32 error 5\b/i;
+
+/**
+ * `open` and `defaults write` failing because the profile refused the daemon they talk to (see
+ * `HANDS_OFF` in `policy.ts`). Neither says "not permitted": LaunchServices reports a missing or
+ * incompatible executable and `defaults` that it could not write the domain. Only under Seatbelt,
+ * where those are what the refusal looks like; elsewhere the same lines mean what they say.
+ */
+const SEATBELT_SERVICE_DENIAL = /_LSOpenStuffCallLocal|kLSExecutableIncorrectFormat|\bCould not write domain\b/;
 
 /**
  * A Windows refusal in whatever language Windows speaks.

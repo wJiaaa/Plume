@@ -111,6 +111,9 @@ function sbplString(path: string): string {
  *
  * `/dev/null` is granted under every mode because a shell redirects to it constantly and a
  * `read-only` sandbox that cannot run `command 2>/dev/null` is not read-only, it is broken.
+ *
+ * `file-write*` only covers writes this process makes. Two daemons write on its behalf, outside
+ * the profile, and both are closed (`HANDS_OFF`).
  */
 export function seatbeltArgs(policy: SandboxPolicy): string[] {
 	const forms = ["(version 1)", "(allow default)"];
@@ -120,9 +123,38 @@ export function seatbeltArgs(policy: SandboxPolicy): string[] {
 		if (roots.length > 0) {
 			forms.push(`(allow file-write* ${roots.map((root) => `(subpath ${sbplString(root)})`).join(" ")})`);
 		}
+		forms.push(HANDS_OFF);
 	}
 	return ["-p", forms.join(" ")];
 }
+
+/**
+ * The services that would do a denied write for the command, refused by name.
+ *
+ * - **LaunchServices.** `open -g P.app`, where P runs `touch ~/x`, wrote to the home directory:
+ *   the app is started by launchd in the user's session, not as a child of this one, so nothing
+ *   here applies to it. Refusing `launchservicesd` alone was not enough — `open` falls back to the
+ *   quarantine resolver and still launched it (measured on macOS 27); the two together, plus the
+ *   `com.apple.lsd.*` family, stop `open` of an app, a `.command`, a URL handler, `-a`, `-b`, and
+ *   `osascript … to launch`. The price is that `open` of a document or a web page fails here too,
+ *   since it is the same request; `looksDenied` reads that failure as the sandbox's, so the model
+ *   is offered the escalation rather than a mystery.
+ * - **cfprefsd.** `defaults write` hands the change to the preferences daemon, which writes
+ *   `~/Library/Preferences`. With the daemon refused, CFPreferences reads the plist files
+ *   directly — `defaults read`, `xcrun`, `xcodebuild`, git, node, pnpm and python measured the same
+ *   either way — and writes simply fail.
+ *
+ * Linux has the same shape of gap and it is still open: under bwrap or Landlock a command can ask
+ * the session bus (`systemd-run --user`, a D-Bus activated service) to run something unconfined.
+ * Not closed because there is no environment here to verify a fix against.
+ */
+const HANDS_OFF =
+	"(deny mach-lookup" +
+	' (global-name "com.apple.coreservices.launchservicesd")' +
+	' (global-name "com.apple.coreservices.quarantine-resolver")' +
+	' (global-name-prefix "com.apple.lsd.")' +
+	' (global-name "com.apple.cfprefsd.daemon")' +
+	' (global-name "com.apple.cfprefsd.agent"))';
 
 /**
  * The Linux `bwrap` arguments for a policy.
