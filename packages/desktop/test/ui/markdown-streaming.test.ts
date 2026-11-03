@@ -169,7 +169,8 @@ test("正在打的半个拉丁词不放出来，上游停下了才放", async ()
 		await frames(300);
 		assert.equal(view.text(), "Hello wor", "上游停了一阵，那就不是半个词");
 		await view.rerender(h(Markdown, { text: "Hello world.", streaming: true }));
-		await frames(120);
+		// 停了一阵之后的这三个字按上游的平均速度摊开（见 `stream-pace.ts`），不是几帧就放完。
+		await frames(300);
 		assert.equal(view.text(), "Hello world.");
 	} finally {
 		await view.unmount();

@@ -43,7 +43,7 @@ const HOLD_MAX = MAX_LAG;
 const CATCH_UP = 400;
 /** 头一批字按这个速度估（字/毫秒），短的几个字几帧就出完。 */
 const FIRST_RATE = 0.2;
-/** 积压很少时，相邻两个字最多隔多久（即最慢 60 字/秒），免得最后几个字拖着出来。 */
+/** 积压很少时，相邻两个字最多隔多久（即最慢 60 字/秒），免得最后几个字拖着出来。要摊满余量时例外，见 `plan`。 */
 const SLOWEST = 1000 / 60;
 /** 上游停了这么久再来的字，按一条新的流算：之前的节奏说明不了接下来的。 */
 const RESET = 1500;
@@ -103,6 +103,7 @@ export class Pace {
 		}
 		const from = Math.max(now, last);
 		let end: number;
+		let slowest = SLOWEST;
 		if (fresh) {
 			this.startedAt = now;
 			this.recent = arriving;
@@ -122,8 +123,13 @@ export class Pace {
 			// 比余量多出来的那截，每批收回 `PULL` 这么多，几批之后落后就回到余量上。
 			const excess = Math.max(0, from - now - hold);
 			end = Math.min(now + MAX_LAG, Math.max(now + hold, from + arriving / rate - excess * PULL));
+			// 慢的上游（每秒不到 60 字）一批只有几个字，按 `SLOWEST` 几帧就放完，余下的停顿屏幕干等下一批，
+			// 看着是一段一段吐出来的。所以这批字往余量的末尾摊，但不慢过上游平均间隔的 1.5 倍：上游停过一大下
+			// 之后余量撑到了顶，只按余量摊，接着来的几个字就成了慢动作（停 1 秒后 12 个字放 750ms）。1.5 是因为
+			// `rate` 把刚到的这一批算了全额，一阵一停的上游会被估快两三成，按 1 倍摊不满，每批之间还空 100–200ms。
+			slowest = Math.max(SLOWEST, Math.min((now + hold - from) / arriving, 1.5 / rate));
 		}
-		const pace = Math.min(SLOWEST, Math.max(0, (end - from) / arriving));
+		const pace = Math.min(slowest, Math.max(0, (end - from) / arriving));
 		let at = last;
 		while (this.births.length < length) {
 			at = Math.max(now, at + pace);

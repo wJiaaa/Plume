@@ -62,6 +62,27 @@ test("每 600ms 倒一批 150 个字的上游，第二批起屏幕就不再停�
 	assert.ok(lag <= 700, `落后 ${lag.toFixed(0)}ms`);
 });
 
+test("慢的上游（每秒二三十字）一批几个字，摊满到下一批来，不是几帧放完再干等", () => {
+	for (const [chunk, every] of [[6, 300], [15, 500], [3, 100]]) {
+		const { births, last } = play(chunk, every);
+		// 头一秒在摸上游的节奏，不算。
+		const idle = Math.max(...gaps(births.filter((at) => at >= 1000)));
+		assert.ok(idle < 100, `每 ${every}ms ${chunk} 个字：两个字之间最长空了 ${idle.toFixed(0)}ms`);
+		const lag = births.at(-1)! - last;
+		assert.ok(lag <= 700, `每 ${every}ms ${chunk} 个字：落后 ${lag.toFixed(0)}ms`);
+	}
+});
+
+test("快的上游停了一秒再接着来，接着来的字不按撑满的余量摊成慢动作", () => {
+	const pace = new Pace();
+	let count = 0;
+	for (let t = 0; t < 1000; t += 24) pace.plan(t, (count += 4));
+	const resumed = count;
+	for (let t = 2000; t < 3000; t += 24) pace.plan(t, (count += 4));
+	const span = pace.births[resumed + 11] - pace.births[resumed];
+	assert.ok(span < 400, `停顿之后的 12 个字放了 ${span.toFixed(0)}ms`);
+});
+
 test("上游每秒八百多字，屏幕跟得上，不封顶", () => {
 	const { births, last } = play(14, 16);
 	const lag = births.at(-1)! - last;
