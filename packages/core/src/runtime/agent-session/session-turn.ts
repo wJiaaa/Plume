@@ -50,7 +50,6 @@ import { submitPlanTool } from "../plan/plan-tool.ts";
 import { recordPlanMode } from "./session-model.ts";
 import type { SubAgentRegistry } from "../sub-agent/sub-agents.ts";
 import type { DetachedDispatches } from "../sub-agent/detached-dispatches.ts";
-import type { SpokenWaits } from "./spoken-waits.ts";
 
 export interface TurnInputs {
 	cwd: string;
@@ -74,7 +73,6 @@ export interface TurnInputs {
 	dispatches: DetachedDispatches;
 	/** 后台子代理挂的线，会话真停下时才断。见 `AgentSession.background`。 */
 	backgroundSignal?: AbortSignal;
-	spokenWaits: SpokenWaits;
 	/** 这场对话此刻设定的模型——一轮之内也会变。见 `AgentModelContext.liveModel`。 */
 	liveModel?: LiveModel;
 	/** 侧边聊天：自己的身份和准则、一小组工具。见 `side-session.ts` 和 `PromptProfile`。 */
@@ -375,7 +373,6 @@ async function assembleTurn(input: TurnInputs, hooks: TurnHooks): Promise<{ conf
 			subAgents: input.subAgents,
 			dispatches: input.dispatches,
 			backgroundSignal: input.backgroundSignal,
-			spokenWaits: input.spokenWaits,
 			liveModel: input.liveModel,
 			signal: input.signal,
 			streamFn: input.streamFn,

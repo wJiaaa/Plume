@@ -104,7 +104,8 @@ test("正文分两半：审阅会话认开头那一行，有 review_session 的�
 	// 审阅会话那一半的第 F 步：先问、拿到回答才修，只修点名的，等不到就不修。
 	const fix = REVIEW_BODY.slice(REVIEW_BODY.indexOf("## F."), REVIEW_BODY.indexOf("## 7."));
 	assert.match(fix, /call `ask_session` with the implementing conversation's address/);
-	assert.match(fix, /call `wait_for_session`/, "原会话去问人时接着等");
+	assert.match(fix, /end your turn with one line saying you are waiting/, "问是不挂着的：答复作为下一轮的消息到");
+	assert.match(fix, /only says it is asking its person first, end your turn again/, "原会话去问人时再收一次，等下一封");
 	assert.match(fix, /No answer .*: fix nothing/);
 	assert.match(fix, /Fix exactly the findings it named/);
 	assert.match(handOff, /Do not copy the plan or the person's messages/, "计划和用户原话由宿主附原文");

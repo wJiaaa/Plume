@@ -119,8 +119,6 @@ export async function subAgentRunConfig(options: SubAgentOptions, dispatched: Di
 					allowedPaths: options.allowedPaths,
 					transcript: options.transcript,
 				}),
-				// 人说话的对象是主会话，不是它；它也拿不到需要这个的工具（`sessionOnly`）。
-				untilSpokenTo: undefined,
 				scratchDir: dispatched.scratch,
 				resources: dispatched.resources,
 				// 子代理不派子代理：`task` 已经不在它的工具表里，这里也不留往下派的入口。

@@ -41,8 +41,7 @@ import type { DraftAttachment } from "./attachments/read.ts";
 import { useComposerAttachments } from "./useComposerAttachments.tsx";
 import { useDraft } from "./useDraft.ts";
 import { useApp } from "../../store/index.ts";
-import { focusScreenOf, useScopedFromMessages, useScopedFromMeta, useScopedFromToolRuns, useScopedMeta, useScopedRunning, useScopedSessionId, useScopedStopped, useScopedTodos, useScopedUserMessages, useScopedWorking, useScopedWorkspace } from "../../app/session-scope.tsx";
-import { awaitingSession } from "../../store/tool-run.ts";
+import { focusScreenOf, useScopedFromMessages, useScopedFromMeta, useScopedMeta, useScopedRunning, useScopedSessionId, useScopedStopped, useScopedTodos, useScopedUserMessages, useScopedWorking, useScopedWorkspace } from "../../app/session-scope.tsx";
 import { carryOnPrompt } from "../../store/derive.ts";
 import { takePageStates } from "../../store/page-state.ts";
 import { useJobReveal } from "./job-reveal.ts";
@@ -136,13 +135,6 @@ export const Composer = memo(function Composer({ centered = false }: {
 	const flushQueue = useApp((s) => s.flushQueue);
 	/** 排着几条。只要不是零，新说的这句就得排到它们后面，不然先后就乱了。 */
 	const queuedCount = useApp((s) => (activeSessionId ? s.queued[activeSessionId]?.length ?? 0 : 0));
-	/*
-	 * 主会话此刻只是在等另一个会话做完（`ask_session` / `wait_for_session`）。
-	 *
-	 * 这时候说的话直接送进去，不排队：排队等的是「这一轮做完」，而这一轮在等别人，可能是十几分钟。
-	 * 送进去之后运行时让那个等待放手、先回应人（`spoken-waits.ts`）。
-	 */
-	const parked = useScopedFromToolRuns(awaitingSession) && running;
 	const { compact, dismissNav } = useLayout();
 	const column = useRef<HTMLDivElement>(null);
 	useLayoutEffect(() => {
@@ -520,7 +512,7 @@ export const Composer = memo(function Composer({ centered = false }: {
 		 *
 		 * 队列里还排着东西的时候，即使这会儿空着也要接着排——否则新说的这句会越过前面那几句先到。
 		 */
-		if (activeSessionId && outgoing.deliver !== "steer" && !(parked && queuedCount === 0) && (running || queuedCount > 0)) {
+		if (activeSessionId && outgoing.deliver !== "steer" && (running || queuedCount > 0)) {
 			enqueue(activeSessionId, {
 				content: outgoing.content,
 				...(outgoing.displayText !== undefined ? { displayText: outgoing.displayText } : {}),
@@ -546,7 +538,7 @@ export const Composer = memo(function Composer({ centered = false }: {
 		if (activeSessionId === null && useApp.getState().activeSessionId !== null) focusScreenOf(null);
 		if (centered) sending = true;
 		const accepted = await send(outgoing.content, {
-			...(outgoing.deliver ? { deliver: outgoing.deliver } : parked ? { deliver: "steer" as const } : {}),
+			...(outgoing.deliver ? { deliver: outgoing.deliver } : {}),
 			...(outgoing.displayText !== undefined ? { displayText: outgoing.displayText } : {}),
 			...(outgoing.skillRef ? { skillRef: outgoing.skillRef } : {}),
 			...(outgoing.sessionRefs?.length ? { sessionRefs: outgoing.sessionRefs } : {}),

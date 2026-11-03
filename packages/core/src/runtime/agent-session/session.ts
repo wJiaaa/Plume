@@ -46,11 +46,10 @@ import { SubAgentRegistry, type SteerDisplay } from "../sub-agent/sub-agents.ts"
 import { describeSubAgentContext, SubAgentContexts } from "../sub-agent/sub-agent-context.ts";
 import { DetachedDispatches } from "../sub-agent/detached-dispatches.ts";
 import type { FinishedSession } from "./delivery-message.ts";
-import { SpokenWaits } from "./spoken-waits.ts";
 import { backgroundJobs } from "../../tools/background-jobs.ts";
 import { SessionActivity, type CompactOutcome } from "./session-activity.ts";
 import { SessionDeliveries } from "./session-deliveries.ts";
-import { addressed, SessionInbox } from "./session-inbox.ts";
+import { SessionInbox } from "./session-inbox.ts";
 import { sessionLookup } from "./session-lookup.ts";
 import { refreshDispatchGate } from "./turn-config.ts";
 import { sessionTaskQueue, type TaskQueue } from "../queue/task-queue.ts";
@@ -196,8 +195,6 @@ export class AgentSession {
 	 * 「现在就发」一按就把它们连同已经跑完、正等着送回的结果一起断掉，模型却还在等。
 	 */
 	private background = new AbortController();
-	/** 工具在等另一个会话做完时，有人找就放手。见 `spoken-waits.ts`。 */
-	private readonly spokenWaits = new SpokenWaits(() => (this.inbox.spoken ? "person" : this.running && this.letters.length > 0 ? "notice" : null));
 	/** 跑完了、还没送回主会话的后台结果；攒一小会儿再送。见 `session-deliveries.ts`。 */
 	private readonly deliveries: SessionDeliveries;
 	/**
@@ -381,9 +378,8 @@ export class AgentSession {
 	/**
 	 * 前台手上没事了：和 `idle` 只差放了手的后台子代理。
 	 *
-	 * 另一个会话等它（`wait_for_session`）看的是这个。后台子代理一跑可能半小时，期间主会话一句话
-	 * 不说，等的那一方只能干等到超时，而它要的是主会话这一轮的结论；结果回来后真有新的，对方会再开
-	 * 一轮，要就再问。攒着待送的、排着的任务仍然算忙：那是马上就要开的下一轮。
+	 * 会话之间看的是这个：`list_sessions` 的忙闲，以及路由器判断一封请求是不是没读到就被丢了——后台
+	 * 子代理一跑可能半小时，那期间主线没在读信。攒着待送的、排着的任务仍然算忙：那是马上就要开的下一轮。
 	 */
 	get idleInForeground(): boolean {
 		return !this.running && this.deliveries.empty && !this.tasks.list().some((task) => task.status === "queued" || task.status === "running");
@@ -403,14 +399,15 @@ export class AgentSession {
 	/**
 	 * 另一个会话发来的一条消息。不是人开口，所以不清技能限制——见 `submit` 的 `fromPerson`。
 	 *
-	 * 请求和通知走同一条路：在跑就在下一步之前读到，和人插话一样放开正在等的事，不然它要等那件事
-	 * 等完才读得到。闲着就走送达开一轮（不再照 codex 的 `trigger_turn = false` 攒到下一次开轮）：
+	 * 请求、通知、答复走同一条路：在跑就在下一步之前读到。闲着就走送达开一轮（不再照 codex 的
+	 * `trigger_turn = false` 攒到下一次开轮）：
 	 * 攒着的信不进记录、界面上看不见，卸载或重启就没了；而闲着的收件方多半是在等各路回报的主会话，
 	 * 「做完了」「被谁挡住了」正是它该接着动的事，攒着它就一直不动。
 	 *
 	 * 请求曾经排到这一轮做完之后、单独一轮，发件方拿这一轮最后那段话当回答。一轮可以跑二十分钟，
 	 * 问的却常是两步之内就答得上来的事，发件方等不到就改发通知，问这条路形同虚设。现在回答由收件方
-	 * 用 `reply_session` 交回，不再绑在这一轮的收场上。见 docs/adr/0040-session-messaging.md。
+	 * 用 `reply_session` 交回，不再绑在这一轮的收场上；问也不再就地等，答复作为一封信送回发件方。
+	 * 见 docs/adr/0040-session-messaging.md、docs/adr/0060-asks-do-not-block.md。
 	 */
 	receive(letter: PeerLetter): void {
 		// 压缩也占着 running，却没有循环取信；送达会等压缩结束后开轮。
@@ -420,7 +417,6 @@ export class AgentSession {
 		}
 		this.letters.push(letter);
 		this.announcePeerQueue();
-		this.spokenWaits.release("notice");
 	}
 
 	/**
@@ -980,26 +976,14 @@ export class AgentSession {
 	/**
 	 * 一条消息进会话：忙着就插话或排队，闲着就开一个回合。
 	 *
-	 * 人说的话和运行时替后台子代理递回来的结果都走这里，差别在 `fromPerson`。人开口、或另一个
-	 * 会话的信插进来时，正在等另一个会话的工具当场放手（见 `spoken-waits.ts`）；后台结果的
-	 * 送达不是在找人，它只是排进去，不打断任何人。
+	 * 人说的话和运行时替后台子代理递回来的结果都走这里，差别在 `fromPerson`。
 	 */
 	private async submit(
 		message: Message,
 		options: { thinking?: ThinkingLevel; deliver?: "steer" | "followUp"; fromPerson: boolean; title?: () => Promise<void> },
 	): Promise<TurnEnd | undefined> {
 		if (this.running) {
-			const went = this.inbox.accept({ message, thinking: options.thinking }, options.deliver, this.activity.steerable);
-			if (went === "steer") {
-				/*
-				 * 有人找它了（人开口），别再干等另一个会话。另一个会话的信不走这里，见 `receive`。
-				 *
-				 * 插话只在两轮之间才有人取，而工具正卡在 `ask_session` / `wait_for_session` 上的时候，
-				 * 「两轮之间」要等到那个会话做完。放手之后这一轮当场往下走，下一个回合开头就读到这句话。
-				 * 谁算「有人找」见 `addressed`。
-				 */
-				if (options.fromPerson || addressed(message)) this.spokenWaits.release("person");
-			}
+			this.inbox.accept({ message, thinking: options.thinking }, options.deliver, this.activity.steerable);
 			return undefined;
 		}
 
@@ -1129,7 +1113,6 @@ export class AgentSession {
 				subAgents: this.subAgents,
 				dispatches: this.dispatches,
 				backgroundSignal: this.background.signal,
-				spokenWaits: this.spokenWaits,
 				liveModel: this.liveModel,
 				profile: parent ? SIDE_CHAT_PROFILE : undefined,
 				planMode: this.log.meta.planMode === true,
@@ -1224,7 +1207,7 @@ export class AgentSession {
 		this.activity.stop();
 		// Steering and the queue both go: see `SessionInbox.clear`. A wakeup among them fires again: see `SessionWakeups.dropped`.
 		this.wakeups.dropped(this.inbox.clear());
-		// 没读到的请求跟着丢：发件方在等，路由器据此告诉它信没被读（`session-peers.ts` 的 `settle`）。通知留到下一轮。
+		// 没读到的请求跟着丢：路由器在这个会话闲下来时据此替它给发件方送一封「没读到」（`session-peers.ts`）。通知留到下一轮。
 		this.letters = this.letters.filter((letter) => !letter.request);
 		this.announcePeerQueue();
 		/*

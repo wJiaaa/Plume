@@ -13,16 +13,6 @@ export interface Queued {
 	thinking?: ThinkingLevel;
 }
 
-/**
- * 人说的话：父会话据此不再干等它派出去的子代理和别的会话。
- *
- * 后台结果的送达不算：它在交差，不是在找正等着的这一方。别的会话的信（请求和通知）在
- * `AgentSession.receive` 里直接放手，它不经过这里。
- */
-export function addressed(message: Message): boolean {
-	return message.role === "user" && !message.synthetic;
-}
-
 export class SessionInbox {
 	private steering: Message[] = [];
 	private readonly queued: Queued[] = [];
@@ -47,17 +37,6 @@ export class SessionInbox {
 	/** What the running loop picks up between rounds (`drainSteering`). */
 	takeSteering(): Message[] {
 		return this.steering.splice(0, this.steering.length);
-	}
-
-	/**
-	 * 有人找这个会话的话排着，循环还没取走。
-	 *
-	 * 等另一个会话的工具据此不再干等（`spoken-waits.ts`）。只在开口那一刻放手是不够的：话常常是在
-	 * 模型还在写回复时说的，那段回复写完才开始等，开口那一刻手上没有等待可放，接下来的等待就把
-	 * 这句话一直压到对方做完。谁算「有人找」见 `addressed`。
-	 */
-	get spoken(): boolean {
-		return this.steering.some(addressed);
 	}
 
 	get empty(): boolean {

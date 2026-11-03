@@ -139,6 +139,7 @@ export { AgentSession, type AgentSessionOptions } from "./runtime/agent-session/
 export { storedContextBreakdown } from "./runtime/agent-session/stored-context.ts";
 export { storedSubAgents } from "./runtime/agent-session/stored-sub-agents.ts";
 export { createWakeupTools } from "./runtime/agent-session/wakeup-tools.ts";
+export { HISTORY_PROPERTIES, readHistory, type HistoryArgs } from "./runtime/side-chat/sidechat-history.ts";
 export { summarizeSession } from "./runtime/summary/session-summary.ts";
 export {
 	plumeHome,

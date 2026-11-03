@@ -33,7 +33,6 @@ import { toolTable } from "../../tools/mcp-search.ts";
 import { addressLookups, runSubAgent } from "../sub-agent/sub-agent.ts";
 import type { SubAgentRegistry } from "../sub-agent/sub-agents.ts";
 import type { DetachedDispatches } from "../sub-agent/detached-dispatches.ts";
-import type { SpokenWaits } from "./spoken-waits.ts";
 import { RepetitionWatch } from "../../agent/repetition.ts";
 import { sessionPruner } from "../../agent/aged-prune.ts";
 import { inheritedToolEnv } from "../policy/run-policy.ts";
@@ -59,8 +58,6 @@ export interface TurnConfigDeps {
 	dispatches: DetachedDispatches;
 	/** 后台子代理挂的线：会话真停下时断，插话停这一轮时不断。不给就挂在这一轮的 `signal` 上。 */
 	backgroundSignal?: AbortSignal;
-	/** 工具在等另一个会话时，有人找就放手——见 `spoken-waits.ts`。 */
-	spokenWaits: SpokenWaits;
 	signal?: AbortSignal;
 	streamFn?: StreamFn;
 	requestApproval(request: ApprovalRequest): Promise<ApprovalDecision>;
@@ -233,7 +230,6 @@ export function buildTurnConfig(
 				 * `aborted`），收尾之后也就不在「还在等谁」里了。
 				 */
 				stopSubAgent: (id) => deps.subAgents.stop(id),
-				untilSpokenTo: (run) => deps.spokenWaits.until(run),
 				resources: deps.resources,
 				scratchDir: deps.scratchDir,
 			},

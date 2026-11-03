@@ -22,7 +22,7 @@ import { SUBMIT_PLAN_TOOL_NAME } from "./plan-view.ts";
 export const PLAN_MODE_KEY = "planMode";
 
 /**
- * 审阅会话可以改文件了：原会话已经答复修哪几条。宿主看到那次 `ask_session` 拿到回答时写入。
+ * 审阅会话可以改文件了：原会话已经答复修哪几条。宿主看到原会话的答复信进了审阅会话时写入。
  *
  * 只在状态图里、不落盘：应用重开后又是只读，模型被拒时照拒绝里的话再问一次就行，比把「问过」从
  * 记录里推回来简单，也不会因为认错一次回答而放行。
@@ -52,7 +52,7 @@ function edits(tool: Tool, args: Record<string, unknown>): string | undefined {
 function reviewRefusal(tool: string, why: string): ToolResult {
 	return errorResult(
 		`Review session: ${why}, so "${tool}" did not run. A review session reads until the conversation that wrote the ` +
-		"change has said which findings to fix: finish the report, then ask it with `ask_session` (step F). Once it answers, edits are allowed.",
+		"change has said which findings to fix: finish the report, ask it with `ask_session` (step F) and end your turn. Once its answer arrives, edits are allowed.",
 	);
 }
 

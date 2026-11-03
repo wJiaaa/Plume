@@ -1,6 +1,6 @@
 /**
  * 会话之间的消息：谁看得见谁、权限比自己宽的不让发、发太快太长太绕的拦下来、问和告诉各走哪条路。
- * 等回答见 `peer-wait.test.ts`。
+ * 答复怎么送回来见 `peer-ask.test.ts`。
  */
 
 import assert from "node:assert/strict";
@@ -8,15 +8,13 @@ import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, test } from "node:test";
+import { test } from "node:test";
 import type { Settings } from "@plume/core";
 import { peerAddress, peerName, peerRef, resolvePeer } from "../electron/peer/peer-address.ts";
 import { broaderThan, PEER_BUCKET, PeerPacer } from "../electron/peer/peer-policy.ts";
 import { rootsOverlap, sessionRoots } from "../electron/peer/peer-reach.ts";
 import { pathKey } from "../electron/path-key.ts";
-import { asking, fakeSession, routerWith, stopAsking } from "./helpers/peer-fake.ts";
-
-afterEach(stopAsking);
+import { fakeSession, routerWith } from "./helpers/peer-fake.ts";
 
 test("地址：名字取标题、ref 取 id 前六位；ref 说了算，重名不猜", () => {
 	const a = { id: "a1b2c3d4-0000-0000-0000-000000000000", title: "修登录", cwd: "/w/api" };
@@ -104,11 +102,11 @@ test("路由：列出目录重叠的、送达时带上地址和链、看不见�
 		const c = fakeSession("cccccccc-1", join(root, "other"));
 		const { router } = routerWith(a, b, c);
 
-		assert.deepEqual(await router.list("aaaaaaaa-1"), [{ address: "bbbb [bbbbbb]", sessionId: "bbbbbbbb-1", cwd: join(root, "api", "src"), busy: false, mode: "auto" }]);
-		await asking(router, b, "aaaaaaaa-1", { to: "bbbb", message: "接着发版" });
+		assert.deepEqual(await router.list("aaaaaaaa-1"), [{ address: "bbbb [bbbbbb]", sessionId: "bbbbbbbb-1", cwd: join(root, "api", "src"), busy: false, mode: "auto", waitingOnUser: false }]);
+		await router.ask("aaaaaaaa-1", { to: "bbbb", message: "接着发版" });
 		assert.equal(b.inbox[0]?.kind, "request");
 		const { id, ...letter } = b.inbox[0]!.letter;
-		assert.match(id ?? "", /^[0-9a-f-]{36}$/, "每封信有自己的 id，回答和兜底都据此认出是哪封");
+		assert.match(id ?? "", /^[0-9a-f-]{36}$/, "每封信有自己的 id，答复和代答都据此认出是哪封");
 		assert.deepEqual(letter, { sessionId: "aaaaaaaa-1", from: "aaaa [aaaaaa]", text: "接着发版", cwd: join(root, "api"), chain: ["aaaaaaaa-1"], request: true });
 
 		// B 为这封信开的那一轮里再去找 A：链接上了。
@@ -121,17 +119,18 @@ test("路由：列出目录重叠的、送达时带上地址和链、看不见�
 		await router.notify("bbbbbbbb-1", { to: "aaaa", message: "新的事" });
 		assert.deepEqual(a.inbox[1]?.letter.chain, ["bbbbbbbb-1"]);
 		b.finish("好了。");
+		// 读到 A 的问却没回就收了这一轮：A 拿到代答，答复接的是那封问的链。
+		assert.deepEqual([a.inbox[2]?.kind, a.inbox[2]?.letter.chain], ["answer", ["aaaaaaaa-1", "bbbbbbbb-1"]]);
 		// 人开的那一轮里，B 发的也是新链——链跟着运行走，不是「B 最近收到的那封信」。
 		b.start();
 		await router.notify("bbbbbbbb-1", { to: "aaaa", message: "人让我说的" });
-		assert.deepEqual(a.inbox[2]?.letter.chain, ["bbbbbbbb-1"]);
+		assert.deepEqual(a.inbox[3]?.letter.chain, ["bbbbbbbb-1"]);
 		b.finish("好了。");
 
 		assert.equal((await router.ask("aaaaaaaa-1", { to: "cccc", message: "hi" })).kind, "unreachable");
 		assert.equal((await router.notify("aaaaaaaa-1", { to: "cccc", message: "hi" })).kind, "unreachable");
 		assert.equal((await router.notify("aaaaaaaa-1", { to: "aaaa", message: "hi" })).kind, "self");
 		assert.equal((await router.notify("aaaaaaaa-1", { to: "nobody", message: "hi" })).kind, "none");
-		assert.equal((await router.wait("aaaaaaaa-1", { to: "cccc" })).kind, "unreachable", "等也一样要目录重叠");
 		assert.equal(c.inbox.length, 0);
 	} finally {
 		await rm(root, { recursive: true, force: true });
@@ -158,7 +157,7 @@ test("路由：问送的是请求，告诉送的是通知；闲着时的通知�
 	b.read();
 	b.start();
 	assert.deepEqual(await router.notify("aaaaaaaa-3", { to: "bbbb", message: "先别动 config.ts" }), { kind: "delivered", to: "bbbb [bbbbbb]", busy: true });
-	await asking(router, b, "aaaaaaaa-3", { to: "bbbb", message: "接着发版" });
+	await router.ask("aaaaaaaa-3", { to: "bbbb", message: "接着发版" });
 	assert.deepEqual(b.inbox.map((one) => one.kind), ["notice", "notice", "request"]);
 });
 
@@ -168,10 +167,10 @@ test("路由：两家的信进了 B 的同一次运行（一封请求开轮、�
 	const c = fakeSession("cccccccc-4", "/w/p");
 	const { router } = routerWith(a, b, c);
 	// C 先在 A 那里接了一跳，A 再找 B：A→B 那封的链是 [C, A]。
-	await asking(router, a, "cccccccc-4", { to: "aaaa", message: "你去问 B" });
+	await router.ask("cccccccc-4", { to: "aaaa", message: "你去问 B" });
 	a.read();
 	a.start();
-	await asking(router, b, "aaaaaaaa-4", { to: "bbbb", message: "C 让我问你" });
+	await router.ask("aaaaaaaa-4", { to: "bbbb", message: "C 让我问你" });
 	await router.notify("cccccccc-4", { to: "bbbb", message: "顺带" });
 	b.read(0);
 	b.start();

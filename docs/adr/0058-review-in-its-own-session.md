@@ -1,6 +1,6 @@
 # ADR-0058：`/review` 交给一个新开的审阅会话：先只读地审，修哪几条由原会话定，审阅会话来修
 
-- 状态：已采纳
+- 状态：已采纳；第 12 条的放行条件随 [ADR-0060](0060-asks-do-not-block.md) 改为看原会话的答复信
 - 日期：2026-10-23
 - 相关：core `src/commands/review.ts`（正文两半、`REVIEW_SESSION_OPENING`）、`src/commands/builtin.ts`、`src/commands/invoke.ts`、`src/runtime/plan/plan-view.ts`
   （`latestApprovedPlan`）、`src/runtime/plan/plan-mode.ts`（`planModeTools` 的 `review`）、`src/runtime/agent-session/session-turn.ts`、
@@ -87,8 +87,9 @@
     **由原会话定、不直接问人**：该不该修取决于人说过什么、范围多大，这些都在原会话里；人只在原会话也定不下的那几条
     （多半是 PLAUSIBLE）被问一次，用的是原会话的 `ask_user`。一度设计成计划审批卡让人逐次点头，被否掉了：多数
     CONFIRMED 的发现不需要人再判断一遍。
-    **放行靠宿主看到回答**：`review-session.ts` 观察审阅会话的 `ask_session` / `wait_for_session`，问的是原会话
-    （地址的 ref 对得上）、结果是 `done` 才写 `REVIEW_FIX_KEY`；原会话还在问它的人（`blocked`）、超时都不算。答复
+    **放行靠宿主看到回答**：`review-session.ts` 观察审阅会话收到的信，原会话的答复（`answer` 是 `replied` 或
+    `unreplied`）进对话时才写 `REVIEW_FIX_KEY`；请求没被读到（`dropped`）、原会话关了（`closed`）都不算。问是
+    发出即返回的（[ADR-0060](0060-asks-do-not-block.md)），审阅会话问完就收尾等着，答复到了开下一轮。答复
     说「都不修」也会放行——闸门保证的是「问过才动」，修哪几条由正文要求照答复做。开关只在状态图里，应用重开后又是
     只读，被拒时照拒绝里的话再问一次即可。等不到答复就不修，报告里列出还在等决定的发现。
 13. **一次审阅一个会话，再敲 `/review` 就另开一个。** 审、问原会话、修、修完跑检查都在同一个审阅会话里做完；人再敲

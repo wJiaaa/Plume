@@ -1,6 +1,7 @@
 # ADR-0040：会话之间可以发消息、等对方做完，路由在主进程，照 t3code 的线程工具
 
-- 状态：已采纳；2026-10-20 修订两次：一次运行只回答一家；工具按意图分成问、告诉、等，通知不再开轮。见文末
+- 状态：已采纳；2026-10-20 修订两次：一次运行只回答一家；工具按意图分成问、告诉、等，通知不再开轮。见文末。
+  问的就地等与 `wait_for_session` 已被 [ADR-0060](0060-asks-do-not-block.md) 取代：问发出即返回，答复作为一封信送回来
 - 日期：2026-10-08
 - 相关：[会话之间的消息](../architecture/session-messaging.md)；[ADR-0029](0029-parent-lets-go-when-spoken-to.md)（后台结果送回）；`packages/core/src/runtime/{peer-letters,session-deliveries,session}.ts`；`packages/desktop/electron/{session-peers,peer-policy,peer-reach,peer-address,peer-tools}.ts`
 
@@ -155,3 +156,10 @@ codex 把积压的信全部合成一轮，但结果只自动交给父代理，�
 
 代价：请求插进对方手上的事中间，可能把它带偏。通知早就这样插了，没见过因此跑偏；说明里写明先简短回答、
 大活等手上的做完。往来链规则不变：插进一次已经在跑的运行的信不接链，请求现在也一样。
+
+## 修订四（2026-11-03）：问不挂着
+
+见 [ADR-0060](0060-asks-do-not-block.md)。修订三的「发件方就地等 `reply_session`」在本机 17 次 `wait_for_session`
+里只等到 1 次，模型转而全用通知（124 封对 2 封请求）。改成问发出即返回，答复、代答（没回 / 没读到 / 关了）
+都作为一封带 `answer` 的信送回发件方；`wait_for_session`、`SpokenWaits`、互相等的检测删除；加 `read_session`。
+上文「走过的弯路」反对的是推「它闲了」的回执，ADR-0060 里写了这次推答复为什么不是同一回事。

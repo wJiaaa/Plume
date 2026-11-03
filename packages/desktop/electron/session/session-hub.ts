@@ -76,7 +76,7 @@ const peers = createPeerRouter({
 		.map(([, session]) => session),
 	settings: () => deps.settings(),
 });
-/** 每个会话都有的那三件工具；状态全在 `peers` 里，所以一份就够。 */
+/** 每个会话都有的那组会话间工具；状态全在 `peers` 里，所以一份就够。 */
 const peerTools = createPeerTools(peers);
 
 /** 要求归档自己的会话，在那一轮结束后归档——见 `session-ops.ts`。 */
@@ -103,6 +103,19 @@ const summaries = summarizeAfterTurn({
 		}
 	},
 });
+/**
+ * 手上的事真做完了：闲着，问出去的也都拿到了答复。问是发出即返回的（ADR-0060），问完收尾等着的会话
+ * 在 core 看来已经闲了；审阅会话就是这样问原会话修哪几条的，这时把它那句「在等答复」交回去，修的那一轮
+ * 就送不回来了。答复送到会再开一轮，所以拿到答复以后还要再等它闲下来。
+ */
+async function settled(id: string): Promise<void> {
+	for (;;) {
+		await (sessions.get(id)?.whenIdle() ?? Promise.resolve());
+		if (!sessions.has(id) || peers.awaitingAnswers(id) === 0) return;
+		await peers.whenAnswered(id);
+	}
+}
+
 /** 从建议卡片上开出来、要求交回的会话：第一轮结束时把回复送回提建议的那个——见 `session-report-back.ts`。 */
 const reportsBack = reportBackAfterFirstTurn({
 	meta: (id) => sessions.get(id)?.meta,
@@ -111,7 +124,7 @@ const reportsBack = reportBackAfterFirstTurn({
 		const session = sessions.get(id);
 		return session ? lastReply(session) : "";
 	},
-	whenIdle: (id) => sessions.get(id)?.whenIdle() ?? Promise.resolve(),
+	whenIdle: (id) => settled(id),
 	write: async (id, spawnedFrom) => {
 		const session = sessions.get(id);
 		if (session) await session.log.append({ type: "meta", meta: { ...session.meta, spawnedFrom } });
@@ -577,6 +590,8 @@ function sessionBusy(id: string): boolean {
 	if (backgroundJobs(session.can.state).list().some((job) => job.status === "running" || job.status === "stopping")) return true;
 	// 模型说过「十分钟后再看」的会话：回收了，那个唤醒就跟着没了，而人只是去别的对话看了一眼。
 	if (session.wakeups.list().length > 0) return true;
+	// 问了别的会话、在等答复：问完多半已经收尾，回收了，答复送来时就没人收了。
+	if (peers.awaitingAnswers(id) > 0) return true;
 	/*
 	 * 主会话已经收尾、子代理还在后台跑的，也是一场进行中的对话。
 	 *

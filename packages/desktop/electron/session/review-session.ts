@@ -13,7 +13,7 @@ import { agentProfile } from "@plume/core/model-choice";
 import { latestApprovedPlan, renderPlan } from "@plume/core/plan-view";
 import { REVIEW_SESSION_TOOL, type ReviewSessionDetails } from "../../shared/session-suggestion.ts";
 import { nativeText } from "../i18n.ts";
-import { peerAddress, peerRef } from "../peer/index.ts";
+import { peerAddress } from "../peer/index.ts";
 import { reviewHandoff, reviewPrompt } from "./review-brief.ts";
 
 /** Counted in code points, like the suggestion card's title. */
@@ -151,25 +151,22 @@ export interface ReviewStartDeps {
 	allowFixes(sessionId: string): void;
 }
 
-/** 审阅会话问原会话的那两件工具：问一次，或者问过没等完、接着等。 */
-const ASKS = new Set(["ask_session", "wait_for_session"]);
-
 export function startReviewSessions(deps: ReviewStartDeps): { observe(sessionId: string, event: AgentEvent): void } {
 	// 一次调用只开一个会话。
 	const started = new Set<string>();
 	return {
 		observe(sessionId, event) {
-			if (event.type !== "tool_end" || event.isError) return;
 			/*
-			 * 第 F 步：审阅会话问原会话修哪几条，拿到回答就放行写文件。只认问的是原会话、而且等到了回答
-			 * （`done`）：对方在等它的人回答（`blocked`）、超时都还不算——修什么还没定。
+			 * 第 F 步：审阅会话问原会话修哪几条，答复送到就放行写文件。问是发出即返回的，答复是一封信，进对话
+			 * 时（`message_start`）先于这一轮的任何工具调用。只认原会话的答复：它用 `reply_session` 回的，或它
+			 * 读到问题的那一轮收场时代答的那段话；请求没读到（`dropped`）、它关了（`closed`）都不算——修什么还没定。
 			 */
-			if (ASKS.has(event.toolName)) {
+			if (event.type === "message_start" && event.message.role === "user" && event.message.peer) {
 				const parent = deps.source(sessionId)?.meta.spawnedFrom;
-				const outcome = event.result.details as { kind?: unknown; to?: unknown } | undefined;
-				if (parent?.review && outcome?.kind === "done" && typeof outcome.to === "string" && outcome.to.endsWith(`[${peerRef(parent.sessionId)}]`)) deps.allowFixes(sessionId);
+				if (parent?.review && event.message.peer.some((letter) => letter.sessionId === parent.sessionId && (letter.answer === "replied" || letter.answer === "unreplied"))) deps.allowFixes(sessionId);
 				return;
 			}
+			if (event.type !== "tool_end" || event.isError) return;
 			if (event.toolName !== REVIEW_SESSION_TOOL || started.has(event.toolCallId)) return;
 			const details = event.result.details as ReviewSessionDetails | undefined;
 			if (details?.kind !== "review_session") return;

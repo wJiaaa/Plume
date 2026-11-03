@@ -14,7 +14,6 @@ import { DEFAULT_SETTINGS, type Settings } from "../src/config/settings.ts";
 import type { AgentEvent } from "../src/agent/events.ts";
 import { AgentSession } from "../src/runtime/agent-session/session.ts";
 import { deliveryMessage } from "../src/runtime/agent-session/delivery-message.ts";
-import { SessionInbox } from "../src/runtime/agent-session/session-inbox.ts";
 import { AgedToolPruner } from "../src/agent/aged-prune.ts";
 import { AWAIT_EVERY, awaitingNote } from "../src/agent/awaiting.ts";
 import { FRESH_RESULT_MAX_CHARS, pruneToolResults } from "../src/agent/prune.ts";
@@ -150,7 +149,7 @@ test("派出即放手：这一轮当场收尾，子代理在后台跑完，结�
 		void h.session.whenIdle().then(() => (idle = true));
 		await new Promise((resolve) => setTimeout(resolve, 50));
 		assert.equal(idle, false, "等「闲了」的人不会在子代理还在跑时被放走");
-		// 另一个会话等它（wait_for_session）只等前台：后台子代理跑多久都不算。
+		// 别的会话看它闲没闲（问它的信读到没有）只看前台：后台子代理跑多久都不算。
 		assert.equal(h.session.idleInForeground, true);
 		let foreground = false;
 		void h.session.whenIdle("foreground").then(() => (foreground = true));
@@ -296,16 +295,6 @@ test("人在派活的那段回复还在流时开口：派完这一轮接着走�
 	} finally {
 		await h.cleanup();
 	}
-});
-
-test("排着的只有运行时的消息时照旧等：送达不是人在说话", () => {
-	const inbox = new SessionInbox();
-	inbox.accept({ message: deliveryMessage([], []) }, "steer", true);
-	assert.equal(inbox.spoken, false);
-	inbox.accept({ message: { role: "user", content: [{ type: "text", text: "停下" }], timestamp: 1 } }, "steer", true);
-	assert.equal(inbox.spoken, true);
-	inbox.takeSteering();
-	assert.equal(inbox.spoken, false, "取走之后就没有没读到的话了");
 });
 
 test("派出之后人按了停止：后台那个也停，停下的结果不再把主会话叫醒", async () => {

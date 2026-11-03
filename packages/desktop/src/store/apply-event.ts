@@ -30,7 +30,6 @@ import { freeze, loadCarried, relight, saveCarried } from "./turn-meter.ts";
  */
 import { sideParentOf, useSide } from "../features/dock/sideStore.ts";
 import { delegating, useSubAgents } from "./subAgents.ts";
-import { waitsOnSession } from "./tool-run.ts";
 import type { AppState } from "./index.ts";
 import { noticeText } from "../lib/notice-text.ts";
 import { bridge } from "../services/index.ts";
@@ -149,24 +148,6 @@ export function applyAgentEvent(sessionId: string, event: AgentEvent, set: Set, 
     (event.type === "command_status" && event.command.automatic?.idle && event.command.status === "failed")
   ) {
     queueMicrotask(() => void get().flushQueue(sessionId));
-  }
-
-  /*
-   * 主会话开始等另一个会话做完（`ask_session` / `wait_for_session`）时，排着的话不再等。
-   *
-   * 排队的意思是「等这一轮做完」，而这一轮此刻不是在干活，是在等别人——那可能是十几分钟。所以
-   * 一看出它在等，就把队首送进去：运行时收到人说的话，会让那个等待放手（`spoken-waits.ts`）。
-   * 子智能体不用这样：它们派出即放手，主会话从来不等它们。
-   */
-  const parks = event.type === "tool_start" && waitsOnSession(event.toolName);
-  if (parks && (get().queued[sessionId]?.length ?? 0) > 0) {
-    const activity = get().activity[sessionId];
-    if (activity === "running" || activity === "waiting") {
-      queueMicrotask(() => {
-        const head = get().queued[sessionId]?.[0];
-        if (head) void get().steerQueued(sessionId, head.id);
-      });
-    }
   }
 
   /*

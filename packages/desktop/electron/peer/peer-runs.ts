@@ -1,7 +1,7 @@
 /**
  * 每个会话的运行在事件流里的样子：哪一封信进了哪一次运行、那次运行最后说了什么、怎么收的场、
- * 此刻有没有卡在等人回答上。问别的会话的一方等的是对方用 `reply_session` 交回的回答；对方没回，
- * 读到那封信的那一次运行收场时，拿它最后的话兜底——这里记的就是「哪一次」。
+ * 此刻有没有卡在等人回答上。问别的会话的一方要的是对方用 `reply_session` 交回的答复；对方没回，
+ * 读到那封信的那一次运行收场时，路由器拿它最后的话代答——这里记的就是「哪一次」。
  *
  * 为什么兜底不是「等对方下一次空闲、取它最后一句」：对方正忙着人交代的事、或同时有别的会话找它时，
  * 下一次空闲之前它可能跑了好几次运行，最后一句回答的是别人。照 synara 的 `wait_for_threads`，
@@ -21,14 +21,14 @@ import type { AgentEvent } from "@plume/core";
 
 type EndReason = Extract<AgentEvent, { type: "agent_end" }>["reason"];
 
-export interface RunEnd {
+interface RunEnd {
 	reason: EndReason;
 	/** 这次运行里最后一段 assistant 文本。 */
 	reply: string;
 }
 
 /** 等着人回答的一件事：审批，或模型问人的问题。 */
-export interface Pending {
+interface Pending {
 	requestId: string;
 	title: string;
 	question: boolean;
@@ -51,7 +51,6 @@ interface Track {
 
 export class PeerRuns {
 	private readonly tracks = new Map<string, Track>();
-	private readonly listeners = new Map<string, Set<() => void>>();
 
 	/** 会话的每一个事件都过这里一遍；只记上面说的那几样。 */
 	observe(sessionId: string, event: AgentEvent): void {
@@ -93,18 +92,6 @@ export class PeerRuns {
 			default:
 				return;
 		}
-		this.pulse(sessionId);
-	}
-
-	/** 正在跑的那一次（没在跑则为 null）。 */
-	current(sessionId: string): number | null {
-		const track = this.tracks.get(sessionId);
-		return track?.active ? track.seq : null;
-	}
-
-	/** 下一次运行的编号：闲着时送进去的东西会开的那一次。 */
-	next(sessionId: string): number {
-		return (this.tracks.get(sessionId)?.seq ?? 0) + 1;
 	}
 
 	/** 这一封进了哪一次运行；还没进对话则为 undefined。 */
@@ -136,31 +123,9 @@ export class PeerRuns {
 		return [...(this.tracks.get(sessionId)?.pending.values() ?? [])];
 	}
 
-	/** 有了运行事件以外的动静（对方交回了回答）：叫醒等这个会话的人，让它们重新看一遍。 */
-	touch(sessionId: string): void {
-		this.pulse(sessionId);
-	}
-
-	/** 下一次这个会话有动静。 */
-	changed(sessionId: string): Promise<void> {
-		return new Promise((resolve) => {
-			const set = this.listeners.get(sessionId) ?? new Set();
-			set.add(resolve);
-			this.listeners.set(sessionId, set);
-		});
-	}
-
-	/** 会话卸载了：等它的人醒来，自己发现它不在了。 */
+	/** 会话卸载了，它的运行不再有人问。 */
 	forget(sessionId: string): void {
 		this.tracks.delete(sessionId);
-		this.pulse(sessionId);
-	}
-
-	private pulse(sessionId: string): void {
-		const set = this.listeners.get(sessionId);
-		if (!set) return;
-		this.listeners.delete(sessionId);
-		for (const resolve of set) resolve();
 	}
 
 	private track(sessionId: string): Track {

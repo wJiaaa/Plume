@@ -5,8 +5,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DEFAULT_SETTINGS, REVIEW_SESSION_OPENING, type AgentEvent, type Message, type SessionMeta, type Settings, type ToolContext } from "@plume/core";
-import { peerRef } from "../electron/peer/peer-address.ts";
+import { DEFAULT_SETTINGS, REVIEW_SESSION_OPENING, type AgentEvent, type Message, type PeerLetter, type SessionMeta, type Settings, type ToolContext } from "@plume/core";
 import { createReviewSessionTool, isPullRequestTarget, reviewModelId, reviewRequest, startReviewSessions } from "../electron/session/review-session.ts";
 import type { ReviewSessionDetails } from "../shared/session-suggestion.ts";
 import { describeActivity } from "../src/lib/tool-kinds.ts";
@@ -67,22 +66,23 @@ function host(options: { messages?: Message[]; history?: Message[] | null; fail?
 
 const REVIEWER = { ...PARENT, id: "s-review", spawnedFrom: { sessionId: PARENT.id, toolCallId: "call-review", review: true, settled: true } } as SessionMeta;
 
-const asked = (toolName: string, details: unknown, isError = false): AgentEvent => ({
-	type: "tool_end", toolCallId: `call-${toolName}`, toolName, isError,
-	result: { content: [{ type: "text", text: "answer" }], details },
+/** 送进审阅会话的一封信。 */
+const arrived = (letters: Partial<PeerLetter>[]): AgentEvent => ({
+	type: "message_start",
+	message: { role: "user", synthetic: true, timestamp: 1, content: [], peer: letters.map((one) => ({ sessionId: PARENT.id, from: "x", text: "修 1、3", ...one })) },
 });
 
-test("第 F 步：审阅会话问原会话、等到了回答，才放行改文件；问别人、没等完都不算", () => {
+test("第 F 步：原会话的答复送进审阅会话时才放行改文件；没读到、关了、别人的、请求和通知都不算", () => {
 	const { watcher, allowed } = host();
-	const parent = `${PARENT.title} [${peerRef(PARENT.id)}]`;
-	watcher.observe(REVIEWER.id, asked("ask_session", { kind: "blocked", to: parent, pending: [] }));
-	watcher.observe(REVIEWER.id, asked("ask_session", { kind: "timeout", to: parent, seconds: 600 }));
-	watcher.observe(REVIEWER.id, asked("ask_session", { kind: "done", to: "别的会话 [ffffff]", answers: [], dropped: 0, waitedMs: 0 }));
-	watcher.observe(REVIEWER.id, asked("ask_session", { kind: "done", to: parent }, true));
-	watcher.observe(PARENT.id, asked("ask_session", { kind: "done", to: parent }));
-	assert.deepEqual(allowed, [], "原会话还在问它的人、超时、问的是别的会话、调用出错、不是审阅会话：都还没定修什么");
-	watcher.observe(REVIEWER.id, asked("wait_for_session", { kind: "done", to: parent, answers: [], dropped: 0, waitedMs: 1 }));
-	assert.deepEqual(allowed, [REVIEWER.id], "接着等、等到了回答，也算");
+	watcher.observe(REVIEWER.id, arrived([{ answer: "dropped" }, { answer: "closed" }]));
+	watcher.observe(REVIEWER.id, arrived([{ answer: "replied", sessionId: "s-other" }]));
+	watcher.observe(REVIEWER.id, arrived([{ request: true }, {}]));
+	watcher.observe(PARENT.id, arrived([{ answer: "replied" }]));
+	assert.deepEqual(allowed, [], "请求没被读到、原会话关了、答的是别的会话、来的是请求或通知、不是审阅会话：都还没定修什么");
+	watcher.observe(REVIEWER.id, arrived([{ answer: "unreplied" }]));
+	assert.deepEqual(allowed, [REVIEWER.id], "原会话没用 reply_session、拿它那一轮最后的话代答的，也是它的决定");
+	watcher.observe(REVIEWER.id, arrived([{ answer: "replied" }]));
+	assert.deepEqual(allowed, [REVIEWER.id, REVIEWER.id]);
 });
 
 test("review_session 只给主会话：sessionOnly，子代理的 id 和审阅会话自己都被退回", async () => {

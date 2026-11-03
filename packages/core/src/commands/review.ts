@@ -200,8 +200,8 @@ Order by severity, CONFIRMED before PLAUSIBLE within one. **high**: data loss, a
 The implementing conversation decides what gets fixed — it knows what the person asked for — and you make the fixes, since you know the defects.
 
 1. Skip this step when there is nothing to fix: no findings, or a PR whose head is not checked out (say fixes cannot apply here).
-2. Write the step 6 report to \`review/report.md\`. Then call \`ask_session\` with the implementing conversation's address (the brief's last section gives it): the path to the report and one line per finding — its number, severity, \`file:line\`, the defect, CONFIRMED or PLAUSIBLE — and ask which numbers to fix. It may ask its person first: when the answer says it is waiting on its user, call \`wait_for_session\`. Edits stay refused until it has answered.
-3. No answer — a timeout you have waited out, it was stopped or closed: fix nothing, and list every finding under "Awaiting a decision".
+2. Write the step 6 report to \`review/report.md\`. Then call \`ask_session\` with the implementing conversation's address (the brief's last section gives it): the path to the report and one line per finding — its number, severity, \`file:line\`, the defect, CONFIRMED or PLAUSIBLE — and ask which numbers to fix. Then end your turn with one line saying you are waiting for its decision: \`ask_session\` returns at once, and the answer arrives as a message that starts your next turn. Edits stay refused until it has answered. If the answer only says it is asking its person first, end your turn again; the decision comes as another message.
+3. No answer — the message says your request was dropped or that session was closed: fix nothing, and list every finding under "Awaiting a decision".
 4. Fix exactly the findings it named — the smallest change that removes each defect, no refactoring around it, nothing it did not name. Then run the checks that cover the files you touched (reuse the commands \`verify\` ran, if it ran).
 5. Add to the step 6 report:
 \`\`\`

@@ -8,7 +8,7 @@ import { createPeerRouter, type PeerRouter } from "../../electron/peer/session-p
 export type FakeSession = ReturnType<typeof fakeSession>;
 
 export function fakeSession(id: string, cwd: string, mode: PermissionMode = "auto") {
-	const inbox: { letter: PeerLetter; kind: "request" | "notice" }[] = [];
+	const inbox: { letter: PeerLetter; kind: "request" | "notice" | "answer" }[] = [];
 	/** 前台闲着（`idleInForeground`）；`background` 是放到后台、还没回来的子代理。 */
 	let idle = true;
 	let background = false;
@@ -38,7 +38,7 @@ export function fakeSession(id: string, cwd: string, mode: PermissionMode = "aut
 			else wake.push({ resolve, foreground: scope === "foreground" });
 		}),
 		receive: (letter: PeerLetter) => {
-			const index = inbox.push({ letter, kind: letter.request ? "request" : "notice" }) - 1;
+			const index = inbox.push({ letter, kind: letter.request ? "request" : letter.answer ? "answer" : "notice" }) - 1;
 			// 在跑时的信（请求和通知）插进这一轮，不另开，和 `AgentSession.receive` 一样。
 			if (active) return;
 			unread.add(index);
@@ -103,25 +103,3 @@ export function routerWith(...live: FakeSession[]) {
 }
 
 export const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
-
-/** 还挂着的问：每个测试收尾时放开，不然它们挂着十分钟的计时器，测试进程不退出。 */
-const asks = new Set<AbortController>();
-
-/**
- * 问出去、先不等回答：测试接着拨对方的运行。等到信送到对方手里（或者没发出去）才交回。
- */
-export async function asking(router: PeerRouter, target: FakeSession, fromId: string, input: { to: string; message: string }) {
-	const stop = new AbortController();
-	asks.add(stop);
-	const before = target.inbox.length;
-	const outcome = router.ask(fromId, { ...input, signal: stop.signal });
-	const state = { settled: false };
-	void outcome.then(() => { state.settled = true; });
-	while (target.inbox.length === before && !state.settled) await flush();
-	return { outcome, stop: () => stop.abort() };
-}
-
-export function stopAsking(): void {
-	for (const stop of asks) stop.abort();
-	asks.clear();
-}

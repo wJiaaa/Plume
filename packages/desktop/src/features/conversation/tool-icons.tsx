@@ -20,6 +20,7 @@ import {
 	MessagesSquare,
 	Monitor,
 	MousePointer2,
+	ScrollText,
 	Search,
 	Send,
 	Sparkles,
@@ -67,8 +68,9 @@ const ICONS: Record<string, typeof FileText> = {
 	browser_tabs: AppWindow,
 	browser_viewport: Monitor,
 	browser_screenshot: Camera,
-	// 会话之间那五个。列会话和收到别的会话来信那一行（`PeerLetterRow`）是同一枚。
+	// 会话之间那几个。列会话和收到别的会话来信那一行（`PeerLetterRow`）是同一枚；`wait_for_session` 只在旧记录里。
 	list_sessions: MessagesSquare,
+	read_session: ScrollText,
 	ask_session: MessageCircleQuestionMark,
 	reply_session: MessageCircleReply,
 	notify_session: Send,

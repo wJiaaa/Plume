@@ -404,15 +404,23 @@ export interface DeliveredReport {
 /**
  * 另一个会话发来的一条消息。
  *
- * 请求和通知走同一条路：对方在跑就在两步之间读到，闲着就开一轮。请求的回答是收件方用
- * `reply_session` 交回的那段话，作为发件方那次 `ask_session` 的返回值回来；通知没有回答
- * （见 docs/adr/0040-session-messaging.md）。
+ * 请求、通知、答复走同一条路：对方在跑就在两步之间读到，闲着就开一轮。问是发出即返回，请求的答复
+ * 由收件方用 `reply_session` 交回，作为一封 `answer` 信送到发件方；通知没有答复
+ * （见 docs/adr/0060-asks-do-not-block.md）。
  */
 export interface PeerLetter {
 	/** 这一封的 id：发件方据此认出交回的回答、或兜底时它进了哪一次运行，见桌面端的 `session-peers.ts`。旧记录里没有。 */
 	id?: string;
-	/** 请求：发件方在等回答。没有就是通知。 */
+	/** 请求：发件方要一个答复。没有就是通知（或答复）。 */
 	request?: true;
+	/**
+	 * 这是对我问过的请求的答复：`replied` 是对方用 `reply_session` 交回的；`unreplied` 是对方读到请求的那一轮
+	 * 收场了却没回，正文是那一轮最后说的话；`dropped` 是请求没被读到就被对方的人停下了；`closed` 是对方会话关了。
+	 * 后三种由路由器代写，见桌面端的 `session-peers.ts`。
+	 */
+	answer?: "replied" | "unreplied" | "dropped" | "closed";
+	/** 答复对着我发过的哪几封：每封开头一截，按发出的顺序。 */
+	re?: string[];
 	/** 对方会话的 id，界面据此跳过去。 */
 	sessionId: string;
 	/** 寄出那一刻对方的地址，`名字 [ref]`；要再找它时原样当作 `to`。 */

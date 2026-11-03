@@ -1,49 +1,77 @@
 /**
- * 模型手里的五件工具：看看有谁、问它要回答、回答问过来的、告诉它一件事、接着等没等完的回答。
+ * 模型手里的五件工具：看看有谁、读它的记录、问它要答复、回答问过来的、告诉它一件事。
  *
  * 按意图分，不靠一个参数区分：问和告诉在对方那边走同一条路（忙着两步之间读到、闲着开一轮），差别在
- * 有没有人等回答——问的一方挂着等，对方要用 `reply_session` 回；告诉的一方当场返回，对方不用回。
- * 参数一选错，要么白等，要么对方回了一句没人收的话。
+ * 要不要答复——问的一方当场返回，答复以后作为一封信送回来，对方要用 `reply_session` 回；告诉的一方
+ * 对方不用回。能从对方记录里查到的不问：`read_session` 只读，不叫醒它、不花它的钱。
+ *
+ * 曾经还有一件 `wait_for_session`，问也是就地等：本机 17 次等待只等到 1 次（ADR-0060）。
  *
  * 说明写给模型，用英文，和浏览器工具一致。每一种退回都说清楚下一步该怎么做——「失败」两个字
  * 不会让它改做法，「写进文件发路径」「交回给你的用户」才会。
  */
 
-import { errorResult, textResult, type Tool, type ToolContext } from "@plume/core";
-import { REPLY_LIMIT, WAIT_DEFAULT_S, WAIT_MAX_S, type AskOutcome, type NotifyOutcome, type PeerRouter, type Refused, type ReplyOutcome, type WaitOutcome } from "./session-peers.ts";
+import { errorResult, HISTORY_PROPERTIES, readHistory, textResult, type HistoryArgs, type Tool } from "@plume/core";
+import type { AskOutcome, Missed, NotifyOutcome, PeerRouter, Refused, ReplyOutcome } from "./session-peers.ts";
 import { PEER_CHAIN_LIMIT, PEER_DEDUP_MS, PEER_MAX_CHARS } from "./peer-policy.ts";
 
 const TO = { type: "string", description: "The address from list_sessions, `name [ref]`. The bare name works when it is unique." } as const;
-const TIMEOUT = { type: "number", description: `How long to wait, in seconds. Default ${WAIT_DEFAULT_S}, at most ${WAIT_MAX_S}.` } as const;
+/** `read_session` 一次最多带回多少字：和侧边聊天给大窗口模型的那一档一样。 */
+const READ_LIMIT = 12_000;
 
 export function createPeerTools(router: PeerRouter): Tool[] {
 	const listSessions: Tool<Record<string, never>> = {
 		name: "list_sessions",
 		description:
 			"List other running Plume sessions whose folders overlap yours (same folder, nested, or worktrees of one repository): for when your work may collide with theirs — a file changed under you — or to hand work over. " +
-			"Each row starts with its address, `name [ref]`: the `to` for ask_session, reply_session, notify_session and wait_for_session.",
+			"Each row starts with its address, `name [ref]`: the `to` for the other session tools. It also says whether it is busy and, when it keeps a task list, the step it is on.",
 		parameters: { type: "object", properties: {} },
 		sessionOnly: true,
 		summarize: () => "List sessions",
 		async execute(_args, ctx) {
 			const rows = await router.list(ctx.sessionId);
 			if (rows.length === 0) return textResult("No other session is running in an overlapping folder right now.");
-			const lines = rows.map((row) => `${row.address} · ${row.busy ? "busy" : "idle"} · ${row.mode} · ${row.cwd}`);
+			const lines = rows.map((row) => [row.address, row.waitingOnUser ? "waiting for its user" : row.busy ? "busy" : "idle", row.mode, row.cwd, ...(row.doing ? [`on: ${row.doing}`] : [])].join(" · "));
 			return textResult(lines.join("\n"), rows);
 		},
 	};
 
-	const askSession: Tool<{ to?: string; message?: string; timeout_seconds?: number }> = {
+	/*
+	 * 想知道对方做到哪、之前定过什么，答案多半已经在它的记录里。曾经唯一的办法是问：叫醒对方跑一整轮来复述
+	 * （2026-10-29 问「评估项目基础架构」那个会话「之前选没选定 SDK 版本」就是这样）。读不打断它、不花它的钱。
+	 * 和侧边聊天的 `read_main_chat` 同一个读法（core 的 `readHistory`）；不查权限宽窄——读不是请它做事。
+	 */
+	const readSession: Tool<HistoryArgs & { to?: string }> = {
+		name: "read_session",
+		description:
+			"Read another running session's conversation as it is now — its requests, replies, tool calls and results — without waking or interrupting it. " +
+			"For what it has done, decided or is working on; ask_session only for what is not written there. " +
+			"`start` is a message index and `offset` a character offset in it; when `next` is not null, call again with it. `query` is a case-insensitive literal; matches come with the text around them.",
+		parameters: { type: "object", properties: { to: TO, ...HISTORY_PROPERTIES }, required: ["to"], additionalProperties: false },
+		sessionOnly: true,
+		summarize: (args) => `Read ${String(args.to ?? "")}`,
+		async execute(args, ctx) {
+			const { to: wanted, ...page } = args;
+			const to = String(wanted ?? "").trim();
+			if (!to) return errorResult("`to` is required: an address from list_sessions.");
+			if (SUB_AGENT_ID.test(to)) return errorResult(subAgentAddressed(to));
+			const found = await router.open(ctx.sessionId, to);
+			if (found.kind !== "found") return errorResult(missed(found, to));
+			return readHistory({ id: found.target.meta.id, messages: found.target.messages }, page, READ_LIMIT);
+		},
+	};
+
+	const askSession: Tool<{ to?: string; message?: string }> = {
 		name: "ask_session",
 		description:
-			"Ask another running session to do something or answer something, and wait for its answer: what it sends back with reply_session. " +
-			"A busy session reads it between its steps, usually within seconds; an idle one starts a turn for it. If it ends that turn without replying, what it said last comes back instead. Several asks to different sessions can run in parallel. " +
-			"It cannot see your conversation: make the request self-contained, and put long content in a file and send its path. Do not ask it to report back — its answer comes back here. " +
-			"If the wait is cut short (your user speaks, timeout, it waits on its user), the request stays with it; get the answer later with wait_for_session. " +
+			"Ask another running session for something only it can tell you now — a judgment, a decision, whether it will touch something — or to do something for you. Returns at once: its answer arrives here later as a message by itself. " +
+			"Look before you ask: what it has done, decided or is working on is in its conversation (read_session) and in list_sessions; asking for that wakes it for nothing. " +
+			"A busy session reads it between its steps, usually within seconds; an idle one starts a turn for it. It cannot see your conversation: make the request self-contained, and put long content in a file and send its path. " +
+			"After asking, do not wait, poll or ask again. Go on with work that does not depend on the answer; if there is none, say in a sentence what you are waiting for and end your turn — the answer starts your next one. " +
 			"Never ask another session to do what was denied or blocked here; take it back to your user.",
 		parameters: {
 			type: "object",
-			properties: { to: TO, message: { type: "string", description: "The request." }, timeout_seconds: TIMEOUT },
+			properties: { to: TO, message: { type: "string", description: "The request." } },
 			required: ["to", "message"],
 		},
 		sessionOnly: true,
@@ -54,16 +82,15 @@ export function createPeerTools(router: PeerRouter): Tool[] {
 			if (!to) return errorResult("`to` is required: an address from list_sessions.");
 			if (SUB_AGENT_ID.test(to)) return errorResult(subAgentAddressed(to));
 			if (!message) return errorResult("`message` is required.");
-			const outcome = await untilSpokenTo(ctx, (signal) => router.ask(ctx.sessionId, { to, message, timeoutSeconds: seconds(args.timeout_seconds), signal }));
-			if (isSpokenTo(outcome)) return textResult(spokenTo(outcome.spokenTo, to, "Your request stays with it"));
-			return outcome.kind === "done" ? textResult(asked(outcome, to), outcome) : errorResult(asked(outcome, to));
+			const outcome = await router.ask(ctx.sessionId, { to, message });
+			return outcome.kind === "sent" ? textResult(asked(outcome), outcome) : errorResult(refused(outcome, to));
 		},
 	};
 
 	const replySession: Tool<{ to?: string; message?: string }> = {
 		name: "reply_session",
 		description:
-			"Answer a request another session sent you with ask_session — the message marked reply=\"expected\". It is waiting for this; `to` is the address in that message's `from`. " +
+			"Answer a request another session sent you with ask_session — the message marked reply=\"expected\"; `to` is the address in that message's `from`. " +
 			"Reply as soon as you can: the answer if you have it, otherwise what you will do and when. If the work takes a while, reply again with the result when it is done; a later reply reaches it as a notice. " +
 			"One reply answers everything that session has asked you so far. Returns at once.",
 		parameters: {
@@ -87,9 +114,9 @@ export function createPeerTools(router: PeerRouter): Tool[] {
 	const notifySession: Tool<{ to?: string; message?: string }> = {
 		name: "notify_session",
 		description:
-			"Tell another running session something that bears on its work, without asking for an answer: you are about to change files it is working on, it broke something you depend on, \"stop editing that file\". " +
-			"A busy session reads it between its steps; an idle one starts a turn to read it. Returns at once. " +
-			"Anything you need done or answered is ask_session, not this.",
+			"Tell another running session something that changes what it should do next, without asking for an answer. Three kinds: a hand-over (\"done, the result is in …\"), a block (\"your change to x.ts breaks my build\"), a release (\"I have stopped the dev server, it is yours\"). " +
+			"Not for progress reports: it can read your conversation with read_session when it wants to know where you are. " +
+			"A busy session reads it between its steps; an idle one starts a turn to read it. Returns at once. Anything you need done or answered is ask_session, not this.",
 		parameters: {
 			type: "object",
 			properties: { to: TO, message: { type: "string", description: "The notice." } },
@@ -104,69 +131,11 @@ export function createPeerTools(router: PeerRouter): Tool[] {
 			if (SUB_AGENT_ID.test(to)) return errorResult(subAgentAddressed(to));
 			if (!message) return errorResult("`message` is required.");
 			const outcome = await router.notify(ctx.sessionId, { to, message });
-			return outcome.kind === "delivered" ? textResult(notified(outcome, to), outcome) : errorResult(notified(outcome, to));
+			return outcome.kind === "delivered" ? textResult(notified(outcome), outcome) : errorResult(refused(outcome, to));
 		},
 	};
 
-	const waitForSession: Tool<{ to?: string; timeout_seconds?: number }> = {
-		name: "wait_for_session",
-		description:
-			"Keep waiting for the answers to your ask_session requests whose wait was cut short: each returns the session's reply, or what it said last if it ended the turn that read your request without replying. " +
-			"Without such a request, waits for the session's current turn to finish (at once if it is not in one); sub-agents it runs in the background are not waited for. " +
-			"Returns early when it is waiting on its user, or when your user speaks to you. A timeout does not stop the other session.",
-		parameters: {
-			type: "object",
-			properties: { to: TO, timeout_seconds: TIMEOUT },
-			required: ["to"],
-		},
-		sessionOnly: true,
-		summarize: (args) => `Wait for ${String(args.to ?? "")}`,
-		async execute(args, ctx) {
-			const to = String(args.to ?? "").trim();
-			if (!to) return errorResult("`to` is required: an address from list_sessions.");
-			if (SUB_AGENT_ID.test(to)) return errorResult(subAgentAddressed(to));
-			const outcome = await untilSpokenTo(ctx, (signal) => router.wait(ctx.sessionId, { to, timeoutSeconds: seconds(args.timeout_seconds), signal }));
-			if (isSpokenTo(outcome)) return textResult(spokenTo(outcome.spokenTo, to, "It keeps working on its own"));
-			return outcome.kind === "done" ? textResult(waited(outcome, to), outcome) : errorResult(waited(outcome, to));
-		},
-	};
-
-	return [listSessions as unknown as Tool, askSession as unknown as Tool, replySession as unknown as Tool, notifySession as unknown as Tool, waitForSession as unknown as Tool];
-}
-
-function seconds(value: unknown): number | undefined {
-	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-type SpokenTo = { spokenTo: "person" | "notice" };
-
-function isSpokenTo(outcome: unknown): outcome is SpokenTo {
-	return typeof outcome === "object" && outcome !== null && "spokenTo" in outcome;
-}
-
-/**
- * 有人找就不再等：插话只在两次请求之间才有人读，等在这里会把人说的话、别的会话的通知压到对方做完
- * 为止（默认十分钟）。路由器那头的等待跟着停，免得它还挂在「谁在等谁」上，把之后的问误判成死等。
- * 本轮被停下（`ctx.signal`）也一样。
- */
-async function untilSpokenTo<T>(ctx: ToolContext, start: (signal: AbortSignal) => Promise<T>): Promise<T | SpokenTo> {
-	const stop = new AbortController();
-	const quit = () => stop.abort();
-	ctx.signal?.addEventListener("abort", quit, { once: true });
-	try {
-		const run = start(stop.signal);
-		const outcome = ctx.untilSpokenTo ? await ctx.untilSpokenTo(run) : await run;
-		if (isSpokenTo(outcome)) stop.abort();
-		return outcome;
-	} finally {
-		ctx.signal?.removeEventListener("abort", quit);
-	}
-}
-
-/** 被谁打断就照实说：被通知打断却说「你的用户说话了」，模型会去回应一个没开口的人。 */
-function spokenTo(by: SpokenTo["spokenTo"], to: string, still: string): string {
-	if (by === "notice") return `A message from another session arrived, so you stopped waiting. ${still}; ${to} keeps working on its own. Read the message — answer it with reply_session if it is a request — then call wait_for_session if you still need its answer.`;
-	return `Your user spoke to you, so you stopped waiting. ${still}; ${to} keeps working on its own. Answer your user first; call wait_for_session later if you still need its answer.`;
+	return [listSessions as unknown as Tool, readSession as unknown as Tool, askSession as unknown as Tool, replySession as unknown as Tool, notifySession as unknown as Tool];
 }
 
 /**
@@ -183,8 +152,6 @@ function subAgentAddressed(to: string): string {
 		"Until then, do other work that does not depend on it; if there is none, tell your user in a sentence or two what it is doing and end this turn. Do not write your final answer before its result arrives."
 	);
 }
-
-type Missed = Extract<Refused, { kind: "unreachable" | "none" | "self" | "ambiguous" }>;
 
 /** 几件工具共用的那几种「没找到人」。 */
 function missed(outcome: Missed, wanted: string): string {
@@ -212,41 +179,19 @@ function refused(outcome: Refused, wanted: string): string {
 	}
 }
 
-function notified(outcome: NotifyOutcome, wanted: string): string {
-	if (outcome.kind !== "delivered") return refused(outcome, wanted);
+function asked(outcome: Extract<AskOutcome, { kind: "sent" }>): string {
+	return (
+		`Sent to ${outcome.to}. ${outcome.busy ? "It reads it between its steps." : "It is idle, so it starts a turn to read it."} ` +
+		"Its answer arrives here as a message by itself — do not wait, poll or ask again. Carry on with what does not depend on it; if nothing is left, say what you are waiting for and end your turn."
+	);
+}
+
+function notified(outcome: Extract<NotifyOutcome, { kind: "delivered" }>): string {
 	return `Delivered to ${outcome.to}. ${outcome.busy ? "It reads it between its steps." : "It is idle, so it starts a turn to read it."} There is no answer to a notice.`;
 }
 
 function replied(outcome: Extract<ReplyOutcome, { kind: "replied" }>): string {
-	return outcome.waiting ? `${outcome.to} was waiting and has your answer.` : `${outcome.to} was no longer waiting, so it reads your answer as a notice.`;
-}
-
-function asked(outcome: AskOutcome, wanted: string): string {
-	switch (outcome.kind) {
-		case "broader":
-		case "paced":
-		case "unreachable":
-		case "none":
-		case "self":
-		case "ambiguous":
-			return refused(outcome, wanted);
-		default:
-			return settled(outcome, "Your request stays with it");
-	}
-}
-
-function waited(outcome: WaitOutcome, wanted: string): string {
-	switch (outcome.kind) {
-		case "deadlock":
-			return `${outcome.to} is itself waiting on this session; waiting for it would never end. Finish your own part first.`;
-		case "unreachable":
-		case "none":
-		case "self":
-		case "ambiguous":
-			return missed(outcome, wanted);
-		default:
-			return settled(outcome, "It keeps going");
-	}
+	return outcome.answered > 0 ? `${outcome.to} gets your answer as a message.` : `${outcome.to} had no open question to you, so it reads this as a notice.`;
 }
 
 function paced(outcome: Extract<Refused, { kind: "paced" }>): string {
@@ -260,42 +205,5 @@ function paced(outcome: Extract<Refused, { kind: "paced" }>): string {
 			return `You sent the same message to ${outcome.to} less than ${PEER_DEDUP_MS / 1000} seconds ago; it was not sent again.`;
 		case "paced":
 			return `Too many messages to ${outcome.to} just now; this one was not sent. Batch what remains into one message, or wait for its answers first.`;
-	}
-}
-
-/** 一封信开头的一截，够认出是哪封。 */
-function excerpt(text: string): string {
-	const line = text.replace(/\s+/g, " ").trim();
-	return `"${[...line].length > 60 ? `${[...line].slice(0, 60).join("")}…` : line}"`;
-}
-
-/** 等到了哪一步；`still` 是没等完时那封信的去向（问：信还在它那里；等：它接着干）。 */
-function settled(outcome: Exclude<WaitOutcome, Missed | { kind: "deadlock" }>, still: string): string {
-	switch (outcome.kind) {
-		case "done": {
-			const waitedFor = outcome.waitedMs >= 1000 ? ` (waited ${Math.round(outcome.waitedMs / 1000)}s)` : "";
-			const answers = outcome.answers.map((answer, index) => {
-				const how = answer.reason === "replied" ? "replied" : answer.reason === "done" ? "ended its turn without replying" : answer.reason === "aborted" ? "was stopped by its user before it replied" : `ended early (${answer.reason}) without replying`;
-				const said = answer.reason === "replied" ? ":" : ". What it said at the end:";
-				const cut = answer.cut > 0 ? `\n[cut after ${REPLY_LIMIT} characters; ${answer.cut} more not shown. If you need all of it, ask ${outcome.to} to write it to a file and send you the path.]` : "";
-				// 分几次回答的几封，各有一段；可能有一封是上次没等完的，说清对着哪封。
-				const which = outcome.answers.length > 1 ? ` (answer ${index + 1} of ${outcome.answers.length}, to your message ${answer.asked.map(excerpt).join(" + ")})` : "";
-				return `${outcome.to} ${how}${index === 0 ? waitedFor : ""}${which}${said}\n${answer.reply || "(no reply text)"}${cut}`;
-			});
-			const dropped = outcome.dropped > 0 ? [`${outcome.dropped} message(s) were dropped: it was stopped by its user before reading them. Ask your user before sending them again.`] : [];
-			// 不说这一句，模型会接着 wait_for_session，每次都当场拿回同一段话。
-			const background = outcome.background ? [`${outcome.to} still has sub-agents running in the background. When they report back it starts a new turn by itself; waiting does not cover that, and wait_for_session returns at once until then. If you need what comes after, ask it to notify you when it is done, then go on with other work or end your turn.`] : [];
-			return [...answers, ...dropped, ...background].join("\n\n");
-		}
-		case "blocked":
-			return `${outcome.to} is waiting for its user to answer: ${outcome.pending.map((one) => `${one.question ? "a question" : "an approval"} — ${one.title}`).join("; ")}. Tell your user to answer it in that session. ${still}; calling wait_for_session waits until it is answered and the work is done.`;
-		case "dropped":
-			return `${outcome.to} was stopped by its user before it read your message, so the message was dropped. Ask your user before sending it again.`;
-		case "timeout":
-			return `${outcome.to} was still working after ${outcome.seconds} seconds. ${still}; call wait_for_session if you still need its answer.`;
-		case "closed":
-			return `${outcome.to} was closed before it finished.`;
-		case "stopped":
-			return `Stopped waiting for ${outcome.to}.`;
 	}
 }
