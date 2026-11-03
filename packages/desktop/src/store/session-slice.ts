@@ -483,15 +483,20 @@ export function sessionSlice(set: Set, get: Get) {
    * it, to show a fresher number, would be a worse trade than the stale number.
    */
   async refreshSessionStats(sessionId: string) {
+    // 没有按 id 取一条的方法，只能读整张列表；但只换这一行，数字没变就什么都不写——
+    // 悬停一下就换掉 `sessions` 数组，订着它的整个侧栏都要重新分组。
     const latest = (await bridge.sessions.list()).find((s) => s.id === sessionId);
     if (!latest) return;
-    set({
-      sessions: get().sessions.map((s) =>
-        s.id === sessionId
-          ? { ...s, messageCount: latest.messageCount, usage: latest.usage, turns: latest.turns, replyUsage: latest.replyUsage, steps: latest.steps, subagentUsage: latest.subagentUsage, sideUsage: latest.sideUsage }
-          : s,
-      ),
-    });
+    const sessions = get().sessions;
+    const index = sessions.findIndex((s) => s.id === sessionId);
+    if (index < 0) return;
+    const current = sessions[index];
+    const figures = { messageCount: latest.messageCount, usage: latest.usage, turns: latest.turns, replyUsage: latest.replyUsage, steps: latest.steps, subagentUsage: latest.subagentUsage, sideUsage: latest.sideUsage };
+    const same = (Object.keys(figures) as (keyof typeof figures)[]).every((key) => JSON.stringify(current[key]) === JSON.stringify(figures[key]));
+    if (same) return;
+    const next = sessions.slice();
+    next[index] = { ...current, ...figures };
+    set({ sessions: next });
   },
   };
 }

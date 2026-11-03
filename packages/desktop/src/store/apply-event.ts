@@ -32,7 +32,6 @@ import { sideParentOf, useSide } from "../features/dock/sideStore.ts";
 import { delegating, useSubAgents } from "./subAgents.ts";
 import type { AppState } from "./index.ts";
 import { noticeText } from "../lib/notice-text.ts";
-import { bridge } from "../services/index.ts";
 import { sessionTitle } from "../lib/session-title.ts";
 import { completionNotice } from "../lib/session-notifications.ts";
 import { dropHandoff, takeHandoff } from "./handoff.ts";
@@ -69,6 +68,14 @@ export function applyAgentEvent(sessionId: string, event: AgentEvent, set: Set, 
 	}
 	if (event.type === "peer_queue") {
 		setPeerQueue(sessionId, event.letters);
+		return;
+	}
+	/*
+	 * 任务队列同理，记到这条事件自己的会话名下就走。从前放在下面只给屏上那个会话的 switch 里：分屏时
+	 * 另一格的会话不是 `activeSessionId`，它的 `tasks` 在提前 return 那里被丢掉，那一格的任务栏停在旧的样子。
+	 */
+	if (event.type === "tasks") {
+		useSide.getState().setTasks(sessionId, event.tasks);
 		return;
 	}
 	/*
@@ -282,17 +289,6 @@ export function applyAgentEvent(sessionId: string, event: AgentEvent, set: Set, 
     }
   }
 
-  /*
-   * 一轮收尾时读一次会话列表。排序和标题跟着 `sessions:changed` 走（见 `session-changes.ts`），不等这里；
-   * 侧边聊天的花销（`sideUsage`）只有读列表才算得出来，推送过来的变化里没有。侧边聊天不在列表上。
-   */
-  if (event.type === "agent_end" && !aside) {
-    void bridge.sessions.list().then(
-      (sessions) => set({ sessions }),
-      (cause: unknown) => get().notify(translate("applyEvent.refreshFailed", { reason: cause instanceof Error ? cause.message : String(cause) }), "error"),
-    );
-  }
-
   if (sessionId !== get().activeSessionId) {
 		// Delegated work of a conversation that is on screen without being the live one.
 		if (event.type === "subagents") useSubAgents.getState().retain(sessionId, event.agents);
@@ -374,11 +370,6 @@ export function applyAgentEvent(sessionId: string, event: AgentEvent, set: Set, 
       fold();
       // 被「现在就发」停下的那一轮：表也不收，新的一轮马上接上。
       if (!handoff) set({ turnStartedAt: null });
-      break;
-
-    case "tasks":
-      // 记到这条事件自己的会话名下——分屏时屏上不止一个会话，「屏上那个」不再是唯一答案。
-      useSide.getState().setTasks(sessionId, event.tasks);
       break;
 
     /*

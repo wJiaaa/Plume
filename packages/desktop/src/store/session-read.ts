@@ -9,6 +9,7 @@ import { bridge } from "../services/index.ts";
 import { beginSessionRead, endSessionRead } from "./read-events.ts";
 import { cachedEvent } from "./cached-event.ts";
 import { flushCoalesced } from "./coalesce.ts";
+import { keepDrawn } from "./message-event.ts";
 
 // Only one IPC payload is in flight. Intermediate selections collapse into the latest one.
 let reading: string | null = null;
@@ -247,7 +248,8 @@ export async function readSelectedSession(meta: SessionMeta, set: Set, get: Get)
 		cached.meta.seq === snapshot.meta.seq &&
 		cached.messages.length === snapshot.messages.length;
 	// A running turn's snapshot lacks the streaming reply and anything sent into it; see `withInFlight`.
-	const messages = advanced ? current.messages : unchanged ? cached.messages : snapshot.running ? withInFlight(current.messages, snapshot.messages) : snapshot.messages;
+	// 屏上已经画着的那些，内容没变就还是原来的对象，变了也还画在原来那一行，见 `keepDrawn`。
+	const messages = advanced ? current.messages : unchanged ? cached.messages : keepDrawn(current.messages, snapshot.running ? withInFlight(current.messages, snapshot.messages) : snapshot.messages);
 	const toolRuns = advanced ? current.toolRuns : unchanged ? cached.toolRuns : rebuildToolRuns(messages, snapshot.running, current.toolRuns);
 	// 读盘回来时屏上已经往前走了（`advanced`）就保留屏上的；否则按磁盘上的。转瞬即逝的那几样（重连、能力）只有屏上有。
 	const state: CachedSessionState = advanced ? slotState(current) : { ...slotState(current), ...snapshotState(snapshot, messages) };

@@ -80,6 +80,58 @@ export function messageEvent(state: State, event: Event, sessionId: string): Sta
 	return { ...state, messages: at < 0 ? [...messages, incoming] : messages.map((message, index) => index === at ? succeeds(incoming, message) : message) };
 }
 
+/** 同一条消息在屏上和读回来的那份里认得出彼此：角色、时间戳，工具结果再加它答的是哪个调用。 */
+function slotKey(message: Message): string {
+	return `${message.role}\n${message.timestamp}\n${message.role === "toolResult" ? message.toolCallId : ""}`;
+}
+
+/** 两份 JSON 形状的值是不是一样。字符串整段比：读回来的那份和屏上那份不是同一个字符串对象。 */
+function sameValue(a: unknown, b: unknown): boolean {
+	if (a === b) return true;
+	if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+	if (Array.isArray(a) || Array.isArray(b)) {
+		if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+		for (let i = 0; i < a.length; i++) if (!sameValue(a[i], b[i])) return false;
+		return true;
+	}
+	const left = a as Record<string, unknown>;
+	const right = b as Record<string, unknown>;
+	const keys = Object.keys(left);
+	if (keys.length !== Object.keys(right).length) return false;
+	for (const key of keys) if (!Object.hasOwn(right, key) || !sameValue(left[key], right[key])) return false;
+	return true;
+}
+
+/**
+ * 从磁盘读回来的转录，换上屏之前先认一遍屏上已经画着的那些。
+ *
+ * 读回来的每条都是过了 IPC 的新对象。整份换上去，一行行的 memo 全对不上；更糟的是乐观发出、后来被落盘
+ * 那条接管的那句话：它的行按第一次画出来的时间戳起 key（`drawnAt`），这份记录挂在屏上那个对象上，新对象
+ * 没有，key 换成落盘的时间戳，那句话连同按它起名的整轮过程卸掉重挂。
+ *
+ * 内容一样的沿用屏上那个对象；不一样的（读回来的才是准的）用新的，但接着按原来那一行画。角色和时间戳
+ * 撞上的两条不认，宁可让那一行重画。
+ */
+export function keepDrawn(screen: readonly Message[], read: Message[]): Message[] {
+	if (screen.length === 0 || read.length === 0) return read;
+	const drawn = new Map<string, Message | null>();
+	for (const message of screen) {
+		const key = slotKey(message);
+		drawn.set(key, drawn.has(key) ? null : message);
+	}
+	let changed = false;
+	const next = read.map((message) => {
+		const earlier = drawn.get(slotKey(message));
+		if (!earlier || earlier === message) return message;
+		if (sameValue(earlier, message)) {
+			changed = true;
+			return earlier;
+		}
+		return succeeds(message, earlier);
+	});
+	return changed ? next : read;
+}
+
 function findMessageSlot(messages: Message[], incoming: Message): number {
 	if (incoming.role === "toolResult") {
 		return messages.findIndex((message) => message.role === "toolResult" && message.toolCallId === incoming.toolCallId);

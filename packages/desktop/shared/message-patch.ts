@@ -15,7 +15,7 @@
  */
 
 import type { AgentEvent } from "@plume/core/contract-types";
-import type { MessagePatch, PatchOp, WireAgentEvent } from "@plume/contract";
+import type { MessagePatch, PatchOp, ToolPatch, WireAgentEvent } from "@plume/contract";
 
 type StreamedReply = Extract<AgentEvent, { type: "message_update" }>;
 type Reply = StreamedReply["message"];
@@ -25,7 +25,7 @@ const isPlain = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype;
 
 /** 容器逐层复制，叶子共用。字符串不可变，共用就是快照。 */
-function copy(value: unknown): unknown {
+export function copy(value: unknown): unknown {
 	if (Array.isArray(value)) return value.map(copy);
 	if (!isPlain(value)) return value;
 	const out: Record<string, unknown> = {};
@@ -55,7 +55,7 @@ function grew(prev: string, next: string): boolean {
  * 字符串接着长的记成追加——流式输出几乎全是这种。数组变短、类型变了，整个换掉：罕见，换掉也是对的。
  * `path` 是一路共用的栈，只在真要记一步时才复制，不为每个没变的节点分配一个数组。
  */
-function diff(prev: unknown, next: unknown, path: Path, ops: PatchOp[]): unknown {
+export function diff(prev: unknown, next: unknown, path: Path, ops: PatchOp[]): unknown {
 	if (typeof next === "string") {
 		if (prev === next) return next;
 		if (typeof prev === "string" && grew(prev, next)) ops.push([path.slice(), "a", prev.length, next.slice(prev.length)]);
@@ -106,7 +106,7 @@ interface Sent {
 export class MessagePatcher {
 	private readonly sent = new Map<string, Sent>();
 
-	wire(sessionId: string, event: AgentEvent): WireAgentEvent {
+	wire(sessionId: string, event: AgentEvent): Exclude<AgentEvent, StreamedReply> | MessagePatch {
 		if (event.type === "message_update") return this.patch(sessionId, event);
 		if (event.type === "message_start" && event.message.role === "assistant") {
 			this.sent.set(sessionId, { timestamp: event.message.timestamp, seq: 0, shadow: copy(event.message) });
@@ -147,6 +147,11 @@ const isKeyframe = (patch: MessagePatch) => patch.ops[0]?.[0].length === 0 && pa
  * 沿路径把经过的容器各复制一次（同一次里复制过的不再复制）。
  */
 export function applyPatch(base: Reply | null, patch: MessagePatch): Reply | null {
+	return applyOps(base, patch.ops);
+}
+
+/** `applyPatch` 不认消息形状的那一半：工具进度的补丁（`tool-patch.ts`）也走它。 */
+export function applyOps<T>(base: T | null, ops: PatchOp[]): T | null {
 	let root: unknown = base;
 	const owned = new Set<unknown>();
 	const own = <T>(container: T): T => {
@@ -155,7 +160,7 @@ export function applyPatch(base: Reply | null, patch: MessagePatch): Reply | nul
 		owned.add(fresh);
 		return fresh;
 	};
-	for (const op of patch.ops) {
+	for (const op of ops) {
 		const path = op[0];
 		if (path.length === 0) {
 			if (op[1] !== "s") return null;
@@ -180,7 +185,7 @@ export function applyPatch(base: Reply | null, patch: MessagePatch): Reply | nul
 			node[last] = text + op[3];
 		}
 	}
-	return root as Reply | null;
+	return root as T | null;
 }
 
 /**
@@ -213,7 +218,7 @@ export class PatchReader {
 		this.deliver = deliver;
 	}
 
-	read(sessionId: string, event: WireAgentEvent): void {
+	read(sessionId: string, event: Exclude<WireAgentEvent, ToolPatch>): void {
 		if (event.type === "message_patch") return this.take(sessionId, event);
 		if (event.type === "message_start" && event.message.role === "assistant") {
 			this.waiting.delete(sessionId);

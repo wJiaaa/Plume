@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Message } from "@plume/core";
-import { drawnAt, messageEvent } from "../src/store/message-event.ts";
+import { drawnAt, keepDrawn, messageEvent } from "../src/store/message-event.ts";
 
 const pending: Message = { role: "user", content: [{ type: "text", text: "相同的问题" }], timestamp: 1 };
 const confirmed: Message = { ...pending, timestamp: 2 };
@@ -39,6 +39,24 @@ test("the committed copy keeps the row the optimistic one was drawn in, through 
 	const ended = messageEvent(started, { type: "message_end", message: { ...confirmed } }, "a");
 	assert.equal(ended.messages[0].timestamp, confirmed.timestamp);
 	assert.equal(drawnAt(ended.messages[0]), pending.timestamp);
+});
+
+test("a transcript read back from disk keeps the objects on screen, and the rows of the ones that changed", () => {
+	const state = { messages: [pending], pendingUserMessage: { sessionId: "a", message: pending } };
+	const asked = messageEvent(state, { type: "message_start", message: confirmed }, "a").messages[0];
+	const result: Message = { role: "toolResult", toolCallId: "c1", toolName: "read", content: [{ type: "text", text: "旧" }], isError: false, timestamp: 3 };
+	const screen = [asked, result];
+	const read = structuredClone(screen);
+	read[1] = { ...read[1], content: [{ type: "text", text: "盘上的才是准的" }] } as Message;
+	const next = keepDrawn(screen, read);
+	assert.equal(next[0], asked, "一样的沿用屏上那个对象");
+	assert.equal(next[1], read[1], "变了的用读回来的");
+	assert.equal(drawnAt(next[0]), pending.timestamp);
+	// 变了内容的那一条也接着画在原来那一行。
+	const moved = keepDrawn([asked], [{ ...structuredClone(asked), content: [{ type: "text", text: "改过" }] }]);
+	assert.equal(drawnAt(moved[0]), pending.timestamp);
+	const unchanged = [structuredClone(result)];
+	assert.equal(keepDrawn([], unchanged), unchanged, "屏上没有的原样交回");
 });
 
 test("a message nobody drew earlier is keyed by its own timestamp", () => {

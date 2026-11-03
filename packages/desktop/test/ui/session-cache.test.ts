@@ -9,6 +9,8 @@ import { afterPaint } from "../../src/lib/after-paint.ts";
 import { applySessionChange } from "../../src/store/session-changes.ts";
 import { revealSession } from "../../src/features/split/actions.ts";
 import type { PlumeApi } from "@plume/contract";
+import { messageEvent } from "../../src/store/message-event.ts";
+import { runKey, runs } from "../../src/features/conversation/grouping.ts";
 
 type Snapshot = Awaited<ReturnType<PlumeApi["sessions"]["transcript"]>>;
 let readTranscript: PlumeApi["sessions"]["transcript"];
@@ -600,4 +602,30 @@ test("failed archive and deletion leave the visible session and draft intact", a
 	assert.equal(useApp.getState().sessions.find(session => session.id === "a")?.archived, undefined);
 	assert.equal(useApp.getState().drafts.a.text, "unsent");
 	assert.equal(useApp.getState().notices.filter(notice => notice.level === "error").length, 2);
+});
+
+/*
+ * 回到一个读过、之后又在后台变过（`dirty`）的会话：磁盘那份过 IPC 回来每条都是新对象。从前整份换上去，
+ * 乐观发出、后来被落盘那条接管的那句话，行的 key 是按第一次画出来的时间戳起的（`drawnAt`），新对象上
+ * 没有这份记录，key 换成落盘的时间戳——那句话、连同按它起名的整轮过程卸掉重挂。没变的消息也全换了新对象，
+ * 每一行的 memo 都对不上。
+ */
+test("returning to a dirty conversation keeps the rows it already drew", async () => {
+	const optimistic: UserMessage = { role: "user", content: [{ type: "text", text: "问一句" }], timestamp: 5 };
+	const answer = reply("答");
+	const started = messageEvent({ messages: [optimistic], pendingUserMessage: { sessionId: "a", message: optimistic } }, { type: "message_start", message: { ...optimistic, timestamp: 8 } }, "a");
+	const screen = [...started.messages, answer];
+	const keys = (messages: Message[]) => runs(messages).map(runKey);
+	const before = keys(screen);
+	useApp.setState({ messages: screen });
+	readTranscript = async (id) => {
+		const read = snapshot(id);
+		return read && { ...read, messages: structuredClone(screen) };
+	};
+	await useApp.getState().openSession(meta("b"));
+	useApp.setState((state) => ({ sessionCache: { ...state.sessionCache, a: { ...state.sessionCache.a, dirty: true } } }));
+	await useApp.getState().openSession(meta("a"));
+	const after = useApp.getState().messages;
+	assert.deepEqual(keys(after), before, "行的 key 不变，不卸掉重挂");
+	assert.equal(after[1], answer, "内容没变的消息沿用原来的对象");
 });

@@ -17,7 +17,7 @@ export interface WorktreeIpcDeps {
 
 export function registerWorktreeIpc({ store }: WorktreeIpcDeps): void {
 	const metaOf = async (sessionId: string): Promise<SessionMeta | null> =>
-		sessions.get(sessionId)?.meta ?? (await store().listSessions()).find((meta) => meta.id === sessionId) ?? null;
+		sessions.get(sessionId)?.meta ?? (await store().get(sessionId));
 	/*
 	 * Merging and syncing change what a running turn is reading and writing, so neither starts while one
 	 * runs — refused, the way moving a conversation is (`sessions:move`), rather than interleaved.

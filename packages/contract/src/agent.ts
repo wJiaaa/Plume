@@ -86,8 +86,27 @@ export interface MessagePatch {
 	ops: PatchOp[];
 }
 
-/** 主进程发给窗口的事件：`message_update` 换成了 `MessagePatch`，其余原样。 */
-export type WireAgentEvent = Exclude<AgentEvent, StreamedReply> | MessagePatch;
+type ToolProgress = Extract<AgentEvent, { type: "tool_update" }>;
+
+/**
+ * 跑着的工具的进度过 IPC 时的样子：`tool_update` 只带这一次变了的部分。
+ *
+ * `bash` 每 100ms 报一次累计到此刻的全部输出（最多约四万字），几条并行就是每个窗口每秒几 MB，而
+ * 两次之间新来的往往只有几行。`seq` 从这个调用的第一次进度（关键帧，记作 0）往上数；接不上就用
+ * `agent.streamingTool` 要一帧关键帧。编码与还原见 `desktop/shared/tool-patch.ts`。
+ */
+export interface ToolPatch {
+	type: "tool_patch";
+	toolCallId: string;
+	seq: number;
+	ops: PatchOp[];
+}
+
+/**
+ * 主进程发给窗口的事件：`message_update` 换成了 `MessagePatch`、`tool_update` 换成了 `ToolPatch`，
+ * `turn_end` 不发——窗口里没有谁读它，它却带着整条回复和这一轮的全部工具结果。其余原样。
+ */
+export type WireAgentEvent = Exclude<AgentEvent, StreamedReply | ToolProgress | { type: "turn_end" }> | MessagePatch | ToolPatch;
 
 export interface AgentApi {
 	/**
@@ -129,6 +148,8 @@ export interface AgentApi {
 	 * 窗口手里的那份接不上补丁时才问（中途打开、重载、`seq` 断档），见 `MessagePatch`。
 	 */
 	streamingMessage(sessionId: string): Promise<MessagePatch | null>;
+	/** 这个调用到此刻的进度，作为一帧关键帧；它没在跑、或者还没报过进度就是 null。见 `ToolPatch`。 */
+	streamingTool(sessionId: string, toolCallId: string): Promise<ToolPatch | null>;
 }
 
 /**

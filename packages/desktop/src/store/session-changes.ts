@@ -35,7 +35,7 @@ export function applySessionChange(change: SessionChange, set: Set, get: () => A
 	if ((!meta || justArchived) && get().activeSessionId === id) void get().newSession({ keepView: true });
 	set((state) => {
 		const sessions = state.sessions.filter((session) => session.id !== id);
-		// 变化里的 meta 是存档那一份，没有列表才算的侧边聊天用量；沿用上一份，等下次读列表再更新。
+		// 变化里的 meta 多半是存档那一份，不带侧边聊天用量；沿用上一份。它变了的时候主进程会单独推一份带着它的（`session-storage.ts`）。
 		if (meta) sessions.push(previous?.sideUsage && !meta.sideUsage ? { ...meta, sideUsage: previous.sideUsage } : meta);
 		sessions.sort((a, b) => b.updatedAt - a.updatedAt);
 		// 缓存、草稿、排队只在真有东西要改时才换新；平时原样交回，不然每条记录都让读它们的组件重画一遍。

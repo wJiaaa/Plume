@@ -35,6 +35,7 @@ import { sideChatRunning, sideSessionIds } from "../lib/row-activity.ts";
 import { delegating, useSubAgents } from "./subAgents.ts";
 import { afterPushes, bridge, inFrame } from "../services/index.ts";
 import { PatchReader } from "../../shared/message-patch.ts";
+import { ToolPatchReader } from "../../shared/tool-patch.ts";
 import { flushCoalesced } from "./coalesce.ts";
 import { activeModelCatalog } from "@plume/core/model-catalog";
 import { pullModelCatalog } from "./model-catalog.ts";
@@ -726,7 +727,16 @@ export const useApp = create<AppState>((set, get) => ({
 			(sessionId) => bridge.agent.streamingMessage(sessionId),
 			(sessionId, event) => inFrame(() => get().applyEvent(sessionId, event)),
 		);
-		bridge.agent.onEvent(({ sessionId, event }) => replies.read(sessionId, event));
+		// 工具进度同理（`tool-patch.ts`）：补丁在这里接回整份 `tool_update`，别的事件照旧交给上面那个。
+		const tools = new ToolPatchReader(
+			(sessionId, toolCallId) => bridge.agent.streamingTool(sessionId, toolCallId),
+			(sessionId, event) => inFrame(() => get().applyEvent(sessionId, event)),
+		);
+		bridge.agent.onEvent(({ sessionId, event }) => {
+			if (event.type === "tool_patch") return tools.take(sessionId, event);
+			tools.observe(sessionId, event);
+			replies.read(sessionId, event);
+		});
 		// 推送本来就按拍成批，暂存的流式更新跟着这一批落下，不再另等一拍。
 		afterPushes(flushCoalesced);
 

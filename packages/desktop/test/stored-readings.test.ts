@@ -19,7 +19,7 @@ export const ensureLiveSession = async (id) => { started.push(id); return null; 
 const unused = () => { throw new Error("not part of this test"); };
 export const editSessionMessage = unused, revertSessionMessage = unused, broadcast = unused, deleteSessions = unused, disposeSession = unused,
 	createSession = unused, abortSession = unused, promptSession = unused, setReportBack = unused, sideSessionsOf = unused, snapshot = unused,
-	streamingMessage = unused, touchSession = unused, worktreeFollowsArchive = unused;
+	streamingMessage = unused, streamingTool = unused, touchSession = unused, worktreeFollowsArchive = unused;
 `)}`;
 const source = new URL("../electron/ipc/sessions.ts", import.meta.url).href;
 const hooks = registerHooks({

@@ -12,8 +12,9 @@ import { useSide } from "../src/features/dock/sideStore.ts";
 import { applyAgentEvent } from "../src/store/apply-event.ts";
 import { unreadActivity } from "../src/lib/session-notifications.ts";
 
-// 后台会话收尾时会去重读会话列表；这里只关心 activity。
-(globalThis as { plume?: unknown }).plume = { sessions: { list: async () => [] } };
+// 收尾不再读会话列表：父会话卡片上的 `sideUsage` 由主进程推过来（`session-storage.ts`）。数一下读了几次。
+let listed = 0;
+(globalThis as { plume?: unknown }).plume = { sessions: { list: async () => (listed++, []) } };
 
 const side = { id: "side-1", parentId: "main", sideId: "panel-1", seq: 1 } as SessionMeta;
 
@@ -47,4 +48,13 @@ test("a background conversation that is not a side chat still finishes unread", 
 	fold(state, "other", { type: "agent_end", reason: "done" } as AgentEvent);
 	assert.deepEqual(state.activity, { other: "done" });
 	assert.equal(unreadActivity(state.activity as never, "main"), "done");
+});
+
+test("no turn end re-reads the session list, a side chat's included: everything arrives as pushed changes", () => {
+	listed = 0;
+	const state = { ...freshState(), approvals: [] };
+	fold(state, "main", { type: "agent_end", reason: "done" } as AgentEvent);
+	fold(state, "other", { type: "agent_end", reason: "done" } as AgentEvent);
+	fold(state, side.id, { type: "agent_end", reason: "done" } as AgentEvent);
+	assert.equal(listed, 0);
 });

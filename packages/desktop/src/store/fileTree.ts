@@ -58,6 +58,13 @@ interface FileTreeState {
 	reveal(path: string, roots: string[]): Promise<void>;
 }
 
+/** The same listing, read again — kept as the array already held so nothing downstream sees a change. */
+const sameEntries = (a: FileEntry[], b: FileEntry[]) =>
+	a.length === b.length && a.every((entry, index) => {
+		const other = b[index];
+		return entry.path === other.path && entry.name === other.name && entry.isDirectory === other.isDirectory && entry.size === other.size;
+	});
+
 /** Whether a directory belongs to a tree showing these source folders. */
 const under = (roots: string[], dir: string) => roots.some((root) => dir === root || isDescendantPath(root, dir));
 
@@ -82,12 +89,33 @@ export const useFileTreeStore = create<FileTreeState>((set, get) => ({
 
 	async load(dir) {
 		const entries = await bridge.files.list(dir);
+		const held = get().children[dir];
+		if (held && sameEntries(held, entries)) return held;
 		set((current) => ({ children: { ...current.children, [dir]: entries } }));
 		return entries;
 	},
 
+	/*
+	 * All of them read first, then written once — and only the ones that changed.
+	 *
+	 * Each `load` used to set on its own and always with a new array, so refreshing a tree with K
+	 * folders open redrew the whole tree K times even when nothing on disk had moved.
+	 */
 	async refresh(dirs) {
-		await Promise.all([...new Set(dirs)].map((dir) => get().load(dir)));
+		const unique = [...new Set(dirs)];
+		const read = await Promise.allSettled(unique.map((dir) => bridge.files.list(dir)));
+		set((current) => {
+			let next: Record<string, FileEntry[]> | null = null;
+			read.forEach((result, index) => {
+				if (result.status !== "fulfilled") return;
+				const held = current.children[unique[index]];
+				if (held && sameEntries(held, result.value)) return;
+				(next ??= { ...current.children })[unique[index]] = result.value;
+			});
+			return next ? { children: next } : current;
+		});
+		const failed = read.find((result) => result.status === "rejected");
+		if (failed) throw failed.reason;
 	},
 
 	async refreshOpen(roots) {

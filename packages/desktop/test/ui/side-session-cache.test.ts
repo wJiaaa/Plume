@@ -39,7 +39,7 @@ afterEach(() => {
 
 test("读进来的过程中答完的那一段接得上，不丢也不重复", async () => {
 	const transcript = deferred<SessionSnapshot>();
-	Object.defineProperty(window, "plume", { configurable: true, value: { sessions: { transcript: () => transcript.promise } } });
+	Object.defineProperty(window, "plume", { configurable: true, value: { sessions: { transcript: () => transcript.promise, list: async () => [] } } });
 	const reading = readSideSession(side, useApp.setState, useApp.getState);
 	const { applyEvent } = useApp.getState();
 	applyEvent("side1", { type: "message_start", message: { ...answer, stopReason: "pending" } } as never);

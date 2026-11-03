@@ -1,4 +1,4 @@
-import { INLINE_IMAGE_CHARS, persistSessionImage, type AssistantContent, type ImageContent, type Message, type UserContent } from "@plume/core";
+import { INLINE_IMAGE_CHARS, persistSessionImage, type AgentEvent, type AssistantContent, type ImageContent, type Message, type UserContent } from "@plume/core";
 import { noteTranscriptFiles } from "../files/index.ts";
 
 /**
@@ -60,11 +60,9 @@ function slimUserContent(content: UserContent[]): UserContent[] {
 	let changed = false;
 	const next = content.map((part) => {
 		if (part.type === "image") {
-			if (part.data.length <= DISPLAY_IMAGE_CHARS) return part;
-			changed = true;
-			const media = part.media ?? parked.get(part) ?? persistSessionImage(part.data, part.mimeType);
-			parked.set(part, media);
-			return { ...part, data: "", media };
+			const next = parkImage(part);
+			if (next !== part) changed = true;
+			return next;
 		}
 		if (part.type !== "text") return part;
 		const text = slimText(part.text);
@@ -73,6 +71,68 @@ function slimUserContent(content: UserContent[]): UserContent[] {
 		return { ...part, text };
 	});
 	return changed ? next : content;
+}
+
+/** 按内容起名（`persistSessionImage`），同一张图不论走冷读、实时事件还是落盘，都指着同一个文件。 */
+function parkImage(part: ImageContent): ImageContent {
+	if (part.data.length <= DISPLAY_IMAGE_CHARS) return part;
+	const media = part.media ?? parked.get(part) ?? persistSessionImage(part.data, part.mimeType);
+	parked.set(part, media);
+	return { ...part, data: "", media };
+}
+
+function parkContent(content: UserContent[]): UserContent[] {
+	let changed = false;
+	const next = content.map((part) => {
+		if (part.type !== "image") return part;
+		const parkedPart = parkImage(part);
+		if (parkedPart !== part) changed = true;
+		return parkedPart;
+	});
+	return changed ? next : content;
+}
+
+function parkMessage(message: Message): Message {
+	if (message.role === "assistant") return message;
+	const content = parkContent(message.content);
+	return content === message.content ? message : { ...message, content };
+}
+
+type ToolEnd = Extract<AgentEvent, { type: "tool_end" }>;
+
+function parkToolEnd(event: ToolEnd): ToolEnd {
+	const content = parkContent(event.result.content);
+	return content === event.result.content ? event : { ...event, result: { ...event.result, content } };
+}
+
+/**
+ * 实时事件过 IPC 之前的那一份：大图换成文件引用。
+ *
+ * 浏览器截图、读进来的图片，从前只在落盘和冷读时停放成文件，实时事件里整张 base64 跟着 `tool_end`、
+ * 跟着那条工具结果的 `message_end` 各过一遍 IPC，进了 store 又一直挂在内存里。停放和冷读同一套，
+ * 窗口两条路拿到的是同一种形状。
+ *
+ * 只换图，不截正文：截正文是冷读给超大转录的保护，实时的这一份照旧给全文，免得一条长回复流完的那一刻
+ * 被从中间截掉。
+ */
+export function parkEventImages(event: AgentEvent): AgentEvent {
+	switch (event.type) {
+		case "message_start":
+		case "message_end":
+		case "subagent_message": {
+			const message = parkMessage(event.message);
+			return message === event.message ? event : ({ ...event, message } as AgentEvent);
+		}
+		case "tool_end":
+			return parkToolEnd(event);
+		case "subagent_event": {
+			if (event.event.type !== "tool_end") return event;
+			const inner = parkToolEnd(event.event);
+			return inner === event.event ? event : { ...event, event: inner };
+		}
+		default:
+			return event;
+	}
 }
 
 function slimAssistantContent(content: AssistantContent[]): AssistantContent[] {

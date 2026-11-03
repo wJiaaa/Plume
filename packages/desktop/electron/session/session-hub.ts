@@ -13,7 +13,7 @@ import { AgentSession, backgroundJobs, createWakeupTools, McpPool, plumeHome, re
 import type { BrowserWindow } from "electron";
 import { browserState, closeSessionBrowser, createBrowserTools } from "../browser/index.ts";
 import { autoCreateSessionWorktree, bringBackWorktree, cleanOldWorktrees, reclaimWorktree } from "../git/index.ts";
-import type { PlumeApi, SessionChange, SessionSnapshot, SummaryUpdate } from "@plume/contract";
+import type { MessagePatch, PlumeApi, SessionChange, SessionSnapshot, SummaryUpdate, ToolPatch } from "@plume/contract";
 import { createStoredSession, type InitialPrompt } from "./create-session.ts";
 import { initialPrompt, promptContent, promptOptions } from "./prompt-input.ts";
 import { ensureSessionWorkspace, ownWorkspace } from "./scratch.ts";
@@ -28,7 +28,7 @@ import { archiveAfterTurn, createSessionOpsTools } from "./session-ops.ts";
 import { reportBackAfterFirstTurn } from "./session-report-back.ts";
 import { handOffApprovedPlans } from "./plan-handoff.ts";
 import { createReviewSessionTool, startReviewSessions } from "./review-session.ts";
-import { MessagePatcher } from "../../shared/message-patch.ts";
+import { EventWire } from "./event-wire.ts";
 import { restoreRevertedFiles } from "./revert-files.ts";
 
 export interface HubDeps {
@@ -86,7 +86,8 @@ const archives = archiveAfterTurn({
 		if (meta) await worktreeFollowsArchive(meta);
 	},
 	busy: (id) => sessions.get(id)?.running ?? false,
-	archived: async (id) => (await deps.store().listSessions()).some((one) => one.id === id && one.archived === true),
+	// 只问这一个：`listSessions` 会把整张表读出来逐条 parse。
+	archived: async (id) => (await deps.store().get(id))?.archived === true,
 	dispose: (id) => disposeSession(id, "archived"),
 });
 /** 环境卡片里那段摘要：一轮结束、静下来一分钟后在后台生成，推给开着的窗口。 */
@@ -131,8 +132,9 @@ const reportsBack = reportBackAfterFirstTurn({
 	},
 	deliver: async (parentId, report) => {
 		// 归档了的不叫醒：人把它收起来了，后台多跑一轮也没人看。
-		const parent = (await deps.store().listSessions()).find((one) => one.id === parentId);
-		if (!parent || parent.archived) return;
+		// 侧边聊天不是能交回的对象：从前按列表找，列表里本来就没有它们，这里照旧不认。
+		const parent = await deps.store().get(parentId);
+		if (!parent || parent.archived || parent.parentId) return;
 		(await ensureLiveSession(parentId))?.receiveSessionReport(report);
 	},
 });
@@ -350,11 +352,16 @@ export function broadcastSessionChange(change: SessionChange): void {
 	eachAppWindow((win) => win.webContents.send("sessions:changed", change));
 }
 
-const patcher = new MessagePatcher();
+const wire = new EventWire();
 
 /** 正在流的那条回复，整条作为一帧；窗口手里那份接不上补丁时来要。 */
-export function streamingMessage(sessionId: string): ReturnType<MessagePatcher["keyframe"]> {
-	return patcher.keyframe(sessionId);
+export function streamingMessage(sessionId: string): MessagePatch | null {
+	return wire.streamingMessage(sessionId);
+}
+
+/** 正在跑的那个调用到此刻的进度，整份作为一帧；窗口手里那份接不上补丁时来要。 */
+export function streamingTool(sessionId: string, toolCallId: string): ToolPatch | null {
+	return wire.streamingTool(sessionId, toolCallId);
 }
 
 export function broadcast(sessionId: string, event: AgentEvent): void {
@@ -365,9 +372,9 @@ export function broadcast(sessionId: string, event: AgentEvent): void {
 	if (!side) summaries.observe(sessionId, event);
 	// 活会话的回复不经过快照：这一轮刚交付、链着验证截图的那条，正是人马上要点的。
 	if (event.type === "message_end") noteTranscriptFiles([event.message]);
-	// 流式回复只发变了的部分：整条消息每个 token 克隆一次，总量是回复长度的平方。见 `message-patch.ts`。
-	const wire = patcher.wire(sessionId, event);
-	eachAppWindow((win) => win.webContents.send("agent:event", { sessionId, event: wire }));
+	// 窗口拿到的那一份：不发 `turn_end`、大图换成文件、流式回复与工具进度只发变了的部分。见 `event-wire.ts`。
+	const sent = wire.wire(sessionId, event);
+	if (sent) eachAppWindow((win) => win.webContents.send("agent:event", { sessionId, event: sent }));
 	const session = sessions.get(sessionId);
 	const working = session?.subAgents.list().some((one) => one.status === "running" || one.status === "queued") ?? false;
 	if (!side) notifyAgentEvent(sessionId, event, session?.meta.title, working);

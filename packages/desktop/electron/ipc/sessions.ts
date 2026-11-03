@@ -47,6 +47,7 @@ import {
 	sideSessionsOf,
 	snapshot,
 	streamingMessage,
+	streamingTool,
 	touchSession,
 	worktreeFollowsArchive,
 } from "../session/session-hub.ts";
@@ -455,6 +456,7 @@ export function registerSessionsIpc({
 	});
 
 	ipcMain.handle("agent:streamingMessage", (_event, sessionId: string) => streamingMessage(sessionId));
+	ipcMain.handle("agent:streamingTool", (_event, sessionId: string, toolCallId: string) => streamingTool(sessionId, toolCallId));
 
 	ipcMain.handle(
 		"agent:approve",
