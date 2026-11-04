@@ -7,6 +7,7 @@
  */
 
 export { Markdown } from "./Markdown.tsx";
+export { installChipCopy } from "./copy-chips.ts";
 export { usePathMenu } from "./PathMenu.tsx";
 export { Arrival, useArrival } from "./useSmoothText.ts";
 export { copyableReply } from "./interface/interface-text.ts";

@@ -768,6 +768,21 @@
 }
 
 /*
+ * 复制的那一下（`features/markdown/copy-chips.ts`）：签摊成行内，浮条不进剪贴板。flex 项目在浏览器
+ * 生成的纯文本里前后各带一个换行，行内的不带。
+ */
+[data-ly-file-link][data-ly-copying],
+[data-ly-file-link][data-ly-copying] > a,
+[data-ly-file-link][data-ly-copying] > a > svg {
+  /* 图标也要：Tailwind 的基础样式把 svg 设成块，它会把名字前那个空格换成一个换行。 */
+  display: inline;
+}
+
+[data-ly-file-link][data-ly-copying] > [data-ly-file-actions] {
+  display: none;
+}
+
+/*
  * The exit bar: a small card that floats above the chip on hover, with the two buttons in it.
  *
  * They used to sit on the chip's right edge — 17px buttons, 11.5px icons — over the last 30px of the

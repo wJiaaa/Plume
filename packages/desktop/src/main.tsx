@@ -4,9 +4,11 @@ import { createRoot } from "react-dom/client";
 import { App } from "./app/App.tsx";
 import { ErrorBoundary } from "./ui/layout/ErrorBoundary.tsx";
 import { installTooltips } from "./ui/overlay/tooltip.ts";
+import { installChipCopy } from "./features/markdown/index.ts";
 import "./styles.css";
 
 installTooltips();
+installChipCopy();
 
 /*
  * The overlay, fetched only when this window is one.
