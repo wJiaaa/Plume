@@ -24,6 +24,20 @@ export function splitLineSuffix(text: string): { path: string; lines: LineRange 
 	return { path, lines: { from: Math.min(from, to), to: Math.max(from, to) } };
 }
 
+/**
+ * `file:///Users/a/b.ts:42` 里的本机路径，行号后缀照留；不是本机的 `file://` 地址时是 null。
+ *
+ * 模型引用 scratch 里的文件常写成这种地址。不转的话 `file:` 被当成一种协议，整条链接退成纯文字。
+ * 带主机名的（`file://server/share/…`）是网络共享，不在这里转，交给 `resolveAsset` 照旧拒掉。
+ * 也不在这里解码：`resolveAsset` 会解一次，解两次 `%2520` 就成了空格。
+ */
+export function filePathInUrl(href: string): string | null {
+	const match = /^file:\/\/(?:localhost)?(\/.*)$/i.exec(href);
+	if (!match) return null;
+	// `file:///C:/a.ts` 的路径是 `C:/a.ts`：盘符前那道斜杠属于地址，不属于路径。
+	return match[1].replace(/^\/(?=[A-Za-z]:[/\\])/, "");
+}
+
 function lineLabel(lines: LineRange): string {
 	return lines.from === lines.to ? `${lines.from}` : `${lines.from}-${lines.to}`;
 }

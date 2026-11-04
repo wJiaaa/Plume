@@ -21,18 +21,24 @@ const LIMIT = 8;
  */
 const WALK_CAP = 50_000;
 
+/** 什么目录都进。scratch 里放的是模型解包出来要读的东西，`dist`、`node_modules` 正是它在看的那部分。 */
+const SKIP_NOTHING: ReadonlySet<string> = new Set();
+
 /**
  * 返回相对 `root` 的路径，由调用方拼回它自己认的那个项目目录。`root` 是过了边界检查、解析过软链的
  * 真实目录；直接拼它，项目在软链下时（`/var` 与 `/private/var`）文件面板就认不出这是项目里的文件。
+ *
+ * `unpacked`：`root` 是会话的 scratch 目录。项目里跳过构建产物，是怕同名的产物冒充源文件；scratch 里
+ * 只有解出来的产物，跳过它们就什么也找不到——一个解开的 app.asar，文件全在 `dist/` 下。
  */
-export async function locateInProject(root: string, relative: string): Promise<string[]> {
+export async function locateInProject(root: string, relative: string, unpacked = false): Promise<string[]> {
 	const clean = relative.replaceAll("\\", "/").replace(/^\.\//, "");
 	// 通配符、走出项目的 `..`，都不是「回复里提到的一个文件」。
 	if (!clean || isAbsolute(clean) || /[*?[\]]/.test(clean) || clean.split("/").includes("..")) return [];
 
 	if ((await stat(join(root, clean)).catch(() => null))?.isFile()) return [clean];
 
-	const files = await projectFiles(root);
+	const files = await projectFiles(root, unpacked ? SKIP_NOTHING : SKIP_DIRS);
 	if (files === null) {
 		// 仓库大到列不完：退回只问这一个名字，让 git 按 pathspec 找，仍然认 .gitignore。
 		const listed = await git(root, ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", `:(glob)**/${clean}`]).catch(() => "");
@@ -48,11 +54,12 @@ export async function locateInProject(root: string, relative: string): Promise<s
  */
 const listing = new Map<string, Promise<string[] | null>>();
 
-function projectFiles(root: string): Promise<string[] | null> {
-	let list = listing.get(root);
+function projectFiles(root: string, skip: ReadonlySet<string>): Promise<string[] | null> {
+	const key = `${root}\0${skip.size}`;
+	let list = listing.get(key);
 	if (!list) {
-		list = listFiles(root).finally(() => listing.delete(root));
-		listing.set(root, list);
+		list = listFiles(root, skip).finally(() => listing.delete(key));
+		listing.set(key, list);
 	}
 	return list;
 }
@@ -65,16 +72,16 @@ function projectFiles(root: string): Promise<string[] | null> {
  * `null`：清单超出了 `git()` 的输出上限（32MB，几十万个文件）。这时不能退回走目录——那不认 .gitignore，
  * 会把 `node_modules` 里的同名文件找回来——由调用方逐个名字去问 git。
  */
-async function listFiles(root: string): Promise<string[] | null> {
+async function listFiles(root: string, skip: ReadonlySet<string>): Promise<string[] | null> {
 	try {
 		return (await git(root, ["ls-files", "-z", "--cached", "--others", "--exclude-standard"])).split("\0").filter(Boolean);
 	} catch (error) {
-		return (error as { code?: unknown }).code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" ? null : walkFiles(root);
+		return (error as { code?: unknown }).code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" ? null : walkFiles(root, skip);
 	}
 }
 
 /** `root` 之下的文件，相对 `root`、用 `/` 分隔。不跟软链：一个指回上层的链接会让它绕不出来。 */
-async function walkFiles(root: string): Promise<string[]> {
+async function walkFiles(root: string, skip: ReadonlySet<string>): Promise<string[]> {
 	const files: string[] = [];
 	const visit = async (dir: string): Promise<void> => {
 		if (files.length >= WALK_CAP) return;
@@ -84,7 +91,7 @@ async function walkFiles(root: string): Promise<string[]> {
 			const full = join(dir, entry.name);
 			// 隐藏目录也跳过：仓库外没有 .gitignore 兜着，`.venv`、`.idea` 里同名的文件不是回复说的那一个。
 			if (entry.isDirectory()) {
-				if (!SKIP_DIRS.has(entry.name) && !entry.name.startsWith(".")) below.push(visit(full));
+				if (!skip.has(entry.name) && !entry.name.startsWith(".")) below.push(visit(full));
 			} else if (entry.isFile() && files.length < WALK_CAP) {
 				files.push(relative(root, full).split(sep).join("/"));
 			}

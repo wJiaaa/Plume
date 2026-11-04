@@ -383,9 +383,9 @@ function renderToken(token: Inline, fade: boolean): ReactNode {
 			// 行内代码写完才出现（见 `completeTail`），整枚一起淡入。
 			const box = "[box-decoration-break:clone] [-webkit-box-decoration-break:clone]";
 			const code = fade ? <FadeIn as="code" className={box}>{token.text}</FadeIn> : <code className={box}>{token.text}</code>;
-			// 提示词让模型把路径写成 `path/to/file.ts:42` 以便点击；解析不到本机路径时 `Link` 原样还给这枚代码。
+			// 提示词让模型把路径写成 `path/to/file.ts:42` 以便点击；解析不到本机路径、或找遍了也没有这个文件时，`Link` 原样还给这枚代码。
 			const path = filePathInCode(token.text);
-			return path ? <Link href={path}>{code}</Link> : code;
+			return path ? <Link href={path} guessed>{code}</Link> : code;
 		}
 		case "break":
 			return <br />;

@@ -17,7 +17,7 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import type { Message, SessionMeta, SubAgentSummary } from "@plume/core";
-import { isProjectLess } from "../lib/project-scope.ts";
+import { isProjectLess, sessionScratchDirs } from "../lib/project-scope.ts";
 import { sessionProject } from "../lib/project-identity.ts";
 import { useApp, type AppState } from "../store/index.ts";
 import { delegating, type SubAgentState, useSubAgents } from "../store/subAgents.ts";
@@ -246,6 +246,21 @@ const cwdOf = (meta: SessionMeta | null) => meta?.cwd ?? null;
 /** 这一屏会话的工作目录。不在项目里的会话（聊天、PR 评审）没有项目路径，它的相对路径就相对这里。 */
 export function useScopedCwd(): string | null {
 	return useScopedFromMeta(cwdOf);
+}
+
+const parentIdOf = (meta: SessionMeta | null) => meta?.parentId ?? null;
+
+/**
+ * 这一屏会话放临时文件的目录，侧边会话再加上主会话的那个。
+ *
+ * 模型在 scratch 里解包、读文件时，回复里只写 `client.js`、`dist/main/index.js`——相对的是它正在看的
+ * 那个目录，不是会话的工作目录。侧边会话读的多半是主会话解出来的东西，所以两个都算。
+ */
+export function useScopedScratchDirs(): readonly string[] {
+	const id = useScopedSessionId();
+	const parent = useScopedFromMeta(parentIdOf);
+	const roots = useApp((s) => s.scratchRoots);
+	return useMemo(() => sessionScratchDirs(roots, [id, parent]), [roots, id, parent]);
 }
 
 export function useScopedLoading(): boolean {

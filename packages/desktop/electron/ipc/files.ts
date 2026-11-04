@@ -23,6 +23,7 @@ import { extractDocumentText, type ExtractedText } from "@plume/core";
 import { listReadableFiles, readReadableFile, resolveReadablePath } from "../files/file-read-service.ts";
 import { attachmentFile } from "../files/attachment-reads.ts";
 import { locateInProject } from "../files/file-locate.ts";
+import { isSessionScratch } from "../session/scratch.ts";
 
 export interface FilesIpcDeps {
 	projectRoots(): readonly string[];
@@ -128,7 +129,8 @@ export function registerFilesIpc({ projectRoots }: FilesIpcDeps): void {
 
 	ipcMain.handle("files:locate", async (_event, root: string, relative: string): Promise<string[]> => {
 		const dir = await projectPath(root);
-		return dir ? (await locateInProject(dir, relative)).map((path) => join(root, path)) : [];
+		// 按写来的那一份认是不是 scratch：`dir` 解析过软链，和 `plumeHome()` 的写法可能对不上。只决定跳不跳构建产物，放不放行看的是 `dir`。
+		return dir ? (await locateInProject(dir, relative, isSessionScratch(root))).map((path) => join(root, path)) : [];
 	});
 	ipcMain.handle("files:read", async (_event, raw: string): Promise<FileContents | null> => {
 		const writable = await projectPath(raw);

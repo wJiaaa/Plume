@@ -1,4 +1,4 @@
-import { isDescendantPath } from "./paths.ts";
+import { baseName, isDescendantPath, joinPath } from "./paths.ts";
 
 /**
  * Whether a conversation counts as part of a project, given the folders that project is made of.
@@ -38,4 +38,15 @@ export function sessionUnderProject(project: string | readonly string[], cwd: st
  */
 export function isProjectLess(cwd: string, scratchRoots: readonly string[]): boolean {
 	return scratchRoots.some((root) => root !== "" && isDescendantPath(root, cwd));
+}
+
+/**
+ * 每个会话放临时文件的目录：core 的 `scratchDir`，`<home>/scratch/<会话 id>`。
+ *
+ * 根从 `scratchRoots` 里按名字认，不按位置、也不拼 home：home 能被 `PLUME_HOME` 挪走，见
+ * `electron/session/scratch.ts`。没有这个根（还没读回来）就是空的。
+ */
+export function sessionScratchDirs(scratchRoots: readonly string[], sessionIds: readonly (string | null | undefined)[]): string[] {
+	const root = scratchRoots.find((one) => baseName(one) === "scratch");
+	return root ? sessionIds.filter((id): id is string => !!id).map((id) => joinPath(root, id)) : [];
 }

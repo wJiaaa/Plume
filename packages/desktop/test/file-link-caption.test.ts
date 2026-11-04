@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fileLinkCaption, splitLineSuffix } from "../src/lib/markdown/file-link.ts";
+import { fileLinkCaption, filePathInUrl, splitLineSuffix } from "../src/lib/markdown/file-link.ts";
 
 test("path-like labels keep the filename and put the path on the tooltip", () => {
 	const long = "docs/issue/2026-09-16-2220-01-tasklist-false-paused-on-unfinished-plan.md";
@@ -82,4 +82,16 @@ test("inline code that names a file is recognised, with its line suffix kept", a
 	for (const code of ["runBatch", "node:test", "npm test", '"type": "module"', "console.log", "process.env", "foo.bar()", "src/", "/Users/me/app/", "origin/main", "feature/v1.2", "https://example.com/a.js"]) {
 		assert.equal(filePathInCode(code), null, code);
 	}
+});
+
+test("a file:// address on this machine reads as its path; a share or another scheme does not", () => {
+	assert.equal(filePathInUrl("file:///Users/a/dist/index.js"), "/Users/a/dist/index.js");
+	assert.equal(filePathInUrl("file://localhost/Users/a/b.md"), "/Users/a/b.md");
+	// 盘符前那道斜杠属于地址。
+	assert.equal(filePathInUrl("file:///C:/proj/a.ts"), "C:/proj/a.ts");
+	// 不解码：`resolveAsset` 会解一次。
+	assert.equal(filePathInUrl("file:///Users/a/my%20notes.md"), "/Users/a/my%20notes.md");
+	assert.equal(filePathInUrl("file://server/share/a.md"), null);
+	assert.equal(filePathInUrl("https://example.com/a.md"), null);
+	assert.equal(filePathInUrl("/Users/a/b.md"), null);
 });

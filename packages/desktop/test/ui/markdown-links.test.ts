@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createElement as h } from "react";
+import { act, createElement as h } from "react";
 import { Markdown } from "../../src/features/markdown/Markdown.tsx";
 import { provideScope } from "../../src/features/dock/popout.ts";
 import { useApp } from "../../src/store/index.ts";
@@ -246,6 +246,77 @@ test("in a conversation with no project, a relative link resolves against the co
 		assert.equal(wrap.querySelector("[data-ly-file-name]")?.textContent, "正式伴奏 WAV", "成了文件签，不是纯文字");
 		await click(wrap.querySelector("[data-ly-file-actions] button")!);
 		assert.deepEqual(calls, [`${cwd}/song_release.wav`]);
+	} finally {
+		await view.unmount();
+		useApp.setState({ activeSessionId: before.activeSessionId, meta: before.meta, workspace: before.workspace, scratchRoots: before.scratchRoots });
+		if (previous) Object.defineProperty(window, "plume", previous);
+		else Reflect.deleteProperty(window, "plume");
+	}
+});
+
+test("a file:// link is a file chip on its path, line kept, rather than plain words", async () => {
+	const paths: string[] = [];
+	const previous = Object.getOwnPropertyDescriptor(window, "plume");
+	Object.defineProperty(window, "plume", { configurable: true, value: { files: { read: async (path: string) => { paths.push(path); return null; } } } });
+	provideScope(() => "s");
+	const view = await mount(h(Markdown, { text: "（[scanner.js:245](file:///h/.plume/scratch/s/dist/scanner.js:245)）" }));
+	try {
+		const wrap = view.find("[data-ly-file-link]");
+		assert.equal(wrap.querySelector("[data-ly-file-name]")?.textContent, "scanner.js");
+		assert.equal(wrap.querySelector("[data-ly-file-line]")?.textContent, ":245");
+		await click(wrap.querySelector("a")!);
+		assert.deepEqual(paths, ["/h/.plume/scratch/s/dist/scanner.js"]);
+	} finally {
+		await view.unmount();
+		provideScope(() => null);
+		if (previous) Object.defineProperty(window, "plume", previous); else Reflect.deleteProperty(window, "plume");
+	}
+});
+
+/*
+ * 模型在 scratch 里解包、读文件，回复只写 `client.js`。侧边会话读的是主会话解出来的那份。按工作目录拼，
+ * 这些文件签全都点不开；找不到的行内代码也不该画成一枚点了只说「读不到」的签。
+ */
+test("in a side chat with no project, a bare name is found in the main conversation's scratch; one found nowhere stays code", async () => {
+	const asked: string[] = [];
+	const opened: string[] = [];
+	const previous = Object.getOwnPropertyDescriptor(window, "plume");
+	const cwd = "/h/.plume/workspaces/chats/2026-11-04/457045dd";
+	const found = "/h/.plume/scratch/main/finch/dist/client.js";
+	Object.defineProperty(window, "plume", {
+		configurable: true,
+		value: {
+			host: "desktop",
+			platform: "darwin",
+			files: {
+				locate: async (root: string, relative: string) => {
+					asked.push(`${root} ${relative}`);
+					return root === "/h/.plume/scratch/main" && relative === "client.js" ? [found] : [];
+				},
+			},
+			system: { openTargets: async () => [], pathExists: async () => true, openPath: async (path: string) => void opened.push(path) },
+		},
+	});
+	const before = useApp.getState();
+	useApp.setState({
+		activeSessionId: "side",
+		meta: { id: "side", cwd, parentId: "main" } as never,
+		workspace: null,
+		scratchRoots: ["/h/.plume/workspaces", "/h/.plume/scratch"],
+	});
+	const view = await mount(h(Markdown, { text: "`client.js` 与 `missing-here.js` 与 [gone-here.md](gone-here.md)" }));
+	try {
+		await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+		const chips = view.all("[data-ly-file-link]");
+		assert.deepEqual(chips.map((chip) => chip.querySelector("[data-ly-file-name]")?.textContent), ["client.js", "gone-here.md"]);
+		assert.equal(view.all("code").find((code) => !code.closest("[data-ly-file-link]"))?.textContent, "missing-here.js", "找遍了也没有：还原成行内代码");
+		assert.deepEqual(
+			asked.filter((line) => line.endsWith(" client.js")),
+			[`${cwd} client.js`, "/h/.plume/scratch/side client.js", "/h/.plume/scratch/main client.js"],
+			"先工作目录，再自己的 scratch，最后主会话的",
+		);
+		await click(chips[0]!.querySelector("[data-ly-file-actions] button")!);
+		assert.deepEqual(opened, [found]);
 	} finally {
 		await view.unmount();
 		useApp.setState({ activeSessionId: before.activeSessionId, meta: before.meta, workspace: before.workspace, scratchRoots: before.scratchRoots });

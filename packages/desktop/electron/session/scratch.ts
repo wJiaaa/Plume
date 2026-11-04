@@ -92,6 +92,11 @@ export function scratchRoots(): string[] {
 	return [workspacesRoot(), join(plumeHome(), "scratch")];
 }
 
+/** 某个会话放临时文件的目录里面：core 的 `scratchDir`，不是 `workspaces/`。 */
+export function isSessionScratch(path: string): boolean {
+	return within(join(plumeHome(), "scratch"), path);
+}
+
 /** The working directory for one pull request, created if it is not there yet. */
 export async function prScratchDir(repo: string, number: number): Promise<string> {
 	const dir = join(workspacesRoot(), prChatSlug(repo, number));

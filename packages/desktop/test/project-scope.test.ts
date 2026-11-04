@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { sessionUnderProject } from "../src/lib/project-scope.ts";
+import { sessionScratchDirs, sessionUnderProject } from "../src/lib/project-scope.ts";
 
 test("a project owns the chats started inside it, at any depth", () => {
 	assert.ok(sessionUnderProject("/Users/x/proj", "/Users/x/proj"));
@@ -65,4 +65,13 @@ test("one folder given as a list means what it means given as a string", () => {
 	assert.ok(sessionUnderProject(["/Users/x/proj"], "/Users/x/proj/packages"));
 	assert.ok(!sessionUnderProject(["/Users/x/proj"], "/Users/x/proj-old"));
 	assert.ok(!sessionUnderProject([], "/Users/x/proj"));
+});
+
+test("a conversation's scratch directories sit under the scratch root, whichever order the roots come in", () => {
+	const roots = ["/h/.plume/workspaces", "/h/.plume/scratch"];
+	assert.deepEqual(sessionScratchDirs(roots, ["side", "main"]), ["/h/.plume/scratch/side", "/h/.plume/scratch/main"]);
+	assert.deepEqual(sessionScratchDirs([...roots].reverse(), ["side", null]), ["/h/.plume/scratch/side"]);
+	assert.deepEqual(sessionScratchDirs(["C:\\Users\\x\\.plume\\scratch"], ["s"]), ["C:\\Users\\x\\.plume\\scratch\\s"]);
+	// 根还没读回来：没有地方可找，不是拼一个猜的路径。
+	assert.deepEqual(sessionScratchDirs([], ["s"]), []);
 });

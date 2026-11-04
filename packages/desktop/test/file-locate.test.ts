@@ -120,3 +120,27 @@ test("不是 git 仓库的项目，只写文件名也找得到；依赖和隐藏
 		rmSync(plain, { recursive: true, force: true });
 	}
 });
+
+/*
+ * 会话的 scratch 目录里放的是模型解包出来的东西：一个解开的 app.asar，文件全在 `dist/`、`node_modules/`
+ * 下。照项目的规矩跳过它们，回复里写的 `webviewPreload.cjs` 就哪里都找不到。
+ */
+test("scratch 里解包出来的东西，构建产物和依赖目录也找；隐藏目录照旧不进", async () => {
+	const scratch = mkdtempSync(join(tmpdir(), "plume-locate-scratch-"));
+	try {
+		const file = (path: string) => {
+			mkdirSync(join(scratch, path, ".."), { recursive: true });
+			writeFileSync(join(scratch, path), "");
+		};
+		file("finch/dist/main/webviewPreload.cjs");
+		file("finch/node_modules/@finch/wings/dist/client.js");
+		file("finch/.cache/client.js");
+
+		assert.deepEqual(await locateInProject(scratch, "webviewPreload.cjs", true), ["finch/dist/main/webviewPreload.cjs"]);
+		assert.deepEqual(await locateInProject(scratch, "client.js", true), ["finch/node_modules/@finch/wings/dist/client.js"]);
+		// 同一个目录当项目问：构建产物照旧不算。
+		assert.deepEqual(await locateInProject(scratch, "webviewPreload.cjs"), []);
+	} finally {
+		rmSync(scratch, { recursive: true, force: true });
+	}
+});

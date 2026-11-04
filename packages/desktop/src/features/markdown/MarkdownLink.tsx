@@ -4,16 +4,16 @@
 
 import { translate } from "../../i18n/translate.ts";
 import { ExternalLink, FolderOpen, Globe } from "../../ui/icons/index.ts";
-import { type CSSProperties, isValidElement, type ReactNode, type SyntheticEvent, useContext, useState } from "react";
+import { type CSSProperties, isValidElement, type ReactNode, type SyntheticEvent, useContext, useMemo, useState } from "react";
 import { IconButton } from "../../ui/primitives/IconButton.tsx";
 import { resolveAsset, isAbsolutePath } from "../../lib/markdown/assets.ts";
-import { fileLinkCaption, splitLineSuffix, type LineRange } from "../../lib/markdown/file-link.ts";
+import { fileLinkCaption, filePathInUrl, splitLineSuffix, type LineRange } from "../../lib/markdown/file-link.ts";
 import { bridge } from "../../services/index.ts";
 import { useApp } from "../../store/index.ts";
 import { openFilePane } from "../dock/index.ts";
 import { useRevealLabel, withFileThere } from "../../store/open-targets.ts";
 import { iconColour, lookFor } from "../../ui/fileIcon.tsx";
-import { SessionScope, useDockScope, useScopedCwd, useScopedProjectPath } from "../../app/session-scope.tsx";
+import { SessionScope, useDockScope, useScopedCwd, useScopedProjectPath, useScopedScratchDirs } from "../../app/session-scope.tsx";
 import { usePathMenu } from "./PathMenu.tsx";
 import { useLocatedPaths } from "./located-path.ts";
 import { FileChoices } from "./FileChoices.tsx";
@@ -269,7 +269,14 @@ function FileLinkAction({
 	);
 }
 
-export function Link({ href, children }: { href: string; children: ReactNode }) {
+const NO_ROOTS: readonly string[] = [];
+
+/**
+ * `guessed`：这枚链接不是模型写的，是从行内代码的样子猜出来的（`Markdown.tsx` 里的 `filePathInCode`）。
+ * 猜的那种找遍了也没有这个文件，就还原成行内代码：画成文件签只会让人点开一句「读不到」。模型自己写的
+ * 链接不这么退，它可能是这一轮稍后才写出来的文件。
+ */
+export function Link({ href, guessed = false, children }: { href: string; guessed?: boolean; children: ReactNode }) {
 	const { baseDir } = useContext(Doc);
 	/*
 	 * A relative path means the project of the conversation this text is in, which in a split is not
@@ -284,20 +291,27 @@ export function Link({ href, children }: { href: string; children: ReactNode }) 
 	 * 整条链接退成了纯文字。
 	 */
 	const cwd = useScopedCwd();
+	const scratch = useScopedScratchDirs();
 	const scoped = useContext(SessionScope);
 	const local = !!scoped && href.startsWith(`ly-preview://${scoped}/`);
 	const safe = local || href.startsWith("http://") || href.startsWith("https://");
-	const { path: target, lines } = splitLineSuffix(href);
-	const guess = safe ? null : resolveAsset(baseDir ?? project ?? cwd ?? (isAbsolutePath(href) ? "/" : undefined), target);
+	const { path: written, lines } = splitLineSuffix(href);
+	const target = filePathInUrl(written) ?? written;
+	const guess = safe ? null : resolveAsset(baseDir ?? project ?? cwd ?? (isAbsolutePath(target) ? "/" : undefined), target);
 	/*
 	 * `approvals.ts:125` joined to the working directory mostly names nothing: models write the bare
-	 * name, or a path relative to some package. The one file in the project it can only mean wins; with
-	 * several of that name the link lets the reader pick — see `located-path.ts`. Not under a `baseDir`:
-	 * that is the document's own folder, and its relative paths are written for it.
+	 * name, or a path relative to some package. The one file it can only mean wins; with several of that
+	 * name the link lets the reader pick — see `located-path.ts`. Searched in the conversation's own
+	 * directory first, then in the scratch directories, where a model unpacks and reads what it is asked
+	 * about and then names it bare. Not under a `baseDir`: that is the document's own folder, and its
+	 * relative paths are written for it.
 	 */
-	const located = useLocatedPaths(guess && !baseDir && project && !isAbsolutePath(target) ? project : null, target);
-	const path = located.length === 1 ? located[0] : guess;
+	const home = project ?? cwd;
+	const roots = useMemo(() => (home ? [home, ...scratch] : scratch), [home, scratch]);
+	const located = useLocatedPaths(guess && !baseDir && !isAbsolutePath(target) ? roots : NO_ROOTS, target);
+	if (guessed && located?.length === 0) return <>{children}</>;
+	const path = located?.length === 1 ? located[0] : guess;
 	if (!safe && !path) return <>{children}</>;
-	if (path) return <FileLink href={href} path={path} lines={lines} choices={located.length > 1 ? located : undefined}>{children}</FileLink>;
+	if (path) return <FileLink href={href} path={path} lines={lines} choices={located && located.length > 1 ? located : undefined}>{children}</FileLink>;
 	return <WebLink href={href}>{children}</WebLink>;
 }
