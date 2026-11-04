@@ -2,6 +2,87 @@
 
 这个文件由 `pnpm release` 生成，条目来自提交信息。写得含糊的提交在这里也含糊，所以值得在提交时就写清楚。
 
+## [0.10.1](https://github.com/wJiaaa/Plume/releases/tag/v0.10.1) - 2026-11-04
+
+<!-- plume:notes en -->
+
+### New
+
+- **Fold finished turns**: once a turn is done, only its final answer stays in view, and the tool calls and progress notes before it fold into one line you can open. The answer stays where it was while the rest folds. Turn it off in Settings › General › Fold finished turns.
+- **A side chat asks before handing work off.** It used to queue the task on the main session by itself, and if the main session was idle the task started right away and went into its history. Now it shows a card with three choices: Main session, New session, or Do it here. It only queues directly when you said to give it to the main session.
+- **The card listing a turn's file changes says whether the last check passed**, for example "`pnpm test` passed after the last change". When no check ran, it says nothing.
+- **Asking another session no longer blocks the one asking.** Waiting in place almost never worked: on one machine, 1 of 17 waits got an answer. The question now returns at once and the reply arrives later as a message. If the other session stops or is closed without replying, the asker is told so instead of waiting forever.
+- When the agent suggests sessions that will edit code in parallel, the worktree switch on the suggestion card starts on.
+
+### Changes
+
+- Replies link far fewer file references. One 9,600-character reply had carried 47 links, one every few sentences.
+- Compaction keeps your own words: up to 8,000 characters of what you said are carried over whole, and past that, every message is shortened evenly instead of the later ones being dropped. Error messages are kept as written, and history too long to summarise in one request is summarised in parts instead of being cut short.
+- A sub-agent waiting on the model now shows "Thinking", instead of a task card that looks stuck.
+- Claude models used through a Chat Completions endpoint now use prompt caching. If the endpoint rejects it, the request is sent again without it.
+- Startup loads 6.88 MB instead of 9.52 MB; the editor, formulas and the terminal load their parts when first used. In a 9,000-message session, each streamed update takes about 0.11 ms instead of 2.7 ms, and dragging in the sidebar no longer redraws every row.
+- A running `bash` command sends only its new output to the window, instead of its whole output (up to about 40,000 characters) every 100 ms.
+
+### Fixes
+
+- **Text from slow models no longer arrives in bursts.** At 6 characters every 300 ms, the longest pause on screen went from 234 ms to 100 ms.
+- **File links in chats without a project open**: `file://` links written by the model, and file names that only exist in the session's scratch folder. Before, 10 of 63 references in three such sessions could be opened. A name that can't be found anywhere is shown as plain code instead of a file chip that can't be read.
+- Copying text that contains a file chip no longer adds line breaks around the file name.
+- **Opening a linked `.command`, `.app`, `.exe` or `.lnk` file shows it in its folder instead of running it.** On Windows, a `\\host\share` path in a reply no longer sends your credentials to that host before any check.
+- **Opening a `.db` file with a recursive view no longer freezes Plume.** Reading stops after 5 seconds and names the view it got stuck on.
+- **The sandbox can no longer be escaped through `open`**: `open -a` and `open x.command` used to start programs outside it. Starting a program now asks for approval; opening a document or folder still doesn't.
+- `git -c x=y push --force` and other git commands with global options skipped every git approval rule. `rm -rf '/'` with quotes is now judged by the path it deletes. `git reset HEAD a.ts` and `git clean -n`, which delete nothing, no longer ask. On Windows, edits inside the project were treated as writes outside it.
+- **Saved API keys are no longer lost when the key file can't be read** (a permissions error, or a virus scanner holding the file on Windows). Plume used to generate a new key over the old one, and every saved secret became unreadable. It now only creates the key file when there is none.
+- Interjecting or editing and resending a message no longer drops queued messages, messages from other sessions, or the wake-up from a background command.
+- A continued run that made progress in its first part no longer stops early in the second with "2 rounds in a row without finishing an item".
+- After a provider rejects part of the history, the trimmed history is saved, so the rejected content isn't sent again on the next turn or after a restart.
+- TypeScript checks no longer report "No Project" after the language server restarts. Saving four memories at once keeps all four instead of one.
+- In split view, task rows in the unfocused pane update again.
+- Switching repositories no longer shows the previous repository's files in the Git panel, and refreshing it no longer flashes an uncoloured diff.
+- The agent's `grep` stops as soon as it has enough results (322 ms to 7 ms in one test), and reading a 415 MB file uses 127 MB of memory instead of 1,203 MB.
+
+<!-- plume:notes zh-CN -->
+
+<details>
+<summary>中文（简体）</summary>
+
+### 新功能
+
+- **一轮跑完后只留回答**：回答之前的工具调用和中途的汇报收成一行，点开能看原样。收起时回答待在原位，不会被挤动。不想要可以在设置 › 常规 › 跑完收起过程里关掉。
+- **侧边聊天要把活交出去时，先问你交给谁。** 以前它自己就排进主会话的队列，主会话空着就当场开跑、写进主会话的历史，撤不回来。现在会放一张卡片，三个选项：交给主会话、开新会话、在这里做。只有你明说了交给主会话，它才直接排队。
+- **列出本轮改动文件的卡片会写明改动后的检查过没过**，比如「改动后 `pnpm test` 已通过」。没跑检查时不提。
+- **问另一个会话时不再原地干等。** 原地等几乎等不到：一台机器上 17 次只等回 1 次。现在问完立刻返回，对方的答复之后作为一条消息送回来；对方没回就停下或被关掉，也会告诉问的一方，不会一直等下去。
+- 模型建议拆出几个会同时改代码的会话时，建议卡片上的工作树开关默认打开。
+
+### 调整
+
+- 回复里给文件挂的链接少了很多。之前有一条 9600 字的回复挂了 47 个链接，几句话就被打断一次。
+- 压缩时保留你说过的原话：8000 字以内整段带上，超过后每条均匀截短，而不是把后面的整条丢掉。报错按原文保留；一次请求放不下的长历史分几段摘要，不再统一截短。
+- 子智能体等模型回话时显示「正在思考」，不再只剩一张看着像卡住的任务卡。
+- 通过 Chat Completions 接口使用 Claude 模型时会用上提示缓存；接口不认就去掉重发。
+- 启动加载从 9.52MB 降到 6.88MB，编辑器、公式和终端用到时才加载。9000 条消息的会话里，流式输出每次更新从 2.7ms 降到约 0.11ms；在侧栏里拖动不再整列重画。
+- 正在跑的 `bash` 命令只把新增的输出送给窗口，不再每 100ms 把全部输出（最多约四万字）整份发一遍。
+
+### 修复
+
+- **慢模型输出时，字不再一段一段地蹦。** 每 300ms 来 6 个字时，屏幕上最长的停顿从 234ms 降到 100ms。
+- **没有项目的聊天里，文件链接能点开了**：模型写的 `file://` 链接，以及只在会话 scratch 目录里的文件名都能打开。之前三个这样的会话里，63 处文件引用只有 10 处能开。哪里都找不到的名字按普通代码显示，不再画一枚点开只说「读不到」的文件签。
+- 复制带文件签的文字时，文件名两边不再多出换行。
+- **点开回复里链接的 `.command`、`.app`、`.exe`、`.lnk` 文件时，改为在文件夹中显示，不再直接运行。** Windows 上回复里出现 `\\host\share` 这样的路径时，不会再在检查之前就向那台主机发送登录凭据。
+- **打开带递归视图的 `.db` 文件不再让 Plume 卡死。** 读 5 秒没结果就停下，并告诉你卡在哪个视图。
+- **沙箱不能再经 `open` 绕出去**：以前 `open -a`、`open x.command` 能在沙箱外启动程序，现在启动程序需要你批准，打开文档或文件夹照旧不问。
+- `git -c x=y push --force` 这类带全局选项的 git 命令以前会绕过所有 git 审批规则。带引号的 `rm -rf '/'` 现在按它真正删的路径判断。`git reset HEAD a.ts`、`git clean -n` 这类不删东西的命令不再要批准。Windows 上在项目内的编辑曾被当成写到项目外。
+- **钥匙文件读不出来时，存过的 API Key 不再全部作废。** 遇到权限错误、或 Windows 上文件被杀毒软件占着时，Plume 以前会新生成一把钥匙盖掉旧的，之后所有存过的密钥都解不开。现在只有文件不存在时才新建。
+- 插话、编辑后重发时，排队的消息、其他会话发来的消息和后台命令的唤醒不再被丢掉。
+- 续跑时第一段有进展、第二段没有，不会再提前以「连着 2 轮一项都没完成」停下。
+- 服务商拒收部分历史后，剪过的历史会存下来，下一轮和重启后不再把被拒的内容再发一遍。
+- 语言服务重启后，TypeScript 检查不再一直报「No Project」。同时存 4 条记忆，4 条都在，不再只剩 1 条。
+- 分屏时，没有焦点那一屏的任务行会正常更新。
+- 切换仓库后，Git 面板不再显示上一个仓库的文件；刷新时 diff 不再先闪一下没上色的版本。
+- 模型用的 `grep` 拿够结果就结束（一次测试里从 322ms 降到 7ms）；读 415MB 的文件占用内存从 1203MB 降到 127MB。
+
+</details>
+
 ## [0.10.0](https://github.com/wJiaaa/Plume/releases/tag/v0.10.0) - 2026-11-02
 
 <!-- plume:notes en -->
