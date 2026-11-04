@@ -141,9 +141,12 @@ test("a prefix that does not match is never sent; the summary goes the independe
 		const drifted = [user("另一句话"), ...now.slice(1)];
 		const compacted = await compactIfNeeded({ messages: now, model: MODEL, provider: PROVIDER, streamFn: streamAssistant, lineage: lineageFrom(state, drifted) });
 
-		assert.equal(sent.length, 2, "the mismatched fork never left: the second request is the independent one");
-		assert.equal(sent[1].tools, undefined);
-		assert.equal((sent[1].system as Array<{ text: string }>)[0].text, SUMMARY_SYSTEM);
+		// 这份夹具实测用量大、字少，独立请求按比例折算后要分几段写；分几段不是这里要验的。
+		assert.ok(sent.length >= 2, "the mismatched fork never left: what follows the turn is the independent summary");
+		for (const body of sent.slice(1)) {
+			assert.equal(body.tools, undefined);
+			assert.equal((body.system as Array<{ text: string }>)[0].text, SUMMARY_SYSTEM);
+		}
 		assert.ok(compacted);
 		assert.equal(compacted.via, "independent");
 		assert.equal(compacted.prefix?.change?.segment, "messages[0]", "and the mismatch is on record");
@@ -157,8 +160,9 @@ test("a fork that calls a tool instead of summarising is discarded", async () =>
 		const now = [...before, reply, user("继续")];
 		const compacted = await compactIfNeeded({ messages: now, model: MODEL, provider: PROVIDER, streamFn: streamAssistant, lineage: lineageFrom(state, now) });
 
-		assert.equal(sent.length, 3, "turn, discarded fork, independent summary");
-		assert.equal(sent[2].tools, undefined);
+		assert.ok(sent.length >= 3, "turn, discarded fork, independent summary");
+		assert.ok(sent[1].tools !== undefined, "the second request was the fork");
+		for (const body of sent.slice(2)) assert.equal(body.tools, undefined);
 		assert.ok(compacted);
 		assert.equal(compacted.via, "independent");
 		assert.equal(compacted.summary, SUMMARY);
@@ -203,8 +207,8 @@ test("no fork when the cache has gone cold or the last request went to another m
 			else lineage.sent.modelId = "anthropic/haiku";
 			const compacted = await compactIfNeeded({ messages: now, model: MODEL, provider: PROVIDER, streamFn: streamAssistant, lineage });
 
-			assert.equal(sent.length, 2, variant);
-			assert.equal(sent[1].tools, undefined, `${variant}: straight to the independent request`);
+			assert.ok(sent.length >= 2, variant);
+			for (const body of sent.slice(1)) assert.equal(body.tools, undefined, `${variant}: straight to the independent request`);
 			assert.equal(compacted?.via, "independent", variant);
 		});
 	}

@@ -27,8 +27,9 @@ test("condensed tool calls keep their clipped arguments for protocols that read 
 		{ role: "toolResult", toolCallId: "t1", toolName: "bash", content: [{ type: "text", text: "ok" }], isError: false, timestamp: 1 },
 		...Array.from({ length: 30 }, (_, i) => (i % 2 ? user(`next ${"y".repeat(2000)}`) : reply([{ type: "text", text: `step ${"x".repeat(2000)}` }]))),
 	];
-	let sent: Message[] = [];
-	const result = await compactIfNeeded({ messages, model: m, provider: provider(m), streamFn: spy((next) => { sent = next; }) as never });
+	// 一次请求放不下时分段写；那次调用自己就超过一段的预算，在它所在的那段里被截短。
+	const sent: Message[] = [];
+	const result = await compactIfNeeded({ messages, model: m, provider: provider(m), streamFn: spy((next) => { sent.push(...next); }) as never });
 	assert.ok(result?.kept !== undefined, "precondition: it summarised");
 	const call = sent.flatMap((message) => (message.role === "assistant" ? message.content : [])).find((part) => part.type === "toolCall");
 	assert.ok(call && call.type === "toolCall");

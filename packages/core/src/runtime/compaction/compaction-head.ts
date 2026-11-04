@@ -6,7 +6,7 @@
  * 前缀缓存和「重开会话后模型看到的和当时一样」都靠这个。
  */
 
-import { formatTaskContext } from "./task-context.ts";
+import { formatTaskContext, USER_WORDS_CHARS } from "./task-context.ts";
 import type { CompactionContext } from "../../types/message.ts";
 import type { AssistantMessage, Message, ModelConfig, ProviderConfig } from "../../types.ts";
 
@@ -119,7 +119,7 @@ export function summaryMessages(
 		 * 这一句跟在标签后面而不在里面：上一次的摘要按标签原样取出来续写（`previousSummary`）。
 		 */
 		`<session-summary>\n${summary}\n</session-summary>\n${SUMMARY_IS_RECORD}`,
-		taskContext ? formatTaskContext(taskContext, Math.min(6000, Math.floor(model.contextWindow * 0.05 * 3.5))) : null,
+		taskContext ? formatTaskContext(taskContext, Math.min(USER_WORDS_CHARS, Math.floor(model.contextWindow * 0.05 * 3.5))) : null,
 		standing
 			? `<standing-request>\nLatest user request (possibly excerpted). It supersedes conflicting summary claims; compatible earlier constraints still apply. Do not restart completed or cancelled work.\n\n${standing}\n</standing-request>`
 			: null,
@@ -224,7 +224,7 @@ export function droppedMessage(
 	/*
 	 * 窗口小时按窗口收紧三段摘录（最新请求、原始请求、中间请求）。只由窗口决定，从日志重建时才得出
 	 * 同一份；按一个汉字一个 token 的最坏情况折算，因为重建拿不到实测的校正比例。大窗口下这条线高于
-	 * 原有的 2000 / 6000 字上限，不起作用。
+	 * 单条 2000 字的上限，不起作用；中间请求的合计取它和 `USER_WORDS_CHARS` 里小的那个。
 	 */
 	const part = model ? Math.max(100, Math.floor((model.contextWindow * DROPPED_EXCERPT_SHARE) / 3)) : Number.POSITIVE_INFINITY;
 	const cut = (text: string) => {
@@ -235,7 +235,7 @@ export function droppedMessage(
 	const shown = taskContext?.originalRequest ? { ...taskContext, originalRequest: cut(taskContext.originalRequest) } : taskContext;
 	const text = [
 		`<dropped-history>\nEarlier turns were removed to fit the context window. Summarising them was not possible, so they are gone from this conversation rather than condensed — do not assume anything about what came before.`,
-		shown ? formatTaskContext(shown, Math.min(6000, part)) : null,
+		shown ? formatTaskContext(shown, Math.min(USER_WORDS_CHARS, part)) : null,
 		standing
 			? `<standing-request>\nLatest user request (possibly excerpted). It supersedes conflicting summary claims; compatible earlier constraints still apply. Do not restart completed or cancelled work.\n\n${standing}\n</standing-request>`
 			: null,

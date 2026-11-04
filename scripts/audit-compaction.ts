@@ -3,7 +3,8 @@
  *
  * 第 12 节量的是压缩花了多少；第 13 节量它丢了多少。折叠掉的那段里读过、之后没改过的文件，压缩后
  * 又被 `read` 一遍，说明摘要和保留的尾部都没让模型确信它已经知道——这是摘要质量里唯一不靠人工判读
- * 的信号。`recall` 是另一面：原文还在，模型知道去取。都只量主会话，子代理的调用不在 `calls` 里。
+ * 的信号。`recall` 是另一面：原文还在，模型知道去取。用户把话再说一遍是第三面，量找不回的丢失。
+ * 都只量主会话，子代理的调用不在 `calls` 里。
  *
  * 第 14 节给分叉的「缓存还热」那条线（`FORK_HOT_MS`）找依据：同一前缀隔了多久，服务商还读得到。
  */
@@ -43,6 +44,41 @@ function pathOf(call: AuditCall): string | undefined {
 	return typeof path === "string" ? path : undefined;
 }
 
+/**
+ * 用户在压缩后不得不把话再说一遍：提到「之前说过」，或者折叠掉的某句原话又出现了。
+ *
+ * 重读文件量的是能找回的丢失；这一项量的是找不回的那种——约束、纠正、放弃过的路线只在用户的话里，
+ * 摘要漏了，模型不会知道，只有用户会发现。关键词和字面相似都是启发式，只看改动前后的趋势。
+ */
+const REFER_BACK = /(之前说过|我说过|前面说过|之前说的|早就说|已经说过|一开始就说|上面说过|跟你说过|不是说了|I (?:already )?(?:said|told you)|as I said|I mentioned)/i;
+/** 短于这个的不比相似度：「继续」「好的」本来就会反复说。 */
+const RESTATE_MIN_CHARS = 12;
+const RESTATE_SIMILARITY = 0.6;
+
+function userText(message: Message): string | undefined {
+	if (message.role !== "user" || message.synthetic) return undefined;
+	const text = message.content.map((block) => (block.type === "text" ? block.text : "")).join("\n").trim();
+	return text || undefined;
+}
+
+function bigrams(text: string): Set<string> {
+	const points = [...text.toLowerCase().replace(/[\s\p{P}]+/gu, "")];
+	const out = new Set<string>();
+	for (let at = 0; at + 1 < points.length; at++) out.add(points[at] + points[at + 1]);
+	return out;
+}
+
+/** Dice 系数：两段话的二元组重合了多少。 */
+export function restates(text: string, earlier: string): boolean {
+	if ([...text].length < RESTATE_MIN_CHARS || [...earlier].length < RESTATE_MIN_CHARS) return false;
+	const a = bigrams(text);
+	const b = bigrams(earlier);
+	if (a.size === 0 || b.size === 0) return false;
+	let shared = 0;
+	for (const gram of a) if (b.has(gram)) shared++;
+	return (2 * shared) / (a.size + b.size) >= RESTATE_SIMILARITY;
+}
+
 export function afterCompaction(streams: AuditStream[]) {
 	const kept: number[] = [];
 	const tailTokens: number[] = [];
@@ -50,12 +86,22 @@ export function afterCompaction(streams: AuditStream[]) {
 	let foldedRereads = 0;
 	let foldedRereadChars = 0;
 	let recalls = 0;
+	let userAfter = 0;
+	let repeatedAfter = 0;
 	for (const stream of streams) {
 		const edits = stream.calls.filter((call) => call.name === "edit" || call.name === "write");
 		stream.boundaries.forEach((boundary, index) => {
 			const keptFrom = Math.max(0, boundary.at - boundary.kept);
 			const until = stream.boundaries[index + 1]?.at ?? Number.POSITIVE_INFINITY;
 			kept.push(boundary.kept);
+			const folded = stream.messages.slice(0, keptFrom).map(userText).filter((text): text is string => text !== undefined);
+			const nextAt = stream.boundaries[index + 1]?.at ?? stream.messages.length;
+			for (const message of stream.messages.slice(boundary.at, nextAt)) {
+				const text = userText(message);
+				if (text === undefined) continue;
+				userAfter++;
+				if (REFER_BACK.test(text) || folded.some((earlier) => restates(text, earlier))) repeatedAfter++;
+			}
 			tailTokens.push(estimateTokens(stream.messages.slice(keptFrom, boundary.at)));
 			// 折叠掉的那段里每个文件最后一次读在哪；保留的尾部里读过的，压缩后还看得见，不算。
 			const lastFolded = new Map<string, number>();
@@ -95,6 +141,8 @@ export function afterCompaction(streams: AuditStream[]) {
 		foldedRereads,
 		foldedRereadChars,
 		recalls,
+		userAfter,
+		repeatedAfter,
 	};
 }
 

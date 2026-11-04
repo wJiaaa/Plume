@@ -1168,8 +1168,9 @@ if (folded.boundaries === 0) console.log("  没有写下过边界的压缩。");
 else {
 	console.log(`  主会话写下边界 ${folded.boundaries} 次；保留的尾部中位 ${folded.keptMedian} 条、约 ${folded.tailTokensMedian.toLocaleString()} token，最少 ${folded.keptMin} 条，少于 ${KEEP_MIN} 条的 ${folded.keptBelowMin} 次`);
 	console.log(`  压缩后到下一次压缩前：read ${folded.reads} 次，其中重读折叠掉的、期间没改过的文件 ${folded.foldedRereads} 次 / ${tk(folded.foldedRereadChars).toLocaleString()} token；recall ${folded.recalls} 次`);
+	console.log(`  压缩后用户发言 ${folded.userAfter} 条，其中提到「之前说过」或把折叠掉的原话又说了一遍 ${folded.repeatedAfter} 条 (${share(folded.repeatedAfter, folded.userAfter)})`);
 }
-console.log(`  ⚠ 少于 ${KEEP_MIN} 条说明保留尾部被删过了头；折叠后重读多而 recall 少，说明摘要没让模型确信它已经读过。`);
+console.log(`  ⚠ 少于 ${KEEP_MIN} 条说明保留尾部被删过了头；折叠后重读多而 recall 少，说明摘要没让模型确信它已经读过；用户重说的多，说明丢的是找不回的东西。`);
 
 console.log("\n── 14. 缓存隔多久还读得到（分叉的「缓存还热」那条线看这里） ──");
 if (lifetime.length === 0) console.log("  没有可判断的请求。");

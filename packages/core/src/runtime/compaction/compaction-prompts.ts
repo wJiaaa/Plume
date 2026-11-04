@@ -33,11 +33,11 @@ Never continue the conversation and never answer its questions. Output only the 
  * `## Goal & Original User Intent` first for a reason. It is the section that must survive the most
  * rewrites intact, and it is the one drift shows up in first.
  *
- * The length target is there because the summary is written out token by token, and that is nearly
- * all of a compaction's wall time: with no target, summaries ran 4k–7k tokens, grew with every
- * rewrite, and a compaction took two minutes. The target yields to unfinished work, never the other
- * way round. Numbers and the rollback condition: docs/architecture/agent-cost-and-stopping.md,
- * "2026-11-03".
+ * There is no overall length target. One was added on 2026-11-03 (about 2,500 tokens, errors cut to
+ * one line) to shorten the wait while a summary is written, and removed on 2026-11-04: the wait is
+ * a cost everyone sees, while a lost error message or a forgotten rejected approach is a cost nobody
+ * sees until the next stretch of work goes wrong. Length is saved on finished work only, one line
+ * per item. See docs/architecture/agent-cost-and-stopping.md, "2026-11-04".
  */
 const SUMMARY_FORMAT = `Use exactly this format, omitting sections that do not apply:
 
@@ -45,7 +45,7 @@ const SUMMARY_FORMAT = `Use exactly this format, omitting sections that do not a
 [What the user initially requested and is aiming to accomplish in this entire session. Preserve the original root goals and task scope verbatim; never drop or shrink prior overarching requirements just because recent messages focused on a sub-problem.]
 
 ## Constraints & User Preferences
-- [Explicit requirements, conventions, anti-patterns, and styling/architectural rules the user stated. These must be carried forward permanently.]
+- [Explicit requirements, conventions, anti-patterns, and styling/architectural rules the user stated, in the user's own words where they were specific. These must be carried forward permanently.]
 
 ## Key Work & Task Progress
 
@@ -65,9 +65,9 @@ const SUMMARY_FORMAT = `Use exactly this format, omitting sections that do not a
 1. [Ordered, concrete, immediately actionable next steps to finish remaining user goals]
 
 ## Critical Context
-- [Exact file paths, symbol names, and repository state needed to continue work seamlessly. Of command output and errors, keep only the one key line the next step depends on, never whole outputs or traces.]
+- [Exact file paths, symbol names, and repository state needed to continue work seamlessly. Quote error messages, failing commands and the decisive lines of their output exactly; leave out passing output and traces the next step does not depend on.]
 
-Keep sections tight, highly dense and factual. Aim for about 2,500 tokens in total; only exceed it when unfinished work genuinely needs it. Never shorten the goal, constraints or unfinished tasks to fit. Never drop unfinished tasks or the primary objective. Output only the summary, with no preamble.`;
+Be dense and factual. Completed work may shrink to one line per item. Everything the next step depends on — the goal, constraints, unfinished tasks, decisions and their reasons, rejected approaches, exact errors — is kept in full, however long that makes the summary. Never drop unfinished tasks or the primary objective. Output only the summary, with no preamble.`;
 
 export const FIRST_SUMMARY = `Summarise the conversation above so another engineer can pick the work up with no other context. Ensure all user requests and task lists are fully recorded.
 

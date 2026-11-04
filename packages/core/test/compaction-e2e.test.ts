@@ -273,7 +273,8 @@ test("a compact row left in old settings does not pull compaction off the sessio
 		emit: () => {},
 		streamFn: async (_context, config) => {
 			calledConfig = { provider: config.provider.id, model: config.model.modelId };
-			return reply("这是紧凑摘要");
+			// 回答要有正文：历史若只剩用户原话，原话照抄进压缩头，压缩缩不下去（见 `USER_WORDS_FLOOR`）。
+			return reply(`这是紧凑摘要。${"回答正文".repeat(300)}`);
 		},
 	});
 	await session.initialize();
@@ -305,7 +306,8 @@ test("session.compact() falls back to session model when @compact is not configu
 		emit: () => {},
 		streamFn: async (_context, config) => {
 			calledConfig = { provider: config.provider.id, model: config.model.modelId };
-			return reply("会话模型自身摘要");
+			// 回答要有正文：历史若只剩用户原话，原话照抄进压缩头，压缩缩不下去（见 `USER_WORDS_FLOOR`）。
+			return reply(`会话模型自身摘要。${"回答正文".repeat(300)}`);
 		},
 	});
 	await session.initialize();

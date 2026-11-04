@@ -36,7 +36,8 @@ function provider() {
 			return reply(SUMMARY);
 		}
 		turns.push({ ...context, messages: [...context.messages] });
-		return reply(`第 ${turns.length} 个回答`, turns.length === PROMPTS ? 31_000 : 1000);
+		// 回答要有正文：历史若只剩用户原话，原话照抄进压缩头，压缩缩不下去（见 `USER_WORDS_FLOOR`）。
+		return reply(`第 ${turns.length} 个回答：${"分析结果".repeat(500)}`, turns.length === PROMPTS ? 31_000 : 1000);
 	};
 	return { streamFn, summaries, turns };
 }

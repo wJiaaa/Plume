@@ -83,11 +83,34 @@ test("request excerpts stay bounded on the wire without mutating their source sn
 	const head = summaryMessages("Summary", null, provider, model, undefined, context);
 	const next = taskContextFromHistory([...head, user("New request")]);
 	assert.equal(JSON.stringify(context), before);
-	assert.equal(next.requests?.length, 20);
 	assert.equal(next.requests?.at(-1)?.ordinal, 31);
-	assert.ok(JSON.stringify(next).length < 50_000);
 	assert.match(formatTaskContext(context, 100), /28 earlier user request excerpts omitted/);
 	assert.ok(text(head).length < 12_000);
+	// 存进压缩头的原话按字数封顶，不按条数：头会落盘，不能随会话一直长。
+	const long = taskContextFromHistory(Array.from({ length: 60 }, (_, index) => user(`request-${index}: ${"details ".repeat(400)}`)));
+	const stored = long.requests!.reduce((sum, request) => sum + request.text.length, 0);
+	assert.ok(stored <= 64_000, `stored ${stored}`);
+	assert.ok(long.requests!.length < 60);
+	assert.equal(long.requests!.at(-1)?.ordinal, 60);
+});
+
+test("every intermediate request is quoted when the budget allows, clipped evenly when it does not", () => {
+	// 三十条普通长度的话：从前只带得下总量的四分之一，现在一条不少。
+	const requests = Array.from({ length: 30 }, (_, index) => user(`约束 ${index}: 不要动 module-${index}，${"保持原样".repeat(20)}`));
+	const all = formatTaskContext(taskContextFromHistory(requests));
+	for (let index = 1; index < 29; index++) assert.match(all, new RegExp(`module-${index}，`));
+	assert.doesNotMatch(all, /omitted/);
+
+	// 放不下时长的被截短，短的约束整条保留，谁也不被整条省掉。
+	const mixed = taskContextFromHistory([user("开始"), user("禁止推送 GUARD_A"), user(`背景材料 ${"长".repeat(1800)} TAIL_OF_PASTE`), user("禁止改 schema GUARD_B"), user("继续")]);
+	const clipped = formatTaskContext(mixed, 900);
+	assert.ok(clipped.length < 900 + 1200, "the request section keeps to its budget");
+	assert.match(clipped, /GUARD_A/);
+	assert.match(clipped, /GUARD_B/);
+	assert.match(clipped, /背景材料/);
+	assert.doesNotMatch(clipped, /TAIL_OF_PASTE/);
+	assert.match(clipped, /\[Excerpt; use recall for the full wording\.\]/);
+	assert.doesNotMatch(clipped, /omitted/);
 });
 
 test("a long newer excerpt does not crowd out a short earlier constraint that still fits", () => {

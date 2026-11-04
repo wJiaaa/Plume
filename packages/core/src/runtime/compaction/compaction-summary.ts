@@ -9,10 +9,19 @@ import { streamAssistant } from "../../ai/index.ts";
 import { allowance } from "../../agent/prune.ts";
 import { estimateTokens, textTokens } from "../../tokens.ts";
 import type { CompactionFault, CompactionObserver } from "../../types/compaction.ts";
-import type { AssistantMessage, LlmContext, Message, ModelConfig, ProviderConfig } from "../../types.ts";
+import { emptyUsage, type AssistantMessage, type LlmContext, type Message, type ModelConfig, type ProviderConfig } from "../../types.ts";
 import { FIRST_SUMMARY, focusNote, hasSummary, SUMMARY_SYSTEM, UPDATE_SUMMARY } from "./compaction-prompts.ts";
 import { SUMMARY_INPUT, summaryReplyTokens } from "./compaction-budget.ts";
 import { replyText } from "../summary/one-shot.ts";
+
+/**
+ * 历史一次放不进摘要请求时，最多分几段写。
+ *
+ * 每多一段就多一次不吃缓存的请求，还要多等一份摘要写完。超长恢复时历史大约一个窗口，摘要请求的
+ * 输入占四成，两三段就够；只有 `/compact` 交来一份从没压过的长日志才会碰到这条线，那时每段先各自
+ * 截短（`condense`），损失摊在四段里，比整段截到一次请求里小得多。
+ */
+const MAX_PASSES = 4;
 
 export async function summarize(
 	messages: Message[],
@@ -24,19 +33,12 @@ export async function summarize(
 	/** 实测 usage 与字符估算之比，见 `compactIfNeeded` 里的 `scale`。 */
 	scale = 1,
 ): Promise<string | null> {
-	/*
-	 * Which instruction to use depends on whether there is already a summary in there.
-	 *
-	 * Rewriting an existing summary and writing a first one are different jobs, and the difference
-	 * is what keeps the beginning of a session alive through its tenth compaction.
-	 */
-	const iterative = hasSummary(messages);
-
-	const instruction: Message = {
+	const focus = focusNote(manual?.instructions);
+	const instructionFor = (iterative: boolean): Message => ({
 		role: "user",
-		content: [{ type: "text", text: [iterative ? UPDATE_SUMMARY : FIRST_SUMMARY, focusNote(manual?.instructions)].filter(Boolean).join("\n\n") }],
+		content: [{ type: "text", text: [iterative ? UPDATE_SUMMARY : FIRST_SUMMARY, focus].filter(Boolean).join("\n\n") }],
 		timestamp: Date.now(),
-	};
+	});
 	/*
 	 * 预算按实测比例折回字符估算的单位。估算是「字符 / 3.5」，中文和密集 JSON 上会低估到
 	 * 三分之一，不校正的话 40% 的预算实际发出去超过整个窗口，摘要请求被拒，退回机械兜底。
@@ -44,14 +46,114 @@ export async function summarize(
 	 *
 	 * The history's share is also capped by what the request leaves once the system prompt, the
 	 * instruction and the reply it asks for are paid for — on a small summariser window, or beside a
-	 * long `/compact` focus, 40% of the window is more than is left.
+	 * long `/compact` focus, 40% of the window is more than is left. Priced with the longer of the two
+	 * instructions, so every pass of a split summary fits the same budget.
 	 */
 	const inflate = Math.max(1, scale);
 	// Room kept for the summary itself, and exactly what the request asks for: sized again from the
 	// uncalibrated estimate, it overran what the pre-send check below had priced in.
 	const reply = summaryReplyTokens(model);
-	const fixed = textTokens(SUMMARY_SYSTEM) + estimateTokens([instruction]);
-	const history = condense(messages, Math.min(model.contextWindow * SUMMARY_INPUT / inflate, (model.contextWindow - reply) / inflate - fixed));
+	const fixed = textTokens(SUMMARY_SYSTEM) + Math.max(estimateTokens([instructionFor(true)]), estimateTokens([instructionFor(false)]));
+	const budget = Math.min(model.contextWindow * SUMMARY_INPUT / inflate, (model.contextWindow - reply) / inflate - fixed);
+	const ask = (history: Message[], iterative: boolean) =>
+		requestSummary(history, instructionFor(iterative), { model, provider, streamFn, manual, observer, inflate, reply, fixed });
+
+	/*
+	 * Which instruction to use depends on whether there is already a summary in there.
+	 *
+	 * Rewriting an existing summary and writing a first one are different jobs, and the difference
+	 * is what keeps the beginning of a session alive through its tenth compaction.
+	 */
+	if (estimateTokens(messages) <= budget) return ask(messages, hasSummary(messages));
+
+	/*
+	 * Too long for one request: summarise it in order, a part at a time, each part rewriting the
+	 * summary the previous one wrote — the same update a session's second compaction does.
+	 *
+	 * This used to clip every message to one shared length until the whole history fit a single
+	 * request. That kept every step and lost what was in them: on an overflow, where the history is
+	 * a full window, each message came down to a few hundred characters, and the error text, the
+	 * user's longer instructions and the reasons for a decision went with the middle. Split, each
+	 * part is read whole; the summary carries forward between parts.
+	 */
+	const draftRoom = reply / inflate + estimateTokens([draftMessage("", provider, model)[0]]);
+	const parts = splitHistory(messages, Math.max(1, budget - draftRoom));
+	let draft: string | null = null;
+	for (const part of parts) {
+		const history = draft === null ? part : [...draftMessage(draft, provider, model), ...part];
+		const written = await ask(history, draft !== null || hasSummary(part));
+		if (written === null) return null;
+		draft = written;
+	}
+	return draft;
+}
+
+/**
+ * 上一段写下的摘要，接在下一段历史前面。格式和压缩头一样以 `<session-summary>` 开头，
+ * `UPDATE_SUMMARY` 说的「the conversation above begins with a summary」指的就是它。
+ */
+function draftMessage(summary: string, provider: ProviderConfig, model: ModelConfig): Message[] {
+	return [
+		{ role: "user", content: [{ type: "text", text: `<session-summary>\n${summary}\n</session-summary>` }], timestamp: 0, synthetic: true },
+		{ role: "assistant", content: [{ type: "text", text: "Understood. Continuing from that summary." }], api: provider.api, provider: provider.id, model: model.modelId, usage: emptyUsage(), stopReason: "stop", timestamp: 0 },
+	];
+}
+
+/**
+ * 按顺序切成至多 `MAX_PASSES` 段，每段放进 `budget`。
+ *
+ * 只在完整的单元之间切：助手消息和回答它的工具结果是一个单元，拆开两种协议都拒收。一个单元自己就
+ * 超过预算的（一次读了整个大文件），那一段截短到预算。段数超过上限时把每段放大到「总量 / 上限」，
+ * 再各自截短——截短只发生在放不下的那几段里，而不是整段历史一起。
+ */
+function splitHistory(messages: Message[], budget: number): Message[][] {
+	const units: Message[][] = [];
+	for (let at = 0; at < messages.length;) {
+		let to = at + 1;
+		while (to < messages.length && messages[to].role === "toolResult") to++;
+		units.push(messages.slice(at, to));
+		at = to;
+	}
+	const weights = units.map((unit) => estimateTokens(unit));
+	const total = weights.reduce((sum, weight) => sum + weight, 0);
+	const pack = (target: number) => {
+		const parts: Message[][] = [];
+		let current: Message[] = [];
+		let weight = 0;
+		units.forEach((unit, index) => {
+			if (current.length > 0 && weight + weights[index] > target) {
+				parts.push(current);
+				current = [];
+				weight = 0;
+			}
+			current.push(...unit);
+			weight += weights[index];
+		});
+		if (current.length > 0) parts.push(current);
+		return parts;
+	};
+	let parts = pack(budget);
+	if (parts.length > MAX_PASSES) {
+		parts = pack(Math.ceil(total / MAX_PASSES));
+		// 按单元装箱会多出零头：并进最后一段，由下面的截短收住。
+		while (parts.length > MAX_PASSES) parts.splice(-2, 2, [...parts.at(-2)!, ...parts.at(-1)!]);
+	}
+	return parts.map((part) => condense(part, budget));
+}
+
+interface SummaryRequest {
+	model: ModelConfig;
+	provider: ProviderConfig;
+	streamFn: typeof streamAssistant;
+	manual?: { instructions?: string; signal?: AbortSignal };
+	observer?: CompactionObserver;
+	inflate: number;
+	reply: number;
+	fixed: number;
+}
+
+/** 发一次摘要请求。放不下、失败、返回空的，手动压缩抛出说明，自动压缩交回 `null` 走兜底。 */
+async function requestSummary(history: Message[], instruction: Message, { model, provider, streamFn, manual, observer, inflate, reply, fixed }: SummaryRequest): Promise<string | null> {
 	const context: LlmContext = { systemPrompt: SUMMARY_SYSTEM, messages: [...history, instruction], tools: [] };
 	// Provider callbacks are synchronous; serialize their durable records and drain before completion.
 	let pending = Promise.resolve();

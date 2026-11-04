@@ -39,20 +39,23 @@ const scope = (run: AgentRunConfig) => [run.session, run.control.signal] as cons
 
 test("automatic compaction records retries in order, commits completion with the boundary and keeps metadata out of the prompt", async () => {
 	const events: AgentEvent[] = [];
+	let requests = 0;
 	const stream: typeof streamAssistant = async function* (_p, _m, _c, options) {
+		requests++;
 		for (let i = 1; i <= 2; i++) options?.onRetry?.({ attempt: i, delayMs: 1000, reason: "provider secret", failure: classifyFailure({ from: "status", status: 503, body: "provider secret" }) });
 		yield { type: "start", partial: reply("") };
 		return reply("Saved summary");
 	};
 	const result = await compactStep(...scope(config(stream)), history(), model, event => { events.push(event); });
 	assert.ok(result);
-	assert.deepEqual(events.map(e => e.type === "command_status" ? e.command.automatic?.phase : e.type), ["summarizing", "retrying", "retrying", "compacted"]);
+	// 这份历史一次放不进摘要请求，分几段写；每段各重试两次，都记在同一条压缩记录上。
+	assert.deepEqual(events.map(e => e.type === "command_status" ? e.command.automatic?.phase : e.type), ["summarizing", ...Array.from({ length: requests * 2 }, () => "retrying"), "compacted"]);
 	const end = events.at(-1);
 	assert.equal(end?.type, "compacted");
 	if (end?.type !== "compacted") return;
 	assert.equal(end.command?.status, "done");
 	assert.equal(end.command?.automatic?.outcome, "summary");
-	assert.equal(end.command?.automatic?.retries, 2);
+	assert.equal(end.command?.automatic?.retries, requests * 2);
 	assert.ok(end.commandId);
 	assert.equal(JSON.stringify(events).includes("provider secret"), false);
 	assert.equal(JSON.stringify(result.messages).includes(end.commandId), false);

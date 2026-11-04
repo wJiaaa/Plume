@@ -32,7 +32,7 @@ const requestTokens = (context: LlmContext) => Math.ceil(context.systemPrompt.le
 /** The condensed history alone: the last message is the instruction. */
 const historyTokens = (context: LlmContext) => estimateTokens(context.messages.slice(0, -1));
 
-test("a history of many-block messages is condensed to the budget as a whole, not per block", async () => {
+test("a history too long for one summary request is summarised in parts, each within budget, none dropped", async () => {
 	const m = model(10_000);
 	const history: Message[] = [user("做这件事")];
 	for (let i = 0; i < 16; i++) {
@@ -47,16 +47,24 @@ test("a history of many-block messages is condensed to the budget as a whole, no
 	const { requests, stream } = recorder();
 	const result = await compactIfNeeded({ messages: history, model: m, provider: provider(m), streamFn: stream });
 	assert.ok(result?.kept !== undefined, "precondition: it summarised");
-	const sent = historyTokens(requests[0]);
-	assert.ok(sent <= m.contextWindow * 0.4, `the condensed history keeps its budget: ${sent}`);
-	const calls = requests[0].messages.flatMap((message) => (message.role === "assistant" ? message.content : [])).filter((part) => part.type === "toolCall");
+	assert.ok(requests.length > 1, "precondition: it did not fit one request");
+	for (const request of requests) {
+		const sent = historyTokens(request);
+		assert.ok(sent <= m.contextWindow * 0.4, `every part keeps the budget: ${sent}`);
+	}
+	// Each part after the first opens with the summary the one before it wrote.
+	for (const request of requests.slice(1)) assert.match(JSON.stringify(request.messages[0].content), /<session-summary>/);
+	const calls = requests.flatMap((request) => request.messages).flatMap((message) => (message.role === "assistant" ? message.content : [])).filter((part) => part.type === "toolCall");
 	// The summary covers everything before the kept tail, which at least holds the last exchange.
-	assert.equal(calls.length, 15, "every summarised step is still there");
-	assert.ok(!requests[0].messages.some((message) => message.content.some((block) => block.type === "text" && block.text.includes("omitted here"))), "none was dropped");
+	const sentIds = new Set(calls.map((call) => call.type === "toolCall" && call.id));
+	const folded = history.slice(0, history.length - result.kept!).flatMap((message) => (message.role === "assistant" ? message.content : [])).filter((part) => part.type === "toolCall");
+	assert.ok(folded.length >= 15, `precondition: most steps were folded (${folded.length})`);
+	for (const call of folded) assert.ok(call.type === "toolCall" && sentIds.has(call.id), "every summarised step is still there");
+	assert.ok(!requests.some((request) => request.messages.some((message) => message.content.some((block) => block.type === "text" && block.text.includes("omitted here")))), "none was dropped");
 	for (const call of calls) assert.match(JSON.stringify(call.type === "toolCall" && call.arguments), /\/repo\/f\d+\.ts/, "with the path it touched");
 });
 
-test("more messages than a per-message floor can fit drop the oldest middle, and say so", async () => {
+test("past the most parts a summary may take, each part is condensed on its own, and a gap is said", async () => {
 	const m = model(10_000);
 	const history: Message[] = [user(`目标：把整个仓库迁移过去 ${"g".repeat(200)}`)];
 	for (let i = 0; i < 200; i++) {
@@ -66,13 +74,14 @@ test("more messages than a per-message floor can fit drop the oldest middle, and
 	const { requests, stream } = recorder();
 	const result = await compactIfNeeded({ messages: history, model: m, provider: provider(m), streamFn: stream });
 	assert.ok(result?.kept !== undefined, "precondition: it summarised");
-	const sent = requests[0].messages;
-	assert.ok(historyTokens(requests[0]) <= m.contextWindow * 0.4, `the budget holds however many messages there are: ${historyTokens(requests[0])}`);
+	assert.equal(requests.length, 4, "no more parts than the cap");
+	for (const request of requests) assert.ok(historyTokens(request) <= m.contextWindow * 0.4, `the budget holds however many messages there are: ${historyTokens(request)}`);
 	const text = (message: Message) => message.content.map((block) => (block.type === "text" ? block.text : "")).join("");
-	assert.match(text(sent[0]), /^目标：把整个仓库迁移过去/, "the opening request is kept");
+	assert.match(text(requests[0].messages[0]), /^目标：把整个仓库迁移过去/, "the opening request is kept");
+	const sent = requests.flatMap((request) => request.messages);
 	assert.ok(sent.some((message) => /omitted/.test(text(message))), "the gap is marked");
 	const older = history.length - result.kept!;
-	assert.ok(sent.some((message) => text(message).startsWith(text(history[older - 1]).slice(0, 12))), "the newest summarised step is kept");
+	assert.ok(requests.at(-1)!.messages.some((message) => text(message).startsWith(text(history[older - 1]).slice(0, 12))), "the newest summarised step is kept");
 });
 
 test("a request that cannot fit is not sent", async () => {
@@ -115,7 +124,7 @@ test("a measured history the cut cannot bring under the margin is still summaris
 	const { requests, stream } = recorder();
 	const result = await compactIfNeeded({ messages: history, model: m, provider: provider(m), streamFn: stream });
 	assert.ok(result?.kept !== undefined, "it summarised");
-	assert.equal(requests.length, 1);
+	assert.ok(requests.length >= 1);
 });
 
 test("the reply the summary request asks for is the room the pre-send check kept for it", async () => {
@@ -132,9 +141,11 @@ test("the reply the summary request asks for is the room the pre-send check kept
 		return say("摘要");
 	};
 	await compactIfNeeded({ messages: history, model: m, provider: provider(m), streamFn: stream as never });
-	assert.equal(sent.length, 1, "precondition: a summary was asked for");
-	const input = requestTokens(sent[0].context) * 2;
-	assert.ok(input + (sent[0].maxTokens ?? m.maxOutputTokens) <= m.contextWindow, `calibrated input ${input} + reply ${sent[0].maxTokens} fits the window`);
+	assert.ok(sent.length >= 1, "precondition: a summary was asked for");
+	for (const request of sent) {
+		const input = requestTokens(request.context) * 2;
+		assert.ok(input + (request.maxTokens ?? m.maxOutputTokens) <= m.contextWindow, `calibrated input ${input} + reply ${request.maxTokens} fits the window`);
+	}
 });
 
 test("what the tail gives up after an independent summary is in that summary, not lost between the two", async () => {
