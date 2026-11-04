@@ -27,6 +27,7 @@ import { QuestionNav } from "./QuestionNav.tsx";
 import { QuoteMenu } from "./QuoteMenu.tsx";
 import { MessageRow } from "./rows.tsx";
 import { TurnWork } from "./TurnWork.tsx";
+import { turnFold } from "./turn-fold.ts";
 import { WorkStep } from "./WorkStep.tsx";
 import { useTranscriptWindow, WINDOW_TURNS } from "./view-state.ts";
 import { flash, settleReveal, useDrawingReveal } from "./reveal.ts";
@@ -134,6 +135,7 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
   const arrival = useArrival(`${activeSessionId}:${loadingSession}`);
   // 推理默认不画，见 `withoutThinking`。
   const showThinking = useApp((s) => s.settings?.showThinking === true);
+  const foldTurns = useApp((s) => s.settings?.foldTurns !== false);
   /*
    * 流式时 `messages` 每拍都换，下面这几样从头算一遍是整个会话的量；这几份缓存在最后一轮开头留检查点，
    * 每拍只重算最后一轮，结果和从头算逐项相同。见 `transcript-shape.ts`。
@@ -514,14 +516,23 @@ export const Conversation = memo(function Conversation({ side = false }: { side?
              */
             const live = running && block.turn === blocks[blocks.length - 1].turn;
             const tail = block.items[block.items.length - 1];
+            // 跑完只留回答，见 `turn-fold.ts`。
+            const fold = live || !foldTurns ? null : turnFold(block.items);
             return (
               <TurnWork
                 key={key}
-                entries={block.items.flatMap((item) => {
+                live={live}
+                fold={fold}
+                stateKey={`${key}:fold`}
+                // 跑完收起时按住回答，见 `TurnWork`。
+                onSettle={follow.keep}
+                entries={block.items.flatMap((item, index) => {
                   const entry = {
                     key: `${activeSessionId}:${item.key}`,
                     // 正在做的那一段是这一轮的最后一行：后面有了别的（下一段活、一句话），它就做完了。
                     node: item.kind === "step" ? <WorkStep step={item.step} live={live && item === tail} draw={draw} /> : draw(item.run),
+                    folded: fold !== null && index >= fold.start && index < fold.answer && !fold.pinned.has(item.key),
+                    answer: fold?.answer === index,
                   };
                   if (item.kind !== "step") return [entry];
                   /*

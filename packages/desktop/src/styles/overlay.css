@@ -278,6 +278,18 @@
 }
 
 /*
+ * 收起时内容贴着下沿，被吃掉的是上头。
+ *
+ * 跑完的一轮收起时回答钉在原地（`TurnWork`），折叠区的下沿就是不动的那条边；内容照常贴着上沿的话，
+ * 它跟着往下滑、在回答上方被一行行裁掉，看着像是撞进了回答里。
+ */
+.ly-reveal-end > * {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+/*
  * A notice leaving, rather than being deleted.
  *
  * They arrived with a fade-up and then simply stopped existing, which reads as a glitch — the

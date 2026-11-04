@@ -37,7 +37,7 @@ export interface TurnBlock {
 }
 
 /** 有过程的一轮里的一行：一段活（`step`），或者原样画的一条（话、页面、标记）。 */
-type TurnItem = { kind: "run"; key: string; run: Run } | { kind: "step"; key: string; step: Step };
+export type TurnItem = { kind: "run"; key: string; run: Run } | { kind: "step"; key: string; step: Step };
 
 /**
  * 一段连着做的活，连同夹在中间、跟在后面的推理——画出来是一行。

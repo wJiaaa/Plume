@@ -232,6 +232,20 @@ export async function hover(page: Page, selector: string, name?: string, mode: N
 	if (!landed) await page.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...at });
 }
 
+/**
+ * 用真滚轮在一块上滚一下：负的 `deltaY` 往上。
+ *
+ * 转录只把滚轮、触摸、按键认作读者自己滚（见 `follow.ts`），直接改 `scrollTop` 不会让它离开底部，
+ * 要量「读者滚开时」的行为只能这样滚。
+ */
+export async function wheel(page: Page, selector: string, deltaY: number): Promise<void> {
+	await located(page, selector, undefined, "exact");
+	const at = await page.evaluate<Point>(`(()=>{const r=${finder(selector)}.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+	await page.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...at });
+	await page.send("Input.dispatchMouseEvent", { type: "mouseWheel", ...at, deltaX: 0, deltaY });
+	await frames(page, 2);
+}
+
 /** 为键盘用例放置起始焦点，后续仍用真实 Tab 或方向键移动。 */
 export async function focus(page: Evaluate, selector: string, name?: string, mode: NamedMode = "exact"): Promise<void> {
 	const find = finder(selector, name, mode);

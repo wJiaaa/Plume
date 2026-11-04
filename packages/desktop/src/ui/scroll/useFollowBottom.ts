@@ -135,6 +135,13 @@ export interface FollowBottom {
 	 * 跟随底部让路。没有它，点开历史里的一个工具组会把读者直接甩到转录末尾。
 	 */
 	hold(target: EventTarget | null): void;
+	/**
+	 * 接下来这一阵子的高度变化里，把这个元素留在视口的原位——只在读者没跟着底部时。
+	 *
+	 * 跟着底部时底部本来就钉着，元素下面没变它就不动；这时按住反而让跟随底部让路 `HOLD_MS`，底下随后
+	 * 冒出来的东西没人带进视口。不能拿 `away` 来问：它要离底过了门槛才亮，滚开几十像素时已经不跟了、它还没亮。
+	 */
+	keep(target: HTMLElement): void;
 }
 
 export function useFollowBottom({
@@ -642,6 +649,10 @@ export function useFollowBottom({
 		anchor.current = { el: target, top: target.getBoundingClientRect().top, until: performance.now() + HOLD_MS };
 	}, []);
 
+	const keep = useCallback((target: HTMLElement) => {
+		if (state.current !== "following") hold(target);
+	}, [hold]);
+
 	// ---------------------------------------------------------------------------
 	// Going back
 	// ---------------------------------------------------------------------------
@@ -843,7 +854,7 @@ export function useFollowBottom({
 		write(el, Math.max(0, Math.min(top, el.scrollHeight - el.clientHeight)));
 		publish(read(el));
 	}, [detach, publish, write]);
-	return { scrollRef, tailRef, away, unread, returnToBottom, onScroll, onResize, onUserScroll: intend, detach, scrollTo, hold };
+	return { scrollRef, tailRef, away, unread, returnToBottom, onScroll, onResize, onUserScroll: intend, detach, scrollTo, hold, keep };
 }
 
 /**

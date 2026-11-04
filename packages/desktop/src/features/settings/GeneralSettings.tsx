@@ -185,6 +185,16 @@ export function GeneralSettings() {
           }
         />
         <Row
+          title={t("general.foldTurns")}
+          detail={t("general.foldTurnsDetail")}
+          control={
+            <Toggle
+              checked={settings.foldTurns !== false}
+              onChange={(foldTurns) => patch({ foldTurns })}
+            />
+          }
+        />
+        <Row
           title={t("general.autoSummarizeTitle")}
           detail={t("general.autoSummarizeTitleDetail")}
           control={

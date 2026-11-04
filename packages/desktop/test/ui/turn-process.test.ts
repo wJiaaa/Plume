@@ -329,3 +329,47 @@ test("a step that has not changed is not redrawn when the meta or the grouping i
 		restore();
 	}
 });
+
+/*
+ * 跑完只留回答：回答之前的过程和中途的话收成一行（`turn-fold.ts` 定收哪几行，这里看画出来对不对）。
+ */
+const bash = (id: string): Call => ({ block: { type: "toolCall", id, name: "bash", arguments: { command: "make" } }, stopReason: "toolUse" });
+const FOLD = { start: 0, answer: 2, pinned: new Set(["page"]), calls: [bash("f1"), bash("f2")], thought: 0 };
+const folded = [
+	{ key: "process", node: inside, folded: true },
+	{ key: "page", node: h("div", { "data-probe": "page" }, "页面") },
+	{ key: "answer", node: answer, answer: true },
+];
+
+test("a finished turn opens folded: one line saying what was done, then the page, then the answer", async () => {
+	const view = await mount(h(TurnWork, { entries: folded, fold: FOLD }));
+	try {
+		const row = view.find<HTMLButtonElement>("[data-ly-turn-fold] button[aria-expanded]");
+		assert.match(row.textContent ?? "", /执行命令/, "那一行说的是里面做了什么，不计时");
+		assert.equal(view.all('[data-probe="inside"]').length, 0, "收着的时候里面的东西不在 DOM 里");
+		const order = view.all('[data-ly-turn-fold], [data-probe="page"], [data-probe="answer"]').map((el) => el.getAttribute("data-probe") ?? "fold");
+		assert.deepEqual(order, ["fold", "page", "answer"], "页面是结果，排在那一行后面，不收进去");
+
+		await click(row);
+		assert.equal(view.all('[data-ly-turn-fold-rail] [data-probe="inside"]').length, 1, "点开是原样那几行");
+		assert.match(view.find("[data-ly-turn-fold-rail]").className, /border-l/, "挂在竖线上");
+	} finally {
+		await view.unmount();
+	}
+});
+
+test("a turn finishing in front of you folds from open, and the answer is not remounted", async () => {
+	const view = await mount(h(TurnWork, { entries: folded.map(({ key, node }) => ({ key, node })), live: true }));
+	try {
+		const said = view.find('[data-probe="answer"]');
+		const held: HTMLElement[] = [];
+		await view.rerender(h(TurnWork, { entries: folded, fold: FOLD, live: false, onSettle: (el: HTMLElement) => held.push(el) }));
+		assert.equal(view.find('[data-probe="answer"]'), said, "回答不重挂");
+		assert.equal(view.find("[data-ly-turn-fold]").getAttribute("data-ly-turn-fold"), "open", "先展开着挂上，过渡才有起点");
+		assert.ok(view.find(".ly-reveal-end"), "收的时候内容贴着下沿");
+		await wait(100);
+		assert.equal(view.find("[data-ly-turn-fold]").getAttribute("data-ly-turn-fold"), "closed", "下一帧收起");
+	} finally {
+		await view.unmount();
+	}
+});

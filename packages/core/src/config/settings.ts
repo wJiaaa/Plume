@@ -474,6 +474,12 @@ export interface Settings {
 	 */
 	showThinking?: boolean;
 	/**
+	 * 跑完的一轮只留回答：回答之前的过程和中途说的话收成一行，点开再看。默认收：人要看的是结果。
+	 * 回答按位置认（最后一句有正文的话），模型收尾只说一句「完成」时，前面讲过的也一起收了，所以给个开关。
+	 * 只管桌面端的转录。
+	 */
+	foldTurns?: boolean;
+	/**
 	 * How many sub-agents may run at once. Beyond this they queue.
 	 *
 	 * A limit rather than a refusal, because wanting to look at eight things is a reasonable thought
@@ -597,6 +603,7 @@ export const DEFAULT_SETTINGS: Settings = {
 	autoSummarizeTitle: true,
 	nextPromptSuggestions: false,
 	showThinking: false,
+	foldTurns: true,
 	hideEmptiedProjects: false,
 	maxConcurrentSubAgents: 4,
 	memoryExtraction: false,
@@ -862,6 +869,7 @@ export function normalizeSettings(parsed: Partial<Settings>): Settings {
 			autoSummarizeTitle: parsed.autoSummarizeTitle !== false,
 			nextPromptSuggestions: parsed.nextPromptSuggestions === true,
 			showThinking: parsed.showThinking === true,
+			foldTurns: parsed.foldTurns !== false,
 			// Off unless asked for: a project disappearing from the sidebar is the worse surprise.
 			hideEmptiedProjects: parsed.hideEmptiedProjects === true,
 			maxConcurrentSubAgents: normalizeMaxConcurrentSubAgents(parsed.maxConcurrentSubAgents),
