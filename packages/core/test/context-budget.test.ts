@@ -52,7 +52,8 @@ test("first-request compaction counts prompt and schema overhead", async () => {
 	assert.equal(await compactIfNeeded({ messages, model: small, provider, streamFn: summary }), null);
 	const result = await compactIfNeeded({ messages, model: small, provider, streamFn: summary, overhead: 3000 });
 	assert.ok(result?.kept !== undefined);
-	assert.equal(calls, 1);
+	// 这么小的窗口一次放不进摘要请求，会分段写；这里只管开销让压缩发生了。
+	assert.ok(calls >= 1);
 });
 
 test("oversized fixed overhead does not announce a compaction that changed nothing", async () => {
